@@ -131,6 +131,7 @@ function p3App() {
       return String((this.userProfile && this.userProfile.email) || this.userSession.email || '').trim();
     },
     accountPanelOpen: false, tokenCopied: false,
+    accountPanelPos: { top: 64, right: 24 },   // the account menu opens right under the header's account button
 
     // ── studio: compose ──────────────────────────────────────────────
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
@@ -156,6 +157,7 @@ function p3App() {
     candIndex: 0,                                                              // phone: which of the four options is in view
     previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
     menuOpen: false,                   // mobile navigation
+    aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
     _returnFocus: null,                // element to focus again when a modal closes
 
@@ -314,7 +316,7 @@ function p3App() {
     // ── navigation ────────────────────────────────────────────────────
     navigateTo(v) {
       if (this.previewOpen) this.closePreview();
-      this.menuOpen = false;
+      this.menuOpen = false; this.aboutOpen = false;
       this.view = v;
       if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', v === 'home' ? location.pathname : '#' + v);
       else history.replaceState(null, '', location.pathname);
@@ -533,10 +535,11 @@ function p3App() {
         const g = this.gallery.find(x => x.id === fav);
         if (g) { if (!this.isFav(g)) await this.toggleFav(g); this.openGallery(g); return; }
       }
-      const panel = this._pendingPanel;       // they asked for My Designs or ♥ Favorites before signing in
+      const panel = this._pendingPanel;       // they asked for My Designs, ♥ Favorites or the bag before signing in
       this._pendingPanel = '';
       this._enterDesignAfterSignIn(fromVerification);
-      if (panel) this.openPanel(panel);
+      if (panel === 'bag') { this.signInNotice = null; this.goToCheckout(); }
+      else if (panel) this.openPanel(panel);
     },
 
     // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
@@ -675,7 +678,17 @@ function p3App() {
     toggleAccountPanel() {
       this.accountPanelOpen = !this.accountPanelOpen;
       this.tokenCopied = false;
-      if (this.accountPanelOpen) { this._refreshQuota(); this.loadOrders(); }
+      if (this.accountPanelOpen) { this.menuOpen = false; this.aboutOpen = false; this._placeAccountPanel(); this._refreshQuota(); this.loadOrders(); }
+    },
+    // A dropdown under the header's account button, right edges aligned (on a phone: full width under the header).
+    // Opened from the composer's balance line, or with the button hidden, it sits under the header.
+    _placeAccountPanel() {
+      const btn = document.querySelector('[data-account-button]');
+      const shown = btn && btn.getClientRects().length > 0;
+      const r = (shown ? btn : document.querySelector('nav.site-header'))?.getBoundingClientRect();
+      const top = Math.round((r ? r.bottom : 56) + (shown ? 8 : 6));
+      const right = window.innerWidth < 640 || !shown ? 16 : Math.max(16, Math.round(window.innerWidth - r.right));
+      this.accountPanelPos = { top, right };
     },
     closeAccountPanel() { this.accountPanelOpen = false; this.tokenCopied = false; },
     async copyAccessToken() {
@@ -693,6 +706,12 @@ function p3App() {
       setTimeout(() => { this.tokenCopied = false; }, 2000);
     },
     openMyDesignsFromAccount() { this.openPanel('designs'); },
+    // The header's bag: the bag page; signed out, sign in first and the bag opens right after.
+    openBag() {
+      this.menuOpen = false; this.closeAccountPanel();
+      if (!this.userSession) { this._pendingPanel = 'bag'; this.openRegModal(); return; }
+      this.goToCheckout();
+    },
     // My Designs and ♥ Favorites live in the Design screen's side panel. The header, the studio toolbar, the phone
     // menu and the account panel all open it on the right tab; signed out, sign in first and it opens right after.
     get inStudio() { return STUDIO_VIEWS.includes(this.view); },

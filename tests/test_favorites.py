@@ -76,14 +76,13 @@ async def test_my_designs_and_favorites_are_one_tap_away_on_every_screen(HG):
     Index = (await H.Client.get("/")).text
     Start = Index.index('aria-label="Main"')
     Nav = Index[Start:Index.index("</nav>", Start)]
-    Right = Nav[Nav.index("<!-- My Designs (signed in)"):Nav.index("<!-- Mobile menu panel -->")]
+    Right = Nav[Nav.index('class="h-util'):Nav.index('class="h-cta')]
     # the header: My Designs when signed in, ♥ Favorites (with the count) always, both next to the bag
-    assert Right.index("openPanel('designs')") < Right.index("openPanel('favorites')") < Right.index("goToCheckout()")
+    assert Right.index("openPanel('designs')") < Right.index("openPanel('favorites')") < Right.index("openBag()")
     assert 'x-show="userSession && !inStudio"' in Right and "favorites.length" in Right
     # the account is in the bar on phones too (outside the studio, where the steps take the bar)
     Acct = Right[Right.index('@click="toggleAccountPanel()"'):]
     assert ":class=\"inStudio ? 'hidden md:flex' : 'flex'\"" in Acct[:400]
-    assert "hidden md:flex items-center gap-1 select-none" not in Nav
     # the phone menu
     Menu = Nav[Nav.index('id="mobile-menu"'):]
     assert "openPanel('designs')" in Menu and "openPanel('favorites')" in Menu
@@ -97,7 +96,7 @@ async def test_my_designs_and_favorites_are_one_tap_away_on_every_screen(HG):
     assert 'class="fixed inset-0 bg-black/40 z-[55] lg:hidden"' in Index
     assert "'fixed lg:relative inset-y-0 right-0 z-[60] lg:z-auto" in Index
     # the account panel
-    Panel = Index[:Index.index('@click="signOutFromAccount()"')][-900:]
+    Panel = Index[Index.index('data-testid="account-menu"'):Index.index('@click="signOutFromAccount()"')]
     assert "openPanel('designs')" in Panel and "openPanel('favorites')" in Panel
     # signed out: sign in first, then the panel opens on the tab they asked for
     App = (await H.Client.get("/static/app.js")).text
@@ -106,5 +105,5 @@ async def test_my_designs_and_favorites_are_one_tap_away_on_every_screen(HG):
     assert "this._pendingPanel = tab; this.openRegModal(); return;" in Open
     assert "this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';" in Open and "this.sidebarOpen = true;" in Open
     After = App[App.index("async _afterSignIn(fromVerification) {"):]
-    assert "if (panel) this.openPanel(panel);" in After[:After.index("\n    },")]
+    assert "else if (panel) this.openPanel(panel);" in After[:After.index("\n    },")]
     assert "this._pendingPanel = '';" in App[App.index("closeRegModal() {"):][:300]

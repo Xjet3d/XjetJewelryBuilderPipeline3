@@ -109,6 +109,29 @@
         .fld:disabled { background: #F6F6F6; color: #6F6F6F; }
         .flbl { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: #6F6F6F; margin-bottom: 6px; font-weight: 600; }
         .ferr { font-size: 12px; color: #A1261D; margin-top: 5px; }
+
+        /* ── Header (nav.site-header): one grid in three arrangements, so every control exists once.
+           Phones: one row — menu + XJet · the utility icons and the account.
+           The site's pages from 768 px: the utility row on top (My Designs · ♥ Favorites · bag · account), then the main
+           row — XJet Atelier · the pages · Start Designing.
+           The Design screen (.is-studio): one row — XJet Atelier · Design — Customize — Bag · account · Exit. */
+        .site-header { display: grid; align-items: center; column-gap: .375rem; padding: 1rem .5rem;
+                       grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "brand nav util cta"; }
+        .site-header > .h-brand { grid-area: brand; }
+        .site-header > .h-nav { grid-area: nav; }
+        .site-header > .h-util { grid-area: util; }
+        .site-header > .h-cta { grid-area: cta; }
+        .site-header > #mobile-menu { grid-column: 1 / -1; }
+        @media (max-width: 767.98px) { .site-header:not(.is-studio) > .h-cta { display: none; } }
+        @media (min-width: 768px) {
+            .site-header { column-gap: 1rem; padding: 1rem 2rem; }
+            .site-header:not(.is-studio) { padding-top: 0; padding-bottom: 0; grid-template-columns: auto minmax(0, 1fr) auto;
+                                           grid-template-areas: "util util util" "brand nav cta"; }
+            .site-header:not(.is-studio) > .h-util { margin: 0 -2rem; padding: .25rem 2rem; background: #FBF9F5; border-bottom: 1px solid #EEE8DD; }
+            .site-header:not(.is-studio) > .h-brand,
+            .site-header:not(.is-studio) > .h-nav,
+            .site-header:not(.is-studio) > .h-cta { padding: .875rem 0; }
+        }
     </style>
     <!-- Tailwind last in <head>, exactly where the former CDN script injected its styles, so the cascade is unchanged:
          on equal specificity the utilities win over the page's own rules above -->
@@ -132,12 +155,17 @@
         · Designs, movies and 3D files are simulated placeholders. No AI provider is called and nothing is charged.
     </div>
 
-    <!-- ── Navigation ─────────────────────────────────────────────────────── -->
-    <nav class="w-full sticky top-0 z-50 px-2 md:px-8 py-4 grid grid-cols-[auto_1fr_auto] items-center gap-x-1.5 md:gap-x-4 bg-white border-b border-zinc-100 shrink-0" aria-label="Main">
-        <div class="flex items-center gap-2 md:gap-3">
-            <!-- Menu: the page links live here below 1280 px (from 1280 px they are in the bar) -->
-            <button type="button" x-show="!['ai-studio','review','checkout','order','confirmation'].includes(view)" @click="menuOpen = !menuOpen"
-                    class="tap xl:hidden p-2 -ml-1 text-zinc-700 hover:text-black" :aria-expanded="menuOpen" aria-controls="mobile-menu" aria-label="Menu">
+    <!-- ── Header ────────────────────────────────────────────────────────────
+         One grid (nav.site-header, arranged in the style block above), so every control exists once:
+         · the site's pages from 768 px: the utility row (My Designs · ♥ Favorites · bag · account) above the main
+           row (XJet Atelier · How It Works, Inspiration, Materials, About · Start Designing);
+         · phones: one row (menu · XJet · the utility icons and the account);
+         · the Design screen: its own single row (XJet Atelier · Design — Customize — Bag · account · Exit). -->
+    <nav class="site-header w-full sticky top-0 z-50 bg-white border-b border-zinc-100 shrink-0" :class="inStudio ? 'is-studio' : ''" aria-label="Main">
+        <!-- Brand, with the menu button below 1024 px -->
+        <div class="h-brand flex items-center gap-2 md:gap-3">
+            <button type="button" x-show="!inStudio" @click="menuOpen = !menuOpen"
+                    class="tap lg:hidden p-2 -ml-1 text-zinc-700 hover:text-black" :aria-expanded="menuOpen" aria-controls="mobile-menu" aria-label="Menu">
                 <svg x-show="!menuOpen" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
                 <svg x-show="menuOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -148,16 +176,34 @@
             </button>
         </div>
 
-        <div class="flex items-center justify-center">
-            <div x-show="!['ai-studio','review','checkout','order','confirmation'].includes(view)" class="hidden xl:flex gap-7 whitespace-nowrap text-[13px] uppercase tracking-[0.1em] font-medium text-zinc-600">
+        <!-- Main navigation (from 1024 px; below that it is in the menu) · the Design screen's steps -->
+        <div class="h-nav flex items-center justify-center min-w-0">
+            <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-11 whitespace-nowrap text-[13px] uppercase tracking-[0.12em] font-medium text-zinc-600">
                 <button @click="scrollToHowItWorks()" class="hover:text-black transition">How It Works</button>
                 <button @click="navigateTo('inspiration')" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</button>
                 <button @click="navigateTo('materials')"   :class="view === 'materials'   ? 'text-black' : 'hover:text-black transition'">Materials</button>
-                <button @click="navigateTo('technology')"  :class="view === 'technology'  ? 'text-black' : 'hover:text-black transition'">Technology</button>
-                <button @click="navigateTo('faq')"         :class="view === 'faq'         ? 'text-black' : 'hover:text-black transition'">FAQ</button>
-                <button @click="navigateTo('designers')"   :class="view === 'designers'   ? 'text-black' : 'hover:text-black transition'">About XJet</button>
+                <!-- About: the informational pages, gathered in one small menu -->
+                <div class="relative" @click.outside="aboutOpen = false" @keydown.escape="aboutOpen = false">
+                    <button type="button" @click="aboutOpen = !aboutOpen" :aria-expanded="aboutOpen" aria-haspopup="menu" aria-controls="about-menu"
+                            class="inline-flex items-center gap-1.5 transition" :class="aboutOpen || ['designers','technology','faq','contact'].includes(view) ? 'text-black' : 'hover:text-black'">
+                        About
+                        <svg class="w-3 h-3 transition-transform" :class="aboutOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div id="about-menu" x-show="aboutOpen" x-cloak role="menu" aria-label="About"
+                         class="absolute left-1/2 -translate-x-1/2 top-full mt-[30px] w-56 bg-white rounded-xl py-2 normal-case tracking-normal font-normal text-[14px] z-10"
+                         style="border:1px solid #ECE6DA; box-shadow:0 18px 44px rgba(26,26,26,0.12);">
+                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('designers')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'designers' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">About XJet</button>
+                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('technology')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'technology' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Technology</button>
+                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('faq')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'faq' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">FAQ</button>
+                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('contact')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'contact' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Support</button>
+                    </div>
+                </div>
             </div>
-            <div x-show="['ai-studio','review','checkout','order','confirmation'].includes(view)" class="flex items-center gap-1 md:gap-3 leading-none">
+            <div x-show="inStudio" class="flex items-center gap-1 md:gap-3 leading-none">
                 <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'ai-studio' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="design && navigateTo('ai-studio')">Design</button>
@@ -174,47 +220,44 @@
             </div>
         </div>
 
-        <div class="flex items-center justify-end gap-2 md:gap-3">
-            <!-- Mode chip -->
-            <span x-show="isMock" x-cloak class="hidden min-[1700px]:inline-flex items-center gap-1.5 px-2 py-1 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
+        <!-- Utility: My Designs · ♥ Favorites · bag · account — a row of its own on the site's pages from 768 px -->
+        <div class="h-util flex items-center justify-end gap-0.5 sm:gap-1 md:gap-2.5">
+            <!-- Mode chip — internal testing only (live mode is the normal state: no chip); the banner above says it too -->
+            <span x-show="isMock && !inStudio" x-cloak class="hidden md:inline-flex mr-auto items-center gap-1.5 px-2 py-0.5 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
                   style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;" title="Simulated provider — nothing is generated or charged">
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span>
-<!-- Live mode is the normal state for customers: no chip. Mock mode (internal testing) stays clearly marked. -->
-
-            <!-- My Designs (signed in) · ♥ Favorites · bag. My Designs and Favorites open the Design screen's side panel on
-                 that tab (the studio's own toolbar has them there). "My Designs" is spelled out from 1440 px. -->
-            <div x-show="!inStudio || bagCount > 0" class="flex items-center gap-0.5 sm:gap-1">
+            <!-- My Designs (signed in) and ♥ Favorites open the Design screen's side panel on that tab (in the studio its toolbar has them) -->
             <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')"
-                    class="tap inline-flex items-center gap-2 p-2 min-[1440px]:px-2.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition"
+                    class="tap inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition"
                     aria-label="My Designs" title="My Designs">
-                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
-                <span class="hidden min-[1440px]:inline">My Designs</span>
+                <svg class="w-5 h-5 md:w-[18px] md:h-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
+                <span class="hidden md:inline">My Designs</span>
             </button>
-            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap relative p-2 text-zinc-600 hover:text-[#8A6420] transition"
+            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap relative p-2 md:p-1.5 text-zinc-600 hover:text-[#8A6420] transition"
                     :aria-label="favorites.length ? 'My favorites, ' + favorites.length : 'My favorites'" title="Favorites">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
                 <span x-show="favorites.length" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full text-white text-[12px] font-bold flex items-center justify-center px-0.5" style="background:#B8873A;" x-text="favorites.length"></span>
             </button>
-            <button x-show="bagCount > 0" x-cloak @click="goToCheckout()" :aria-label="'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items')" class="tap relative p-2 text-zinc-600 hover:text-black transition">
+            <!-- Bag: always on the site's pages (signed out it asks for sign-in first); in the studio when it has something -->
+            <button type="button" x-show="!inStudio || bagCount > 0" @click="openBag()" title="Bag"
+                    :aria-label="bagCount ? 'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items') : 'My bag'" class="tap relative p-2 md:p-1.5 text-zinc-600 hover:text-black transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
                     <line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/>
                 </svg>
-                <span class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
+                <span x-show="bagCount > 0" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
             </button>
-            </div>
-            <button x-show="view === 'home'" @click="resetAIFlow()" class="btn-gold px-6 py-3 text-[12px] uppercase tracking-[0.16em] font-semibold stream-glow transition hidden sm:inline-flex">Start Designing</button>
-            <!-- My account — visible when signed in, on phones too: a person icon (or the name, where there is room) and the
-                 generations left. Click opens the account panel (name, email, usage, My Designs, Favorites, Sign out).
-                 1280–1535 px: the page links take the room, so the name and "Sign out" are in the panel. -->
-            <button type="button" x-show="userSession" @click="toggleAccountPanel()"
-                    class="relative items-center gap-1 select-none group rounded-md px-1.5 py-1 -my-1 transition hover:bg-zinc-100" :class="inStudio ? 'hidden md:flex' : 'flex'"
-                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and generations" title="My account">
-                <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" :class="displayName ? 'lg:hidden xl:block 2xl:hidden' : ''" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
-                <span x-show="displayName" x-text="displayName" class="hidden lg:inline xl:hidden 2xl:inline text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="displayName"></span>
-                <span x-show="displayName" class="hidden lg:inline xl:hidden 2xl:inline text-[12px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
+            <span x-show="!inStudio" class="hidden md:block w-px h-5 mx-1.5" style="background:#E3DCCF;" aria-hidden="true"></span>
+            <!-- Account: person icon · name · generations left (the coin) · ˅ — opens the account menu, where Sign out is.
+                 Phones: the icon and the coin; the Design screen shows the name from 1024 px. -->
+            <button type="button" x-show="userSession" data-account-button @click="toggleAccountPanel()"
+                    class="relative items-center gap-1.5 select-none group rounded-md px-1.5 py-1 transition hover:bg-black/[0.04]" :class="inStudio ? 'hidden md:flex' : 'flex'"
+                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and generations">
+                <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
+                <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
+                <span x-show="displayName" class="text-[13px] text-zinc-400 px-0.5" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'" aria-hidden="true">·</span>
                 <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                     <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
@@ -227,17 +270,22 @@
                     <div class="absolute -top-1 right-2.5 w-2 h-2 bg-zinc-900 rotate-45"></div>
                 </div>
             </button>
-            <!-- Sign in / Sign out — homepage only -->
-            <button x-show="view === 'home'"
-                    @click="userSession ? logout() : openRegModal()"
-                    class="tap-lg text-[12px] uppercase tracking-widest whitespace-nowrap transition" :class="userSession ? 'hidden lg:inline-block xl:hidden 2xl:inline-block' : ''"
-                    style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'"
-                    x-text="userSession ? 'Sign out' : 'Sign in'"></button>
-            <!-- Exit — all non-home screens; leaves the studio and returns to the homepage (it does not sign out) -->
-            <button x-show="view !== 'home'" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" :class="inStudio ? '' : 'hidden sm:inline-block'" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
+            <!-- Signed out: Sign in, in the account's place -->
+            <button type="button" x-show="!userSession && !inStudio" @click="openRegModal()"
+                    class="tap inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition">
+                <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
+                <span>Sign in</span>
+            </button>
         </div>
-        <!-- Mobile menu panel -->
-        <div id="mobile-menu" x-show="menuOpen" x-cloak class="col-span-3 xl:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
+
+        <!-- Start Designing — the primary call to action on the site's pages (from 768 px; on phones the hero and the menu
+             have it) · Exit on the Design screen (back to the homepage; you stay signed in) -->
+        <div class="h-cta flex items-center justify-end">
+            <button x-show="!inStudio" @click="resetAIFlow()" class="btn-gold hidden md:inline-flex px-7 py-3 text-[12px] uppercase tracking-[0.16em] font-semibold whitespace-nowrap stream-glow transition">Start Designing</button>
+            <button x-show="inStudio" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
+        </div>
+        <!-- Menu panel (below 1024 px): every page, Start Designing, My Designs and Favorites, the bag, Sign in / Sign out -->
+        <div id="mobile-menu" x-show="menuOpen" x-cloak class="lg:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
             <ul class="flex flex-col divide-y divide-zinc-100 text-[15px]">
                 <li><button @click="navigateTo('inspiration')" class="w-full text-left py-3 px-2 flex items-center justify-between">Inspiration Gallery <span class="text-zinc-400">→</span></button></li>
                 <li><button @click="scrollToHowItWorks()" class="w-full text-left py-3 px-2 flex items-center justify-between">How it works <span class="text-zinc-400">→</span></button></li>
@@ -266,7 +314,7 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'home'">
         <main class="flex-1 overflow-y-auto fade-in">
-            <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-57px)] bg-white">
+            <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-115px)] bg-white">
                 <div class="md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
                     <div class="flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewellery</span>
@@ -293,7 +341,7 @@
                      (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
                      On phones it comes after the headline and the buttons. -->
                 <div class="md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-57px)] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
-                    <div class="w-full md:w-[min(100%,700px,calc(100vh-140px))]" data-testid="hero-showcase">
+                    <div class="w-full md:w-[min(100%,700px,calc(100vh-195px))]" data-testid="hero-showcase">
                         <div role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
                              x-init="$nextTick(() => window.P3Showcase && P3Showcase.mount($el, { design: 'aurora-mesh' }))"></div>
                     </div>
@@ -1717,15 +1765,18 @@
         </div>
     </div>
 
-    <!-- ── Account panel — opens from the token coin (header) / balance line (composer).
-         Who is signed in, how to reach them, their access token, and live usage. ── -->
+    <!-- ── Account menu — a dropdown under the header's account button (also opened from the composer's balance line).
+         Who is signed in, their generations, their sign-in code, their orders, My Designs and Favorites, and Sign out
+         at the bottom (Sign out is no longer in the header itself). ── -->
     <template x-teleport="body">
-        <div x-show="accountPanelOpen && userSession" x-cloak class="fixed inset-0 z-[400]" @keydown.escape.window="closeAccountPanel()">
+        <div x-show="accountPanelOpen && userSession" x-cloak class="fixed inset-0 z-[400]" @keydown.escape.window="closeAccountPanel()"
+             @resize.window="accountPanelOpen && _placeAccountPanel()" @scroll.window.passive="accountPanelOpen && _placeAccountPanel()">
             <!-- click-away layer -->
             <div class="absolute inset-0" @click="closeAccountPanel()"></div>
-            <div role="dialog" aria-modal="true" aria-label="Your account"
-                 class="absolute left-4 right-4 top-[68px] sm:left-auto sm:right-6 sm:top-[60px] sm:w-[360px] bg-white rounded-2xl overflow-hidden fade-in"
-                 style="border:1px solid #E5E5E5; box-shadow:0 18px 48px rgba(0,0,0,0.14);">
+            <div role="dialog" aria-modal="true" aria-label="Your account" data-testid="account-menu"
+                 class="absolute left-4 right-4 sm:left-auto sm:w-[340px] bg-white rounded-2xl overflow-y-auto overscroll-contain fade-in"
+                 :style="{ top: accountPanelPos.top + 'px', right: accountPanelPos.right + 'px', maxHeight: 'calc(100dvh - ' + (accountPanelPos.top + 16) + 'px)' }"
+                 style="border:1px solid #ECE6DA; box-shadow:0 22px 50px rgba(26,26,26,0.14);">
                 <!-- Identity -->
                 <div class="px-5 pt-5 pb-4 flex items-start gap-3" style="background:#FBF7EF; border-bottom:1px solid #EFE6D6;">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 brand-font text-[15px] font-semibold"
@@ -1736,7 +1787,7 @@
                         <div class="text-[12px] truncate" style="color:#6F6F6F;" x-show="displayEmail" x-text="displayEmail"></div>
                         <div class="text-[12px] italic" style="color:#9A9A9A;" x-show="!displayEmail">No email on record</div>
                     </div>
-                    <button type="button" @click="closeAccountPanel()" class="tap-lg p-1 -m-1 rounded-md transition hover:bg-black/5" aria-label="Close" style="color:#6F6F6F;">
+                    <button type="button" @click="closeAccountPanel()" class="sm:hidden tap-lg p-1 -m-1 rounded-md transition hover:bg-black/5" aria-label="Close" style="color:#6F6F6F;">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -1744,11 +1795,16 @@
                 <div class="px-5 py-4 flex flex-col gap-4">
                     <!-- Movie generations (one per finished 360° movie) -->
                     <div>
-                        <div class="flex items-baseline justify-between mb-1.5">
-                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold" style="color:#8A6420;">Movie generations</span>
-                            <span class="text-[12px]" style="color:#6F6F6F;">
-                                <span class="font-semibold tabular-nums" style="color:#1A1A1A;" x-text="quotaRemaining"></span>
-                                of <span class="tabular-nums" x-text="quotaMax"></span> remaining
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold whitespace-nowrap" style="color:#8A6420;">Movie generations</span>
+                            <span class="inline-flex items-center gap-1.5 text-[12px]" style="color:#6F6F6F;">
+                                <svg width="14" height="14" viewBox="0 0 17 17" fill="none" aria-hidden="true" class="shrink-0">
+                                    <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
+                                    <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
+                                    <circle cx="8.5" cy="8.5" r="1.4" fill="#7A5A10" opacity="0.5"/>
+                                </svg>
+                                <span class="text-[14px] font-semibold tabular-nums" style="color:#8A6420;" x-text="quotaRemaining"></span>
+                                <span class="whitespace-nowrap">of <span class="tabular-nums" x-text="quotaMax"></span> left</span>
                             </span>
                         </div>
                         <div class="h-1.5 rounded-full overflow-hidden" style="background:#EFEAE0;">
@@ -1787,14 +1843,23 @@
                         </ul>
                     </div>
 
-                    <!-- Actions -->
-                    <div class="flex items-center justify-between gap-3 pt-1" style="border-top:1px solid #EFEFEF;">
-                        <span class="flex items-center gap-4 pt-3">
-                            <button type="button" @click="openPanel('designs')" class="text-[12px] font-medium transition hover:underline" style="color:#1A1A1A;">My Designs →</button>
-                            <button type="button" @click="openPanel('favorites')" class="text-[12px] font-medium transition hover:underline" style="color:#1A1A1A;"><span style="color:#B8873A;" aria-hidden="true">♥</span> Favorites →</button>
-                        </span>
-                        <button type="button" @click="signOutFromAccount()" class="text-[12px] pt-3 transition hover:underline" style="color:#6F6F6F;">Sign out</button>
-                    </div>
+                </div>
+
+                <!-- My Designs · Favorites -->
+                <div class="py-1.5" style="border-top:1px solid #F0ECE4;">
+                    <button type="button" @click="openPanel('designs')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
+                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>My Designs
+                    </button>
+                    <button type="button" @click="openPanel('favorites')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
+                        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>Favorites
+                        <span x-show="favorites.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="favorites.length"></span>
+                    </button>
+                </div>
+                <!-- Sign out — the last option -->
+                <div style="border-top:1px solid #F0ECE4;">
+                    <button type="button" @click="signOutFromAccount()" class="w-full flex items-center gap-3 px-5 py-3 text-[13px] text-left transition hover:bg-[#FBF8F3] hover:text-black" style="color:#5F5F5F;">
+                        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h3M15.5 16l4-4-4-4M19.5 12H10" stroke-linecap="round" stroke-linejoin="round"/></svg>Sign out
+                    </button>
                 </div>
             </div>
         </div>
