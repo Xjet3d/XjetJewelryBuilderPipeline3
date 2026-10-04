@@ -66,3 +66,45 @@ async def test_favorites_survive_a_new_sign_in_on_another_device(HG):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test" + H.Base) as Phone:
         Items = (await Phone.get("/api/favorites", headers={"X-Access-Token": T2})).json()["items"]
     assert [F["design_id"] for F in Items] == [Did]
+
+
+async def test_my_designs_and_favorites_are_one_tap_away_on_every_screen(HG):
+    """The header (next to the bag), the phone menu, the account panel and the Design screen's toolbar all open the
+    side panel on the right tab; the account is in the bar on phones too; below 1024 px the panel is a drawer above
+    the sticky header, so its My Designs | Favorites tabs and its close button are never covered."""
+    H = HG
+    Index = (await H.Client.get("/")).text
+    Start = Index.index('aria-label="Main"')
+    Nav = Index[Start:Index.index("</nav>", Start)]
+    Right = Nav[Nav.index("<!-- My Designs (signed in)"):Nav.index("<!-- Mobile menu panel -->")]
+    # the header: My Designs when signed in, ♥ Favorites (with the count) always, both next to the bag
+    assert Right.index("openPanel('designs')") < Right.index("openPanel('favorites')") < Right.index("goToCheckout()")
+    assert 'x-show="userSession && !inStudio"' in Right and "favorites.length" in Right
+    # the account is in the bar on phones too (outside the studio, where the steps take the bar)
+    Acct = Right[Right.index('@click="toggleAccountPanel()"'):]
+    assert ":class=\"inStudio ? 'hidden md:flex' : 'flex'\"" in Acct[:400]
+    assert "hidden md:flex items-center gap-1 select-none" not in Nav
+    # the phone menu
+    Menu = Nav[Nav.index('id="mobile-menu"'):]
+    assert "openPanel('designs')" in Menu and "openPanel('favorites')" in Menu
+    # the Design screen's toolbar: My Designs and ♥ Favorites side by side while the panel is closed
+    Bar = Index[Index.index('data-testid="studio-panel-buttons"'):]
+    Bar = Bar[:Bar.index("</div>")]
+    assert 'x-show="!sidebarOpen"' in Index[Index.index('data-testid="studio-panel-buttons"') - 120:][:200]
+    assert "openPanel('designs')" in Bar and "openPanel('favorites')" in Bar and ">Favorites</span>" in Bar
+    # phones and tablets: the drawer and its backdrop are above the sticky header (z-50)
+    assert "sticky top-0 z-50" in Index[Index.rindex("<nav", 0, Start):Start]
+    assert 'class="fixed inset-0 bg-black/40 z-[55] lg:hidden"' in Index
+    assert "'fixed lg:relative inset-y-0 right-0 z-[60] lg:z-auto" in Index
+    # the account panel
+    Panel = Index[:Index.index('@click="signOutFromAccount()"')][-900:]
+    assert "openPanel('designs')" in Panel and "openPanel('favorites')" in Panel
+    # signed out: sign in first, then the panel opens on the tab they asked for
+    App = (await H.Client.get("/static/app.js")).text
+    Open = App[App.index("openPanel(tab = 'designs') {"):]
+    Open = Open[:Open.index("\n    },")]
+    assert "this._pendingPanel = tab; this.openRegModal(); return;" in Open
+    assert "this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';" in Open and "this.sidebarOpen = true;" in Open
+    After = App[App.index("async _afterSignIn(fromVerification) {"):]
+    assert "if (panel) this.openPanel(panel);" in After[:After.index("\n    },")]
+    assert "this._pendingPanel = '';" in App[App.index("closeRegModal() {"):][:300]

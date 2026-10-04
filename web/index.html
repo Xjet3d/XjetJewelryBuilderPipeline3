@@ -135,9 +135,9 @@
     <!-- ── Navigation ─────────────────────────────────────────────────────── -->
     <nav class="w-full sticky top-0 z-50 px-2 md:px-8 py-4 grid grid-cols-[auto_1fr_auto] items-center gap-x-1.5 md:gap-x-4 bg-white border-b border-zinc-100 shrink-0" aria-label="Main">
         <div class="flex items-center gap-2 md:gap-3">
-            <!-- Mobile menu: the page links (hidden below lg) live here -->
+            <!-- Menu: the page links live here below 1280 px (from 1280 px they are in the bar) -->
             <button type="button" x-show="!['ai-studio','review','checkout','order','confirmation'].includes(view)" @click="menuOpen = !menuOpen"
-                    class="tap lg:hidden p-2 -ml-1 text-zinc-700 hover:text-black" :aria-expanded="menuOpen" aria-controls="mobile-menu" aria-label="Menu">
+                    class="tap xl:hidden p-2 -ml-1 text-zinc-700 hover:text-black" :aria-expanded="menuOpen" aria-controls="mobile-menu" aria-label="Menu">
                 <svg x-show="!menuOpen" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
                 <svg x-show="menuOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -149,7 +149,7 @@
         </div>
 
         <div class="flex items-center justify-center">
-            <div x-show="!['ai-studio','review','checkout','order','confirmation'].includes(view)" class="hidden lg:flex gap-7 text-[13px] uppercase tracking-[0.1em] font-medium text-zinc-600">
+            <div x-show="!['ai-studio','review','checkout','order','confirmation'].includes(view)" class="hidden xl:flex gap-7 whitespace-nowrap text-[13px] uppercase tracking-[0.1em] font-medium text-zinc-600">
                 <button @click="scrollToHowItWorks()" class="hover:text-black transition">How It Works</button>
                 <button @click="navigateTo('inspiration')" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</button>
                 <button @click="navigateTo('materials')"   :class="view === 'materials'   ? 'text-black' : 'hover:text-black transition'">Materials</button>
@@ -176,12 +176,26 @@
 
         <div class="flex items-center justify-end gap-2 md:gap-3">
             <!-- Mode chip -->
-            <span x-show="isMock" x-cloak class="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
+            <span x-show="isMock" x-cloak class="hidden min-[1700px]:inline-flex items-center gap-1.5 px-2 py-1 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
                   style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;" title="Simulated provider — nothing is generated or charged">
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span>
 <!-- Live mode is the normal state for customers: no chip. Mock mode (internal testing) stays clearly marked. -->
 
+            <!-- My Designs (signed in) · ♥ Favorites · bag. My Designs and Favorites open the Design screen's side panel on
+                 that tab (the studio's own toolbar has them there). "My Designs" is spelled out from 1440 px. -->
+            <div x-show="!inStudio || bagCount > 0" class="flex items-center gap-0.5 sm:gap-1">
+            <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')"
+                    class="tap inline-flex items-center gap-2 p-2 min-[1440px]:px-2.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition"
+                    aria-label="My Designs" title="My Designs">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
+                <span class="hidden min-[1440px]:inline">My Designs</span>
+            </button>
+            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap relative p-2 text-zinc-600 hover:text-[#8A6420] transition"
+                    :aria-label="favorites.length ? 'My favorites, ' + favorites.length : 'My favorites'" title="Favorites">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
+                <span x-show="favorites.length" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full text-white text-[12px] font-bold flex items-center justify-center px-0.5" style="background:#B8873A;" x-text="favorites.length"></span>
+            </button>
             <button x-show="bagCount > 0" x-cloak @click="goToCheckout()" :aria-label="'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items')" class="tap relative p-2 text-zinc-600 hover:text-black transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
@@ -190,21 +204,24 @@
                 </svg>
                 <span class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
             </button>
+            </div>
             <button x-show="view === 'home'" @click="resetAIFlow()" class="btn-gold px-6 py-3 text-[12px] uppercase tracking-[0.16em] font-semibold stream-glow transition hidden sm:inline-flex">Start Designing</button>
-            <!-- Quota coin — visible when logged in; prefixed with the signed-in user's name when known.
-                 Click opens the account panel (name, email, access token, usage). -->
+            <!-- My account — visible when signed in, on phones too: a person icon (or the name, where there is room) and the
+                 generations left. Click opens the account panel (name, email, usage, My Designs, Favorites, Sign out).
+                 1280–1535 px: the page links take the room, so the name and "Sign out" are in the panel. -->
             <button type="button" x-show="userSession" @click="toggleAccountPanel()"
-                    class="relative hidden md:flex items-center gap-1 select-none group rounded-md px-1.5 py-1 -my-1 transition hover:bg-zinc-100"
-                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
-                <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="displayName"></span>
-                <span x-show="displayName" class="text-[12px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
+                    class="relative items-center gap-1 select-none group rounded-md px-1.5 py-1 -my-1 transition hover:bg-zinc-100" :class="inStudio ? 'hidden md:flex' : 'flex'"
+                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and generations" title="My account">
+                <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" :class="displayName ? 'lg:hidden xl:block 2xl:hidden' : ''" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
+                <span x-show="displayName" x-text="displayName" class="hidden lg:inline xl:hidden 2xl:inline text-[12px] font-medium text-zinc-700 max-w-[160px] truncate" :title="displayName"></span>
+                <span x-show="displayName" class="hidden lg:inline xl:hidden 2xl:inline text-[12px] text-zinc-400 px-0.5" aria-hidden="true">•</span>
                 <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                     <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
                     <circle cx="8.5" cy="8.5" r="1.4" fill="#7A5A10" opacity="0.5"/>
                 </svg>
                 <span x-text="quotaRemaining" class="text-sm font-semibold tabular-nums" style="color:#8A6420;"></span>
-                <svg class="w-3 h-3 text-zinc-400 transition-transform" :class="accountPanelOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                <svg class="hidden sm:block w-3 h-3 text-zinc-400 transition-transform" :class="accountPanelOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                 <div x-show="!accountPanelOpen" class="absolute top-full right-0 mt-2 px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-[300]">
                     <span x-text="(displayName ? displayName + ' • ' : '') + quotaText + ' — click for details'"></span>
                     <div class="absolute -top-1 right-2.5 w-2 h-2 bg-zinc-900 rotate-45"></div>
@@ -213,14 +230,14 @@
             <!-- Sign in / Sign out — homepage only -->
             <button x-show="view === 'home'"
                     @click="userSession ? logout() : openRegModal()"
-                    class="tap-lg text-[12px] uppercase tracking-widest transition"
+                    class="tap-lg text-[12px] uppercase tracking-widest whitespace-nowrap transition" :class="userSession ? 'hidden lg:inline-block xl:hidden 2xl:inline-block' : ''"
                     style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'"
                     x-text="userSession ? 'Sign out' : 'Sign in'"></button>
             <!-- Exit — all non-home screens; leaves the studio and returns to the homepage (it does not sign out) -->
-            <button x-show="view !== 'home'" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
+            <button x-show="view !== 'home'" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" :class="inStudio ? '' : 'hidden sm:inline-block'" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
         </div>
         <!-- Mobile menu panel -->
-        <div id="mobile-menu" x-show="menuOpen" x-cloak class="col-span-3 lg:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
+        <div id="mobile-menu" x-show="menuOpen" x-cloak class="col-span-3 xl:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
             <ul class="flex flex-col divide-y divide-zinc-100 text-[15px]">
                 <li><button @click="navigateTo('inspiration')" class="w-full text-left py-3 px-2 flex items-center justify-between">Inspiration Gallery <span class="text-zinc-400">→</span></button></li>
                 <li><button @click="scrollToHowItWorks()" class="w-full text-left py-3 px-2 flex items-center justify-between">How it works <span class="text-zinc-400">→</span></button></li>
@@ -232,6 +249,12 @@
             </ul>
             <div class="flex flex-col gap-2 pt-4 pb-1 px-2">
                 <button @click="resetAIFlow()" class="btn-gold w-full py-3.5">Start Designing</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button x-show="userSession" @click="openPanel('designs')" class="btn-outline w-full py-3 inline-flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>My Designs</button>
+                    <button @click="openPanel('favorites')" class="btn-outline w-full py-3 inline-flex items-center justify-center gap-2" :class="userSession ? '' : 'col-span-2'">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>Favorites</button>
+                </div>
                 <button x-show="userSession && bagCount" @click="goToCheckout()" class="btn-outline w-full py-3" x-text="'My bag (' + bagCount + ')'"></button>
                 <button @click="userSession ? logout() : openRegModal()" class="w-full py-2 text-[12px] uppercase tracking-widest text-zinc-500" x-text="userSession ? 'Sign out' : 'Sign in'"></button>
             </div>
@@ -762,10 +785,16 @@
                             </template>
                         </div>
                         <span x-show="!design"></span>
-                        <button x-show="!sidebarOpen" @click="toggleSidebar()" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="My Designs">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/></svg>
+                        <div x-show="!sidebarOpen" class="shrink-0 flex items-center gap-1 sm:gap-2" data-testid="studio-panel-buttons">
+                        <button @click="openPanel('designs')" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="My Designs">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
                             <span class="hidden sm:inline">My Designs</span>
                         </button>
+                        <button @click="openPanel('favorites')" class="tap shrink-0 relative flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="Favorites">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
+                            <span class="hidden sm:inline">Favorites</span>
+                        </button>
+                        </div>
                     </div>
 
                     <div class="flex-1 overflow-y-auto min-h-0 no-scrollbar">
@@ -988,12 +1017,13 @@
                     </div>
                 </div>
 
-                <!-- Mobile backdrop -->
-                <div x-show="sidebarOpen" class="fixed inset-0 bg-black/40 z-30 lg:hidden" @click="sidebarOpen = false"></div>
+                <!-- Phones and tablets: the panel is a drawer over the whole screen, above the sticky header (z-50), so its
+                     My Designs | Favorites tabs and its close button are never covered -->
+                <div x-show="sidebarOpen" class="fixed inset-0 bg-black/40 z-[55] lg:hidden" @click="sidebarOpen = false"></div>
 
                 <!-- My Designs sidebar -->
                 <aside class="flex-shrink-0 overflow-hidden flex flex-col transition-all duration-300 border-l bg-white"
-                       :class="sidebarOpen ? 'fixed lg:relative inset-y-0 right-0 z-40 lg:z-auto shadow-2xl lg:shadow-none' : ''"
+                       :class="sidebarOpen ? 'fixed lg:relative inset-y-0 right-0 z-[60] lg:z-auto shadow-2xl lg:shadow-none' : ''"
                        :style="sidebarOpen ? 'width:308px; border-color:#DCDCDC;' : 'width:0px; border-left-width:0px;'"
                        x-init="$watch('sidebarOpen', v => v && loadDesigns()); sidebarOpen && loadDesigns()">
                     <div class="w-[308px] flex flex-col h-full overflow-hidden bg-white">
@@ -1004,7 +1034,7 @@
                                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg><span>Favorites</span>
                                 </button>
                             </div>
-                            <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#555]" title="Close" aria-label="Close My Designs">
+                            <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#555]" title="Close" aria-label="Close My Designs and Favorites">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
@@ -1759,7 +1789,10 @@
 
                     <!-- Actions -->
                     <div class="flex items-center justify-between gap-3 pt-1" style="border-top:1px solid #EFEFEF;">
-                        <button type="button" @click="openMyDesignsFromAccount()" class="text-[12px] font-medium pt-3 transition hover:underline" style="color:#1A1A1A;">My Designs →</button>
+                        <span class="flex items-center gap-4 pt-3">
+                            <button type="button" @click="openPanel('designs')" class="text-[12px] font-medium transition hover:underline" style="color:#1A1A1A;">My Designs →</button>
+                            <button type="button" @click="openPanel('favorites')" class="text-[12px] font-medium transition hover:underline" style="color:#1A1A1A;"><span style="color:#B8873A;" aria-hidden="true">♥</span> Favorites →</button>
+                        </span>
                         <button type="button" @click="signOutFromAccount()" class="text-[12px] pt-3 transition hover:underline" style="color:#6F6F6F;">Sign out</button>
                     </div>
                 </div>

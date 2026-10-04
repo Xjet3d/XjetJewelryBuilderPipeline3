@@ -148,7 +148,7 @@ function p3App() {
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     galleryMetal: '', shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: metal preview (visual only) and Share
-    favorites: [], favBusy: '', sidebarTab: 'designs',                       // ♥ Favorites: saved references to gallery masters
+    favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
@@ -533,7 +533,10 @@ function p3App() {
         const g = this.gallery.find(x => x.id === fav);
         if (g) { if (!this.isFav(g)) await this.toggleFav(g); this.openGallery(g); return; }
       }
+      const panel = this._pendingPanel;       // they asked for My Designs or ♥ Favorites before signing in
+      this._pendingPanel = '';
       this._enterDesignAfterSignIn(fromVerification);
+      if (panel) this.openPanel(panel);
     },
 
     // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
@@ -550,7 +553,7 @@ function p3App() {
     },
     closeRegModal() {
       this.showRegModal = false;
-      this._setPendingGallery(''); this._setPendingFav('');
+      this._setPendingGallery(''); this._setPendingFav(''); this._pendingPanel = '';
       const el = this._returnFocus; this._returnFocus = null;
       if (el && el.isConnected) setTimeout(() => el.focus(), 0);
     },
@@ -689,11 +692,17 @@ function p3App() {
       this.tokenCopied = true;
       setTimeout(() => { this.tokenCopied = false; }, 2000);
     },
-    openMyDesignsFromAccount() {
-      this.closeAccountPanel();
-      if (this.view !== 'ai-studio') this._doResetAIFlow();
+    openMyDesignsFromAccount() { this.openPanel('designs'); },
+    // My Designs and ♥ Favorites live in the Design screen's side panel. The header, the studio toolbar, the phone
+    // menu and the account panel all open it on the right tab; signed out, sign in first and it opens right after.
+    get inStudio() { return STUDIO_VIEWS.includes(this.view); },
+    openPanel(tab = 'designs') {
+      this.menuOpen = false; this.closeAccountPanel();
+      if (!this.userSession) { this._pendingPanel = tab; this.openRegModal(); return; }
+      if (this.view !== 'ai-studio') { if (this.design) this.navigateTo('ai-studio'); else this._doResetAIFlow(); }
+      this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';
       this.sidebarOpen = true;
-      this.loadDesigns();
+      if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
     },
     signOutFromAccount() { this.closeAccountPanel(); this.logout(); },
 
