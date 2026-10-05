@@ -428,6 +428,30 @@ implementation of before is the reference: its tests are unchanged and must keep
   - Verified with an error counter across every model, Ring → Charm → Ring, saving, loading a version into the form,
     discarding, restoring, previews and parameter edits: no console errors.
 
+**Gallery: product badges and metal preview (2026-10-05).**
+
+- **Product badge.** Every Gallery card (the homepage strip, the Gallery page and the Gallery dialog) and the View
+  lightbox carry one badge, the same for both products: the product icon and "Ring" or "Charm" (`.product-badge`,
+  top left). It is shown only while products are offered (`productsOn`), so with charms hidden the cards are those
+  of before.
+- **Metal swatches.** Three small round swatches sit in the lower left of every card image, just above the title bar:
+  Stainless Steel, Silver and Gold. They have no text: each has `aria-label` and `title` "Preview in …".
+  - A tap applies the existing metal filter (`metalFilter`, the SVG filters of the 360° movie) to that card's image;
+    a second tap returns to the original. Gold is the 18K yellow look, shown as "Gold": it is not a choice of karat.
+  - The View lightbox opens in the card's metal and has the same three swatches plus Original. A change there shows
+    on the card too (`cardMetal`, per card, for this visit).
+  - Visual only: no request carries the metal (Make it yours sends only its request id), so there is no AI call and
+    no change to the master design, the customer's material or any price. The swatches are shown whether or not
+    charms are offered.
+  - Phones: 12 px dots (15 px from 640 px) with a larger tap area, clear of the badge, the ♥ and the title.
+- The swatches and badges are plain elements, with no template nested in a card (the Alpine 3.13.3 clean-up rule
+  above).
+- **Tests:** `tests/test_gallery_products.py`. It checks:
+  - the badge and the swatches on all three card lists and in View;
+  - that the preview is visual only;
+  - that ring and charm items both open as their product, and the filter and charms-hidden behaviour;
+  - that the homepage showcase is unchanged (a hash of its markup).
+
 **Phase 5 — the customer experience** (`web/app.js`, `web/index.html`; `web/products.js` for the icons).
 
 - **Gating.** Everything below is shown only while the catalog has its `products` block (`productsOn`), that is,
@@ -458,7 +482,8 @@ implementation of before is the reference: its tests are unchanged and must keep
   - `lineSize` gives "US 7" (as before) or "20 mm", and `lineIdLabel` gives Ring ID / Charm ID.
   - Order counts read "2 rings", "1 charm" or "3 pieces".
 - **Inspiration Gallery.** A *All · Rings · Charms* filter (`galleryShown`) on the gallery page and dialog, and a
-  "Charm" badge on charm tiles. The homepage showcase and its gallery strip are unchanged.
+  product badge on every tile (see *Gallery: product badges and metal preview* below). The homepage showcase is
+  unchanged.
 - **Copy.** The FAQ (what you can create, price, sizes) and the Terms service sentence name rings and charms only
   while products are offered.
 - **Admin preview.** A small fixed indicator ("Admin preview · charms are hidden from customers") on tablet and

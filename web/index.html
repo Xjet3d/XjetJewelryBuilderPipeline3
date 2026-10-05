@@ -45,6 +45,16 @@
         .metal-chip:hover { border-color: #C9A96E; color: #1A1A1A; }
         .metal-chip.is-on { border-color: #C9A96E; color: #1A1A1A; box-shadow: 0 0 0 2px #F1E6D2; }
         .metal-dot { width: 14px; height: 14px; border-radius: 9999px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08), inset 2px 2px 4px rgba(255,255,255,.6); }
+        /* Gallery: metal swatches (visual preview only) and the product badge (Ring / Charm), the same for both products */
+        .metal-swatches { background: rgba(255,255,255,.88); backdrop-filter: blur(4px); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .metal-swatch { position: relative; width: 12px; height: 12px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), inset 2px 2px 4px rgba(255,255,255,.55);
+                        outline: 1.5px solid transparent; outline-offset: 2px; transition: outline-color .2s, transform .2s; }
+        .metal-swatch::before { content: ''; position: absolute; inset: -3px; }      /* a larger tap area than the dot itself */
+        @media (min-width: 640px) { .metal-swatch { width: 15px; height: 15px; } }
+        .metal-swatch:hover { transform: scale(1.12); }
+        .metal-swatch.is-on { outline-color: #8A6420; }
+        .metal-swatch.metal-swatch-lg { width: 26px; height: 26px; }
+        .product-badge { background: rgba(255,255,255,.9); color: #8A6420; border: 1px solid #E8DCC4; backdrop-filter: blur(4px); }
         /* No fill-mode: a lingering transform would turn the screen into the containing block of its fixed bars */
         .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -368,9 +378,16 @@
                     <template x-for="g in homeGallery" :key="g.id">
                         <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                            <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
+                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                        </div>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
                                 class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
                             <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -514,10 +531,16 @@
                 <template x-for="g in galleryShown" :key="g.id">
                     <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                        <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
-                        <span x-show="productsOn && isCharm(g)" x-cloak class="absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] uppercase tracking-[0.12em] font-semibold bg-white/90" style="color:#8A6420; border:1px solid #E8DCC4;"><span x-html="productIcon('charm', 'w-3 h-3')"></span>Charm</span>
+                        <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                        <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </button>
+                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                        </div>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
                                 class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
                             <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -2107,10 +2130,16 @@
                     <template x-for="g in galleryShown" :key="g.id">
                         <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
-                            <span x-show="productsOn && isCharm(g)" x-cloak class="absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] uppercase tracking-[0.12em] font-semibold bg-white/90" style="color:#8A6420; border:1px solid #E8DCC4;"><span x-html="productIcon('charm', 'w-3 h-3')"></span>Charm</span>
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                            <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
+                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
+                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                        </div>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
                                 class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
                             <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -2129,17 +2158,16 @@
     <template x-if="galleryItem">
         <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery()" @keydown.escape.window="closeGallery()" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
             <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
-                <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4">
-                    <!-- Always opens with the original image; the swatches apply the movie's metal filter to this preview only -->
-                    <img :src="galleryItem.image_url" :alt="galleryItem.title + (galleryMetal ? ' shown in ' + metalLabel(galleryMetal) : '')" class="max-h-[42vh] md:max-h-[72vh] w-auto object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
-                    <div class="flex flex-col items-center gap-2" x-show="previewMetals.length">
-                        <div class="flex flex-wrap items-center justify-center gap-2" role="radiogroup" aria-label="See it in another metal — preview only">
-                            <button type="button" role="radio" @click="galleryMetal = ''" :aria-checked="!galleryMetal" class="metal-chip" :class="!galleryMetal ? 'is-on' : ''">Original</button>
-                            <template x-for="m in previewMetals" :key="m.id">
-                                <button type="button" role="radio" @click="galleryMetal = m.id" :aria-checked="galleryMetal === m.id" class="metal-chip" :class="galleryMetal === m.id ? 'is-on' : ''" :title="m.label + ' — preview only'">
-                                    <span class="metal-dot" :style="'background:' + m.swatch" aria-hidden="true"></span><span x-text="m.label"></span>
-                                </button>
-                            </template>
+                <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4 relative">
+                    <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
+                    <!-- Opens in the metal its card shows (the original by default); the swatches apply the metal filter to this preview only -->
+                    <img :src="galleryItem.image_url" :alt="galleryItem.title + (galleryMetal ? ' shown in ' + galleryMetalLabel(galleryMetal) : '')" class="max-h-[42vh] md:max-h-[72vh] w-auto object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="flex flex-wrap items-center justify-center gap-2.5" role="radiogroup" aria-label="See it in another metal — preview only">
+                            <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip" :class="!galleryMetal ? 'is-on' : ''">Original</button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('stainless_steel')" :aria-checked="galleryMetal === 'stainless_steel'" :class="galleryMetal === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
                         </div>
                         <p class="text-[12px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
                     </div>

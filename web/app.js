@@ -149,6 +149,7 @@ function p3App() {
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
     gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     galleryMetal: '', shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: metal preview (visual only) and Share
+    cardMetal: {},                                                             // Gallery cards: the metal each card is previewed in (visual only)
     favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
@@ -412,7 +413,7 @@ function p3App() {
       this.heroIndex = i;
     },
     openGallery(g) {
-      this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = ''; this.shareUrl = ''; this.shareCopied = false;
+      this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetal[g.id] || ''; this.shareUrl = ''; this.shareCopied = false;
       // The share link is fetched as the preview opens, so Share / Copy link act at once inside the tap (browsers
       // only allow the share sheet and copying during the click itself)
       this.shareInfo = null;
@@ -421,8 +422,17 @@ function p3App() {
     },
     // The lightbox can show the ring in another metal — the same visual filter the 360° movie uses, applied to the
     // preview image only: nothing is generated, saved, priced or selected; the master design is untouched.
-    get previewMetals() { return ['silver', 'stainless_steel', 'vermeil'].map(id => this.material(id)).filter(Boolean); },
     metalLabel(id) { return this.material(id)?.label || ''; },
+    // ── Inspiration Gallery: metal preview on every card and in View — visual only (the existing metal filters): no AI,
+    // the master design, the customer's own material and every price stay as they are. Gold is the 18K yellow look,
+    // shown as "Gold": it is not a choice of karat.
+    galleryMetalLabel(id) { return id === 'gold_18k_yellow' ? 'Gold' : this.metalLabel(id); },
+    metalSwatch(id) { return this.material(id)?.swatch || '#d4d4d8'; },
+    pickCardMetal(g, id) { this.cardMetal = { ...this.cardMetal, [g.id]: this.cardMetal[g.id] === id ? '' : id }; },
+    setGalleryMetal(id) {
+      this.galleryMetal = id;
+      if (this.galleryItem) this.cardMetal = { ...this.cardMetal, [this.galleryItem.id]: id };   // the card shows it too
+    },
     // Share: on a phone the native share sheet; on a computer "Copy link". The link is by design name
     // (/design/aurora-twist) with the ring image, the name and "Designed with XJet Atelier" as its preview.
     get canNativeShare() {
