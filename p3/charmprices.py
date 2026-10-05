@@ -114,6 +114,7 @@ class CharmPriceBook:
         self.Db = Db
         self.Catalog = Catalog
         self.Settings = Settings                 # products.ProductSettings: the charm sizes on offer
+        self.OnSave = []                         # callbacks after a new version (e.g. price charm 3D results that had no price)
         with Db.Connect() as Conn:
             Conn.executescript(Schema)
         if not Db.One("SELECT id FROM charm_price_lists LIMIT 1"):
@@ -132,6 +133,8 @@ class CharmPriceBook:
         Clean = Validate(Doc, self.Catalog)
         self.Db.Execute("INSERT INTO charm_price_lists (price_json, created_at, created_by, note) VALUES (?,?,?,?)",
                         (Dumps(Clean), Now(), By, Note))
+        for Fn in self.OnSave:
+            Fn()
         return self.Current()
 
     def Row(self, MaterialId: str) -> dict:

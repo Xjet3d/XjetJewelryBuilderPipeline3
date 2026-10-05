@@ -22,7 +22,7 @@ import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, PngImagePlugin
 
 from p3.providers import endpoints
 from p3.providers.base import ProviderError, ProviderStatus, TransientProviderError
@@ -80,8 +80,14 @@ def _CharmImage(Seed: int, Label: str, Size: int = 512) -> bytes:
     D.ellipse([Cx - 22, Y0 + 70, Cx + 22, Y0 + 114], fill=Dark)   # a relief, so the four options differ
     D.text((12, Size - 24), f"MOCK charm seed {Seed}", fill=(170, 170, 170))
     Buf = io.BytesIO()
-    Img.save(Buf, format="PNG")
+    Info = PngImagePlugin.PngInfo()
+    Info.add_text("p3mock", "charm")                 # the mock's 3D of this image is a charm model (_IsCharmImage)
+    Img.save(Buf, format="PNG", pnginfo=Info)
     return Buf.getvalue()
+
+
+def _IsCharmImage(Data: bytes | None) -> bool:
+    return bool(Data) and CharmMarker in Data
 
 
 def _IsCharmRequest(Args: dict) -> bool:
@@ -118,6 +124,22 @@ def _MeshBytes(Format: str) -> bytes:
     import trimesh
     Mesh = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5)
     return Mesh.export(file_type=Format)
+
+
+CharmMarker = b"tEXtp3mock\x00charm"
+
+
+def _CharmMeshBytes(Format: str) -> bytes:
+    """A mock charm, standing as Hi3D models stand (Z up): a disc body 16 wide and 2 thick, a plain loop on top."""
+    import numpy as np
+    import trimesh
+    Upright = trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0])        # axis Z → Y: the face is the XZ plane
+    Body = trimesh.creation.cylinder(radius=8.0, height=2.0, sections=64)
+    Body.apply_transform(Upright)
+    Loop = trimesh.creation.torus(major_radius=1.6, minor_radius=0.5)
+    Loop.apply_transform(Upright)
+    Loop.apply_translation([0, 0, 9.4])
+    return trimesh.util.concatenate([Body, Loop]).export(file_type=Format)
 
 
 class MockProvider:
@@ -207,7 +229,8 @@ class MockProvider:
             return {"video": {"url": Url, "content_type": "video/mp4"}}
         if Endpoint == endpoints.Mesh:
             Fmt = Args.get("export_format", "glb")
-            self.Files[Url] = _MeshBytes(Fmt)
+            Charm = _IsCharmImage(self.Uploads.get(Args.get("image_url")))      # a mock charm image → a charm model
+            self.Files[Url] = (_CharmMeshBytes if Charm else _MeshBytes)(Fmt)
             return {"model_mesh": {"url": Url, "file_name": f"mesh.{Fmt}"}}
         raise ProviderError(f"Mock has no handler for {Endpoint}")
 

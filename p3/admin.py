@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from p3 import adminauth as AdminAuth
 from p3 import merge as Merge
 from p3 import naming as Naming
+from p3 import charmprices as CharmPrices
 from p3.charmprices import CharmPriceError
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
@@ -385,7 +386,11 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                       "ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
     RawGeo = Ctx.Db.One("SELECT faces, status, integrity, preview_path FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
     # The journey's size/material: the matching result (if any) is what "Prepare / download STL" exports.
-    Size = Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0
+    Charm = Summary.get("product_type") == Products.Charm
+    if Charm:                                       # a charm: its size in mm (the customer's, else the middle size on offer)
+        Size = Summary["charm_size"] if Summary.get("charm_size_chosen") else Products.CharmDefaultSize(Ctx.Products.CharmSizes)
+    else:
+        Size = Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0
     Material = (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId
     Matching = next((T for T in ThreeD if Mesh and T["mesh_id"] == Mesh["id"] and T["production_size"] == Size
                      and T["material_id"] == Material and T["status"] in ("measured", "needs_review")), None) if Mesh else None
@@ -425,8 +430,9 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                      "cost_usd": round(sum(Cost), 4) if Cost else None},
         "three_d": ThreeD,
         "three_d_defaults": {
-            "customer_size": Summary["ring_size"] if Summary["ring_size_chosen"] else None,
-            "production_size": Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0,
+            "customer_size": (Summary["charm_size"] if Summary.get("charm_size_chosen") else None) if Charm
+            else (Summary["ring_size"] if Summary["ring_size_chosen"] else None),
+            "production_size": Size,
             "material_id": (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId,
             "customer_material": Summary["material_id"] if Summary["material_chosen"] else None,
             "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),
@@ -439,7 +445,11 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         },
         "catalog": {"ring_sizes": list(Ctx.Catalog.RingSizes),
                     "materials": [{"id": M.Id, "label": M.Label, "density_g_cm3": M.DensityGCm3}
-                                  for M in Ctx.Catalog.Materials.values()]},
+                                  for M in Ctx.Catalog.Materials.values()]} if not Charm else
+                   {"charm_sizes": Ctx.Products.CharmSizes, "charm_default_size": Products.CharmDefaultSize(Ctx.Products.CharmSizes),
+                    "size_definition": Products.CharmSizeDefinition,
+                    "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "density_g_cm3": M.DensityGCm3}
+                                  for M in CharmPrices.Offered(Ctx.Catalog)]},
         # Shared gallery design: every customer journey on it (the master's own page and each use show it).
         "gallery": Gallery.ForDesign(DesignId) if Gallery else None,
         "gallery_usage": Gallery.Usage(DesignId) if Gallery else [],

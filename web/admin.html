@@ -810,7 +810,7 @@
           </div>
           <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
-            <button class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (US ' + latestResult().production_size + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
+            <button class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (' + (latestResult().size_label || 'US ' + latestResult().production_size) + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
             <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
             <button class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
           </div>
@@ -953,9 +953,13 @@
           <label class="lbl">3D production size</label>
           <label class="lbl">Material</label>
           <span class="hidden md:block"></span>
-          <div class="inp !bg-zinc-50 text-zinc-700 h-[38px] flex items-center" x-text="sd.three_d_defaults.customer_size != null ? 'US ' + sd.three_d_defaults.customer_size + ' · ' + innerDia(sd.three_d_defaults.customer_size) + ' mm' : 'Not selected'"></div>
-          <select class="inp h-[38px]" x-model.number="g3.size">
-            <template x-for="z in sd.catalog.ring_sizes"><option :value="z" :selected="z === g3.size" x-text="'US ' + z + ' · ' + innerDia(z) + ' mm'"></option></template>
+          <div class="inp !bg-zinc-50 text-zinc-700 h-[38px] flex items-center" x-text="isCharm(sd.session) ? (sd.three_d_defaults.customer_size != null ? sd.three_d_defaults.customer_size + ' mm' : 'Not selected') : (sd.three_d_defaults.customer_size != null ? 'US ' + sd.three_d_defaults.customer_size + ' · ' + innerDia(sd.three_d_defaults.customer_size) + ' mm' : 'Not selected')"></div>
+          <select class="inp h-[38px]" x-model.number="g3.size" x-show="!isCharm(sd.session)">
+            <template x-for="z in (sd.catalog.ring_sizes || [])"><option :value="z" :selected="z === g3.size" x-text="'US ' + z + ' · ' + innerDia(z) + ' mm'"></option></template>
+          </select>
+          <!-- A charm: its size is a height in mm (the sizes on offer, plus the size being made if it is another) -->
+          <select class="inp h-[38px]" x-model.number="g3.size" x-show="isCharm(sd.session)" aria-label="3D production size (charm height)">
+            <template x-for="z in charm3dSizes()"><option :value="z" :selected="z === g3.size" x-text="z + ' mm height'"></option></template>
           </select>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-zinc-300 pointer-events-none" :style="'background:' + swatch(g3.material)"></span>
@@ -965,8 +969,8 @@
           </div>
           <button class="btn h-[38px]" x-show="!sd.three_d_defaults.source_model" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
           <button class="btn2 h-[38px] !text-amber-800 !border-amber-400" x-show="sd.three_d_defaults.source_model" @click="openNewModel()">New model for this variation…</button>
-          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : 'Default US 10 is used'"></p>
-          <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? 10) ? 'Manual override' : 'Same as customer / default'"></p>
+          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : (isCharm(sd.session) ? 'Default ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
+          <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'Manual override' : 'Same as customer / default'"></p>
           <p class="text-[12px]" :class="sd.three_d_defaults.customer_material && g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-500'"
              x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p>
           <span></span>
@@ -989,10 +993,10 @@
               The selected option here is <span class="font-mono" x-text="sd.artifacts.ring_id"></span>; geometry is calculated from the existing model of <span class="font-mono" x-text="sd.three_d_defaults.existing_model.ring_id"></span> unless you generate a new one.</p>
             <div class="flex flex-wrap items-center gap-2">
               <button class="btn2" :disabled="!sd.three_d_defaults.existing_model.preview_ready" @click="viewMasterModel()">View 3D</button>
-              <button class="btn" @click="generate3d()" :disabled="g3.busy" x-text="'Recalculate geometry · US ' + g3.size + ' · ' + materialLabel(g3.material)"></button>
+              <button class="btn" @click="generate3d()" :disabled="g3.busy" x-text="'Recalculate geometry · ' + size3dLabel(g3.size) + ' · ' + materialLabelFor(g3.material, sd.session.product_type)"></button>
               <button class="btn2" :disabled="!sd.three_d_defaults.existing_model.journey_3d_id || !!exports3d[sd.three_d_defaults.existing_model.journey_3d_id]" @click="exportJourneyStl()">Prepare / download STL</button>
               <span x-show="!sd.three_d_defaults.existing_model.journey_3d_id" class="text-[12px] text-amber-900/70"
-                    x-text="'No result yet for US ' + sd.three_d_defaults.existing_model.journey_size + ' · ' + materialLabel(sd.three_d_defaults.existing_model.journey_material_id) + ' — recalculate geometry first, then the scaled STL can be prepared.'"></span>
+                    x-text="'No result yet for ' + size3dLabel(sd.three_d_defaults.existing_model.journey_size) + ' · ' + materialLabelFor(sd.three_d_defaults.existing_model.journey_material_id, sd.session.product_type) + ' — recalculate geometry first, then the scaled STL can be prepared.'"></span>
             </div>
             <button class="text-[12px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
           </div>
@@ -1018,7 +1022,7 @@
               <select class="inp" x-model="newModel.candidate">
                 <template x-for="o in sd.three_d_defaults.options" :key="o.id"><option :value="o.id" x-text="o.ring_id + (o.selected ? ' · selected' : '') + (o.id === sd.three_d_defaults.existing_model?.candidate_id ? ' · already modelled' : '')"></option></template>
               </select>
-              <p class="text-[12px] text-zinc-500" x-text="'Size US ' + g3.size + ' · ' + materialLabel(g3.material) + ' · AI mode: ' + mode"></p>
+              <p class="text-[12px] text-zinc-500" x-text="'Size ' + size3dLabel(g3.size) + ' · ' + materialLabelFor(g3.material, sd.session.product_type) + ' · AI mode: ' + mode"></p>
               <label class="lbl">Type <span class="font-mono text-zinc-900">GENERATE NEW 3D</span> to confirm</label>
               <input class="inp font-mono" x-model="newModel.text" placeholder="GENERATE NEW 3D" autocomplete="off" spellcheck="false">
               <p x-show="newModel.error" class="text-sm text-red-600" x-text="newModel.error"></p>
@@ -1037,7 +1041,7 @@
               <span class="badge" :class="prodClass(t.production_state)" x-text="prodLabel(t.production_state)"></span>
               <span x-show="t.ring_id" class="font-mono text-[13px] font-semibold px-1.5 border border-zinc-300 text-zinc-800" x-text="'Model ' + t.ring_id"></span>
               <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(t.material_id)"></span>
-                <span x-text="'US ' + t.production_size + ' · ' + t.material_label"></span><span class="text-[11px] text-zinc-500" x-text="'(' + sizeSource(t.size_source) + ' size, ' + sizeSource(t.material_source) + ' material)'"></span></span>
+                <span x-text="(t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label"></span><span class="text-[11px] text-zinc-500" x-text="'(' + sizeSource(t.size_source) + ' size, ' + sizeSource(t.material_source) + ' material)'"></span></span>
               <span class="text-[12px] text-zinc-500" x-text="dateTime(t.created_at) + ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : '')"></span>
             </div>
             <!-- Real state: current stage with a live clock (percent only for real bytes downloaded) -->
@@ -1070,7 +1074,8 @@
             <template x-if="t.geometry.production">
               <div class="space-y-4">
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div><p class="lbl">Inner diameter</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_inner_diameter_mm + ' mm (US ' + t.production_size + ')'"></p></div>
+                  <div x-show="!t.target_height_mm"><p class="lbl">Inner diameter</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_inner_diameter_mm + ' mm (US ' + t.production_size + ')'"></p></div>
+                  <div x-show="t.target_height_mm"><p class="lbl">Height</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.size_y_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_height_mm + ' mm · overall, loop included'"></p></div>
                   <div><p class="lbl">Volume</p><p class="text-xl font-semibold tabular-nums" x-text="t.geometry.production.volume_mm3 != null ? (t.geometry.production.volume_mm3 / 1000).toFixed(3) + ' cc' : 'not reliable'"></p></div>
                   <div><p class="lbl">Weight</p><p class="text-xl font-semibold tabular-nums flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(t.material_id)"></span><span x-text="t.price?.weight_g != null ? t.price.weight_g.toFixed(2) + ' g' : '—'"></span></p><p class="text-[11px] text-zinc-500" x-text="t.material_label + ' · ' + t.density_g_cm3 + ' g/cm³'"></p></div>
                   <div><p class="lbl">Production cost</p><p class="text-xl font-semibold tabular-nums" x-text="t.price?.production_cost != null ? '$' + t.price.production_cost.toFixed(2) : '—'"></p><p class="text-[11px] text-zinc-500">weight × cost $/g</p></div>
@@ -1089,7 +1094,7 @@
                     <template x-for="line in adjustments(t)"><li x-text="line"></li></template>
                   </ol>
                 </details>
-                <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[12px] text-zinc-500" x-text="'Production cost / 3D price: ' + (t.price?.breakdown?.reason || 'not set') + ' — set it in AI Prompts & Params → Pricing · materials.'"></p>
+                <p x-show="t.price?.status === 'cost_model_not_configured'" class="text-[12px] text-zinc-500" x-text="'Production cost / 3D price: ' + (t.price?.breakdown?.reason || 'not set') + (t.target_height_mm ? ' — set it in Settings → Pricing & Materials → Charm.' : ' — set it in AI Prompts & Params → Pricing · materials.')"></p>
                 <p x-show="background(t)" class="text-[12px] text-zinc-500" x-text="background(t)"></p>
                 <p x-show="exports3d[t.id]" class="text-[12px] text-sky-800 tabular-nums" x-text="exportLine(t)"></p>
                 <p x-show="downloadNote" class="text-[12px] text-emerald-700" x-text="downloadNote"></p>
@@ -1357,7 +1362,7 @@
                   <span x-show="l.three_d_state && !l.three_d_match" class="badge bg-sky-100 text-sky-800">Preparing…</span>
                   <span x-show="!l.three_d_state && l.has_model" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to ' + sizeOf(l) + ' · ' + l.material_label"></span>
                   <span x-show="!l.three_d_state && !l.has_model" class="text-[12px] text-amber-700">No 3D model yet — generate it on the session page (paid Hi3D call)</span>
-                  <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: US ' + l.three_d_latest?.size + ' · ' + materialLabel(l.three_d_latest?.material_id) + ' (not this line)'"></p>
+                  <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line)'"></p>
                   <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p></td>
                 <td class="text-right whitespace-nowrap">
                   <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)">Download STL</button>

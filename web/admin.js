@@ -681,13 +681,21 @@ function adminApp() {
         this.poll3d();
       } catch (e) { this.sd = null; this.sdError = e.message; }
     },
+    // 3D sizes: a ring's US size, a charm's height in mm
+    size3dLabel(size) { return this.isCharm(this.sd?.session) ? size + ' mm' : 'US ' + size; },
+    default3dSize() { return this.isCharm(this.sd?.session) ? this.sd.catalog.charm_default_size : 10; },
+    charm3dSizes() {
+      const s = [...(this.sd?.catalog?.charm_sizes || [])];
+      for (const v of [this.g3.size, this.sd?.three_d_defaults?.customer_size]) if (v != null && !s.includes(v)) s.push(v);   // e.g. a size no longer offered
+      return s.sort((a, b) => a - b);
+    },
     async generate3d() {
-      const custom = this.sd.three_d_defaults.customer_size ?? 10;
+      const custom = this.sd.three_d_defaults.customer_size ?? this.default3dSize();
       const existing = this.sd.three_d_defaults.existing_model;
       // With an existing model this only recalculates geometry for the size/material (no Hi3D call).
       if (!existing) {
         const ok = await this.ask({ title: 'Generate 3D with Hi3D v3.0?',
-          text: `This is a ${this.mode === 'mock' ? 'mock (free, simulated)' : 'PAID live'} Hi3D call. Size US ${this.g3.size}${this.g3.size !== custom ? ' (manual override)' : ''} · ${this.materialLabel(this.g3.material)}.`,
+          text: `This is a ${this.mode === 'mock' ? 'mock (free, simulated)' : 'PAID live'} Hi3D call. Size ${this.size3dLabel(this.g3.size)}${this.g3.size !== custom ? ' (manual override)' : ''} · ${this.materialLabelFor(this.g3.material, this.sd.session.product_type)}.`,
           confirmLabel: this.mode === 'mock' ? 'Generate (mock)' : 'Generate — paid call', danger: this.mode !== 'mock' });
         if (!ok) return;
       }
@@ -1256,6 +1264,7 @@ function adminApp() {
       return geo;
     },
     adjustments(t) {
+      if ((t.geometry.production?.method_version || '').startsWith('charm-measure')) return this.adjustmentsCharm(t);
       if ((t.geometry.production?.method_version || '').startsWith('ring-measure-once')) return this.adjustmentsV3(t);
       const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
       const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
@@ -1271,6 +1280,24 @@ function adminApp() {
       ];
       if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);
       out.push('Note: uniform scaling also scales band width and thickness.');
+      return out;
+    },
+
+    // A charm: its own path — no bore, scaled by its overall height (the attachment loop is not detected)
+    adjustmentsCharm(t) {
+      const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
+      const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
+      const r = this.live3d[t.id]?.raw || {};
+      const out = [
+        `Received the Hi3D STL: ${Number(c.faces || r.faces || 0).toLocaleString()} faces${r.bytes ? ', ' + this.gb(r.bytes) : ''}${r.sha256 ? ', SHA-256 ' + r.sha256.slice(0, 12) + '…' : ''}. Measured once, exactly, on the full model — never on the preview.`,
+        `Charm frame: thickness = the direction of least spread; height = the model's up direction${c.up_source === 'largest_spread' ? ' (the model lay flat, so its longest direction was used)' : ''}. Raw model: ${n(raw.size_x_mm, 3)} wide × ${n(raw.size_y_mm, 3)} high × ${n(raw.size_z_mm, 3)} thick, in model units.`,
+        `Closed-mesh heuristic (volume from two reference points ${c.closed_heuristic ? 'agrees' : 'DISAGREES'}) — a cheap check, not proof of watertightness; the edge check runs in the background.`,
+        `Scaled by arithmetic ×${n(prod.scale_factor, 4)} so the overall height (main body and attachment loop together) is ${t.target_height_mm} mm: lengths × s, area × s², volume × s³.`,
+        `Result: ${n(prod.size_x_mm, 2)} × ${n(prod.size_y_mm, 2)} × ${n(prod.size_z_mm, 2)} mm, volume ${prod.volume_mm3 == null ? '?' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`,
+      ];
+      if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g; cost and 3D price from the charm price book.`);
+      out.push('The scaled STL (lying flat: width along X, height along Y, thickness along Z, centred, millimetres) is created on demand and deleted after an hour.');
+      out.push('The attachment loop is not detected yet, so the main body is smaller than the chosen size — check it before production.');
       return out;
     },
 

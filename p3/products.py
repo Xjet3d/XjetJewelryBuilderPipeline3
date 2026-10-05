@@ -41,6 +41,13 @@ DefaultCharmSizes = (15.0, 20.0, 25.0, 30.0)   # a starting list only — edited
 CharmSizeMin, CharmSizeMax, CharmSizesMax = 3.0, 100.0, 12
 
 
+def CharmDefaultSize(Sizes) -> float:
+    """The size a charm's 3D is made in when the customer chose none: the middle size on offer (20 mm of 15–30).
+    The Admin can always choose another."""
+    S = sorted(float(V) for V in Sizes) or list(DefaultCharmSizes)
+    return S[(len(S) - 1) // 2]
+
+
 def CharmSizeLabel(Size) -> str:
     return f"{float(Size):g} {CharmSizeUnit}"
 

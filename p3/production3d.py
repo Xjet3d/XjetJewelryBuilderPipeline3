@@ -14,6 +14,11 @@ Rules:
     the preview is visual only and never used for geometry or pricing.
   * A scaled STL is never stored permanently: it is exported on demand to a temporary file (TTL).
   * The customer's fixed price is copied in for comparison only; nothing here changes it.
+
+Charms have a path of their own (p3/charmgeometry.py), chosen by the design's product: no bore and no ring
+size — the size is a height in mm, the charm is scaled by its overall height (the attachment loop is not
+detected yet, so every charm result asks for a size check), and its weight, cost and 3D price come from the
+charm price book. The ring path below is unchanged.
 """
 
 import json
@@ -24,6 +29,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from p3 import assets
+from p3 import charmgeometry as CharmGeo
+from p3 import charmprices as CharmPrices
+from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import stages as Stages
@@ -66,6 +74,11 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None) -> list[di
     if Status in ("failed", "cancelled") or Status in Waiting:
         return Items
     Raw = Raw or {}
+    if Raw.get("method_version") == CharmGeo.CharmMethodVersion:
+        Items.append({"code": "charm_height_includes_loop",
+                      "text": "The charm was scaled by its overall height with the attachment loop included (the loop is "
+                              "not detected), so its main body is smaller than the chosen size.",
+                      "action": "Check the main body's height in the 3D view and adjust the scale before production if needed."})
     if not Raw.get("bore_ok", True):
         Items.append({"code": "no_bore", "text": "No ring bore was found — the model may not be a ring.",
                       "action": "Inspect the model in 3D. If it is not a ring, do not produce it: model a different "
@@ -131,19 +144,25 @@ class Production3D:
                       (CandidateId, DesignId)) if CandidateId else None
         if Cand is None or Cand["status"] != "ready":
             raise HttpError(409, "no_ready_image", "This session has no ready design image to turn into 3D.")
-        CustomerSize = Summary["ring_size"] if Summary["ring_size_chosen"] else None   # the default US 10 isn't a choice
-        if ProductionSize in (None, ""):
-            Size, SizeSource = (float(CustomerSize), "customer") if CustomerSize is not None else (DefaultSize, "default")
+        Charm = (Design.get("product_type") or Products.Ring) == Products.Charm
+        if Charm:
+            Size, SizeSource, CustomerSize = self._CharmSize(Summary, ProductionSize)
         else:
-            Size = float(ProductionSize)
-            if not Cat.IsValidSize(Size):
-                raise HttpError(400, "invalid_ring_size", "Please choose a standard US ring size.")
-            SizeSource = ("customer" if CustomerSize is not None and Size == float(CustomerSize)
-                          else "default" if CustomerSize is None and Size == DefaultSize else "admin_override")
+            CustomerSize = Summary["ring_size"] if Summary["ring_size_chosen"] else None   # the default US 10 isn't a choice
+            if ProductionSize in (None, ""):
+                Size, SizeSource = (float(CustomerSize), "customer") if CustomerSize is not None else (DefaultSize, "default")
+            else:
+                Size = float(ProductionSize)
+                if not Cat.IsValidSize(Size):
+                    raise HttpError(400, "invalid_ring_size", "Please choose a standard US ring size.")
+                SizeSource = ("customer" if CustomerSize is not None and Size == float(CustomerSize)
+                              else "default" if CustomerSize is None and Size == DefaultSize else "admin_override")
         CustomerMaterial = Summary["material_id"] if Summary["material_chosen"] else None
         if MaterialId:
             if Cat.Get(MaterialId) is None:
                 raise HttpError(400, "unknown_material", "Unknown material.")
+            if Charm and not CharmPrices.IsOffered(Cat, MaterialId):
+                raise HttpError(400, "material_not_offered", "This material is not offered for charms.")
             Mat, MatSource = MaterialId, ("customer" if MaterialId == CustomerMaterial else "admin_override")
         elif CustomerMaterial:
             Mat, MatSource = CustomerMaterial, "customer"
@@ -186,6 +205,28 @@ class Production3D:
         if Raw:
             self._Continue(Mesh["id"])           # measured already → instant; else one queued measure job
         return self.Get(Sid)
+
+    def _CharmSize(self, Summary: dict, ProductionSize) -> tuple:
+        """A charm's 3D size in mm (the height it is scaled to): the customer's size, else the middle size on offer.
+        The Admin may choose any size between the limits (e.g. one no longer offered, for an existing order)."""
+        CustomerSize = Summary.get("charm_size") if Summary.get("charm_size_chosen") else None
+        Default = Products.CharmDefaultSize(self.Ctx.Products.CharmSizes)
+        if ProductionSize in (None, ""):
+            return (float(CustomerSize), "customer", CustomerSize) if CustomerSize is not None else (Default, "default", None)
+        try:
+            Size = float(ProductionSize)
+        except (TypeError, ValueError):
+            raise HttpError(400, "invalid_charm_size", "A charm size is a number in mm.")
+        if not Products.CharmSizeMin <= Size <= Products.CharmSizeMax:
+            raise HttpError(400, "invalid_charm_size", f"A charm size is between {Products.CharmSizeMin:g} and "
+                                                       f"{Products.CharmSizeMax:g} mm.")
+        Source = ("customer" if CustomerSize is not None and Size == float(CustomerSize)
+                  else "default" if CustomerSize is None and Size == Default else "admin_override")
+        return Size, Source, CustomerSize
+
+    def _IsCharmMesh(self, MeshId: str) -> bool:
+        M = self.Ctx.Db.One("SELECT candidate_id FROM meshes WHERE id = ?", (MeshId,))
+        return bool(M) and Products.OfCandidate(self.Ctx.Db, M["candidate_id"]) == Products.Charm
 
     def SourceModel(self, Design: dict) -> dict | None:
         """For a variation (source_design_id): the source design's ready Hi3D model, if it has one."""
@@ -241,7 +282,8 @@ class Production3D:
             for R in self._WaitingFor(MeshId):
                 self._Fail(R["id"], "The Hi3D model file is missing.")
             return
-        if Raw["status"] == "measured" and Raw["method_version"] == FastMethodVersion:
+        Charm = self._IsCharmMesh(MeshId)
+        if Raw["status"] == "measured" and Raw["method_version"] == (CharmGeo.CharmMethodVersion if Charm else FastMethodVersion):
             for R in self._WaitingFor(MeshId):
                 self._Finalize(R, Raw)
             return
@@ -249,7 +291,7 @@ class Production3D:
         Mesh = Db.One("SELECT original_format FROM meshes WHERE id = ?", (MeshId,))
         Job = self.Queue.Enqueue("measure", MeshId, Params={
             "source": Raw["stl_path"], "format": Mesh["original_format"] or "stl",
-            "convert_to": f"meshes/{MeshId}/raw.stl", "hash": not Raw["sha256"]})
+            "convert_to": f"meshes/{MeshId}/raw.stl", "hash": not Raw["sha256"], **({"product": "charm"} if Charm else {})})
         Running = Job["status"] == "running"
         for R in self._WaitingFor(MeshId):
             Db.Update("session_3d", R["id"], status="measuring" if Running else "queued", error=None)
@@ -319,6 +361,8 @@ class Production3D:
         """Exact values for this request's size and material from the one raw measurement — arithmetic only."""
         Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
         Raw = json.loads(RawRow["measurement_json"])
+        if Raw.get("method_version") == CharmGeo.CharmMethodVersion:
+            return self._FinalizeCharm(Row, RawRow, Raw)
         T = Now()
         Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
         Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
@@ -361,17 +405,60 @@ class Production3D:
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
                         status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
 
+    def _FinalizeCharm(self, Row: dict, RawRow: dict, Raw: dict) -> None:
+        """A charm: scaled by its overall height to the production size in mm — arithmetic only, no bore, no ring
+        size. The attachment loop is part of the measured height (it is not detected), so the result always asks
+        for a size check before production (ReviewItems)."""
+        Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
+        T = Now()
+        Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
+        Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
+        Checks = {"closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
+                  "volume_alt_reference": Raw["volume_alt_reference"], "faces": Raw["faces"], "raw_sha256": RawRow["sha256"],
+                  "height_basis": "overall height, attachment loop included", "up_source": Raw.get("up_source")}
+
+        def Insert(Stage, G, Scale, StlPath):
+            Gid = NewId("geo")
+            Db.Execute("INSERT INTO geometry_results (id, session_3d_id, stage, size_x_mm, size_y_mm, size_z_mm, "
+                       "inner_diameter_mm, volume_mm3, surface_area_mm2, watertight, scale_factor, stl_path, "
+                       "method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Gid, Sid, Stage, G["size_x_mm"], G["size_y_mm"], G["size_z_mm"], None, G["volume_mm3"],
+                        G["surface_area_mm2"], int(Raw["closed_heuristic"]), Scale, StlPath, Raw["method_version"], Dumps(Checks), T))
+            return Gid
+
+        Insert("raw", {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
+                       "volume_mm3": Raw["volume"], "surface_area_mm2": Raw["area"]}, None, RawRow["stl_path"])
+        G = CharmGeo.CharmScaled(Raw, float(Row["production_size"]))
+        Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
+        Weight = self._Price(Row, Gid, G["volume_mm3"] if Raw["closed_heuristic"] else None)
+        Problems = ["Scaled by the overall height with the attachment loop included: check the main body's height."]
+        if not Raw["closed_heuristic"]:
+            Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
+        Db.Update("session_3d", Sid, status="needs_review", error=" ".join(Problems))
+        Stages.Begin(Db, Sid, "review_required", problems=Problems)
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
+                        status="needs_review", height_mm=G["height_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
+
     def _Price(self, Row: dict, Gid: str, VolumeMm3: float | None) -> float | None:
-        """Weight, production cost and 3D price from Admin → Material pricing (current version)."""
+        """Weight, production cost and 3D price from Admin → Material pricing (current version); a charm's from the
+        charm price book."""
         Ctx = self.Ctx
         Mat = Ctx.Catalog.Get(Row["material_id"])
         Weight = round(VolumeMm3 / 1000.0 * Mat.DensityGCm3, 3) if VolumeMm3 else None
-        Book = Ctx.MaterialPrices.Current()
-        P = Ctx.MaterialPrices.Price3D(Row["material_id"], Weight)   # weight × cost $/g and × price $/g
+        Charm = Products.Of(Ctx.Db, Row["design_id"]) == Products.Charm
+        Prices = Ctx.CharmPrices if Charm else Ctx.MaterialPrices
+        Book = Prices.Current()
+        P = Prices.Price3D(Row["material_id"], Weight)               # weight × cost $/g and × price $/g
         Summary = (Sessions.Summaries(Ctx, [Row["design_id"]]) or [{}])[0]
         Fixed = Summary.get("fixed_price") or {}
+        if Charm:
+            # A charm's price is per material AND size: compare against the size and material actually produced.
+            if Row["material_id"] != Summary.get("material_id") or float(Row["production_size"]) != float(Summary.get("charm_size") or -1):
+                Q = Ctx.CharmPrices.QuoteFor(Row["material_id"], Row["production_size"])
+                Fixed = {"unit_price": Q.unit_price, "pricing_version": Q.pricing_version, "source": "current_quote"}
         # The fixed price is per material; compare against the material actually used for production.
-        if Row["material_id"] != Summary.get("material_id"):
+        elif Row["material_id"] != Summary.get("material_id"):
             Q = Ctx.Pricing.QuoteFor(Row["material_id"])
             Fixed = {"unit_price": Q.unit_price, "pricing_version": Q.pricing_version, "source": "current_quote"}
         Ctx.Db.Execute("INSERT INTO price_calculations (id, session_3d_id, geometry_id, material_id, density_g_cm3, weight_g, "
@@ -394,7 +481,8 @@ class Production3D:
                                    "ORDER BY created_at DESC, rowid DESC LIMIT 1", (R["id"],))
             if Last and Last["production_cost"] is not None and Last["calculated_price"] is not None:
                 continue
-            Need = self.Ctx.MaterialPrices.Row(R["material_id"])
+            Charm = Products.Of(self.Ctx.Db, R["design_id"]) == Products.Charm
+            Need = (self.Ctx.CharmPrices if Charm else self.Ctx.MaterialPrices).Row(R["material_id"])
             if not (Need.get("cost_per_g") or Need.get("price_per_g")):
                 continue                                  # still nothing to price with
             self._Price(R, R["gid"], R["volume_mm3"] if R["watertight"] else None)
@@ -443,10 +531,11 @@ class Production3D:
         if Raw is None or Row["status"] not in ("measured", "needs_review"):
             raise HttpError(409, "geometry_not_ready", "The geometry is not measured yet.")
         Measured = json.loads(Raw["measurement_json"])
-        if not Measured.get("bore_ok"):
+        Charm = Measured.get("method_version") == CharmGeo.CharmMethodVersion
+        if not Charm and not Measured.get("bore_ok"):
             raise HttpError(409, "no_bore", "No ring bore was found, so the model cannot be scaled to a ring size.")
         self.Queue.CleanupExports()
-        Target = UsSizeToInnerDiameterMm(Row["production_size"])
+        Target = float(Row["production_size"]) if Charm else UsSizeToInnerDiameterMm(Row["production_size"])   # a charm: its height
         for J in self.Ctx.Db.All("SELECT * FROM geometry_jobs WHERE kind = 'export' AND session_3d_id = ? AND status IN "
                                  "('queued','running','done') ORDER BY created_at DESC", (Sid,)):
             P = json.loads(J["params_json"])
@@ -455,7 +544,7 @@ class Production3D:
                 return self.ExportStatus(Sid, J["id"])
         Job = self.Queue.Enqueue("export", Row["mesh_id"], Sid, Dedupe=False, Params={
             "source": Raw["stl_path"], "raw": Measured, "target_mm": Target, "raw_sha256": Raw["sha256"],
-            "output": f"exports/{Sid}_{NewId('x')}.stl"})
+            "output": f"exports/{Sid}_{NewId('x')}.stl", **({"product": "charm"} if Charm else {})})
         return self.ExportStatus(Sid, Job["id"])
 
     def ExportStatus(self, Sid: str, Jid: str) -> dict:
@@ -501,7 +590,7 @@ class Production3D:
         Mesh = Db.One("SELECT status FROM meshes WHERE id = ?", (R["mesh_id"],))
         Raw = Db.One("SELECT status, method_version, integrity, preview_path, thumbnail_path, timings_json, faces, bytes, "
                      "sha256 FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
-        Current = bool(Raw and Raw["status"] == "measured" and Raw["method_version"] == FastMethodVersion)
+        Current = bool(Raw and Raw["status"] == "measured" and Raw["method_version"] in (FastMethodVersion, CharmGeo.CharmMethodVersion))
         Bg = Db.All("SELECT kind, status FROM geometry_jobs WHERE mesh_id = ? AND kind IN ('preview','integrity') "
                     "AND status IN ('queued','running')", (R["mesh_id"],))
         return {
@@ -534,7 +623,8 @@ class Production3D:
         RawRow = Db.One("SELECT measurement_json, integrity FROM raw_geometry WHERE mesh_id = ?", (R["mesh_id"],))
         RawMeasured = json.loads(RawRow["measurement_json"]) if RawRow and RawRow["measurement_json"] else None
         Integrity = RawRow["integrity"] if RawRow else None
-        return {
+        Charm = Products.Of(Db, R["design_id"]) == Products.Charm
+        Out = {
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
             "image_url": Url(Cand["asset_path"]) if Cand else None,
@@ -550,6 +640,12 @@ class Production3D:
             "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }
+        if Charm:                    # a charm: scaled to a height in mm (rings keep exactly the fields of before)
+            Out.update({"product_type": Products.Charm, "target_inner_diameter_mm": None, "target_height_mm": R["production_size"],
+                        "size_label": Products.CharmSizeLabel(R["production_size"]),
+                        "material_label": CharmPrices.Label(self.Ctx.Catalog, R["material_id"]),
+                        "height_basis": "overall height, attachment loop included"})
+        return Out
 
     def ForDesign(self, DesignId: str) -> list[dict]:
         return [self.Get(R["id"]) for R in self.Ctx.Db.All(
@@ -593,6 +689,7 @@ class Production3D:
         """Operational download names, searchable months later:
              <Design-Name>_<Ring ID>[_<Order ID>]_<Material>_US<size>.stl   e.g. Aurora-Twist_R-1013-A_ORD-10482_Silver_US10.stl
              <Design-Name>_<Ring ID>_raw.stl                                 the Hi3D model as delivered
+        A charm: <Design-Name>_<Charm ID>[_<Order ID>]_<Material>_<size>mm.stl, e.g. Lune-Drop_C-1003-B_Sterling-Silver_20mm.stl
         The Order ID appears only when an order exists — it is never invented."""
         Db = self.Ctx.Db
         R = self._Row(Sid)
@@ -600,7 +697,9 @@ class Production3D:
         Ring = RingIds.CandidateRef(Db, R["candidate_id"]) or Sid
         Mat = self.Ctx.Catalog.Get(R["material_id"])
         Parts = [SlugPart(D["title"]) if D else "", Ring]
-        if Stage.startswith("export-") or Stage == "production":
+        if (Stage.startswith("export-") or Stage == "production") and Products.Of(Db, R["design_id"]) == Products.Charm:
+            Parts += [OrderRef or "", SlugPart(CharmPrices.Label(self.Ctx.Catalog, R["material_id"])), f"{R['production_size']:g}mm"]
+        elif Stage.startswith("export-") or Stage == "production":
             Parts += [OrderRef or "", SlugPart(Mat.Label if Mat else R["material_id"]), f"US{R['production_size']:g}"]
         else:
             Parts.append(Stage)

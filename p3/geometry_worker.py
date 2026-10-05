@@ -5,6 +5,7 @@ address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit
 it can never take the web server down.
 
 args.json: {"kind": "measure" | "preview" | "integrity" | "export", "source": <raw STL>, "result": <json out>,
+            "product": "charm" for a charm's measure / export (p3/charmgeometry.py; rings: absent),
             "raw": {measurement}, "target_mm": <float>, "output": <file out>,
             measure only: "hash": bool (SHA-256 when not hashed at download), "convert_to": <binary STL path>,
             "format": <source format>}
@@ -54,11 +55,18 @@ def Run(A: dict) -> dict:
             Source, Out["converted"] = A["convert_to"], True
         if A.get("hash"):
             Out["sha256"], Out["bytes"] = _Sha256(Source), os.path.getsize(Source)
-        Out["raw"] = g.MeasureRaw(Source)
+        if A.get("product") == "charm":
+            from p3 import charmgeometry as cg
+            Out["raw"] = cg.MeasureCharmRaw(Source)
+        else:
+            Out["raw"] = g.MeasureRaw(Source)
     elif Kind == "preview":
         Out = {"preview_faces": g.WritePreview(A["source"], A["raw"], A["output"])}
     elif Kind == "integrity":
         Out = g.IntegrityCheck(A["source"])
+    elif Kind == "export" and A.get("product") == "charm":
+        from p3 import charmgeometry as cg
+        Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
     elif Kind == "export":
         Out = {"faces": g.ExportScaledStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
     else:

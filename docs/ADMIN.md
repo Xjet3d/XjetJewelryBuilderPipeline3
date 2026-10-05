@@ -130,6 +130,42 @@ The gallery on the customer site (home page, first 8, and the Inspiration page) 
 - **Accuracy:** tested against an ideal ring in a random orientation and arbitrary units. On a 5M-face torus, inner diameter and volume match the analytic values.
 - **Stored per stage** in `geometry_results` (raw and production), with weight and price in `price_calculations`.
 
+### Charms: a 3D path of their own
+
+The same button, safeguards and queue apply, but a charm design takes a separate path (`p3/charmgeometry.py`). The
+ring path above is unchanged.
+
+- **Hi3D settings:** the charm's own `hi3d-charm` configuration. Version 1 is the same 2048 quality, 5,000,000 faces
+  and STL as rings.
+- **Size:** a height in mm. Defaults:
+  - the customer's charm size;
+  - otherwise the middle size on offer (`products.CharmDefaultSize`: 20 mm of 15–30).
+
+  The Admin may choose any size between 3 and 100 mm, for example a size no longer offered, for an existing order.
+  Only charm materials are offered, with their customer names.
+- **Measure once** (`charm-measure-once-v1`, `MeasureCharmRaw`). There is no bore and no ring frame:
+  - **thickness** = the direction of least spread;
+  - **height** = the model's up direction (Hi3D models are Z-up) laid into the charm's face plane;
+  - **width** = across.
+
+  A model lying flat falls back to its longest direction. Volume, area and the closed-mesh heuristic are as for rings.
+- **Scaling:** s = target height / measured height, then lengths × s, area × s², volume × s³, all arithmetic.
+  - The measured height is the **overall** height: main body and attachment loop together. The loop is not detected
+    (no loop logic yet), so the main body comes out smaller than the chosen size.
+  - Every charm result is therefore `needs_review` with the review item *charm_height_includes_loop*: check the body's
+    height before production.
+  - There is no wall-thickness check or printability rule.
+- **Weight, cost and 3D price:**
+  - Weight = volume × the material's density.
+  - Production cost and 3D price come from the charm price book only (*Pricing & Materials → Charm*).
+  - A result waiting for charm $/g is priced as soon as the charm table gets them; a ring price change never prices
+    a charm.
+  - The customer price shown beside it is the charm price for the produced material and size.
+- **Scaled STL:** exported on demand, lying flat (width X, height Y, thickness Z), centred, in millimetres, with the
+  header `XJet P3 scaled charm`. Its file name gives the size in mm: `Lune-Drop_C-1003-B_ORD-10482_Sterling-Silver_20mm.stl`.
+- **The panel** shows *Height* (target and result, "overall, loop included") in place of *Inner diameter*, sizes in
+  mm, and the charm explanation under *What was done to the model*.
+
 ## Working in the Admin
 
 - **Sign-in is remembered per browser** (server-side session cookie) until *Sign out*; *everywhere* revokes every browser. The key itself is never stored in the browser.

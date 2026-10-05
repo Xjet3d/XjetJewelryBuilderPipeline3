@@ -361,6 +361,45 @@ implementation of before is the reference: its tests are unchanged and must keep
   - gold charm quote requests;
   - charm quotes hidden while charms are hidden.
 
+**Phase 4 — the charm 3D path.**
+
+- **`p3/charmgeometry.py`** (`charm-measure-once-v1`).
+  - `MeasureCharmRaw`: thickness = least principal spread; height = model up (Z) projected into the face plane,
+    falling back to the longest direction when the model lies flat; extents in that frame; volume, area and the
+    closed heuristic from `geometry._Moments`.
+  - `CharmScaled`: s = height target / measured height.
+  - `ExportScaledCharmStl`: lying flat, centred, mm, header `XJet P3 scaled charm`.
+  - The ring functions in `p3/geometry.py` are unchanged.
+- **`p3/production3d.py`** branches on the design's product.
+  - `Request` uses `_CharmSize` (customer size, else `products.CharmDefaultSize`, any 3–100 mm by the Admin) and
+    charm materials.
+  - `_Continue` measures a charm mesh with `product: "charm"`.
+  - `_FinalizeCharm` writes the raw and production rows with no inner diameter. Status is always `needs_review`,
+    because the loop is in the height, and the review item is `charm_height_includes_loop`.
+  - `_Price` uses `Ctx.CharmPrices` (`Price3D`, version `charms-vN`) and the charm quote for the produced size and
+    material.
+  - `RepriceMissing` uses each product's own book, and `CharmPriceBook.OnSave` triggers it.
+  - `StartExport` passes the height as `target_mm`.
+  - `Get` adds `product_type`, `target_height_mm` and `size_label` for charms. `FileName` gives `…_20mm.stl`.
+- **`p3/geometry_worker.py`**: `measure` and `export` take `product: "charm"`. Ring jobs run exactly as before.
+- **Admin.**
+  - The session detail gives a charm its 3D defaults (customer size or the middle size) and a catalog of charm sizes
+    and charm materials.
+  - The 3D panel has a charm size select (mm), a *Height* card, charm labels and `adjustmentsCharm`.
+  - Order lines say "Latest result: 25 mm".
+- **Mock provider.** A mock charm image carries a PNG text marker (`p3mock=charm`). A Hi3D request for it returns an
+  upright mock charm: a disc body with a plain loop on top, Z-up. Rings keep the torus.
+- **Tests:** `tests/test_charm_3d.py`. It checks:
+  - measuring once and scaling by height;
+  - the review item;
+  - charm prices;
+  - the STL export and its file name;
+  - sizes, defaults and materials;
+  - repricing from the charm book only;
+  - the unchanged ring path beside a charm;
+  - an ordered charm line;
+  - the up-direction frame on synthetic models.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):
