@@ -34,6 +34,7 @@ class Context:
     Models: "ModelConfigStore" = None             # versioned AI prompts & parameters (source of truth)
     MaterialPrices: "MaterialPriceBook" = None    # versioned density / price $/g / cost $/g / fixed price
     Products: "ProductSettings" = None            # rings and charms: customer availability of charms, charm sizes
+    CharmPrices: "CharmPriceBook" = None          # charm pricing: its own versioned table, never the ring prices
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

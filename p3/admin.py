@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from p3 import adminauth as AdminAuth
 from p3 import merge as Merge
 from p3 import naming as Naming
+from p3.charmprices import CharmPriceError
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
 from p3 import products as Products
@@ -371,7 +372,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices, Owner=Owner)
     Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
         or next((M for B in Batches for C in B["candidates"] for M in C["movies"] if M["status"] == "ready"), None)
-    Keep = ("material_id", "ring_size", "quantity", "unit_price", "pricing_version", "pricing_status")
+    Keep = ("material_id", "ring_size", "charm_size", "quantity", "unit_price", "pricing_version", "pricing_status")
     Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
                for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
     ThreeD = Production.ForDesign(DesignId)
@@ -860,6 +861,33 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         if On != Ctx.Products.CharmsAvailable:
             Ctx.Products.Set("charms_available", On, Who.Id, str(Body_.get("note") or "")[:300])
         return _ProductsState()
+
+    @App_.put("/api/admin/products/charm-sizes")
+    async def SetCharmSizes(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The charm sizes on offer, in mm: the height of the main charm body, excluding the standard attachment
+        loop. Prices are set per size (Pricing & Materials → Charm); a size without a price is "Price unavailable"."""
+        Who = Admin(authorization)
+        New, Old = Products.ValidateCharmSizes(Body_.get("sizes")), Ctx.Products.CharmSizes
+        if New != Old:
+            Ctx.Products.Set("charm_sizes", New, Who.Id, str(Body_.get("note") or "")[:300])
+        InBags = [{"size": S, "bag_lines": Ctx.Db.One("SELECT COUNT(*) AS n FROM bag_lines WHERE product_type = 'charm' AND charm_size = ?",
+                                                     (S,))["n"]} for S in sorted(set(Old) - set(New))]
+        return {**_ProductsState(), "removed_in_bags": [X for X in InBags if X["bag_lines"]]}
+
+    # ── Charm pricing: its own versioned table (a fixed price per material and size; price and cost per gram) ──
+    @App_.get("/api/admin/charm-prices")
+    async def GetCharmPrices(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Ctx.CharmPrices.AdminTable()
+
+    @App_.put("/api/admin/charm-prices")
+    async def SaveCharmPrices(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            Ctx.CharmPrices.Save({"materials": Body_.get("materials") or {}}, Who.Id, str(Body_.get("note") or "Edited in Admin")[:200])
+        except CharmPriceError as E:
+            raise HttpError(400, "invalid_charm_prices", str(E)) from E
+        return Ctx.CharmPrices.AdminTable()
 
     # ── Inspiration Gallery: curated XJet designs shown on the customer site ──────
     @App_.get("/api/admin/gallery")

@@ -320,6 +320,47 @@ implementation of before is the reference: its tests are unchanged and must keep
   - the switch, including its confirmation, the catalog block and customer creation only while ON;
   - charm names and unchanged ring names.
 
+**Phase 3 — charm sizes and pricing.**
+
+- **Charm sizes**: `PUT /api/admin/products/charm-sizes` with `products.ValidateCharmSizes` (3–100 mm, at most 12,
+  unique) and a change log. The response says how many bag lines still hold a removed size.
+- **Price book** (`p3/charmprices.py`).
+  - `CharmPriceBook`: versioned `charm_price_lists` (`charms-v<N>`) with, per charm material, fixed prices per size
+    plus price and cost per gram. It is seeded empty.
+  - `Validate` refuses gold fixed prices, non-positive numbers, sizes outside 3–100 mm and materials a charm is not
+    made in. Every charm material keeps a row.
+  - `QuoteFor(material, size)` never reads the ring pricing.
+  - `charmprices.QuoteFor(Ctx, product, material, charm_size)` is the single dispatch: rings go to
+    `Ctx.Pricing.QuoteFor` exactly as before.
+  - `MaterialLabel` gives charm names (Sterling Silver, 14K Gold Vermeil). `Price3D` is for the Phase 4 charm 3D path.
+- **Customize** (`p3/customize.py`).
+  - A charm opens without a size and refuses ring sizes; a ring refuses charm sizes.
+  - Purchasability for a charm is checked size first (`charm_size_required`, `charm_size_not_offered`), then price.
+  - The charm JSON adds its sizes, each with today's price in the chosen material, the size definition and its
+    materials.
+  - Bag lines are quoted by (product, material, charm size), so staleness is per product.
+- **Checkout and orders** (`p3/orders.py`).
+  - A charm line's problems are worded for charms, with the size checked before the price.
+  - Order events and quote requests carry `product_type` / `charm_size` for charms. A gold charm's quote request
+    validates its charm size. Ring code paths and texts are unchanged.
+- **Sessions.** `FixedPrice` and `QuoteSnapshot` take the product. Charm summaries add `charm_size` and
+  `charm_size_chosen` (a charm has no default size); ring summaries keep exactly their former fields.
+- **Admin UI.**
+  - Settings → Products has the charm sizes editor.
+  - Pricing & Materials has *Material pricing for: Ring | Charm*: the ring table unchanged, and the charm table with
+    one fixed-price column per size, "Quote" for gold, and price and cost per gram.
+  - The session page shows a charm's size in mm and its material as the customer saw it.
+- **Tests:** `tests/test_charm_pricing.py`. It checks:
+  - the empty start with no ring fallback;
+  - prices per material and size;
+  - validation;
+  - sizes edited and enforced;
+  - charm customization rules;
+  - a mixed ring and charm bag, order, snapshot and email;
+  - repricing isolated per product;
+  - gold charm quote requests;
+  - charm quotes hidden while charms are hidden.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):

@@ -871,7 +871,7 @@
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-3 border-t border-zinc-100">
           <div><p class="lbl">Stage</p><p class="font-medium" x-text="sd.session.path"></p></div>
-          <div><p class="lbl">Ring size</p><p x-text="sd.session.ring_size_chosen ? 'US ' + sd.session.ring_size : 'Not selected (default US 10)'"></p></div>
+          <div><p class="lbl" x-text="isCharm(sd.session) ? 'Charm size' : 'Ring size'"></p><p x-text="isCharm(sd.session) ? (sd.session.charm_size_chosen ? sd.session.charm_size + ' mm' : 'Not selected') : (sd.session.ring_size_chosen ? 'US ' + sd.session.ring_size : 'Not selected (default US 10)')"></p></div>
           <div><p class="lbl">Material</p><p class="flex items-center gap-1.5"><span x-show="sd.session.material_chosen" class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(sd.session.material_id)"></span><span x-text="sd.session.material_chosen ? sd.session.material_label : 'Not selected'"></span></p></div>
           <div><p class="lbl">Customer price</p><p x-text="priceText(sd.session.fixed_price)"></p><p class="text-[11px] text-zinc-500" x-text="fixedSource(sd.session.fixed_price) + (sd.session.fixed_price?.pricing_version ? ' · ' + sd.session.fixed_price.pricing_version : '')"></p></div>
         </div>
@@ -1109,8 +1109,8 @@
         <div class="flex items-baseline justify-between"><p class="lbl">Customize — the customer's last choice</p>
           <button x-show="sd.choices.length > 1" class="text-[12px] underline text-zinc-500" @click="showChoices = !showChoices" x-text="showChoices ? 'Hide history' : 'Show all ' + sd.choices.length + ' changes'"></button></div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mt-3">
-          <div><p class="lbl">Material</p><p class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(sd.last_choice?.material_id)"></span><span x-text="materialLabel(sd.last_choice?.material_id)"></span></p></div>
-          <div><p class="lbl">Ring size</p><p x-text="sd.last_choice?.ring_size != null ? 'US ' + sd.last_choice.ring_size : '—'"></p></div>
+          <div><p class="lbl">Material</p><p class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(sd.last_choice?.material_id)"></span><span x-text="materialLabelFor(sd.last_choice?.material_id, sd.session.product_type)"></span></p></div>
+          <div><p class="lbl" x-text="isCharm(sd.session) ? 'Charm size' : 'Ring size'"></p><p x-text="isCharm(sd.session) ? (sd.last_choice?.charm_size != null ? sd.last_choice.charm_size + ' mm' : '—') : (sd.last_choice?.ring_size != null ? 'US ' + sd.last_choice.ring_size : '—')"></p></div>
           <div><p class="lbl">Price shown to the customer then</p><p x-text="sd.last_choice?.unit_price != null ? '$' + sd.last_choice.unit_price.toFixed(2) : (sd.last_choice?.pricing_status === 'unavailable' ? 'Unavailable' : '—')"></p><p class="text-[11px] text-zinc-500" x-text="sd.last_choice?.pricing_version || ''"></p></div>
           <div><p class="lbl">When</p><p class="text-xs" x-text="dateTime(sd.last_choice?.at)"></p></div>
         </div>
@@ -1118,8 +1118,8 @@
           <tbody><template x-for="(c, i) in sd.choices" :key="i"><tr>
             <td class="text-xs text-zinc-500" x-text="dateTime(c?.at)"></td>
             <td class="text-xs" x-text="c?.kind === 'customize_opened' ? 'Opened Customize' : 'Changed'"></td>
-            <td x-text="c?.material_id ? materialLabel(c.material_id) : ''"></td>
-            <td x-text="c?.ring_size != null ? 'US ' + c.ring_size : ''"></td>
+            <td x-text="c?.material_id ? materialLabelFor(c.material_id, sd.session.product_type) : ''"></td>
+            <td x-text="c?.charm_size != null ? c.charm_size + ' mm' : (c?.ring_size != null ? 'US ' + c.ring_size : '')"></td>
             <td class="text-right" x-text="c?.unit_price != null ? '$' + c.unit_price.toFixed(2) : (c?.pricing_status === 'unavailable' ? 'unavailable' : '')"></td>
           </tr></template></tbody></table>
       </section>
@@ -1532,6 +1532,38 @@
         </div>
       </div>
       </template>
+      <template x-if="products">
+      <div class="border border-zinc-200 p-4 space-y-3" aria-label="Charm sizes">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="flex items-center gap-2 font-semibold"><span class="text-[#8A6420]" x-html="pIcon('charm', 'w-5 h-5')"></span>Charm sizes</p>
+          <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="sizesEdit ? (sizesEdit = null) : editCharmSizes()" x-text="sizesEdit ? 'Cancel edit' : 'Edit'"></button>
+        </div>
+        <p class="text-[12px] text-zinc-600"><strong>What a size measures:</strong> <span x-text="products.charm_size_definition?.text"></span></p>
+        <div class="flex flex-wrap gap-2" x-show="!sizesEdit">
+          <template x-for="s in products.charm_sizes" :key="'cs' + s"><span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8]" x-text="s + ' mm'"></span></template>
+        </div>
+        <template x-if="sizesEdit">
+          <div class="space-y-3">
+            <div class="flex flex-wrap gap-2">
+              <template x-for="s in sizesEdit" :key="'ce' + s">
+                <span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8] inline-flex items-center gap-1.5"><span x-text="s + ' mm'"></span>
+                  <button type="button" class="leading-none text-[#7A5A10] hover:text-red-700" :aria-label="'Remove ' + s + ' mm'" @click="removeCharmSize(s)">&times;</button></span>
+              </template>
+            </div>
+            <form class="flex flex-wrap items-center gap-2" @submit.prevent="addCharmSize()">
+              <input type="number" step="0.5" min="3" max="100" class="inp !w-32" x-model="sizeAdd" placeholder="Size in mm" aria-label="New charm size in mm">
+              <button class="btn2" type="submit">Add size</button>
+            </form>
+            <div class="flex flex-wrap items-center gap-3">
+              <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="sizesNote">
+              <button class="btn" @click="saveCharmSizes()" :disabled="sizesBusy || !sizesEdit.length">Save charm sizes</button>
+            </div>
+          </div>
+        </template>
+        <p class="text-[12px] text-zinc-500" x-text="'Between ' + products.charm_size_limits?.min + ' and ' + products.charm_size_limits?.max + ' mm, at most ' + products.charm_size_limits?.count + ' sizes. Each size has its own price (Pricing & Materials \u2192 Charm); a size without a price shows \u201cPrice unavailable\u201d. Ring sizes are not affected.'"></p>
+        <p x-show="sizesMsg" class="text-sm" :class="sizesErr ? 'text-red-600' : 'text-emerald-700'" x-text="sizesMsg"></p>
+      </div>
+      </template>
       <div x-show="products && products.log && products.log.length">
         <p class="lbl mb-2">Recent changes</p>
         <table class="w-full !text-[12px]"><tbody>
@@ -1575,8 +1607,21 @@
       <button class="underline" @click="exportModels('all', 'json')">JSON</button>
     </div>
 
+    <!-- Pricing & Materials: which product's prices (Ring | Charm) — two separate tables, never mixed -->
+    <section class="card p-4 flex flex-wrap items-center gap-4" x-show="sub === 'pricing'" aria-label="Product pricing">
+      <p class="lbl">Material pricing for</p>
+      <div class="inline-flex border border-zinc-300 bg-white" role="group" aria-label="Product pricing">
+        <template x-for="p in ['ring', 'charm']" :key="'prc' + p">
+          <button type="button" class="px-4 py-2 text-[13px] font-semibold inline-flex items-center gap-2 border-l border-zinc-300 first:border-l-0"
+                  :class="pProduct === p ? (p === 'charm' ? 'bg-[#7A5A10] text-white' : 'bg-zinc-900 text-white') : 'text-zinc-700 hover:bg-zinc-50'"
+                  :aria-pressed="pProduct === p" @click="pProduct = p; if (p === 'charm' && !cprices) loadCharmPrices()"><span x-html="pIcon(p, 'w-4 h-4')"></span><span x-text="pLabel(p)"></span></button>
+        </template>
+      </div>
+      <p class="text-[12px] text-zinc-500 flex-1 min-w-[260px]" x-text="pProduct === 'charm' ? 'Charm prices: a fixed price per material and size. Completely separate from ring prices \u2014 a charm never uses a ring price.' : 'Ring prices: one fixed price per material (the ring size never changes it). Saving here never changes a charm price.'"></p>
+    </section>
+
     <!-- Material pricing: one table for weight, 3D cost / price and the website's fixed price -->
-    <section class="card p-5 space-y-3" x-show="sub === 'pricing' && mprices">
+    <section class="card p-5 space-y-3" x-show="sub === 'pricing' && pProduct === 'ring' && mprices">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
         <p class="lbl">Pricing · materials</p>
         <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="mpEdit ? (mpEdit = null) : editMaterialPrices()" x-text="mpEdit ? 'Cancel edit' : 'Edit'"></button>
@@ -1611,6 +1656,55 @@
       </ul>
       <p class="text-[12px] text-zinc-500" x-text="'Version ' + mprices?.version + ' · updated ' + dateTime(mprices?.updated_at) + ' by ' + mprices?.updated_by + (mprices?.update_note ? ' — ' + mprices.update_note : '')"></p>
       <p x-show="mpMsg" class="text-sm" :class="mpErr ? 'text-red-600' : 'text-emerald-700'" x-text="mpMsg"></p>
+    </section>
+
+    <!-- Charm pricing: a fixed price per material and size; price and cost per gram (never a ring price) -->
+    <section class="card p-5 space-y-3 !border-[#E8D9B8]" x-show="sub === 'pricing' && pProduct === 'charm' && cprices" aria-label="Charm pricing">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl flex items-center gap-2"><span class="text-[#8A6420]" x-html="pIcon('charm', 'w-4 h-4')"></span>Pricing · charms</p>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="cpEdit ? (cpEdit = null) : editCharmPrices()" x-text="cpEdit ? 'Cancel edit' : 'Edit'"></button>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full !text-xs">
+        <thead><tr><th>Material</th>
+          <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="s + ' mm $' + ((cprices?.sizes || []).includes(s) ? '' : ' (not offered)')"></th></template>
+          <th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th></tr></thead>
+        <tbody>
+          <template x-if="!cpEdit"><template x-for="r in (cprices?.rows || [])" :key="r.id"><tr>
+            <td class="whitespace-nowrap"><span class="inline-block w-2.5 h-2.5 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(r.id)"></span><span x-text="r.label"></span></td>
+            <template x-for="s in charmSizeCols()" :key="r.id + '-' + s">
+              <td class="text-right tabular-nums" :class="!r.fixed_price_allowed || r.fixed_prices[sizeKey(s)] == null ? 'text-zinc-500' : 'font-semibold'"
+                  x-text="!r.fixed_price_allowed ? 'Quote' : (r.fixed_prices[sizeKey(s)] == null ? 'NA' : '$' + num(r.fixed_prices[sizeKey(s)]))"></td>
+            </template>
+            <td class="text-right tabular-nums" x-text="num(r.price_per_g)"></td>
+            <td class="text-right tabular-nums" x-text="num(r.cost_per_g)"></td>
+          </tr></template></template>
+          <template x-if="cpEdit"><template x-for="r in cpEdit" :key="r.id"><tr>
+            <td class="whitespace-nowrap" x-text="r.label"></td>
+            <template x-for="s in charmSizeCols()" :key="r.id + '-e-' + s">
+              <td class="text-right">
+                <template x-if="r.fixed_price_allowed"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.fixed[sizeKey(s)]" placeholder="NA" :aria-label="r.label + ' ' + s + ' mm price'"></template>
+                <template x-if="!r.fixed_price_allowed"><span class="text-zinc-400">Quote</span></template>
+              </td>
+            </template>
+            <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.price_per_g" placeholder="—" :aria-label="r.label + ' price per gram'"></td>
+            <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.cost_per_g" placeholder="—" :aria-label="r.label + ' cost per gram'"></td>
+          </tr></template></template>
+        </tbody>
+      </table>
+      </div>
+      <div x-show="cpEdit" class="flex flex-wrap items-center gap-3">
+        <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="cpNote">
+        <button class="btn" @click="saveCharmPrices()" :disabled="cpBusy">Save as new version</button>
+      </div>
+      <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
+        <li><strong>Fixed price</strong> is what the website shows for a charm in that material and size. Empty = NA: "Price unavailable". A ring price is never used for a charm.</li>
+        <li><strong>Size</strong>: <span x-text="cprices?.size_definition?.text"></span> The sizes on offer are set in Settings → Products.</li>
+        <li><strong>Gold</strong> charms are quoted individually (Request a quote), like gold rings.</li>
+        <li><strong>Weight</strong> = 3D volume × the material's sintered density (Ring view, Pricing · materials) · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>
+      </ul>
+      <p class="text-[12px] text-zinc-500" x-text="'Version ' + cprices?.version + ' · updated ' + dateTime(cprices?.updated_at) + ' by ' + cprices?.updated_by + (cprices?.update_note ? ' — ' + cprices.update_note : '')"></p>
+      <p x-show="cpMsg" class="text-sm" :class="cpErr ? 'text-red-600' : 'text-emerald-700'" x-text="cpMsg"></p>
     </section>
 
     <!-- AI prices used for cost estimates -->

@@ -165,7 +165,7 @@ function adminApp() {
     created: null, createError: '', duplicateOf: null, copied: null,
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
-    tab: 'sessions', materials: {}, swatches: {}, showChoices: false,
+    tab: 'sessions', materials: {}, charmMaterials: {}, swatches: {}, showChoices: false,
     viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '', zoom: null,
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
@@ -187,6 +187,9 @@ function adminApp() {
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
+    // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
+    pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
+    sizesEdit: null, sizeAdd: '', sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
@@ -250,6 +253,7 @@ function adminApp() {
       try {
         const cat = await (await fetch(BASE + '/api/catalog')).json();
         for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
+        for (const m of cat.products?.charm?.materials || []) this.charmMaterials[m.id] = m.label;    // "Sterling Silver" …
       } catch (_) {}
       this.route();
     },
@@ -308,6 +312,7 @@ function adminApp() {
       if (this.tab === 'gallery') await this.loadGallery();
       if (this.tab === 'settings') {
         if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
+        if (this.sub === 'pricing') await this.loadCharmPrices();
         if (this.sub === 'promos') await this.loadPromos();
         if (this.sub === 'products') await this.loadProducts();
         if (this.sub === 'system') {
@@ -1122,6 +1127,46 @@ function adminApp() {
         this.mpEdit = null; this.mpMsg = 'Saved as ' + this.mprices.version + '. New 3D calculations and the website use it now.';
       } catch (e) { this.mpErr = true; this.mpMsg = e.message; } finally { this.mpBusy = false; }
     },
+    // ── charm pricing: a fixed price per material and size, price and cost per gram (never a ring price) ──
+    async loadCharmPrices() { this.cprices = await this.api('GET', '/api/admin/charm-prices').catch(() => null); },
+    // The size columns: the sizes on offer, then any older size that still has a price
+    charmSizeCols() { const c = this.cprices; return c ? [...c.sizes, ...(c.other_priced_sizes || [])] : []; },
+    sizeKey(s) { return String(Number(s)); },          // "20", "22.5": the server's key for a size
+    editCharmPrices() {
+      this.cpMsg = ''; this.cpNote = '';
+      this.cpEdit = this.cprices.rows.map(r => ({ id: r.id, label: r.label, fixed_price_allowed: r.fixed_price_allowed,
+        price_per_g: r.price_per_g ?? '', cost_per_g: r.cost_per_g ?? '',
+        fixed: Object.fromEntries(this.charmSizeCols().map(s => [this.sizeKey(s), r.fixed_prices?.[this.sizeKey(s)] ?? ''])) }));
+    },
+    async saveCharmPrices() {
+      this.cpBusy = true; this.cpMsg = ''; this.cpErr = false;
+      try {
+        const n = v => (v === '' || v == null) ? null : Number(v);
+        const materials = Object.fromEntries(this.cpEdit.map(r => [r.id, { price_per_g: n(r.price_per_g), cost_per_g: n(r.cost_per_g),
+          fixed_prices: r.fixed_price_allowed ? Object.fromEntries(Object.entries(r.fixed).filter(([, v]) => n(v) != null).map(([k, v]) => [k, n(v)])) : {} }]));
+        this.cprices = await this.api('PUT', '/api/admin/charm-prices', { materials, note: this.cpNote || 'Edited in Admin' });
+        this.cpEdit = null; this.cpMsg = 'Saved as ' + this.cprices.version + '. Charm quotes use it now; ring prices are unchanged.';
+      } catch (e) { this.cpErr = true; this.cpMsg = e.message; } finally { this.cpBusy = false; }
+    },
+    // ── Settings → Products: the charm sizes on offer ──
+    editCharmSizes() { this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = ''; this.sizeAdd = ''; this.sizesEdit = [...(this.products?.charm_sizes || [])]; },
+    addCharmSize() {
+      const v = Number(String(this.sizeAdd).replace(',', '.'));
+      if (this.sizeAdd === '' || !isFinite(v)) return;
+      if (!this.sizesEdit.includes(v)) this.sizesEdit = [...this.sizesEdit, v].sort((a, b) => a - b);
+      this.sizeAdd = '';
+    },
+    removeCharmSize(v) { this.sizesEdit = this.sizesEdit.filter(x => x !== v); },
+    async saveCharmSizes() {
+      this.sizesBusy = true; this.sizesMsg = ''; this.sizesErr = false;
+      try {
+        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, note: this.sizesNote });
+        this.products = r; this.sizesEdit = null; this.cprices = null;          // the charm price columns follow the sizes
+        this.sizesMsg = 'Charm sizes saved.' + (r.removed_in_bags?.length ? ' Still in customers\u2019 bags: ' +
+          r.removed_in_bags.map(x => x.size + ' mm (' + x.bag_lines + (x.bag_lines === 1 ? ' line' : ' lines') + ')').join(', ') +
+          ' \u2014 those lines will ask for another size.' : '');
+      } catch (e) { this.sizesErr = true; this.sizesMsg = e.message; } finally { this.sizesBusy = false; }
+    },
     num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },
     async exportModels(model, fmt) {
       const product = model === 'all' ? this.mProduct : '';
@@ -1251,6 +1296,8 @@ function adminApp() {
     money(v) { return v == null ? '—' : '$' + Number(v).toFixed(2); },
     duration(s) { if (s == null) return '—'; return s < 60 ? Math.round(s) + ' s' : s < 3600 ? Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s' : (s / 3600).toFixed(1) + ' h'; },
     materialLabel(id) { return this.materials[id] || id || '—'; },
+    // A charm's material reads as the customer saw it ("Sterling Silver"); a ring's as before
+    materialLabelFor(id, product) { return product === 'charm' && this.charmMaterials[id] ? this.charmMaterials[id] : this.materialLabel(id); },
     priceText(p) { return !p ? '—' : p.unit_price == null ? 'Unavailable' : '$' + Number(p.unit_price).toFixed(2); },
     fixedSource(p) { return !p ? '' : { bag_snapshot: 'price at Add to Bag', shown_at_customize: 'price shown in Customize', current_quote: 'current list price' }[p.source] || ''; },
     threeDLabel(s) { return (THREE_D[s] || [s])[0]; },

@@ -63,3 +63,33 @@ Luxury, or an unavailable Fashion price, returns `pricing_status: "unavailable"`
 ## Provenance of the CPP data
 
 `p3/pricing/cpp_db.json` is an independent snapshot of Pipeline 2's `constants.js` merged with `cpp-overrides.js` and `metal-map.js` (revision `1e871734`, overrides dated 2026-09-14). Only the material rows Pipeline 3 uses are kept. One change from P2: P2's Python port hard-coded the tray size, while the browser used the tray row. This port uses the tray row, matching the browser. The parity values are in `tests/test_pricing.py`.
+
+## Charms (separate from everything above)
+
+Everything above is ring pricing and is unchanged. Charms have their own price book, edited in Admin → Settings →
+Pricing & Materials → **Charm** (`p3/charmprices.py`, table `charm_price_lists`, versions `charms-v<N>`):
+
+- **A fixed price per material *and* size.** A charm's size is the height of its main body, excluding the standard
+  attachment loop, and the sizes are set in Admin → Settings → Products. Unlike a ring, a charm's size can change its
+  price.
+- **Materials.** Stainless Steel, Sterling Silver and 14K Gold Vermeil have fixed prices. Gold uses the quote flow,
+  like gold rings.
+- **Price and cost per gram** for the 3D calculated price and the production cost of a charm.
+- **No invented numbers, no fallback.** The table starts empty. A missing price makes the charm "Price unavailable":
+  never the ring price, never zero, never a calculated number.
+
+Quote: `GET /api/quote?material_id=silver&product=charm&charm_size=20`. It is only answered while charms are visible
+to that browser; otherwise it returns `400 unknown_product`, as if charms did not exist.
+
+```json
+{"material_id": "silver", "material_group": "fashion", "pricing_status": "available", "unit_price": 145.0,
+ "currency": "USD", "assumed_volume_cm3": null, "pricing_version": "charms-v2", "profile_approved": true,
+ "estimated_weight_g": null, "unavailable_reason": null, "notes": ["..."], "product": "charm", "charm_size": 20.0}
+```
+
+`unavailable_reason` for a charm is one of:
+- `charm_size_required`: no size chosen yet;
+- `charm_size_not_offered`;
+- `charm_price_not_set`;
+- `luxury_pricing_unavailable`: gold, which uses the quote flow;
+- `material_not_offered`.

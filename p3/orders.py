@@ -21,6 +21,7 @@ import json
 import re
 
 from p3 import addressing as Addressing
+from p3 import charmprices as CharmPrices
 from p3 import payments as Payments
 from p3 import products as Products
 from p3 import ringids as RingIds
@@ -87,9 +88,18 @@ class OrderService:
         for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b JOIN candidates c ON c.id = b.candidate_id "
                                  "JOIN designs d ON d.id = b.design_id WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
             Mat = self.Ctx.Catalog.Get(L["material_id"])
-            Q = self.Ctx.Pricing.QuoteFor(L["material_id"]) if Mat else None
+            Product = L.get("product_type") or Products.Ring
+            Q = CharmPrices.QuoteFor(self.Ctx, Product, L["material_id"], L.get("charm_size")) if Mat else None
             Problem = None
-            if Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
+            if Product == Products.Charm:
+                # a charm's price depends on its size: the size is checked first
+                if Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
+                    Problem = "Gold charms are quoted individually — remove this line and use Request a quote."
+                elif L["charm_size"] is None or not self.Ctx.Products.IsValidCharmSize(L["charm_size"]):
+                    Problem = "Please choose one of the charm sizes."
+                elif not Q.IsAvailable:
+                    Problem = "The price for this charm in this size and material is not available right now."
+            elif Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
                 Problem = "Gold rings are quoted individually — remove this line and use Request a quote."
             elif not Q.IsAvailable:
                 Problem = "The price for this material is not available right now."
@@ -99,8 +109,8 @@ class OrderService:
             Out.append({"bag_line_id": L["id"], "design_id": L["design_id"], "candidate_id": L["candidate_id"],
                         "customization_id": L["customization_id"], "title": L["title"], "image_path": L["asset_path"],
                         "image_url": self.Ctx.AssetUrl(L["asset_path"]), "material_id": L["material_id"],
-                        "material_label": Mat.Label if Mat else L["material_id"], "ring_size": L["ring_size"],
-                        "product_type": L.get("product_type") or Products.Ring, "charm_size": L.get("charm_size"),
+                        "material_label": CharmPrices.MaterialLabel(self.Ctx, Product, L["material_id"]), "ring_size": L["ring_size"],
+                        "product_type": Product, "charm_size": L.get("charm_size"),
                         "quantity": L["quantity"], "unit_price": Unit, "currency": Q.currency if Q else L["currency"],
                         "pricing_version": Q.pricing_version if Q else None,
                         "line_total": round(Unit * L["quantity"], 2) if Unit is not None else None,
@@ -239,9 +249,11 @@ class OrderService:
             self._SetStatus(OrderId, "payment_confirmed", self.Payment.Name, "Paid through the provider")
         Ref = OrderRef(Db.One("SELECT order_no FROM orders WHERE id = ?", (OrderId,))["order_no"])
         for L in Q["lines"]:
+            Size = {"product_type": Products.Charm, "charm_size": L["charm_size"]} if L["product_type"] == Products.Charm \
+                else {"ring_size": L["ring_size"]}
             Sessions.Record(self.Ctx, Who.AccountId, "order_placed", L["design_id"], order_id=OrderId, order_ref=Ref,
                             candidate_id=L["candidate_id"], ring_id=L["ring_id"], material_id=L["material_id"],
-                            ring_size=L["ring_size"], quantity=L["quantity"], unit_price=L["unit_price"],
+                            **Size, quantity=L["quantity"], unit_price=L["unit_price"],
                             line_total=L["line_total"], currency=L["currency"], promo=Promo["code"] if Promo else None)
         Out = self.Get(Who, OrderId)
         self._Email(Out, SendMail)
@@ -324,20 +336,37 @@ class OrderService:
         Mat = self.Ctx.Catalog.Get(str(Body.get("material_id") or ""))
         if Mat is None:
             raise HttpError(400, "unknown_material", "Unknown material.")
-        Size = Body.get("ring_size")
-        if Size is not None and not self.Ctx.Catalog.IsValidSize(Size):
-            raise HttpError(400, "invalid_ring_size", "Please choose a standard ring size.")
+        Charm = (D.get("product_type") or Products.Ring) == Products.Charm
+        if Charm:
+            if not CharmPrices.IsOffered(self.Ctx.Catalog, Mat.Id):
+                raise HttpError(400, "material_not_offered", "This material is not offered for charms.")
+            Size = Body.get("charm_size")
+            if Size is not None and not self.Ctx.Products.IsValidCharmSize(Size):
+                raise HttpError(400, "invalid_charm_size", "Please choose one of the charm sizes.")
+        else:
+            Size = Body.get("ring_size")
+            if Size is not None and not self.Ctx.Catalog.IsValidSize(Size):
+                raise HttpError(400, "invalid_ring_size", "Please choose a standard ring size.")
         Qty = Body.get("quantity", 1)
         if not isinstance(Qty, int) or isinstance(Qty, bool) or not 1 <= Qty <= 10:
             raise HttpError(400, "invalid_quantity", "Quantity must be between 1 and 10.")
         Id, T = NewId("qrq"), Now()
         Ring = RingIds.CandidateRef(Db, CandidateId)
-        Db.Execute("INSERT INTO quote_requests (id, owner_account_id, design_id, candidate_id, title, ring_id, material_id, material_label, "
-                   "ring_size, quantity, customer_json, message, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                   (Id, Who.AccountId, DesignId, CandidateId, D["title"], Ring, Mat.Id, Mat.Label,
-                    float(Size) if Size is not None else None, Qty, Dumps(Customer), str(Body.get("message") or "")[:1000], "new", T, T))
+        if Charm:
+            Db.Execute("INSERT INTO quote_requests (id, owner_account_id, design_id, candidate_id, title, ring_id, material_id, "
+                       "material_label, ring_size, product_type, charm_size, quantity, customer_json, message, status, created_at, "
+                       "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Id, Who.AccountId, DesignId, CandidateId, D["title"], Ring, Mat.Id, CharmPrices.Label(self.Ctx.Catalog, Mat.Id),
+                        None, Products.Charm, float(Size) if Size is not None else None, Qty, Dumps(Customer),
+                        str(Body.get("message") or "")[:1000], "new", T, T))
+        else:
+            Db.Execute("INSERT INTO quote_requests (id, owner_account_id, design_id, candidate_id, title, ring_id, material_id, material_label, "
+                       "ring_size, quantity, customer_json, message, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Id, Who.AccountId, DesignId, CandidateId, D["title"], Ring, Mat.Id, Mat.Label,
+                        float(Size) if Size is not None else None, Qty, Dumps(Customer), str(Body.get("message") or "")[:1000], "new", T, T))
         Sessions.Record(self.Ctx, Who.AccountId, "quote_requested", DesignId, request_id=Id, candidate_id=CandidateId,
-                        ring_id=Ring, material_id=Mat.Id, ring_size=Size, quantity=Qty)
+                        ring_id=Ring, material_id=Mat.Id,
+                        **({"product_type": Products.Charm, "charm_size": Size} if Charm else {"ring_size": Size}), quantity=Qty)
         Out = self.QuoteRequestJson(Db.One("SELECT * FROM quote_requests WHERE id = ?", (Id,)), C)
         if self.Mailer is not None:
             from p3.mail import QuoteRequestEmail

@@ -40,6 +40,8 @@ from p3.migrations import MigrateToAccounts
 from p3.admin import RegisterAdmin
 from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
+from p3.charmprices import CharmPriceBook
+from p3 import charmprices as CharmPrices
 from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
@@ -139,6 +141,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
+    Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
     Mailer = BuildMailer(S.DataDir)
     Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
@@ -383,11 +386,23 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             # Rings and charms: what the Design screen offers. Absent while charms are hidden — the ring-only site.
             Out["products"] = {"available": list(Products.All), "default": Products.Default,
                                "preview": not Ctx.Products.CharmsAvailable,      # an admin previewing hidden charms
-                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_definition": Products.CharmSizeDefinition}}
+                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_definition": Products.CharmSizeDefinition,
+                                         "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": M.Group,
+                                                        "purchasable": Ctx.Catalog.IsPurchasableGroup(M.Group)}
+                                                       for M in CharmPrices.Offered(Ctx.Catalog)]}}
         return JSONResponse(Out, headers={"Cache-Control": "no-store"})
 
     @App_.get("/api/quote")
-    async def QuoteRoute(material_id: str, ring_size: float | None = None):
+    async def QuoteRoute(request: Request, material_id: str, ring_size: float | None = None, product: str | None = None,
+                         charm_size: float | None = None):
+        if product is not None and Products.Normalize(product) == Products.Charm:
+            # A charm's price depends on its material and size (the charm price book; never a ring price)
+            Products.RequireVisible(Ctx, Products.Charm, request)
+            try:
+                Q = Ctx.CharmPrices.QuoteFor(material_id, charm_size)
+            except KeyError:
+                raise HttpError(404, "unknown_material", "Unknown material.")
+            return {**Q.ToJson(), "product": Products.Charm, "charm_size": charm_size}
         # ring_size is accepted for clarity but deliberately ignored: size never changes price.
         try:
             Q = Ctx.Pricing.QuoteFor(material_id)

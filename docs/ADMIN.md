@@ -316,8 +316,40 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
   - **Hiding them again** asks for confirmation. Charm designs, orders and settings are kept.
   - Every change is logged with its date, the Admin who made it and the note.
 - **Charm sizes** are the heights of the main charm body, *excluding* the standard attachment loop. The definition is
-  kept in one place (`products.CharmSizeDefinition`). The starting sizes are 15, 20, 25 and 30 mm. The sizes are
-  settings, not code; their editor comes with Charm pricing.
+  kept in one place (`products.CharmSizeDefinition`). The starting sizes are 15, 20, 25 and 30 mm.
+  - Edit them in *Charm sizes* (`PUT /api/admin/products/charm-sizes`): sizes between 3 and 100 mm, at most 12.
+    Every change is logged.
+  - Ring sizes are not affected.
+  - Each size has its own price (see *Charm pricing* below). A size without a price shows "Price unavailable".
+  - Removing a size that a customer's bag still holds is allowed. The Admin is told how many bag lines are affected,
+    and those lines ask the customer for another size before checkout.
+
+## Charm pricing (Settings → Pricing & Materials → Charm)
+
+**Code:** `p3/charmprices.py`, table `charm_price_lists`. **API:** `GET` / `PUT /api/admin/charm-prices`.
+
+*Material pricing for: Ring | Charm* chooses which product's table is shown. The Ring view is the table described
+above, unchanged. The Charm table is completely separate:
+
+| Column | Meaning |
+|---|---|
+| One column per charm size, e.g. *20 mm $* | The fixed price the website shows for a charm in that material and size. Empty = NA ("Price unavailable"). |
+| Price $/g | Charm 3D calculated price = weight × price $/g |
+| Cost $/g | Charm production cost = weight × cost $/g |
+
+- **Materials:**
+  - Stainless Steel, Sterling Silver and 14K Gold Vermeil are sold at a fixed price per size.
+  - Gold is quoted individually ("Quote", the Request a quote flow), like a gold ring.
+  - These names are how a charm's material reads to the customer; ring names are unchanged.
+- **Never a ring price.**
+  - A charm without a price for its material and size is "Price unavailable" and cannot be added to the bag.
+  - The ring's fixed price, price $/g and cost $/g are never used for a charm, and the reverse is also true (tested).
+- **Weight** uses the material's sintered density from the Ring view (a property of the material). Every price and
+  cost in the Charm table is the charm's own.
+- **Versions.** Each save is a version `charms-v<N>` with who, when and a note.
+  - A charm in a customer's bag shows "repriced" when the charm table changes; checkout uses today's price.
+  - A ring line is never repriced by a charm change, and the reverse is also true.
+- **Seed:** the table starts empty. No charm price was invented.
 
 ## AI cost estimates (Sessions)
 

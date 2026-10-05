@@ -19,6 +19,7 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from p3 import charmprices as CharmPrices
 from p3 import ringids as RingIds
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
@@ -272,7 +273,11 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         SizeChosen = bool(Line) or any("ring_size" in X and X["ring_size"] is not None for X in Changed) or bool(
             Cust and Cust["ring_size"] is not None and Cust["candidate_id"] not in Tracked)
         Size = (Line or Cust or {}).get("ring_size")
-        Fixed = FixedPrice(Ctx, Line, Ev, Material)
+        Product = D.get("product_type") or "ring"
+        CharmSize = (Line or Cust or {}).get("charm_size")
+        # A charm opens without a size, so any size on it was chosen by the customer
+        CharmChosen = bool(Line) or any(X.get("charm_size") is not None for X in Changed) or bool(Cust and Cust.get("charm_size") is not None)
+        Fixed = FixedPrice(Ctx, Line, Ev, Material, Product, CharmSize)
         Thumb = next((X for X in Ready if X["id"] == Selected), Ready[0] if Ready else None)
         Last3D = T3[Did][-1] if T3[Did] else None
         Failed = (not U) and bool(C[Did]) and not InitialReady and all(X["status"] == "failed" for X in C[Did] if X["kind"] == FirstKind)
@@ -312,7 +317,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "movie_status": (sorted(M[Did], key=lambda X: X["created_at"])[-1]["status"] if M[Did] else None),
             "ring_size": Size, "ring_size_chosen": SizeChosen,
             "material_id": Material, "material_chosen": MaterialChosen,
-            "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None),
+            "material_label": (Ctx.Catalog.Get(Material).Label if Material and Ctx.Catalog.Get(Material) else None)
+            if Product != "charm" else (CharmPrices.Label(Ctx.Catalog, Material) if Material else None),
             "add_to_bag": bool(Times["bag"]), "checkout_clicked": bool(Times["checkout_clicked"]),
             "ordered": bool(Times["order"]) or bool(OrderRefsByOwner.get((Did, Owner))),
             "order_refs": sorted({R for R in OrderRefs if R} | OrderRefsByOwner.get((Did, Owner), set())),
@@ -325,10 +331,13 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "has_image": bool(Ready), "has_movie": any(X["status"] == "ready" for X in M[Did]),
             "has_3d": any(X["status"] in ("measured", "needs_review") for X in T3[Did]),
         })
+        if Product == "charm":                       # a charm's size in mm (rings keep exactly the fields of before)
+            Out[-1].update({"ring_size": None, "ring_size_chosen": False, "charm_size": CharmSize, "charm_size_chosen": CharmChosen})
     Out.sort(key=lambda X: X["started_at"] or "", reverse=True)
     return Out
 
-def FixedPrice(Ctx: Context, Line: dict | None, Events: list[dict], MaterialId: str | None) -> dict | None:
+def FixedPrice(Ctx: Context, Line: dict | None, Events: list[dict], MaterialId: str | None, Product: str = "ring",
+               CharmSize=None) -> dict | None:
     """The customer-facing fixed price: the bag snapshot if added to bag, else the price shown with
     the last material choice, else today's quote for the material. Never changed by 3D numbers."""
     if Line:
@@ -342,14 +351,14 @@ def FixedPrice(Ctx: Context, Line: dict | None, Events: list[dict], MaterialId: 
                         "pricing_version": Data.get("pricing_version"), "source": "shown_at_customize",
                         "at": X["created_at"]}
     if MaterialId:
-        Q = Ctx.Pricing.QuoteFor(MaterialId)
+        Q = CharmPrices.QuoteFor(Ctx, Product, MaterialId, CharmSize)
         return {"unit_price": Q.unit_price, "currency": Q.currency, "pricing_version": Q.pricing_version,
                 "source": "current_quote", "at": None}
     return None
 
 
-def QuoteSnapshot(Ctx: Context, MaterialId: str) -> dict:
-    Q = Ctx.Pricing.QuoteFor(MaterialId)
+def QuoteSnapshot(Ctx: Context, MaterialId: str, Product: str = "ring", CharmSize=None) -> dict:
+    Q = CharmPrices.QuoteFor(Ctx, Product, MaterialId, CharmSize)
     return {"unit_price": Q.unit_price, "currency": Q.currency, "pricing_version": Q.pricing_version,
             "pricing_status": Q.pricing_status}
 
