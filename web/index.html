@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
     <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
     <script src="{{BASE}}/static/metal.js"></script>
+    <script src="{{BASE}}/static/products.js"></script>
     <script src="{{BASE}}/static/app.js"></script>
     <script defer src="{{BASE}}/static/showcase.js"></script>
     <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
@@ -497,14 +498,24 @@
             <div class="max-w-4xl mx-auto text-center mb-16">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Gallery</span>
                 <h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>
-                <p class="text-zinc-600 text-[15px] max-w-xl mx-auto">Bands, signets, statement and stackable rings — real XJet designs. Open one to see it large; make it yours to start from its four options.</p>
+                <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="productsOn ? 'Rings and charms — real XJet designs. Open one to see it large; make it yours to start from its four options.' : 'Bands, signets, statement and stackable rings — real XJet designs. Open one to see it large; make it yours to start from its four options.'"></p>
             </div>
+            <div x-show="productsOn" x-cloak class="flex justify-center mb-8" role="group" aria-label="Show designs">
+                    <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
+                        <template x-for="f in [['', 'All'], ['ring', 'Rings'], ['charm', 'Charms']]" :key="'gf' + f[0]">
+                            <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
+                                    class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
+                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
+                        </template>
+                    </div>
+                </div>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
                 <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
-                <template x-for="g in gallery" :key="g.id">
+                <template x-for="g in galleryShown" :key="g.id">
                     <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                         <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                        <span x-show="productsOn && isCharm(g)" x-cloak class="absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] uppercase tracking-[0.12em] font-semibold bg-white/90" style="color:#8A6420; border:1px solid #E8DCC4;"><span x-html="productIcon('charm', 'w-3 h-3')"></span>Charm</span>
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </button>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
@@ -530,13 +541,13 @@
                 </div>
                 <div class="space-y-6" x-data="{ open: null }">
                     <template x-for="(q, i) in [
-                        {q:'What jewelry can I create?',         a:'Currently, XJet Atelier supports Rings only. Additional jewelry categories will be introduced in future updates.'},
+                        {q:'What jewelry can I create?',         a: productsOn ? 'Rings and charms: choose one when you start a design. Additional jewelry categories will be introduced in future updates.' : 'Currently, XJet Atelier supports Rings only. Additional jewelry categories will be introduced in future updates.'},
                         {q:'What metals are available?',         a: metalsFaqAnswer},
                         {q:'Do I need design experience?',       a:'None at all. Just describe what you want in plain language or upload a reference photo. Our AI creates four designs for you to choose from.'},
                         {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ring in a 360° movie before adding it to your bag.'},
-                        {q:'How is the price calculated?',       a:'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.'},
+                        {q:'How is the price calculated?',       a: productsOn ? 'Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the price. A charm is priced by material and size.' : 'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.'},
                         {q:'How long does production take?',     a:'Design happens the same day. Production takes 7–10 business days. Shipping adds about 5 business days with Express or up to 14 with free Standard delivery.'},
-                        {q:'Are prices in USD?',                 a:'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
+                        {q:'Are prices in USD?',                 a: productsOn ? 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen); a charm size is its height in millimetres.' : 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
                         {q:'What is NanoParticle Jetting™?',     a:'It is XJet\'s proprietary metal printing technology. It jets ultra-fine metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than traditional casting.'},
                         {q:'Can I make changes?',                a:'Yes. Select any of your four designs and describe what should change — you get four new variations of that design each time.'},
                         {q:'Who can I contact for help?',        a:'If you need assistance at any stage, reach out and a specialist will respond within one business day.'}
@@ -739,7 +750,8 @@
                         <h2 class="text-4xl brand-font text-zinc-900">Terms of Service</h2>
                         <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
-                        <p>XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings only.</p>
+                        <p x-show="!productsOn">XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings only.</p>
+                        <p x-show="productsOn" x-cloak>XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring or a charm, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings and charms.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your access</h3>
                         <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your content</h3>
@@ -956,7 +968,20 @@
                             <!-- Composer: on a phone it sticks to the bottom of the workspace, so the next step is always in reach -->
                             <div class="w-full flex flex-col gap-3 sticky bottom-0 sm:static -mx-4 px-4 sm:mx-0 sm:px-0 pt-2 sm:pt-0 pb-[max(8px,env(safe-area-inset-bottom))] sm:pb-0 border-t sm:border-0 border-[#E8DDD0] sm:border-transparent"
                                  :class="design ? 'mt-auto' : ''" style="background:rgba(248,248,248,0.96); backdrop-filter:blur(6px);">
-                                <div x-show="!design" class="w-full flex items-start gap-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug justify-center text-center"
+                                <div x-show="!design && productsOn" x-cloak class="w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug"
+                                     style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
+                                    <span id="product-choice-label" class="font-medium">What would you like to design?</span>
+                                    <div class="inline-flex rounded-lg p-0.5" style="background:#EFEAE0;" role="radiogroup" aria-labelledby="product-choice-label">
+                                        <template x-for="p in productsList" :key="'np' + p">
+                                            <button type="button" role="radio" :aria-checked="newProduct === p" @click="chooseProduct(p)"
+                                                    class="px-3.5 py-1.5 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5 transition"
+                                                    :class="newProduct === p ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:bg-white/60'">
+                                                <span class="text-[#8A6420]" x-html="productIcon(p)"></span><span x-text="productLabel(p)"></span></button>
+                                        </template>
+                                    </div>
+                                    <span x-show="charmPreview" class="sm:hidden w-full text-center text-[11px]" style="color:#8A6420;">Admin preview — charms are still hidden from customers.</span>
+                                </div>
+                                <div x-show="!design && !productsOn" class="w-full flex items-start gap-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug justify-center text-center"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" role="note">
                                     <svg class="w-3.5 h-3.5 shrink-0 mt-[2px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#B08040;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg>
                                     <span>XJet Atelier makes <span class="font-semibold">rings</span> — describe the ring you have in mind.</span>
@@ -1138,7 +1163,8 @@
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2 min-w-0"><p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="p.title"></p>
-                                            <span x-show="p.shared" class="shrink-0 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#8A6420;" title="A shared XJet design from the Inspiration Gallery">Gallery</span></div>
+                                            <span x-show="p.shared" class="shrink-0 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#8A6420;" title="A shared XJet design from the Inspiration Gallery">Gallery</span>
+                                            <span x-show="productsOn && isCharm(p)" x-cloak class="shrink-0 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#FBF7EF; color:#8A6420;"><span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>Charm</span></div>
                                         <p class="text-[12px] mt-0.5" style="color:#6F6F6F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
                                     </div>
                                     <button @click.stop="removeDesign(p)" class="tap-lg shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" title="Remove from My Designs" :aria-label="'Remove ' + p.title + ' from My Designs'">
@@ -1218,7 +1244,7 @@
 
                 <div class="flex flex-col items-center gap-1 py-3 shrink-0">
                     <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-widest" x-text="design?.title"></p>
-                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterial?.label"></p>
+                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterialLabel"></p>
                     <p class="text-[12px] text-zinc-400">Metal colour is a visual preview of the same design.</p>
                 </div>
             </div>
@@ -1240,7 +1266,7 @@
                                              :style="currentGroup === g.id ? 'background-color:' + (currentMaterial?.swatch || '#ccc') : (g.id === 'luxury' ? 'background:linear-gradient(135deg,#FFD700 0%,#B8860B 100%)' : 'background:linear-gradient(135deg,#C8C8C5 0%,#6E7377 100%)')"></div>
                                         <div class="flex-1">
                                             <div class="text-sm font-semibold text-zinc-800" x-text="g.id === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></div>
-                                            <div class="text-[12px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterial?.label : (g.id === 'fashion' ? 'Stainless Steel · Silver · Vermeil' : 'Gold options — preview only')"></div>
+                                            <div class="text-[12px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterialLabel : (g.id === 'fashion' ? (custIsCharm ? 'Stainless Steel · Sterling Silver · 14K Gold Vermeil' : 'Stainless Steel · Silver · Vermeil') : 'Gold options — preview only')"></div>
                                         </div>
                                         <span x-show="!g.purchasable" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B; border:1px solid #E8DCC4;">Preview only</span>
                                         <svg :class="groupOpen[g.id] ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -1253,7 +1279,7 @@
                                                     class="border rounded-sm px-4 py-2.5 flex items-center gap-3 transition w-full text-left">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
                                                 <div>
-                                                    <div class="text-sm font-semibold text-zinc-800" x-text="m.label"></div>
+                                                    <div class="text-sm font-semibold text-zinc-800" x-text="matName(m)"></div>
                                                     <div class="text-[12px] text-zinc-500" x-text="copy(m.id).sub"></div>
                                                 </div>
                                             </button>
@@ -1275,8 +1301,29 @@
                         </div>
                     </div>
 
+                    <!-- Charm size: the height of the main body (without the loop); each size has its own price -->
+                    <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
+                        <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(height)</span></h3>
+                        <p class="text-[12px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
+                        <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (height)">
+                            <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
+                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
+                                        :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500'"
+                                        class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
+                                    <span x-text="s.label"></span>
+                                    <span class="text-[11px] mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
+                                          x-text="isLuxury ? 'Quote' : (s.unit_price != null ? money(s.unit_price) : 'Unavailable')"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <p class="text-[12px] text-zinc-500 mt-2">
+                            <span x-show="sizeConfirmed && cust?.charm_size != null">Your size: <strong class="text-zinc-700" x-text="cust?.size_label"></strong> · the price depends on the size</span>
+                            <span x-show="cust?.charm_size == null">Choose a size to add this charm to your bag.</span>
+                        </p>
+                    </div>
+
                     <!-- Ring Size: an explicit choice. The opening size is a suggestion until the customer taps a size. -->
-                    <div id="ring-size-heading">
+                    <div id="ring-size-heading" x-show="!custIsCharm">
                         <div class="flex items-center justify-between mb-1">
                             <h3 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h3>
                             <button @click="showSizeGuide = true" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
@@ -1299,9 +1346,9 @@
 
                     <!-- Configuration summary -->
                     <div class="border border-zinc-100 rounded-sm p-5 space-y-3 bg-zinc-50/50">
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterial?.label"></span></div>
+                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterialLabel"></span></div>
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></span></div>
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Ring Size</span><span class="font-medium text-zinc-800" x-text="cust?.ring_size != null ? 'US ' + cust?.ring_size : '—'"></span></div>
+                        <div class="flex justify-between text-sm"><span class="text-zinc-500" x-text="custIsCharm ? 'Charm Size' : 'Ring Size'"></span><span class="font-medium text-zinc-800" x-text="custIsCharm ? (cust?.size_label || '—') : (cust?.ring_size != null ? 'US ' + cust?.ring_size : '—')"></span></div>
                     </div>
 
                     <!-- Price -->
@@ -1311,11 +1358,15 @@
                                   :class="priceAvailable ? 'text-3xl text-zinc-900' : 'text-2xl text-zinc-500'" x-text="priceText"></span>
                             <span x-show="priceAvailable" class="text-[12px] text-zinc-500 uppercase tracking-widest">Per piece</span>
                         </div>
-                        <p x-show="priceAvailable" class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
+                        <p x-show="priceAvailable && !custIsCharm" class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
                             Fixed price for <span x-text="currentMaterial?.label"></span>, any size. The final weight is measured when your ring is made.
                         </p>
-                        <p x-show="isLuxury" class="text-[12px] text-zinc-500 mt-1.5">Gold rings are quoted individually — request a quote below.</p>
-                        <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available'" class="text-[12px] text-zinc-500 mt-1.5">The price for this material is not available right now.</p>
+                        <p x-show="priceAvailable && custIsCharm" x-cloak class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
+                            Fixed price for <span x-text="currentMaterialLabel"></span> at <span x-text="cust?.size_label"></span>. The final weight is measured when your charm is made.
+                        </p>
+                        <p x-show="isLuxury" class="text-[12px] text-zinc-500 mt-1.5" x-text="custIsCharm ? 'Gold charms are quoted individually — request a quote below.' : 'Gold rings are quoted individually — request a quote below.'"></p>
+                        <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[12px] text-zinc-500 mt-1.5"
+                           x-text="custIsCharm ? 'The price for this size and material is not available right now.' : 'The price for this material is not available right now.'"></p>
                         <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
                     </div>
 
@@ -1333,13 +1384,13 @@
                     <!-- Bag actions · Gold is quoted individually: "Request a quote" instead of the fixed-price path -->
                     <div class="space-y-3 lg:sticky lg:bottom-0 lg:bg-white lg:pt-3 lg:-mx-2 lg:px-2">
                         <!-- Compact summary so the decision is always in view: price · size · metal -->
-                        <p x-show="!isLuxury" class="text-[13px] text-zinc-700 text-center"><span class="font-semibold text-zinc-900" x-text="priceText"></span> · <span x-text="cust?.ring_size != null ? 'US ' + cust.ring_size : 'size?'"></span> · <span x-text="currentMaterial?.label"></span> · ×<span x-text="cust?.quantity || 1"></span></p>
+                        <p x-show="!isLuxury" class="text-[13px] text-zinc-700 text-center"><span class="font-semibold text-zinc-900" x-text="priceText"></span> · <span x-text="custIsCharm ? (cust?.size_label || 'size?') : (cust?.ring_size != null ? 'US ' + cust.ring_size : 'size?')"></span> · <span x-text="currentMaterialLabel"></span> · ×<span x-text="cust?.quantity || 1"></span></p>
                         <button x-show="!isLuxury" @click="addToBag()" :disabled="!cust?.can_add_to_bag || quotePending" class="btn-black w-full py-4 shadow-lg disabled:hover:bg-black" :class="!sizeConfirmed && cust?.can_add_to_bag ? '!bg-zinc-700' : ''">
                             <span x-text="bagButtonText"></span>
                             <svg x-show="canAddToBag" class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                         </button>
                         <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold w-full py-4 shadow-lg">Request a quote</button>
-                        <p x-show="isLuxury" x-cloak class="text-[12px] text-zinc-500 text-center leading-snug">Gold rings are quoted individually. Send us your request and a specialist replies within one business day with a price and the next steps.</p>
+                        <p x-show="isLuxury" x-cloak class="text-[12px] text-zinc-500 text-center leading-snug" x-text="(custIsCharm ? 'Gold charms' : 'Gold rings') + ' are quoted individually. Send us your request and a specialist replies within one business day with a price and the next steps.'"></p>
                         <p x-show="!isLuxury && !cust?.can_add_to_bag && bagBlockedText" class="text-[12px] text-zinc-500 text-center" x-text="bagBlockedText"></p>
                         <p x-show="bagMessage" class="text-[12px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
                         <p x-show="custError" class="text-[12px] text-center" style="color:#A1261D;" x-text="custError"></p>
@@ -1356,7 +1407,7 @@
                                 <div class="flex items-center gap-2 px-3 py-2.5 text-[12px]">
                                     <div class="flex-1 min-w-0 leading-tight">
                                         <span class="text-zinc-700 font-medium" x-text="l.material_label"></span>
-                                        <span class="text-zinc-500"> · US <span x-text="l.ring_size"></span> · ×<span x-text="l.quantity"></span></span>
+                                        <span class="text-zinc-500"> · <span x-text="lineSize(l)"></span> · ×<span x-text="l.quantity"></span></span>
                                     </div>
                                     <span class="shrink-0 text-zinc-600" x-text="money(l.line_total, l.currency)"></span>
                                     <button @click="removeLine(l)" class="shrink-0 w-5 h-5 flex items-center justify-center text-zinc-400 hover:text-red-500 transition text-lg leading-none" title="Remove" aria-label="Remove item">×</button>
@@ -1386,7 +1437,7 @@
                     <p class="text-[14px] font-semibold text-zinc-900 truncate" x-text="purchaseSummary"></p>
                     <p class="text-[12px] text-zinc-500" x-text="isLuxury ? 'Quoted individually' : (sizeConfirmed ? 'Fixed price, any size' : 'Confirm your size to continue')"></p>
                 </div>
-                <button x-show="!isLuxury" @click="canAddToBag ? addToBag() : document.getElementById('ring-size-heading')?.scrollIntoView({ behavior: 'smooth', block: 'center' })" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
+                <button x-show="!isLuxury" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
                 <button x-show="isLuxury" @click="openQuoteRequest()" class="btn-gold shrink-0 px-4 py-3 !text-[12px]">Request a quote</button>
             </div>
 
@@ -1469,8 +1520,8 @@
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-base font-medium text-zinc-900 truncate" x-text="l.title"></p>
-                                <p class="text-[12px] text-zinc-500 mt-0.5">Ring ID <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
-                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · US <span x-text="l.ring_size"></span> · Qty <span x-text="l.quantity"></span></p>
+                                <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
+                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span> · Qty <span x-text="l.quantity"></span></p>
                                 <div class="flex flex-wrap gap-1.5 mt-2">
                                     <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
                                     <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
@@ -1624,7 +1675,7 @@
                                 <div class="w-14 h-14 bg-white rounded overflow-hidden shrink-0 border border-zinc-100 flex items-center justify-center"><img :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }"></div>
                                 <div class="flex-1 min-w-0 text-[12px]">
                                     <p class="text-[13px] font-medium text-zinc-900 truncate" x-text="l.title"></p>
-                                    <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.material_label"></span> · US <span x-text="l.ring_size"></span></p>
+                                    <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
                                     <p class="text-zinc-500"><span x-text="l.quantity"></span> × <span x-text="money(l.unit_price, l.currency)"></span></p>
                                     <p x-show="l.problem" class="text-red-700" x-text="l.problem"></p>
                                 </div>
@@ -1673,8 +1724,8 @@
                             <div class="w-24 h-24 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100"><img :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }"></div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-base font-medium text-zinc-900" x-text="l.title"></p>
-                                <p class="text-[12px] text-zinc-500 mt-0.5">Ring ID <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
-                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · Size US <span x-text="l.ring_size"></span> · Qty <span x-text="l.quantity"></span></p>
+                                <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
+                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · Size <span x-text="lineSize(l)"></span> · Qty <span x-text="l.quantity"></span></p>
                             </div>
                             <div class="text-right shrink-0"><p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p><p class="text-[12px] text-zinc-500 mt-1" x-text="money(l.unit_price, l.currency) + ' each'"></p></div>
                         </div>
@@ -1837,7 +1888,7 @@
                         <ul class="divide-y divide-zinc-100 max-h-40 overflow-y-auto">
                             <template x-for="o in orders" :key="o.id">
                                 <li><button type="button" @click="openOrder(o)" class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-zinc-50 rounded px-1 -mx-1 transition">
-                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + o.count + (o.count === 1 ? ' ring' : ' rings') + ' · ' + o.status_label"></span></span>
+                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + orderCountText(o) + ' · ' + o.status_label"></span></span>
                                     <span class="text-[12px] shrink-0" style="color:#1A1A1A;" x-text="money(o.total, o.currency)"></span></button></li>
                             </template>
                         </ul>
@@ -1975,6 +2026,17 @@
         </div>
     </template>
 
+    <!-- ── Admin preview: this browser is signed in to the Admin and sees charms while customers do not ── -->
+    <template x-teleport="body">
+        <div x-show="charmPreview" x-cloak role="status"
+             class="hidden sm:flex fixed left-3 bottom-3 z-[590] items-center gap-2 px-3 py-1.5 rounded-full shadow-lg text-[12px]"
+             style="background:#2A2418; color:#F3E7CC; max-width:min(92vw, 440px);"
+             title="Charms are hidden from customers (Admin → Settings → Products). This browser sees them because it is signed in to the Admin.">
+            <span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>
+            <span><strong class="font-semibold">Admin preview</strong> · charms are hidden from customers</span>
+        </div>
+    </template>
+
     <!-- ── Gold: Request a quote (no fixed price yet; nothing is ordered or charged) ── -->
     <template x-teleport="body">
         <div x-show="quoteReq.open" x-cloak class="fixed inset-0 z-[210] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6);"
@@ -1988,7 +2050,7 @@
                     <div class="space-y-4">
                         <div class="flex items-center gap-3 p-3 rounded-xl" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                             <img :src="thumb(cust?.image_url, 320)" alt="" class="w-14 h-14 rounded-lg object-contain bg-white shrink-0" :style="{ filter: tint }">
-                            <div class="text-[13px] leading-snug"><p class="font-medium text-zinc-900" x-text="design?.title"></p><p class="text-zinc-600"><span x-text="currentMaterial?.label"></span> · <span x-text="cust?.ring_size != null ? 'US ' + cust.ring_size : 'size to be confirmed'"></span></p></div>
+                            <div class="text-[13px] leading-snug"><p class="font-medium text-zinc-900" x-text="design?.title"></p><p class="text-zinc-600"><span x-text="currentMaterialLabel"></span> · <span x-text="custIsCharm ? (cust?.size_label || 'size to be confirmed') : (cust?.ring_size != null ? 'US ' + cust.ring_size : 'size to be confirmed')"></span></p></div>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div><label class="flbl" for="qr-first">First name</label><input id="qr-first" class="fld" :class="quoteReq.problems.first_name ? 'bad' : ''" x-model="quoteReq.customer.first_name" autocomplete="given-name"><p class="ferr" x-show="quoteReq.problems.first_name" x-text="quoteReq.problems.first_name"></p></div>
@@ -2028,15 +2090,25 @@
                 <div class="flex items-start justify-between gap-4 mb-6">
                     <div><span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
                         <h3 class="brand-font text-2xl text-zinc-900 mt-1">Start from a design you love</h3>
-                        <p class="text-[12px] text-zinc-500 mt-1" x-text="gallery.length + (gallery.length === 1 ? ' design' : ' designs') + ' · open one to see it large, then make it yours'"></p></div>
+                        <p class="text-[12px] text-zinc-500 mt-1" x-text="galleryShown.length + (galleryShown.length === 1 ? ' design' : ' designs') + ' · open one to see it large, then make it yours'"></p></div>
                     <button @click="galleryGridOpen = false" class="tap-lg p-1 text-[#6F6F6F] hover:text-[#555]" aria-label="Close"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                </div>
+                <div x-show="productsOn" x-cloak class="flex justify-center mb-6" role="group" aria-label="Show designs">
+                    <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
+                        <template x-for="f in [['', 'All'], ['ring', 'Rings'], ['charm', 'Charms']]" :key="'gf' + f[0]">
+                            <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
+                                    class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
+                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
+                        </template>
+                    </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
-                    <template x-for="g in gallery" :key="g.id">
+                    <template x-for="g in galleryShown" :key="g.id">
                         <div class="relative group">
                         <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title" class="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async">
+                            <span x-show="productsOn && isCharm(g)" x-cloak class="absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] uppercase tracking-[0.12em] font-semibold bg-white/90" style="color:#8A6420; border:1px solid #E8DCC4;"><span x-html="productIcon('charm', 'w-3 h-3')"></span>Charm</span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </button>
                         <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
@@ -2046,6 +2118,7 @@
                     </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery.</div>
+                    <div x-show="galleryState === 'loaded' && gallery.length && !galleryShown.length" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500" x-text="'No ' + (galleryProduct === 'charm' ? 'charms' : 'rings') + ' in the gallery yet.'"></div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
                 </div>
             </div>

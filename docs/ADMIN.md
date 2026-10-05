@@ -350,6 +350,16 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
     OFF.
   - **Turning charms on** requires typing **SHOW CHARMS**, because it changes the public site. An optional note is kept.
   - **Hiding them again** asks for confirmation. Charm designs, orders and settings are kept.
+  - **What customers see while ON:**
+    - "What would you like to design? Ring / Charm" on the Design screen (Ring is the default);
+    - charm sizes with their prices in Customize;
+    - "Charm ID … · 20 mm" lines in the bag, checkout, confirmation and emails;
+    - *All · Rings · Charms* in the Inspiration Gallery;
+    - FAQ and Terms that name rings and charms.
+
+    While OFF, all of this is absent, and the customer API answers carry no product fields. A customer who already
+    holds charms still sees their own charm orders correctly. The Admin preview shows the ON experience marked "Admin
+    preview · charms are hidden from customers".
   - Every change is logged with its date, the Admin who made it and the note.
 - **Charm sizes** are the heights of the main charm body, *excluding* the standard attachment loop. The definition is
   kept in one place (`products.CharmSizeDefinition`). The starting sizes are 15, 20, 25 and 30 mm.

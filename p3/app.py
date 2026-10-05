@@ -342,6 +342,27 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Sessions.RecordClientEvent(Ctx, Tok(x_access_token).AccountId, str(Body_.get("kind", "")),
                                           Body_.get("design_id") or None)
 
+    # ── while charms are hidden, a ring-only customer gets exactly the answers of before: no product fields ──
+    ProductKeys = ("product_type", "product_types", "charm_size", "size_label")
+
+    def _HasCharm(X) -> bool:
+        if isinstance(X, dict):
+            return (X.get("product_type") == Products.Charm or Products.Charm in (X.get("product_types") or ())
+                    or any(_HasCharm(V) for V in X.values()))
+        return isinstance(X, list) and any(_HasCharm(V) for V in X)
+
+    def _Strip(X):
+        if isinstance(X, dict):
+            return {K: _Strip(V) for K, V in X.items() if K not in ProductKeys}
+        return [_Strip(V) for V in X] if isinstance(X, list) else X
+
+    def RingOnly(Data, request: Request):
+        """Charms hidden from this browser and nothing about charms in the answer → the ring-only answer of before.
+        A customer whose bag or orders hold charms (made while charms were shown) still gets them as they are."""
+        if Products.CharmsVisible(Ctx, request) or _HasCharm(Data):
+            return Data
+        return _Strip(Data)
+
     # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
     def Seen(request: Request) -> tuple[tuple, bool]:
         """The products this browser may see, and whether to label tiles with their product (only beside charms)."""
@@ -434,11 +455,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/designs")
     async def ListDesigns(request: Request, x_access_token: str | None = Header(None)):
-        return {"designs": Svc.Designs.List(Tok(x_access_token), Products.VisibleProducts(Ctx, request))}
+        return RingOnly({"designs": Svc.Designs.List(Tok(x_access_token), Products.VisibleProducts(Ctx, request))}, request)
 
     @App_.get("/api/designs/{DesignId}")
     async def GetDesign(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
-        return Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request))
+        return RingOnly(Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request)), request)
 
     @App_.delete("/api/designs/{DesignId}")
     async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):
@@ -491,25 +512,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── bag ──────────────────────────────────────────────────────────────
     @App_.get("/api/bag")
-    async def GetBag(x_access_token: str | None = Header(None)):
-        return Svc.Customize.Bag(Tok(x_access_token))
+    async def GetBag(request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Customize.Bag(Tok(x_access_token)), request)
 
     @App_.post("/api/bag")
-    async def AddToBag(Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Customize.AddToBag(Tok(x_access_token), Body_.get("customization_id"))
+    async def AddToBag(request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Customize.AddToBag(Tok(x_access_token), Body_.get("customization_id")), request)
 
     @App_.delete("/api/bag/{LineId}")
-    async def RemoveFromBag(LineId: str, x_access_token: str | None = Header(None)):
-        return Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId)
+    async def RemoveFromBag(LineId: str, request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId), request)
 
     # ── checkout & orders (fixed-price materials); gold asks for a quote ──
     @App_.get("/api/checkout")
-    async def CheckoutInfo(x_access_token: str | None = Header(None)):
-        return Svc.Orders.CheckoutInfo(Tok(x_access_token))
+    async def CheckoutInfo(request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Orders.CheckoutInfo(Tok(x_access_token)), request)
 
     @App_.post("/api/checkout/quote")
-    async def CheckoutQuote(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
-        return Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"))
+    async def CheckoutQuote(request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard")), request)
 
     @App_.post("/api/checkout/address")
     async def CheckoutAddress(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
@@ -517,20 +538,20 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Svc.Orders.ValidateAddress(Body_.get("address") or Body_)
 
     @App_.post("/api/orders")
-    async def PlaceOrder(Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task)
+    async def PlaceOrder(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task), request)
 
     @App_.get("/api/orders")
-    async def MyOrders(x_access_token: str | None = Header(None)):
-        return {"orders": Svc.Orders.List(Tok(x_access_token))}
+    async def MyOrders(request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly({"orders": Svc.Orders.List(Tok(x_access_token))}, request)
 
     @App_.get("/api/orders/{OrderId}")
-    async def MyOrder(OrderId: str, x_access_token: str | None = Header(None)):
-        return Svc.Orders.Get(Tok(x_access_token), OrderId)
+    async def MyOrder(OrderId: str, request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Orders.Get(Tok(x_access_token), OrderId), request)
 
     @App_.post("/api/quote-requests")
-    async def RequestQuote(Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task)
+    async def RequestQuote(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task), request)
 
     # ── developer-only mesh tools ────────────────────────────────────────
     @App_.get("/api/dev/status")

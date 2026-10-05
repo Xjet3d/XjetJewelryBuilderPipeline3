@@ -49,7 +49,7 @@ async def test_every_existing_and_new_design_is_a_ring_with_its_usual_id(HC):
     B2 = await H.NewDesign("A signet with a hexagon face", product="ring")
     for B in (B1, B2):
         D = await H.Design(B["design_id"])
-        assert D["product_type"] == "ring"
+        assert "product_type" not in D                      # charms hidden: the customer's answer is the ring-only one
     Rows = H.Ctx.Db.All("SELECT product_type, ring_no, charm_no FROM designs ORDER BY created_at")
     assert [(R["product_type"], R["ring_no"], R["charm_no"]) for R in Rows] == [("ring", 1001, None), ("ring", 1002, None)]
     L = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
@@ -211,10 +211,13 @@ async def test_a_ring_order_snapshots_the_product_and_reads_as_before(HC):
     await H.Client.patch(f"/api/customizations/{C['id']}", json={"ring_size": 7, "material_id": "stainless_steel"})
     assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).status_code == 200
     Bag = (await H.Client.get("/api/bag")).json()
-    assert Bag["lines"][0]["product_type"] == "ring" and Bag["lines"][0]["size_label"] == "US 7"
+    # While charms are hidden a ring customer's answers are exactly those of before: no product fields at all
+    ProductKeys = {"product_type", "product_types", "charm_size", "size_label"}
+    assert not ProductKeys & set(Bag["lines"][0]) and Bag["lines"][0]["ring_size"] == 7
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "r1"})).json()
-    assert O["product_types"] == ["ring"] and O["lines"][0]["size_label"] == "US 7"
+    assert not ProductKeys & set(O) and not ProductKeys & set(O["lines"][0])
+    assert not ProductKeys & set((await H.Client.get("/api/orders")).json()["orders"][0])
     Row = H.Ctx.Db.One("SELECT * FROM order_lines")
     Snap = json.loads(Row["purchase_json"])
     assert Row["product_type"] == "ring" and Row["ring_size"] == 7 and Row["charm_size"] is None

@@ -161,6 +161,10 @@ function p3App() {
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
     _returnFocus: null,                // element to focus again when a modal closes
 
+    // ── rings and charms: offered only while the catalog lists them (charms visible to this browser) ──
+    newProduct: 'ring',                // what a new design will be (Design screen; Ring by default; kept through sign-in)
+    galleryProduct: '',                // Inspiration Gallery filter: '' all · 'ring' · 'charm'
+
     // ── customize ────────────────────────────────────────────────────
     cust: null, custError: '', mediaTab: 'movie', quotePending: false, bagMessage: '',
     lastMaterialByGroup: { fashion: 'silver', luxury: null },
@@ -195,6 +199,7 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
+      if (this.productsOn && this.productsList.includes(st.newProduct)) this.newProduct = st.newProduct;   // chosen before sign-in
       this.loadGallery().then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       if ((location.hash || '') === '#developer') { this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }   // internal, not linked
       const lux = this.materialsOf('luxury');
@@ -804,9 +809,38 @@ function p3App() {
     clearUpload() { this.uploadedFile = null; this.uploadedPreview = null; this.rightsConfirmed = false; },
     handleEnterKey(ev) { if (!ev.shiftKey) { ev.preventDefault(); this.sendComposer(); } },
 
+    // ── rings and charms (the catalog's products block exists only while charms are visible) ──
+    get productsOn() { return !!this.catalog?.products; },
+    get productsList() { return this.catalog?.products?.available || ['ring']; },
+    get charmPreview() { return !!this.catalog?.products?.preview; },          // an Admin previewing hidden charms
+    productLabel(p) { return p === 'charm' ? 'Charm' : 'Ring'; },
+    productIcon(p, cls = 'w-4 h-4') { return window.P3Products ? window.P3Products.icon(p, cls) : ''; },
+    chooseProduct(p) {
+      if (!this.productsOn || !this.productsList.includes(p)) return;
+      this.newProduct = p; this.persist({ newProduct: p });
+    },
+    get newNoun() { return this.productsOn && this.newProduct === 'charm' ? 'charm' : 'ring'; },
+    isCharm(x) { return (x?.product_type || 'ring') === 'charm'; },
+    get custIsCharm() { return this.isCharm(this.cust); },
+    charmMaterialLabel(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id)?.label; },
+    matName(m) { return this.custIsCharm ? (this.charmMaterialLabel(m.id) || m.label) : m.label; },   // "Sterling Silver" for a charm
+    get currentMaterialLabel() {
+      return this.custIsCharm ? (this.charmMaterialLabel(this.cust?.material_id) || this.cust?.material_label || this.currentMaterial?.label)
+                              : this.currentMaterial?.label;
+    },
+    get galleryShown() { return this.galleryProduct ? this.gallery.filter(g => (g.product_type || 'ring') === this.galleryProduct) : this.gallery; },
+    // Lines of the bag, checkout and orders: "US 7" for a ring (as before), "20 mm" for a charm
+    lineSize(l) { return this.isCharm(l) ? (l.size_label || 'size to be confirmed') : 'US ' + l.ring_size; },
+    lineIdLabel(l) { return this.isCharm(l) ? 'Charm ID' : 'Ring ID'; },
+    orderCountText(o) {
+      const p = o.product_types || ['ring'], noun = p.length > 1 ? 'piece' : (p[0] === 'charm' ? 'charm' : 'ring');
+      return o.count + ' ' + noun + (o.count === 1 ? '' : 's');
+    },
+    scrollToSize() { document.getElementById(this.custIsCharm ? 'charm-size-heading' : 'ring-size-heading')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); },
+
     get composerMode() { return this.design ? 'refine' : 'create'; },
     get composerPlaceholder() {
-      if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ring… or paste an image (Ctrl+V)';
+      if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ' + this.newNoun + '… or paste an image (Ctrl+V)';
       return this.canActOnSelection ? 'Describe how to refine the selected design…' : 'Select one of the designs above to refine it…';
     },
     get canSend() {
@@ -823,12 +857,13 @@ function p3App() {
     async generate() {
       this.composeError = '';
       const text = this.userInput.trim() || (this.uploadedFile ? 'Process this image' : '');
-      if (text.length < 3) { this.composeError = 'Please describe your ring in a few words.'; return; }
+      if (text.length < 3) { this.composeError = 'Please describe your ' + this.newNoun + ' in a few words.'; return; }
       if (this.uploadedFile && !this.rightsConfirmed) { this.composeError = 'Please confirm you have the rights to use the uploaded image.'; return; }
       const fd = new FormData();
       fd.append('prompt', text);
       fd.append('client_request_id', newRequestId());
       if (this.uploadedFile) { fd.append('reference', this.uploadedFile); fd.append('rights_confirmed', 'true'); }
+      if (this.productsOn) fd.append('product', this.newProduct);       // only offered while charms are visible
       this.submitting = true;
       try {
         const batch = await this.api('POST', '/api/designs', fd);
@@ -1135,7 +1170,8 @@ function p3App() {
       const designId = this.design.id, candidateId = this.selectedId;
       // Show the selected image immediately; the server returns the authoritative customization.
       this.cust = { candidate_id: candidateId, image_url: this.selectedCandidate.image_url, material_id: 'silver',
-                    quote: null, movie: { status: 'queued' }, ring_size: null, quantity: 1 };
+                    quote: null, movie: { status: 'queued' }, ring_size: null, quantity: 1,
+                    product_type: this.design?.product_type || 'ring', charm_size: null };
       this.mediaTab = 'movie'; this.custError = ''; this.bagMessage = '';
       this.groupOpen = { fashion: true, luxury: false };
       this.navigateTo('review');
@@ -1151,7 +1187,8 @@ function p3App() {
     showCustomization(c) {
       const same = this.cust?.id && this.cust.id === c.id;
       this.cust = c;
-      if (!same) this.sizeConfirmed = false;   // the opening size is a suggestion until the customer confirms or changes it
+      // A ring opens on a suggested size until the customer confirms it; a charm has no suggestion — its size was chosen
+      if (!same) this.sizeConfirmed = this.isCharm(c) && c.charm_size != null;
       this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.groupOfMaterial(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
@@ -1228,7 +1265,7 @@ function p3App() {
       const size = v === '' || v === null ? null : Number(v);
       this.sizeConfirmed = size !== null;
       // Confirming the suggested size is still a choice: the server records it (customization_changed).
-      await this.patchCustomization(this.cust.id, { ring_size: size }, { force: true });
+      await this.patchCustomization(this.cust.id, { [this.custIsCharm ? 'charm_size' : 'ring_size']: size }, { force: true });
     },
     get canAddToBag() { return !!this.cust?.can_add_to_bag && this.sizeConfirmed && !this.quotePending; },
     async setQuantity(delta) {
@@ -1257,6 +1294,7 @@ function p3App() {
     get priceAvailable() { return !this.isLuxury && this.cust?.quote?.pricing_status === 'available'; },
     get priceText() {
       if (this.isLuxury) return 'Price unavailable';
+      if (this.custIsCharm && this.cust?.charm_size == null) return 'Choose a size';     // a charm's price depends on its size
       const q = this.cust?.quote;
       if (!q) return '—';
       if (q.pricing_status !== 'available') return 'Price unavailable';
@@ -1271,22 +1309,27 @@ function p3App() {
         case 'luxury_preview_only': return 'Request a quote';
         case 'price_unavailable': return 'Price Unavailable';
         case 'ring_size_required': return 'Choose your ring size';
-        default: return this.sizeConfirmed ? 'Add to Bag' : 'Confirm your ring size';
+        case 'charm_size_required': return 'Choose your charm size';
+        case 'charm_size_not_offered': return 'Choose another size';
+        default: return this.sizeConfirmed ? 'Add to Bag' : (this.custIsCharm ? 'Choose your charm size' : 'Confirm your ring size');
       }
     },
     get bagBlockedText() {
       if (!this.cust) return '';
       switch (this.cust.add_to_bag_blocked_reason) {
-        case 'luxury_preview_only': return 'Gold rings are quoted individually.';
+        case 'luxury_preview_only': return this.custIsCharm ? 'Gold charms are quoted individually.' : 'Gold rings are quoted individually.';
         case 'price_unavailable': return 'Price unavailable — this piece cannot be added to the bag yet.';
         case 'ring_size_required': return 'Choose your ring size to continue.';
-        default: return this.sizeConfirmed ? '' : 'Tap your ring size above — the suggested size is only a suggestion.';
+        case 'charm_size_required': return 'Choose your charm size to continue.';
+        case 'charm_size_not_offered': return 'This size is no longer offered — please choose another size.';
+        default: return this.sizeConfirmed ? '' : (this.custIsCharm ? 'Choose your charm size above.' : 'Tap your ring size above — the suggested size is only a suggestion.');
       }
     },
     sizeIsSuggested(size) { return !this.sizeConfirmed && this.cust?.ring_size == size; },
     // Sticky purchase summary (Customize): "$200 · US 10 · Silver"
     get purchaseSummary() {
-      return [this.priceText, this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Size?', this.currentMaterial?.label || ''].filter(Boolean).join(' · ');
+      const size = this.custIsCharm ? (this.cust?.size_label || 'Size?') : (this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Size?');
+      return [this.priceText, size, this.currentMaterialLabel || ''].filter(Boolean).join(' · ');
     },
     sizeGuideRows(kind) {
       const mm = { 4: '14.9', 4.5: '15.3', 5: '15.7', 5.5: '16.1', 6: '16.5', 6.5: '16.9', 7: '17.3', 7.5: '17.7', 8: '18.1',
@@ -1304,8 +1347,9 @@ function p3App() {
     async addToBag() {
       if (!this.cust?.can_add_to_bag) return;
       if (!this.sizeConfirmed) {                       // the suggested size must be confirmed on purpose
-        this.bagMessage = ''; this.custError = 'Please confirm your ring size first — tap the size you want.';
-        document.getElementById('ring-size-heading')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        this.bagMessage = ''; this.custError = this.custIsCharm ? 'Please choose your charm size first — tap the size you want.'
+                                                                 : 'Please confirm your ring size first — tap the size you want.';
+        this.scrollToSize();
         return;
       }
       this.bagMessage = ''; this.custError = '';
@@ -1462,7 +1506,8 @@ function p3App() {
       try {
         const r = await this.api('POST', '/api/quote-requests', {
           design_id: this.design.id, candidate_id: this.cust.candidate_id, material_id: this.cust.material_id,
-          ring_size: this.cust.ring_size, quantity: this.quoteReq.quantity, customer: this.quoteReq.customer, message: this.quoteReq.message,
+          ...(this.custIsCharm ? { charm_size: this.cust.charm_size } : { ring_size: this.cust.ring_size }),
+          quantity: this.quoteReq.quantity, customer: this.quoteReq.customer, message: this.quoteReq.message,
         });
         this.quoteReq.done = r;
       } catch (e) {

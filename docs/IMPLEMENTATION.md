@@ -400,6 +400,48 @@ implementation of before is the reference: its tests are unchanged and must keep
   - an ordered charm line;
   - the up-direction frame on synthetic models.
 
+**Phase 5 — the customer experience** (`web/app.js`, `web/index.html`; `web/products.js` for the icons).
+
+- **Gating.** Everything below is shown only while the catalog has its `products` block (`productsOn`), that is,
+  while charms are visible to that browser. With charms hidden the page is the ring-only site of before.
+- **Ring-only answers** (`app.RingOnly`). While charms are hidden from a browser, and an answer holds no charm, these
+  answers carry no product fields (`product_type`, `product_types`, `charm_size`, `size_label`), exactly as before the
+  charms work:
+  - designs (list and one);
+  - the bag;
+  - checkout;
+  - orders;
+  - quote requests.
+
+  A customer whose bag or orders hold charms (made while charms were shown) still gets those answers whole. The
+  gallery and favorites already behaved this way (phase 1).
+- **Design screen.**
+  - "What would you like to design? Ring / Charm" replaces the "makes rings" note, with Ring as the default.
+  - The choice (`newProduct`) is kept in local storage, so it survives sign-in, including through the emailed link.
+  - The composer reads "Describe your charm…", and `generate()` sends `product` only while products are offered.
+  - My Designs marks a charm.
+- **Customize for a charm** (`custIsCharm`).
+  - A *Choose your charm size (height)* section shows the size definition and one button per size with its price
+    ("Unavailable" when it has no price, "Quote" for gold). It replaces the ring size and size guide, which are
+    unchanged for rings.
+  - Materials use the charm names. A charm has no suggested size: a chosen one counts as confirmed.
+  - The price, summary, bag-button and gold-quote texts are charm-worded, and a quote request sends `charm_size`.
+- **Bag, checkout, confirmation, My Orders.**
+  - `lineSize` gives "US 7" (as before) or "20 mm", and `lineIdLabel` gives Ring ID / Charm ID.
+  - Order counts read "2 rings", "1 charm" or "3 pieces".
+- **Inspiration Gallery.** A *All · Rings · Charms* filter (`galleryShown`) on the gallery page and dialog, and a
+  "Charm" badge on charm tiles. The homepage showcase and its gallery strip are unchanged.
+- **Copy.** The FAQ (what you can create, price, sizes) and the Terms service sentence name rings and charms only
+  while products are offered.
+- **Admin preview.** A small fixed indicator ("Admin preview · charms are hidden from customers") on tablet and
+  desktop, and a line in the product choice on a phone, while `catalog.products.preview` is true.
+- **Tests:** `tests/test_charm_customer.py`. It checks:
+  - ring-only answers while hidden, and the product fields in Admin preview;
+  - a customer holding charms keeps them after charms are hidden;
+  - the page wiring.
+
+  Two phase 1 tests now expect the ring-only answers while hidden.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):
