@@ -153,6 +153,17 @@ async def test_the_ring_3d_path_is_unchanged_beside_a_charm(H3):
     # A ring size for a charm, a charm size for a ring: refused
     assert (await H.Client.post(f"/api/admin/sessions/{Ring['design_id']}/3d", json={"production_size": 22.5},
                                 headers=Admin)).json()["error"]["code"] == "invalid_ring_size"
+    # The session pipeline names the 3D size in each product's own unit
+    RingSteps = [S["text"] for S in (await Session(H, Ring["design_id"]))["pipeline"]["steps"] if S["kind"] == "3d"]
+    CharmSteps = [S["text"] for S in (await Session(H, B["design_id"]))["pipeline"]["steps"] if S["kind"] == "3d"]
+    assert (RingSteps, CharmSteps) == (["US 10"], ["25 mm"])
+    # … and so do the Admin's 3D viewer title and journey / activity lines (a ring reads "US 10" as before)
+    Js = (await H.Client.get("/static/admin.js")).text
+    assert "(t.size_label || 'US ' + t.production_size)" in Js
+    assert Js.count("d.charm_size != null && d.charm_size + ' mm'") == 2
+    assert "d.production_size && (charm ? d.production_size + ' mm' : 'US ' + d.production_size)" in Js
+    Page = (await H.Client.get("/admin/")).text
+    assert "stepText({ kind: e.kind, data: e.data, product_type: e.product_type })" in Page
 
 
 async def test_an_ordered_charm_line_gets_its_3d_at_the_ordered_size(H3):

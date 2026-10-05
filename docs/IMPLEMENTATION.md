@@ -452,6 +452,10 @@ implementation of before is the reference: its tests are unchanged and must keep
   - that ring and charm items both open as their product, and the filter and charms-hidden behaviour;
   - that the homepage showcase is unchanged (a hash of its markup).
 
+**Admin: a charm's size in millimetres everywhere (2026-10-05).** Found in the paid charm run on proto (C-1005). The
+session pipeline's 3D step, the 3D viewer's title, and the journey and Dashboard activity lines read "20 mm" for a
+charm (they read "US 20" before). Rings read as before. Tested in `tests/test_charm_3d.py`.
+
 **Phase 5 — the customer experience** (`web/app.js`, `web/index.html`; `web/products.js` for the icons).
 
 - **Gating.** Everything below is shown only while the catalog has its `products` block (`productsOn`), that is,

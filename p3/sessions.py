@@ -23,6 +23,7 @@ from p3 import charmprices as CharmPrices
 from p3 import ringids as RingIds
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
+from p3.products import CharmSizeLabel
 
 IdleMinutes = 30
 
@@ -429,7 +430,8 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str 
     × the list price for that request's parameters (Prices.Estimate). Owner = whose journey: on a
     shared master design a customer's pipeline holds only the movies they asked for (and the 3D)."""
     Db = Ctx.Db
-    DesignOwner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (DesignId,))["owner_account_id"]
+    Design = Db.One("SELECT owner_account_id, product_type FROM designs WHERE id = ?", (DesignId,))
+    DesignOwner, Charm = Design["owner_account_id"], Design["product_type"] == "charm"
     Owner = Owner or DesignOwner
     Shared = Owner != DesignOwner
     ByRef = defaultdict(list)
@@ -488,7 +490,8 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str 
         Reused = T["mesh_id"] in SeenMeshes          # an earlier 3D request already paid for this Hi3D model
         SeenMeshes.add(T["mesh_id"])
         Steps.append({
-            "kind": "3d", "label": "3D (Hi3D + measurement)", "endpoint": T["endpoint"], "text": f"US {T['production_size']:g}",
+            "kind": "3d", "label": "3D (Hi3D + measurement)", "endpoint": T["endpoint"],
+            "text": CharmSizeLabel(T["production_size"]) if Charm else f"US {T['production_size']:g}",   # a charm: "20 mm"
             "started_at": T["created_at"], "finished_at": T["updated_at"] if Done else None,
             "duration_s": _Seconds(T["created_at"], T["updated_at"]) if Done else None, "status": T["status"],
             "detail": "reused existing Hi3D model — only re-measured" if Reused else f"{Params.get('resolution', '2048quality')}",

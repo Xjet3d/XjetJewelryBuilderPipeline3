@@ -659,7 +659,7 @@
             <td><span class="badge" :class="(EVENTS[e.kind] || ['', 'bg-zinc-100'])[1]" x-text="(EVENTS[e.kind] || [e.kind])[0]"></span></td>
             <td><a class="hover:underline" :href="'#/sessions/' + encodeURIComponent(e.design_id)"><span x-text="e.title"></span> <span class="font-mono text-zinc-500" x-text="e.ring_id || ''"></span></a></td>
             <td class="text-zinc-500" x-text="e.by || '—'"></td>
-            <td class="text-zinc-600" x-text="stepText({ kind: e.kind, data: e.data })"></td>
+            <td class="text-zinc-600" x-text="stepText({ kind: e.kind, data: e.data, product_type: e.product_type })"></td>
           </tr></template></tbody>
         </table>
       </section>

@@ -1228,7 +1228,7 @@ function adminApp() {
       if (!window.THREE || !THREE.STLLoader || !THREE.OrbitControls) { this.viewer3d.error = '3D viewer library not loaded'; return; }
       this.clear3d();
       const renderer = this.glRenderer();                // null when the browser cannot start WebGL
-      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + 'US ' + t.production_size + ' · ' + t.material_label, loading: true, error: '',
+      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + (t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label, loading: true, error: '',
                         note: renderer ? '' : 'Basic 3D view (WebGL is off in this browser) · drag to rotate' };
       try {
         const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: this.authHeaders() });   // light, visual only
@@ -1357,9 +1357,10 @@ function adminApp() {
       const d = e.data || {};
       if (e.text) return e.text;
       if (e.kind === 'customization_changed' || e.kind === 'customize_opened')
-        return [d.material_id && this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size,
+        return [d.material_id && this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.charm_size != null && d.charm_size + ' mm',
                 d.quantity && d.quantity > 1 && '×' + d.quantity, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
-      if (e.kind === 'bag_added') return [this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
+      if (e.kind === 'bag_added') return [this.materialLabel(d.material_id), d.ring_size != null && 'US ' + d.ring_size, d.charm_size != null && d.charm_size + ' mm',
+                                          d.unit_price != null && '$' + Number(d.unit_price).toFixed(2)].filter(Boolean).join(' · ');
       if (e.kind === 'gallery_started') return 'Linked to the shared design ' + (d.source_ring_id || '') + ' — nothing generated or charged';
       if (e.kind === 'gallery_reopened') return 'Opened the shared design again';
       if (e.kind === 'legacy_copy_merged') return `${d.copy_ring_id || ''} (${d.copy_title || ''}) — a copy of this ring from before shared designs — was merged into ${d.master_ring_id || 'this ring'}` + (d.orders && d.orders.length ? '; orders ' + d.orders.join(', ') : '') + (d.by ? ` (${d.by})` : '');
@@ -1371,7 +1372,9 @@ function adminApp() {
       }
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
-      if (e.kind.startsWith('admin_3d')) return [d.production_size && 'US ' + d.production_size, d.material_id && this.materialLabel(d.material_id),
+      // The size in the product's own unit: the row's product (Dashboard activity), else the open session's
+      const charm = e.product_type ? e.product_type === 'charm' : this.isCharm(this.sd?.session);
+      if (e.kind.startsWith('admin_3d')) return [d.production_size && (charm ? d.production_size + ' mm' : 'US ' + d.production_size), d.material_id && this.materialLabel(d.material_id),
                 d.reused_raw_mesh && 'reused Hi3D model', d.status, d.weight_g != null && d.weight_g + ' g'].filter(Boolean).join(' · ');
       return '';
     },
