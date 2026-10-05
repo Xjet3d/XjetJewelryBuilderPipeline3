@@ -182,6 +182,8 @@ function adminApp() {
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
     get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
+    mProduct: 'ring',                              // AI models & prompts: which product's configuration is shown (Ring | Charm)
+    products: null, productsMsg: '', productsErr: false, productsBusy: false, showConfirm: '', productsNote: '',
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
@@ -282,7 +284,7 @@ function adminApp() {
       let id = m && m[2] ? decodeURIComponent(m[2]) : '';
       if (this.tab === 'settings') {
         const parts = id.split('/');
-        this.sub = ['pricing', 'promos', 'models', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
+        this.sub = ['pricing', 'promos', 'models', 'products', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
         id = parts.slice(1).join('/');
       }
       const wasList = this.tab === 'sessions' && !this.sessionId;
@@ -307,6 +309,7 @@ function adminApp() {
       if (this.tab === 'settings') {
         if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
         if (this.sub === 'promos') await this.loadPromos();
+        if (this.sub === 'products') await this.loadProducts();
         if (this.sub === 'system') {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
           this.health = await fetch(BASE + '/api/health').then(r => r.json()).catch(() => null);
@@ -340,6 +343,22 @@ function adminApp() {
                            refunded: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-zinc-100 text-zinc-500' }[s] || 'bg-zinc-100 text-zinc-600'; },
     addrClass(s) { return { verified: 'bg-emerald-100 text-emerald-800', corrected: 'bg-sky-100 text-sky-800', failed: 'bg-red-100 text-red-700',
                             unverified: 'bg-zinc-100 text-zinc-600' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    // ── Settings → Products: customer availability of charms ──
+    async loadProducts() {
+      this.productsMsg = ''; this.productsErr = false;
+      try { this.products = await this.api('GET', '/api/admin/products'); } catch (e) { this.productsErr = true; this.productsMsg = e.message; }
+    },
+    async setCharmsAvailable(on) {
+      if (!on && !await this.ask({ title: 'Hide charms from customers?', text: 'Customers will see the ring-only site again: no product choice, no charm text, no charm tiles. Charm designs, orders and settings are kept, and a browser signed in to the Admin still previews them.', confirmLabel: 'Hide charms' })) return;
+      this.productsBusy = true; this.productsMsg = ''; this.productsErr = false;
+      try {
+        this.products = await this.api('PUT', '/api/admin/products/availability', { charms_available: on, confirm: this.showConfirm, note: this.productsNote });
+        this.showConfirm = ''; this.productsNote = '';
+        this.productsMsg = on ? 'Charms are now available to customers.' : 'Charms are hidden from customers.';
+        this.notify(this.productsMsg);
+      } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
+    },
+
     // ── rings and charms: one icon set (web/products.js), the size as people read it ──
     pIcon(p, cls) { return window.P3Products ? window.P3Products.icon(p || 'ring', cls) : ''; },
     pLabel(p) { return window.P3Products ? window.P3Products.label(p) : 'Ring'; },
@@ -906,12 +925,20 @@ function adminApp() {
       this.mprices = await this.api('GET', '/api/admin/material-prices').catch(() => null);
       const r = await this.api('GET', '/api/admin/models');
       this.models = r.models; this.runtimePlaceholders = r.runtime_placeholders;
-      const want = id || this.mid || this.models[0].model.id;
+      const want = id || this.mid || (this.models.find(m => (m.model.product || 'ring') === this.mProduct) || this.models[0]).model.id;
       if (want !== this.mid || !this.mc || !this.dirty) await this.selectModel(want);
     },
     modelHash(id) { return '#/settings/models/' + id; },
+    // Ring | Charm: the configuration being edited. Each product has its own models, versions and history.
+    get modelsShown() { return this.models.filter(m => (m.model.product || 'ring') === this.mProduct); },
+    chooseConfigProduct(p) {
+      if (p === this.mProduct) return;
+      const first = this.models.find(m => (m.model.product || 'ring') === p);
+      if (first) this.go(this.modelHash(first.model.id));       // the unsaved-changes guard in route() still applies
+    },
     async selectModel(id) {
       this.mc = await this.api('GET', '/api/admin/models/' + encodeURIComponent(id));
+      this.mProduct = this.mc.model.product || 'ring';
       this.mid = id; this.note = ''; this.mProblems = []; this.mMessage = ''; this.preview = null;
       this.draft = this.draftFrom(this.mc.active.params);
       this.dirty = false;
@@ -1097,10 +1124,11 @@ function adminApp() {
     },
     num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },
     async exportModels(model, fmt) {
-      const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}`, { headers: this.authHeaders() });
+      const product = model === 'all' ? this.mProduct : '';
+      const r = await fetch(BASE + `/api/admin/models/export?model=${encodeURIComponent(model)}&format=${fmt}` + (product ? `&product=${product}` : ''), { headers: this.authHeaders() });
       if (!r.ok) { this.notify('Export failed (' + r.status + ')', 'error'); return; }
       const url = URL.createObjectURL(await r.blob());
-      const a = Object.assign(document.createElement('a'), { href: url, download: `p3-ai-config-${model}.${fmt}` });
+      const a = Object.assign(document.createElement('a'), { href: url, download: `p3-ai-config-${model}${product && product !== 'ring' ? '-' + product : ''}.${fmt}` });
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 

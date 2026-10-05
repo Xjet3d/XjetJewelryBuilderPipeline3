@@ -21,7 +21,7 @@ from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import NameForPrompt, NameForVariation
 from p3.providers import endpoints
-from p3.modelconfig import BuildRequest, ByEndpoint, Render, SlotDirective, WithDirective
+from p3.modelconfig import BuildRequest, Render, SlotDirective, WithDirective
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.images")
@@ -79,7 +79,7 @@ class ImageService:
         if ReferencePng is not None:
             RefPath = f"designs/{DesignId}/references/{BatchId}.png"
             assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
-        Title = NameForPrompt(Db, Prompt)                       # "Fil Twist": local rules, never another ring's name
+        Title = NameForPrompt(Db, Prompt, Product)              # "Fil Twist": local rules, never another design's name
         with Db.Transaction() as Conn:
             T = Now()
             Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
@@ -124,7 +124,7 @@ class ImageService:
         BatchId = NewId("bat")
         Target = NewId("dsg") if Fork else DesignId
         # The fork keeps its lineage in its name ("Fil Twist" -> "Fil Lattice"), never the master's own name
-        ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"]) if Fork else None
+        ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"], D.get("product_type") or Products.Ring) if Fork else None
         with Db.Transaction() as Conn:
             T = Now()
             if Fork:
@@ -180,8 +180,8 @@ class ImageService:
         Endpoint = endpoints.ImageEdit if RefPath else endpoints.ImageGenerate
         # The active admin configuration for this endpoint; its version is recorded on the batch so
         # all four requests use it even if a newer version is activated before they are submitted.
-        Version = self.Ctx.Models.ActiveFor(Endpoint)
-        DesignPrompt = Conn.execute("SELECT prompt FROM designs WHERE id = ?", (DesignId,)).fetchone()[0]
+        DesignPrompt, Product = Conn.execute("SELECT prompt, product_type FROM designs WHERE id = ?", (DesignId,)).fetchone()
+        Version = self.Ctx.Models.ActiveFor(Endpoint, Product or Products.Ring)     # a charm never uses a ring configuration
         Effective = Render(Version.Params["prompt"], {"user_text": UserText, "design_prompt": DesignPrompt})
         T = Now()
         Conn.execute(
@@ -274,7 +274,7 @@ class ImageService:
             Runtime["slot"] = Cand["slot"]            # refinement images A–D each get their own variation directive
         if Batch["reference_asset"]:
             Runtime["image_url"] = await self._ReferenceUrl(Batch)
-        ModelId = ByEndpoint[Batch["endpoint"]]
+        ModelId = Version.Model                      # the model of the recorded version (a ring or a charm model)
         Params = {K: V for K, V in Version.Params.items() if K != "prompt"}
         Args = BuildRequest(ModelId, Params, Runtime)
         # The shared prompt rendered when the batch was created, plus this image's directive (if configured)

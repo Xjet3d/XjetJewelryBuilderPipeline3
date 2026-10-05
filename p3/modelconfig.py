@@ -36,6 +36,7 @@ RuntimeInputs = {
     "user_prompt": "The customer's prompt (any-llm).",
 }
 
+CharmSampleText = "A small crescent moon charm with a tiny star in its curve"
 SampleRuntime = {
     "user_text": "[SAMPLE customer text] A slim rose-gold band with a small leaf motif",
     "design_prompt": "[SAMPLE design prompt] A slim rose-gold band with a small leaf motif",
@@ -91,6 +92,7 @@ class ModelSpec:
     Params: tuple
     Fixed: tuple = ()
     Notes: tuple = ()
+    Product: str = "ring"          # the product this configuration is for: 'ring' or 'charm' (never both)
 
     def Param(self, Name: str) -> Param | None:
         return next((P for P in self.Params if P.Name == Name), None)
@@ -99,7 +101,7 @@ class ModelSpec:
         return {"id": self.Id, "label": self.Label, "endpoint": self.Endpoint, "used_for": self.UsedFor,
                 "connected": self.Connected, "params": [P.ToJson() for P in self.Params],
                 "fixed": [{"name": F.Name, "description": F.Description, "value": F.Value, "runtime": F.Runtime}
-                          for F in self.Fixed], "notes": list(self.Notes)}
+                          for F in self.Fixed], "notes": list(self.Notes), "product": self.Product}
 
 
 AspectRatios = ("auto", "21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16")
@@ -177,6 +179,30 @@ _VariationParams = tuple(
           Internal=True, Group=VariationGroup)
     for K in "abcd")
 
+# The same four directives for a charm, in charm words (the plain loop at the top always stays).
+CharmVariationDefaults = {
+    "a": "Image A of four — the faithful version. Apply the requested change exactly and nothing else: every other "
+         "detail, proportion, finish, the metal and the plain loop at the top stay identical to the reference image.",
+    "b": "Image B of four — the extreme version. " + _Override +
+         "Push the requested change as far as it can go: at least three times stronger than a minimal edit, so that it "
+         "dominates the design and is obvious at first glance. Other parts of the charm may change where the extreme "
+         "version demands it; the charm stays wearable, the metal stays the same and the plain loop stays at the top center.",
+    "c": "Image C of four — the reinterpretation. " + _Override +
+         "Rebuild the charm around the requested change with clearly different proportions and placement: move it, "
+         "scale it up or down dramatically, repeat it, or let it take over the whole charm body, so that the silhouette "
+         "itself changes. Keep only the metal, the plain loop at the top center and the fact that it is a charm.",
+    "d": "Image D of four — the free variant. " + _Override +
+         "Treat the requested change as the brief for a new charm in the same family: choose a different shape, "
+         "finish, texture and detailing that express the change boldly. It may look completely different from the "
+         "reference image; only the metal and the plain loop at the top center must stay the same.",
+}
+CharmVariationLabels = {**VariationLabels, "d": "Image D — the free variant: a different charm in the same family, may be completely different."}
+_CharmVariationParams = tuple(
+    Param(f"variation_{K}", "text", CharmVariationLabels[K] + " Appended to the end of this image's prompt in a refinement. "
+          "Blank = no directive for this image (same prompt as before).", Default=CharmVariationDefaults[K], MaxLength=2000,
+          Internal=True, Group=VariationGroup)
+    for K in "abcd")
+
 
 def SlotDirective(ModelId: str, Params: dict, Slot) -> str | None:
     """The configured variation directive for image `Slot` (0–3 → A–D) of this model, or None."""
@@ -198,6 +224,43 @@ _ImageFixed = (
           Runtime="seed"),
     Fixed("sync_mode", "Not sent (provider default false): the pipeline downloads the result from its URL."),
 )
+
+# Movie and 3D parameters: one definition, shared by the ring and the charm model of each
+_MovieParams = (
+    Param("prompt", "text", "Video prompt. When omitted or blank the provider uses its frozen-scene, "
+          "camera-only default prompt.", Default="The same elements in the reference are rigid. Preserve every "
+          "element exactly. The entire scene is frozen. Only the camera moves. no scene motion only camera motion",
+          MaxLength=50000),
+    Param("prompt_expansion_mode", "enum", "How much the provider rewrites the prompt first: 'disabled' skips it, "
+          "'balanced' takes about a second, 'quality' up to ~30 s.", Default="balanced",
+          Enum=("disabled", "balanced", "quality"), Required=True),
+    Param("duration", "int", "Video length in seconds.", Default=5, Min=3, Max=15),
+    Param("resolution", "enum", "Native generation resolution, or 1080P refinement from a native 768P source.",
+          Default="480P", Enum=("480P", "768P", "1080P")),
+    Param("camera_trajectory", "keyframes", "Ordered camera keyframes (2–12). time 0–1 is the normalized "
+          "point in the clip, azimuth the horizontal angle (degrees, may exceed 360 for full turns), elevation "
+          "−90…90°, distance > 0 in scene units. The first pose is held before its time and the last pose to "
+          "the end; at most 32 turns of total azimuth travel.", Min=2, Max=12),
+    Param("seed", "int", "Random seed. Omit for a random seed per movie.", Min=0),
+    Param("enable_safety_checker", "bool", "Run the provider's safety checker.", Default=True),
+)
+_MovieFixed = (Fixed("image_url", "The customer's selected final image (first frame).", Runtime="image_url"),
+               Fixed("sync_mode", "Not sent (provider default false): the pipeline downloads the video from its URL."))
+_MeshParams = (
+    Param("resolution", "enum", "2048quality is faster; 2048master gives the highest quality.",
+          Default="2048quality", Enum=("2048quality", "2048master")),
+    Param("face_count", "int", "Target face count (partner recommends 2,000,000 for 2048quality and "
+          "5,000,000 for 2048master). Omit to let the provider decide.", Min=100_000, Max=5_000_000),
+    Param("export_format", "enum", "File format of the model.", Default="glb",
+          Enum=("glb", "obj", "stl", "fbx", "usdz"), Allowed=("glb", "obj", "stl"),
+          AllowedReason="The geometry measurement (volume, inner diameter) can read GLB, OBJ and STL only."),
+    Param("enable_texture", "bool", "Generate textures as well as geometry (billed).", Default=True),
+    Param("enable_pbr", "bool", "Generate PBR material maps with the texture (billed).", Default=True),
+    Param("shading", "number", "De-shading strength.", Default=0.5, Min=0, Max=1),
+    Param("enable_safety_checker", "bool", "Check the input image for safety first.", Default=True),
+)
+_MeshFixed = (Fixed("image_url", "The session's selected design image.", Runtime="image_url"),
+              Fixed("model", "Fixed by the endpoint (Hi3D v3.0); not sent.", None))
 
 Models: dict[str, ModelSpec] = {S.Id: S for S in (
     ModelSpec(
@@ -241,47 +304,47 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
     ModelSpec(
         "minimax-camera", "minimax/h3-max/camera-controls", endpoints.Movie,
         "The 360° movie in Customize, made from the customer's selected final image.", True,
-        (
-            Param("prompt", "text", "Video prompt. When omitted or blank the provider uses its frozen-scene, "
-                  "camera-only default prompt.", Default="The same elements in the reference are rigid. Preserve every "
-                  "element exactly. The entire scene is frozen. Only the camera moves. no scene motion only camera motion",
-                  MaxLength=50000),
-            Param("prompt_expansion_mode", "enum", "How much the provider rewrites the prompt first: 'disabled' skips it, "
-                  "'balanced' takes about a second, 'quality' up to ~30 s.", Default="balanced",
-                  Enum=("disabled", "balanced", "quality"), Required=True),
-            Param("duration", "int", "Video length in seconds.", Default=5, Min=3, Max=15),
-            Param("resolution", "enum", "Native generation resolution, or 1080P refinement from a native 768P source.",
-                  Default="480P", Enum=("480P", "768P", "1080P")),
-            Param("camera_trajectory", "keyframes", "Ordered camera keyframes (2–12). time 0–1 is the normalized "
-                  "point in the clip, azimuth the horizontal angle (degrees, may exceed 360 for full turns), elevation "
-                  "−90…90°, distance > 0 in scene units. The first pose is held before its time and the last pose to "
-                  "the end; at most 32 turns of total azimuth travel.", Min=2, Max=12),
-            Param("seed", "int", "Random seed. Omit for a random seed per movie.", Min=0),
-            Param("enable_safety_checker", "bool", "Run the provider's safety checker.", Default=True),
-        ),
-        (Fixed("image_url", "The customer's selected final image (first frame).", Runtime="image_url"),
-         Fixed("sync_mode", "Not sent (provider default false): the pipeline downloads the video from its URL."))),
+        _MovieParams,
+        _MovieFixed),
     ModelSpec(
         "hi3d", "hitem3d/hi3d/v3.0/image-to-3d", endpoints.Mesh,
         "3D model generation — only when an admin starts Generate 3D (Sessions) or uses the developer mesh tool.", True,
-        (
-            Param("resolution", "enum", "2048quality is faster; 2048master gives the highest quality.",
-                  Default="2048quality", Enum=("2048quality", "2048master")),
-            Param("face_count", "int", "Target face count (partner recommends 2,000,000 for 2048quality and "
-                  "5,000,000 for 2048master). Omit to let the provider decide.", Min=100_000, Max=5_000_000),
-            Param("export_format", "enum", "File format of the model.", Default="glb",
-                  Enum=("glb", "obj", "stl", "fbx", "usdz"), Allowed=("glb", "obj", "stl"),
-                  AllowedReason="The geometry measurement (volume, inner diameter) can read GLB, OBJ and STL only."),
-            Param("enable_texture", "bool", "Generate textures as well as geometry (billed).", Default=True),
-            Param("enable_pbr", "bool", "Generate PBR material maps with the texture (billed).", Default=True),
-            Param("shading", "number", "De-shading strength.", Default=0.5, Min=0, Max=1),
-            Param("enable_safety_checker", "bool", "Check the input image for safety first.", Default=True),
-        ),
-        (Fixed("image_url", "The session's selected design image.", Runtime="image_url"),
-         Fixed("model", "Fixed by the endpoint (Hi3D v3.0); not sent.", None))),
+        _MeshParams,
+        _MeshFixed),
+    # ── Charms: their own models, versions and history — the same providers, never the ring configuration ──
+    ModelSpec(
+        "nano-banana-pro-charm", "fal-ai/nano-banana-pro · Charm", endpoints.ImageGenerate,
+        "Charm design images for a New Design without a reference image (four separate requests, one image each).", True,
+        _ImageParams("1:1"), _ImageFixed, Product="charm"),
+    ModelSpec(
+        "nano-banana-pro-edit-charm", "fal-ai/nano-banana-pro/edit · Charm", endpoints.ImageEdit,
+        "Charm refinements (from the selected image) and new Charm designs from an uploaded reference image (four "
+        "separate requests, one image each).", True,
+        _ImageParams("auto") + _CharmVariationParams,
+        _ImageFixed + (Fixed("image_urls", "The image being edited: the selected charm image for a refinement, or the "
+                                           "customer's uploaded reference image.", Runtime="image_url"),), Product="charm"),
+    ModelSpec(
+        "minimax-camera-charm", "minimax/h3-max/camera-controls · Charm", endpoints.Movie,
+        "The 360° movie of a charm in Customize, made from the customer's selected final image.", True,
+        _MovieParams, _MovieFixed, Product="charm"),
+    ModelSpec(
+        "hi3d-charm", "hitem3d/hi3d/v3.0/image-to-3d · Charm", endpoints.Mesh,
+        "3D model generation for a charm — only when an admin starts Generate 3D (Sessions).", True,
+        _MeshParams, _MeshFixed, Product="charm"),
 )}
 
-ByEndpoint = {S.Endpoint: S.Id for S in Models.values()}
+# Ring models by endpoint — exactly the mapping of before (callers that know no product are ring callers)
+ByEndpoint = {S.Endpoint: S.Id for S in Models.values() if S.Product == "ring"}
+# Every model by (endpoint, product)
+ModelFor = {(S.Endpoint, S.Product): S.Id for S in Models.values()}
+
+
+def ModelIdFor(Endpoint: str, Product: str = "ring") -> str:
+    return ModelFor[(Endpoint, Product or "ring")]
+
+
+def ProductOf(ModelId: str) -> str:
+    return Models[ModelId].Product
 
 
 class ConfigError(ValueError):
@@ -456,6 +519,30 @@ def SeedConfigs() -> dict[str, dict]:
             "minimax-camera": Movie, "hi3d": Mesh}
 
 
+PromptKeys = ("prompt", "system_prompt")
+
+
+def CharmSeed(ModelId: str, RingParams: dict) -> dict:
+    """Version 1 of a charm model: the provider settings of the ring model's active version (so the charm starts from
+    what is tuned and running for rings) with the charm's own prompts — never a reference to a ring version."""
+    Raw = json.loads((ConfigDir / "generation.json").read_text(encoding="utf-8"))["charm"]
+    Keep = {K: V for K, V in RingParams.items() if K not in PromptKeys and not K.startswith("variation_")}
+    if ModelId in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm"):
+        Template = "{{user_text}}\n\n" + _ReadText(Raw["prompt_suffix_file"])
+        System = _ReadText(Raw["generate_system_prompt_file" if ModelId == "nano-banana-pro-charm" else "edit_system_prompt_file"])
+        Out = {**Keep, "prompt": Template, "system_prompt": System}
+        if ModelId == "nano-banana-pro-edit-charm":
+            Out.update({f"variation_{K}": V for K, V in CharmVariationDefaults.items()})
+        return Out
+    if ModelId == "minimax-camera-charm":
+        return {**Keep, "prompt": _ReadText(Raw["movie_prompt_file"])}
+    return dict(RingParams)                                    # hi3d-charm: the same 3D settings as rings
+
+
+RingCounterpart = {"nano-banana-pro-charm": "nano-banana-pro", "nano-banana-pro-edit-charm": "nano-banana-pro-edit",
+                   "minimax-camera-charm": "minimax-camera", "hi3d-charm": "hi3d"}
+
+
 Schema = """
 CREATE TABLE IF NOT EXISTS model_config_versions (
     id           TEXT PRIMARY KEY,          -- "<model>@v<n>-<hash8>"
@@ -510,18 +597,35 @@ class ModelConfigStore:
         for ModelId in Models:
             if self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
                 continue
+            if Models[ModelId].Product != "ring":
+                continue                                       # charms are seeded after the rings (from their active versions)
             Seeds, Aliases = Seeds or SeedConfigs(), Aliases or LegacyAliases()
             Clean = Validate(ModelId, Seeds[ModelId])
             V = self._Insert(ModelId, Clean, "seed", "Initial version from config/generation.json and config/prompts")
             self.Db.Execute("UPDATE model_config_versions SET legacy_alias = ? WHERE id = ?", (Aliases.get(ModelId), V.Id))
             self._Activate(ModelId, V.Id, "seed")
         self._SeedInternalDefaults()
+        self._SeedCharms()
+
+    def _SeedCharms(self) -> None:
+        """Charm models without a version get version 1: the ring model's active provider settings + the charm prompts.
+        Nothing about the ring models changes."""
+        for ModelId, Spec in Models.items():
+            if Spec.Product != "charm" or self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
+                continue
+            Ring = self.Active(RingCounterpart[ModelId])
+            V = self._Insert(ModelId, Validate(ModelId, CharmSeed(ModelId, Ring.Params)), "seed",
+                             f"Initial Charm version: provider settings from the Ring configuration v{Ring.Number}, "
+                             "Charm prompts from config/prompts/charm_*")
+            self._Activate(ModelId, V.Id, "seed")
 
     def _SeedInternalDefaults(self) -> None:
         """Pipeline-only parameters that arrived after a model was first configured (the refinement variation
         directives) are added once, as a new visible version with their default texts, so the Admin can see,
         edit or blank them. Never repeated: once any version of the model carries them, nothing is added."""
         for ModelId, Spec in Models.items():
+            if Spec.Product != "ring":
+                continue                    # a charm model is seeded with its directives (_SeedCharms)
             Internal = [P for P in Spec.Params if P.Internal and P.Default is not None]
             if not Internal:
                 continue
@@ -592,8 +696,9 @@ class ModelConfigStore:
                 Out += [R["id"]] + ([R["legacy_alias"]] if R["legacy_alias"] else [])
         return Out
 
-    def ActiveFor(self, Endpoint: str) -> Version:
-        return self.Active(ByEndpoint[Endpoint])
+    def ActiveFor(self, Endpoint: str, Product: str = "ring") -> Version:
+        """The active configuration of this endpoint for this product (rings by default, as before)."""
+        return self.Active(ModelIdFor(Endpoint, Product))
 
     def Supports(self, Product: str) -> bool:
         """Every pipeline endpoint (design images, refinement, movie, 3D) has a model for this product."""
@@ -602,13 +707,13 @@ class ModelConfigStore:
         return all(any(getattr(S, "Product", "ring") == Product and S.Endpoint == E for S in Models.values())
                    for E in (endpoints.ImageGenerate, endpoints.ImageEdit, endpoints.Movie, endpoints.Mesh))
 
-    def Resolve(self, Vid: str | None, Endpoint: str) -> Version:
+    def Resolve(self, Vid: str | None, Endpoint: str, Product: str = "ring") -> Version:
         """The version a request was created with. Requests created before versioned configs carry an
         old content hash; they get version 1 — exactly the settings the pipeline sent at the time."""
         V = self.Get(Vid) if Vid else None
         if V is not None:
             return V
-        Model = ByEndpoint[Endpoint]
+        Model = ModelIdFor(Endpoint, Product)
         R = self.Db.One("SELECT id FROM model_config_versions WHERE model = ? AND legacy_alias = ?", (Model, Vid or ""))
         if R:
             return self.Get(R["id"])
@@ -651,6 +756,9 @@ class ModelConfigStore:
         Spec = Models[ModelId]
         Clean = Validate(ModelId, Params) if Params is not None else self.Active(ModelId).Params
         Runtime = dict(SampleRuntime)
+        if Spec.Product == "charm":
+            Runtime.update({K: f"[SAMPLE {L}] {CharmSampleText}" for K, L in (("user_text", "customer text"),
+                            ("design_prompt", "design prompt"), ("user_prompt", "customer prompt"))})
         Letters = {K: SlotDirective(ModelId, Clean, I) for I, K in enumerate("ABCD")} if any(P.Internal for P in Spec.Params) else None
         return {"endpoint": Spec.Endpoint, "payload": BuildRequest(ModelId, Clean, Runtime),
                 "slot_directives": Letters,
@@ -663,7 +771,7 @@ class ModelConfigStore:
         Out = []
         for M in ModelIds:
             S = self.State(M)
-            Out.append({"model": M, "label": Models[M].Label, "endpoint": Models[M].Endpoint,
+            Out.append({"model": M, "label": Models[M].Label, "endpoint": Models[M].Endpoint, "product": Models[M].Product,
                         "connected_to_pipeline": Models[M].Connected, "version": S["active"]["id"],
                         "version_number": S["active"]["number"], "activated_at": S["activated_at"],
                         "activated_by": S["activated_by"], "parameters": S["active"]["params"],
@@ -679,7 +787,7 @@ def ExportText(Data: dict) -> str:
     Lines += ["Runtime placeholders (filled by the pipeline for every request):"]
     Lines += [f"  {{{{{K}}}}} — {V}" for K, V in Data["runtime_placeholders"].items()] + [""]
     for M in Data["models"]:
-        Lines += ["=" * 78, f"{M['label']}   ({M['endpoint']})",
+        Lines += ["=" * 78, f"{M['label']}   ({M['endpoint']}) — {(M.get('product') or 'ring').title()} configuration",
                   f"Version {M['version']} (v{M['version_number']}) — activated {M['activated_at']} by {M['activated_by']}",
                   "Connected to the P3 pipeline: " + ("yes" if M["connected_to_pipeline"] else "no"), "=" * 78]
         for K, V in M["parameters"].items():

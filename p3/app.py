@@ -308,7 +308,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
                 "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
-                                                                          "minimax-camera", "hi3d")}}
+                                                                          "minimax-camera", "hi3d")},
+                "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",
+                                                                                "minimax-camera-charm", "hi3d-charm")}}
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
@@ -375,8 +377,14 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId, *Seen(request))}
 
     @App_.get("/api/catalog")
-    async def CatalogRoute():
-        return Ctx.Catalog.ToJson()
+    async def CatalogRoute(request: Request):
+        Out = Ctx.Catalog.ToJson()
+        if Products.CharmsVisible(Ctx, request):
+            # Rings and charms: what the Design screen offers. Absent while charms are hidden — the ring-only site.
+            Out["products"] = {"available": list(Products.All), "default": Products.Default,
+                               "preview": not Ctx.Products.CharmsAvailable,      # an admin previewing hidden charms
+                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_definition": Products.CharmSizeDefinition}}
+        return JSONResponse(Out, headers={"Cache-Control": "no-store"})
 
     @App_.get("/api/quote")
     async def QuoteRoute(material_id: str, ring_size: float | None = None):

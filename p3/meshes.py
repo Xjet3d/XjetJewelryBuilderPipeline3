@@ -17,7 +17,8 @@ from p3.accounts import UsageMesh
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.providers import endpoints
-from p3.modelconfig import ConfigError, Validate
+from p3 import products as Products
+from p3.modelconfig import ConfigError, ModelIdFor, Validate
 from p3.runner import DownloadToFileWithRetry, DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.meshes")
@@ -49,14 +50,15 @@ class MeshService:
             raise HttpError(404, "candidate_not_found", "Candidate not found.")
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "Candidate image is not ready.")
-        Version = self.Ctx.Models.Active("hi3d")
+        Model = ModelIdFor(endpoints.Mesh, Products.OfCandidate(Db, CandidateId))     # hi3d for rings, hi3d-charm for charms
+        Version = self.Ctx.Models.Active(Model)
         Settings_ = dict(Version.Params)
         for Key, Value in (Overrides or {}).items():         # explicit per-request developer overrides
             if Key not in AllowedSettings or not AllowedSettings[Key](Value):
                 raise HttpError(400, "invalid_mesh_setting", f"Invalid mesh setting: {Key}")
             Settings_[Key] = Value
         try:
-            Settings_ = Validate("hi3d", Settings_)
+            Settings_ = Validate(Model, Settings_)
         except ConfigError as E:
             raise HttpError(400, "invalid_mesh_setting", str(E)) from E
         SettingsJson = Dumps(Settings_)

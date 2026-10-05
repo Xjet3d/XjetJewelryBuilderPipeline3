@@ -41,5 +41,12 @@
       "enable_texture": false,
       "enable_pbr": false
     }
+  },
+  "charm": {
+    "_comment": "Seeds of the Charm models, read once (when a charm model has no version yet). Provider settings are copied from the active Ring version at that moment; these prompts are the charm's own. Afterwards Admin → AI models & prompts → Charm is the source of truth.",
+    "generate_system_prompt_file": "prompts/charm_image_generate_system.txt",
+    "edit_system_prompt_file": "prompts/charm_image_edit_system.txt",
+    "prompt_suffix_file": "prompts/charm_image_suffix.txt",
+    "movie_prompt_file": "prompts/charm_movie_prompt.txt"
   }
 }

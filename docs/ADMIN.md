@@ -237,6 +237,29 @@ Until then the Cost column shows "—".
 | minimax camera | `minimax/h3-max/camera-controls` | The 360° movie (selected final image) |
 | hi3d | `hitem3d/hi3d/v3.0/image-to-3d` | Admin Generate 3D and the developer mesh tool |
 
+**Ring | Charm — the configuration being edited.** Above the model tabs, *Product configuration: Ring | Charm* chooses
+which product's configuration the page shows; only that product's models are listed. Each product has its own models,
+versions and history:
+
+| Product | Models |
+|---|---|
+| Ring | `any-llm`, `nano-banana-pro`, `nano-banana-pro-edit`, `minimax-camera`, `hi3d` (the table above, unchanged) |
+| Charm | `nano-banana-pro-charm`, `nano-banana-pro-edit-charm`, `minimax-camera-charm`, `hi3d-charm`: the same endpoints, their own versions |
+
+- Saving, activating or restoring a Charm version never changes a Ring prompt, parameter, version or active pointer, and
+  the reverse is also true. A version can only be restored into its own model (tested).
+- The pipeline picks the configuration from the design's product. A charm design, its refinements, its movie and its 3D
+  use the Charm models, and the batch, movie or mesh records the Charm version id.
+- **Charm version 1** copies the provider settings of the Ring model's active version at the moment the Charm models were
+  first created, with the Charm's own prompts (`config/prompts/charm_*.txt`, listed in `config/generation.json` →
+  `charm`) and its own four refinement directives. From then on the two are independent. `hi3d-charm` starts with the
+  Ring model's active 3D settings, unchanged.
+- *Preview request* for a Charm model uses a charm sample text. *Export all {Ring | Charm} models* exports only the
+  product being edited; the API is `GET /api/admin/models/export?product=charm`, and rings remain the default.
+- `/api/health` lists `config_versions` (Ring, unchanged) and `charm_config_versions`.
+- This selector is not the customer switch. Whether customers can see charms is set in **Settings → Products**.
+- Known inconsistencies in the Ring prompts are documented, not fixed, in `docs/RING-PROMPT-NOTES-2026-10-05.md`.
+
 **Source of truth.**
 - Every new request is built from the model's **active version**. The version id is recorded on the batch, movie or mesh (`config_version`).
 - A request created before an activation keeps its version, even if it is submitted afterwards.
@@ -277,6 +300,24 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 - **Movie reuse:** an existing movie is reused when its version has the same parameters as the active one. That includes movies made before versioning, through version 1's legacy alias. Changing movie settings means the next new movie request uses them. Customers who reopen Customize on an option get a new movie (charged as usual) only when its settings actually changed.
 
 **Export:** TXT (readable) or JSON (structured: model ids, endpoints, version ids and numbers, parameters, which parameters are omitted, and the pipeline-controlled fields), for one model or all. Configurations contain no API keys, and the export includes none.
+
+## Products — rings and charms (Settings → Products)
+
+**Code:** `p3/products.py`. **API:** `GET /api/admin/products` and `PUT /api/admin/products/availability`.
+
+- **Rings** are always available.
+- **Charms available to customers: ON / OFF.** It is OFF by default.
+  - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
+    share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the
+    product did not exist.
+  - **Admin preview:** a browser signed in to the Admin sees and can test charms on the customer site while they are
+    OFF.
+  - **Turning charms on** requires typing **SHOW CHARMS**, because it changes the public site. An optional note is kept.
+  - **Hiding them again** asks for confirmation. Charm designs, orders and settings are kept.
+  - Every change is logged with its date, the Admin who made it and the note.
+- **Charm sizes** are the heights of the main charm body, *excluding* the standard attachment loop. The definition is
+  kept in one place (`products.CharmSizeDefinition`). The starting sizes are 15, 20, 25 and 30 mm. The sizes are
+  settings, not code; their editor comes with Charm pricing.
 
 ## AI cost estimates (Sessions)
 

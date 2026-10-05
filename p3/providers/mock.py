@@ -54,6 +54,41 @@ def _RingImage(Seed: int, Label: str, Size: int = 512) -> bytes:
     return Buf.getvalue()
 
 
+def _CharmImage(Seed: int, Label: str, Size: int = 512) -> bytes:
+    """A placeholder charm: a body (disc, drop, heart-like or shield) under one plain round loop at the top center."""
+    H = hashlib.sha256(f"charm:{Seed}:{Label}".encode()).digest()
+    Img = Image.new("RGB", (Size, Size), (255, 255, 255))
+    D = ImageDraw.Draw(Img)
+    Metal = (150 + H[0] % 100, 130 + H[1] % 110, 90 + H[2] % 120)
+    Dark = tuple(max(0, C - 45) for C in Metal)
+    Cx, Top = Size // 2, 96
+    R = 26                                                     # the loop: always the same plain ring
+    D.ellipse([Cx - R, Top - R, Cx + R, Top + R], outline=Metal, width=11)
+    W, Hh = 112 + H[3] % 40, 150 + H[4] % 50                    # the body below it
+    Y0 = Top + R - 4
+    Shape = H[5] % 4
+    if Shape == 0:
+        D.ellipse([Cx - W, Y0, Cx + W, Y0 + 2 * W], fill=Metal)
+    elif Shape == 1:
+        D.polygon([(Cx, Y0), (Cx + W, Y0 + Hh * 0.55), (Cx, Y0 + Hh + 60), (Cx - W, Y0 + Hh * 0.55)], fill=Metal)
+    elif Shape == 2:
+        D.ellipse([Cx - W, Y0, Cx, Y0 + W], fill=Metal)
+        D.ellipse([Cx, Y0, Cx + W, Y0 + W], fill=Metal)
+        D.polygon([(Cx - W, Y0 + W // 2), (Cx + W, Y0 + W // 2), (Cx, Y0 + Hh + 40)], fill=Metal)
+    else:
+        D.polygon([(Cx - W, Y0), (Cx + W, Y0), (Cx + W, Y0 + Hh * 0.6), (Cx, Y0 + Hh + 30), (Cx - W, Y0 + Hh * 0.6)], fill=Metal)
+    D.ellipse([Cx - 22, Y0 + 70, Cx + 22, Y0 + 114], fill=Dark)   # a relief, so the four options differ
+    D.text((12, Size - 24), f"MOCK charm seed {Seed}", fill=(170, 170, 170))
+    Buf = io.BytesIO()
+    Img.save(Buf, format="PNG")
+    return Buf.getvalue()
+
+
+def _IsCharmRequest(Args: dict) -> bool:
+    """A charm configuration says so in its system prompt (the ring prompt never calls the piece a jewelry charm)."""
+    return "jewelry charm" in str(Args.get("system_prompt") or "").lower()
+
+
 _DuplicateImage = None
 
 
@@ -157,7 +192,8 @@ class MockProvider:
                     _DuplicateImage = _RingImage(0, "duplicate")
                 self.Files[Url] = _DuplicateImage
             else:
-                self.Files[Url] = _RingImage(int(Args.get("seed", 0)), Args["prompt"][:40])
+                Draw = _CharmImage if _IsCharmRequest(Args) else _RingImage
+                self.Files[Url] = Draw(int(Args.get("seed", 0)), Args["prompt"][:40])
             return {"images": [{"url": Url, "content_type": "image/png"}], "description": "mock"}
         if Endpoint == endpoints.Movie:
             Data = None

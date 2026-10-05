@@ -542,9 +542,10 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.patch("/api/admin/designs/{DesignId}")
     async def AdminRenameDesign(DesignId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        D = Ctx.Db.One("SELECT id, title, prompt, owner_account_id FROM designs WHERE id = ?", (DesignId,))
+        D = Ctx.Db.One("SELECT id, title, prompt, owner_account_id, product_type FROM designs WHERE id = ?", (DesignId,))
         if D is None:
             raise HttpError(404, "design_not_found", "Design not found.")
+        Product = D["product_type"] or "ring"
         Title = " ".join(str(Body_.get("title") or "").split())
         if not 2 <= len(Title) <= 60:
             raise HttpError(400, "invalid_title", "The name must be 2–60 characters.")
@@ -558,12 +559,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         # Variations that share the old family word follow the master: "Fil Lattice" under a master renamed
         # "Aurora Twist" becomes "Aurora Lattice" (a variation renamed by hand keeps its own name).
         Followed = []
-        OldFamily, NewFamily = Naming.FamilyOf(D["title"]).lower(), Naming.FamilyOf(Title).lower()
+        OldFamily, NewFamily = Naming.FamilyOf(D["title"], Product).lower(), Naming.FamilyOf(Title, Product).lower()
         if Body_.get("cascade", True) and OldFamily and NewFamily and OldFamily != NewFamily:
             for V in Ctx.Db.All("SELECT id, title, owner_account_id FROM designs WHERE source_design_id = ?", (DesignId,)):
-                if Naming.FamilyOf(V["title"]).lower() != OldFamily:
+                if Naming.FamilyOf(V["title"], Product).lower() != OldFamily:
                     continue
-                New = Naming.FollowRename(Ctx.Db, V["id"], V["title"], Title, _ForkInstruction(Ctx, V["id"]), D["prompt"])
+                New = Naming.FollowRename(Ctx.Db, V["id"], V["title"], Title, _ForkInstruction(Ctx, V["id"]), D["prompt"], Product)
                 if New == V["title"]:
                     continue
                 Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (New, Now(), V["id"]))
@@ -576,15 +577,17 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def AdminNameSuggestions(DesignId: str, authorization: str | None = Header(None)):
         """Free names for the Rename form: local rules on the design's own prompt, no AI call of any kind."""
         Admin(authorization)
-        D = Ctx.Db.One("SELECT id, title, prompt, source_design_id FROM designs WHERE id = ?", (DesignId,))
+        D = Ctx.Db.One("SELECT id, title, prompt, source_design_id, product_type FROM designs WHERE id = ?", (DesignId,))
         if D is None:
             raise HttpError(404, "design_not_found", "Design not found.")
+        Product = D["product_type"] or "ring"              # a charm gets charm names (no "Pendant", "Chain" …)
         Taken = Naming.TakenTitles(Ctx.Db)                 # the current name is not a suggestion
         Master = Ctx.Db.One("SELECT title FROM designs WHERE id = ?", (D["source_design_id"],)) if D["source_design_id"] else None
         if Master:
-            Names = Naming.Suggestions(D["prompt"], Taken, Lineage=Master["title"], Instruction=_ForkInstruction(Ctx, DesignId), N=8)
+            Names = Naming.Suggestions(D["prompt"], Taken, Lineage=Master["title"], Instruction=_ForkInstruction(Ctx, DesignId), N=8,
+                                       Product=Product)
         else:
-            Names = Naming.Suggestions(D["prompt"], Taken, N=8)
+            Names = Naming.Suggestions(D["prompt"], Taken, N=8, Product=Product)
         return {"id": DesignId, "title": D["title"], "suggestions": Names, "lineage": Master["title"] if Master else None}
 
     @App_.post("/api/admin/batches/{BatchId}/split")
@@ -784,11 +787,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 "runtime_placeholders": RuntimeInputs}
 
     @App_.get("/api/admin/models/export")
-    async def ExportModels(model: str = "all", format: str = "json", authorization: str | None = Header(None)):
+    async def ExportModels(model: str = "all", format: str = "json", product: str = "ring", authorization: str | None = Header(None)):
         Admin(authorization)
-        Ids = list(ModelSpecs) if model == "all" else [_Model(model)]
+        Product = Products.Normalize(product)            # "all" = every model of ONE product (rings by default, as before)
+        Ids = [M for M, S in ModelSpecs.items() if S.Product == Product] if model == "all" else [_Model(model)]
         Data = Ctx.Models.Export(Ids)                    # configurations only: no keys or credentials exist here
-        Name = f"p3-ai-config-{'all' if model == 'all' else model}"
+        Name = f"p3-ai-config-{'all' if model == 'all' else model}" + (f"-{Product}" if model == "all" and Product != "ring" else "")
         if format == "txt":
             return PlainTextResponse(ExportText(Data), headers={"Content-Disposition": f'attachment; filename="{Name}.txt"'})
         return JSONResponse(Data, headers={"Content-Disposition": f'attachment; filename="{Name}.json"'})
@@ -829,6 +833,33 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
         except ConfigError as E:
             return _Invalid(E)
+
+    # ── Products: rings and charms (customer availability of charms; charm sizes come with phase 3) ──
+    ShowCharmsConfirmation = "SHOW CHARMS"
+
+    def _ProductsState() -> dict:
+        return {**Ctx.Products.State(), "charm_configuration_ready": Ctx.Models.Supports(Products.Charm),
+                "show_confirmation": ShowCharmsConfirmation}
+
+    @App_.get("/api/admin/products")
+    async def AdminProducts(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _ProductsState()
+
+    @App_.put("/api/admin/products/availability")
+    async def SetCharmsAvailable(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """Charms available to customers: ON / OFF. Turning them on is typed out (it changes the public site)."""
+        Who = Admin(authorization)
+        On = Body_.get("charms_available")
+        if not isinstance(On, bool):
+            raise HttpError(400, "invalid_value", "charms_available must be true or false.")
+        if On and str(Body_.get("confirm") or "").strip() != ShowCharmsConfirmation:
+            raise HttpError(400, "confirmation_required", f"Type {ShowCharmsConfirmation} to show charms to customers.")
+        if On and not Ctx.Models.Supports(Products.Charm):
+            raise HttpError(409, "charm_configuration_missing", "The charm AI configuration is not ready.")
+        if On != Ctx.Products.CharmsAvailable:
+            Ctx.Products.Set("charms_available", On, Who.Id, str(Body_.get("note") or "")[:300])
+        return _ProductsState()
 
     # ── Inspiration Gallery: curated XJet designs shown on the customer site ──────
     @App_.get("/api/admin/gallery")

@@ -9,6 +9,11 @@ and a curated vocabulary only. Rules:
     before any number is ever appended;
   * a refinement keeps its lineage: the family word of its master plus a new descriptor
     ("Fil Twist" → "Fil Lattice"); the Admin's manual Rename stays the final override.
+
+Charms use the same rules and vocabulary (Product="charm"; rings are the default and are named exactly
+as before), plus their own: a charm's name never says what it is or how it hangs — no "Charm",
+"Pendant", "Chain", "Necklace", "Bail" or "Loop" — and the descriptors about how a ring sits on a
+finger ("Open", "Cuff", "Midi" …) are never offered for a charm.
 """
 
 import re
@@ -119,6 +124,23 @@ _Stop = set((
     "wearable comfortable unisex men women mens womens male female wedding engagement bridal anniversary gift "
     "thinner thicker smaller bigger larger wider").split()) | Forbidden
 
+# Charms: their framing words are never design words. In a charm prompt they describe what the piece is and
+# how it hangs ("a moon charm on a chain", "with a loop at the top"), so they are left out before matching.
+CharmForbidden = set("charm charms pendant pendants chain chains necklace necklaces bail bails jump loop loops "
+                     "bracelet bracelets".split())
+_CharmFraming = re.compile(r"\b(?:charms?|pendants?|chains?|necklaces?|bails?|jump\s*rings?|loops?|bracelets?)\b", re.I)
+# Descriptor groups about how a ring sits on the finger (named by their first word): never for a charm
+RingOnlyDescriptors = {"Open", "Midi"}
+
+
+def _Banned(Product: str) -> set[str]:
+    return Forbidden | CharmForbidden if Product == "charm" else Forbidden
+
+
+def _Framing(Text: str | None, Product: str) -> str | None:
+    """A charm text without its framing words ("a moon charm on a chain" → "a moon"); a ring text as it is."""
+    return _CharmFraming.sub(" ", Text) if Text and Product == "charm" else Text
+
 
 def _Hash(Text: str) -> int:
     H = 0
@@ -167,7 +189,7 @@ def FamilyWords(Prompt: str) -> list[str]:
     return Out + [F for F in _Rotate(FallbackFamilies, Prompt) if F not in Out]
 
 
-def DescriptorWords(Prompt: str, Exclude=frozenset()) -> list[str]:
+def DescriptorWords(Prompt: str, Exclude=frozenset(), Product: str = "ring") -> list[str]:
     """Descriptor candidates from the prompt's keywords, best group first, alternatives after. Every
     group that contains an excluded word (the family word itself, or the master's own descriptor) is left
     out: no "Coil Twist", no "Bold Mass", and a variation of "Fil Twist" is never "Fil Spiral"."""
@@ -177,13 +199,15 @@ def DescriptorWords(Prompt: str, Exclude=frozenset()) -> list[str]:
     for Pattern, Words in Descriptors:
         if not re.search(Pattern, Lower) or any(W.lower() in Ex for W in Words):
             continue
+        if Product == "charm" and Words[0] in RingOnlyDescriptors:
+            continue
         Out += [W for W in Words if W not in Out]
     return Out
 
 
-def _Ok(Name: str) -> bool:
-    Words = Name.split()
-    return 1 <= len(Words) <= 2 and not any(W.lower() in Forbidden for W in Words) and len({W.lower() for W in Words}) == len(Words)
+def _Ok(Name: str, Product: str = "ring") -> bool:
+    Words, Banned = Name.split(), _Banned(Product)
+    return 1 <= len(Words) <= 2 and not any(W.lower() in Banned for W in Words) and len({W.lower() for W in Words}) == len(Words)
 
 
 def _Fallbacks(Family: str, Seed: str) -> list[str]:
@@ -194,23 +218,24 @@ def _Fallbacks(Family: str, Seed: str) -> list[str]:
     return _Rotate(ShapeFallbacks + MoodFallbacks, Seed)
 
 
-def Candidates(Prompt: str, Lineage: str | None = None, Instruction: str | None = None):
+def Candidates(Prompt: str, Lineage: str | None = None, Instruction: str | None = None, Product: str = "ring"):
     """Every name to try, best first. Lineage = the master's name for a refinement: its family word is
     kept and a descriptor comes from the refinement instruction, then from the master's prompt."""
-    Prompt = Prompt or ""
+    Prompt = _Framing(Prompt or "", Product)
+    Instruction = _Framing(Instruction, Product)
     Seen = set()
 
     def Emit(Name):
-        if Name.lower() not in Seen and _Ok(Name):
+        if Name.lower() not in Seen and _Ok(Name, Product):
             Seen.add(Name.lower())
             yield Name
 
     if Lineage:
-        Words = [W for W in Lineage.split() if W.lower() not in Forbidden]
+        Words = [W for W in Lineage.split() if W.lower() not in _Banned(Product)]
         Family = _Clean(Words[0]) if Words else FamilyWords(Prompt)[0]
         Own = {Family} | set(Words[1:])
-        Descs = DescriptorWords(Instruction or "", Own)
-        Descs += [D for D in DescriptorWords(Prompt, Own) if D not in Descs]
+        Descs = DescriptorWords(Instruction or "", Own, Product)
+        Descs += [D for D in DescriptorWords(Prompt, Own, Product) if D not in Descs]
         for D in Descs:
             yield from Emit(f"{Family} {D}")
         for D in _Fallbacks(Family, Instruction or Prompt):
@@ -221,7 +246,7 @@ def Candidates(Prompt: str, Lineage: str | None = None, Instruction: str | None 
 
     Fams = FamilyWords(Prompt)
     Strong = [F for F in MatchedFamilies(Prompt) if F not in StyleFamilies]   # figures that stand alone
-    Descs = DescriptorWords(Prompt, {Fams[0]})
+    Descs = DescriptorWords(Prompt, {Fams[0]}, Product)
     Primary = Fams[:3]
     for F in Primary:                                    # keyword names: "Fil Twist", "Fil Spiral" …
         for D in Descs:
@@ -243,20 +268,22 @@ def Candidates(Prompt: str, Lineage: str | None = None, Instruction: str | None 
         yield from Emit(f"{Fams[0]} {N}")
 
 
-def RingName(Prompt: str, Taken=frozenset(), Lineage: str | None = None, Instruction: str | None = None) -> str:
-    """The first candidate no other design carries (case-insensitive)."""
+def RingName(Prompt: str, Taken=frozenset(), Lineage: str | None = None, Instruction: str | None = None,
+             Product: str = "ring") -> str:
+    """The first candidate no other design carries (case-insensitive) — of a ring, or of a charm."""
     TakenLower = {T.lower() for T in Taken}
-    for Name in Candidates(Prompt, Lineage, Instruction):
+    for Name in Candidates(Prompt, Lineage, Instruction, Product):
         if Name.lower() not in TakenLower:
             return Name
-    return f"{FamilyWords(Prompt)[0]} {len(TakenLower) + 1}"
+    return f"{FamilyWords(_Framing(Prompt, Product))[0]} {len(TakenLower) + 1}"
 
 
-def Suggestions(Prompt: str, Taken=frozenset(), Lineage: str | None = None, Instruction: str | None = None, N: int = 6) -> list[str]:
+def Suggestions(Prompt: str, Taken=frozenset(), Lineage: str | None = None, Instruction: str | None = None, N: int = 6,
+                Product: str = "ring") -> list[str]:
     """A handful of free names for the Admin to pick from (the Rename form); never a numbered one."""
     TakenLower = {T.lower() for T in Taken}
     Out = []
-    for Name in Candidates(Prompt, Lineage, Instruction):
+    for Name in Candidates(Prompt, Lineage, Instruction, Product):
         if Name.lower() not in TakenLower and Name.split()[-1] not in Roman:
             Out.append(Name)
         if len(Out) >= N:
@@ -264,8 +291,8 @@ def Suggestions(Prompt: str, Taken=frozenset(), Lineage: str | None = None, Inst
     return Out
 
 
-def FamilyOf(Title: str) -> str:
-    Words = [W for W in (Title or "").split() if W.lower() not in Forbidden]
+def FamilyOf(Title: str, Product: str = "ring") -> str:
+    Words = [W for W in (Title or "").split() if W.lower() not in _Banned(Product)]
     return Words[0] if Words else ""
 
 
@@ -274,24 +301,25 @@ def TakenTitles(Db, Except: str | None = None) -> set[str]:
     return {R["title"].lower() for R in Db.All("SELECT title FROM designs WHERE id IS NOT ?", (Except,))}
 
 
-def NameForPrompt(Db, Prompt: str) -> str:
-    return RingName(Prompt, TakenTitles(Db))
+def NameForPrompt(Db, Prompt: str, Product: str = "ring") -> str:
+    return RingName(Prompt, TakenTitles(Db), Product=Product)
 
 
-def NameForVariation(Db, MasterTitle: str, Instruction: str, MasterPrompt: str) -> str:
-    return RingName(MasterPrompt, TakenTitles(Db), Lineage=MasterTitle, Instruction=Instruction)
+def NameForVariation(Db, MasterTitle: str, Instruction: str, MasterPrompt: str, Product: str = "ring") -> str:
+    return RingName(MasterPrompt, TakenTitles(Db), Lineage=MasterTitle, Instruction=Instruction, Product=Product)
 
 
-def FollowRename(Db, VariationId: str, VariationTitle_: str, NewMasterTitle: str, Instruction: str, MasterPrompt: str) -> str:
+def FollowRename(Db, VariationId: str, VariationTitle_: str, NewMasterTitle: str, Instruction: str, MasterPrompt: str,
+                 Product: str = "ring") -> str:
     """A variation follows its renamed master: "Fil Lattice" under a master renamed "Aurora Twist"
     becomes "Aurora Lattice" when that is free, otherwise the next lineage name."""
     Taken = TakenTitles(Db, Except=VariationId)
-    Family = FamilyOf(NewMasterTitle)
-    Rest = [W for W in VariationTitle_.split() if W.lower() not in Forbidden][1:]
+    Family = FamilyOf(NewMasterTitle, Product)
+    Rest = [W for W in VariationTitle_.split() if W.lower() not in _Banned(Product)][1:]
     Kept = " ".join([Family] + Rest[:1])
-    if Rest and Rest[0] not in Roman and _Ok(Kept) and Kept.lower() not in Taken:
+    if Rest and Rest[0] not in Roman and _Ok(Kept, Product) and Kept.lower() not in Taken:
         return Kept
-    return RingName(MasterPrompt, Taken, Lineage=NewMasterTitle, Instruction=Instruction)
+    return RingName(MasterPrompt, Taken, Lineage=NewMasterTitle, Instruction=Instruction, Product=Product)
 
 
 def UniqueTitle(Db, Base: str) -> str:
@@ -306,6 +334,6 @@ def UniqueTitle(Db, Base: str) -> str:
     return f"{Base} {len(Taken) + 1}"
 
 
-def ProductName(Prompt: str) -> str:
+def ProductName(Prompt: str, Product: str = "ring") -> str:
     """The first-choice name for a prompt (uniqueness is applied by NameForPrompt when a design is saved)."""
-    return RingName(Prompt)
+    return RingName(Prompt, Product=Product)

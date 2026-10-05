@@ -261,7 +261,7 @@ def SplitRefinement(Ctx: Context, BatchId: str, By: str) -> dict:
                                               "so it stays. Change the gallery image first if you really want to move it.")
     if len(Moving) == len(Batches):
         raise HttpError(409, "nothing_left", "Every batch of this design would move; nothing would be left.")
-    Title = NameForVariation(Db, D["title"], B["user_text"], D["prompt"])
+    Title = NameForVariation(Db, D["title"], B["user_text"], D["prompt"], D.get("product_type") or "ring")
     New, T = NewId("dsg"), Now()
     Q = ",".join("?" * len(CandIds))
     Ids = list(CandIds)

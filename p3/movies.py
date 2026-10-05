@@ -16,7 +16,8 @@ from p3.accounts import Principal, UsageMovie
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.providers import endpoints
-from p3.modelconfig import BuildRequest
+from p3 import products as Products
+from p3.modelconfig import BuildRequest, ModelIdFor
 from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
 
 Logger = logging.getLogger("p3.movies")
@@ -26,9 +27,13 @@ class MovieService:
     def __init__(self, Ctx: Context):
         self.Ctx = Ctx
 
+    def _Model(self, CandidateId: str) -> str:
+        """The movie model of the candidate's product: rings keep minimax-camera, charms have their own."""
+        return ModelIdFor(endpoints.Movie, Products.OfCandidate(self.Ctx.Db, CandidateId))
+
     def Latest(self, CandidateId: str) -> dict | None:
         """Most relevant movie for the candidate under the current config (live first, then latest)."""
-        Same = self.Ctx.Models.Equivalent("minimax-camera")    # versions with the active settings
+        Same = self.Ctx.Models.Equivalent(self._Model(CandidateId))    # versions with the active settings
         Q = ",".join("?" * len(Same))
         Row = self.Ctx.Db.One(
             f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
@@ -37,7 +42,7 @@ class MovieService:
         return Row
 
     def _Live(self, CandidateId: str) -> dict | None:
-        Same = self.Ctx.Models.Equivalent("minimax-camera")
+        Same = self.Ctx.Models.Equivalent(self._Model(CandidateId))
         Q = ",".join("?" * len(Same))
         return self.Ctx.Db.One(f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
                                "AND status IN ('queued','running','ready') ORDER BY created_at DESC LIMIT 1",
@@ -52,7 +57,7 @@ class MovieService:
     def Ensure(self, Who: Principal, CandidateId: str) -> dict:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
-        Version = self.Ctx.Models.Active("minimax-camera").Id
+        Version = self.Ctx.Models.Active(self._Model(CandidateId)).Id
         Live = self._Live(CandidateId)      # same settings (any equivalent version) → reuse, no new charge
         if Live:
             return self.ToJson(Live)
@@ -87,7 +92,7 @@ class MovieService:
                     raise ProviderError("The selected image could not be loaded.", "reference_unavailable")
                 ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
                 Version = Ctx.Models.Resolve(Movie["config_version"], Movie["endpoint"])
-                Arguments = BuildRequest("minimax-camera", Version.Params, {"image_url": ImageUrl})
+                Arguments = BuildRequest(Version.Model, Version.Params, {"image_url": ImageUrl})
                 RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
                 Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
                 Ctx.Accounts.RecordUsage(self._Payer(Movie, Cand), UsageMovie, 1, MovieId,

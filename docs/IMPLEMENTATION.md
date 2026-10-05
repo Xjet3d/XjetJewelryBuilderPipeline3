@@ -277,6 +277,49 @@ implementation of before is the reference: its tests are unchanged and must keep
   the gallery list and the dashboard (`by_product`) show the product with its icon (`web/products.js`: a band with a
   stone, a neutral pendant on a loop — no emoji) and filter All · Rings · Charms; a mixed order says so.
 
+**Phase 2 — the charm AI configuration and the customer switch.**
+
+- **Models per product** (`p3/modelconfig.py`). Every `ModelSpec` has a `Product`.
+  - Charms have four models of their own: `nano-banana-pro-charm`, `nano-banana-pro-edit-charm`,
+    `minimax-camera-charm` and `hi3d-charm`. They use the same endpoints and parameter definitions (shared constants),
+    with their own versions, active pointers and history.
+  - `ByEndpoint` still maps to the ring models only. `ModelFor[(endpoint, product)]` / `ModelIdFor` and
+    `ActiveFor(endpoint, product)` choose by product.
+  - `images._InsertBatch` reads the design's product, and `_Arguments` builds the request from the recorded version's
+    model. Movies (`movies._Model`) and meshes (`meshes.Create`) pick the candidate's product the same way.
+- **Seeding.**
+  - Ring v1 seeding (`_SeedMissing`, `_SeedInternalDefaults`) is untouched and runs for ring models only.
+  - `_SeedCharms` then creates each missing charm model's v1 from the Ring model's *active* provider settings plus the
+    charm prompts. `CharmSeed` copies values, never a reference to a ring version.
+- **Charm prompts** (`config/prompts/charm_image_generate_system.txt`, `charm_image_edit_system.txt`,
+  `charm_image_suffix.txt`, `charm_movie_prompt.txt`; `config/generation.json` → `charm`).
+  - They were written separately in the house style of the ring prompts, and the ring prompt files are unchanged.
+  - Every charm has one plain, round, closed loop at the top centre, in the plane of the front face, about a fifth of
+    the body height, so it reads immediately as jewelry. The loop is not a creative feature, and there is no loop
+    detection, validation or manufacturing rule.
+  - Inconsistencies found in the ring prompts are written up in `docs/RING-PROMPT-NOTES-2026-10-05.md` and not fixed.
+- **Names** (`p3/naming.py`).
+  - Charms use the same rules with `Product="charm"`. Their framing words (charm, pendant, chain, necklace, bail,
+    loop, bracelet) are removed from the prompt and never appear in a name, and the ring-only descriptors (Open/Cuff,
+    Midi/Pinky) are skipped.
+  - Ring names are byte-identical to before. A snapshot of 75 prompts was compared before and after the change, and
+    tests cover it.
+- **Customer availability** (`products.ProductSettings`, Admin → Settings → Products).
+  - `PUT /api/admin/products/availability` needs the typed `SHOW CHARMS` to turn charms on and refuses if the charm
+    configuration is incomplete (`Supports("charm")`). Changes are logged in `product_settings_log`.
+  - `/api/catalog` gains a `products` block (available products, default, admin `preview` flag, charm sizes and the
+    size definition) only when charms are visible to that browser, and is served `no-store`.
+- **Mock provider.** A charm request (its system prompt says "jewelry charm") gets a placeholder charm image, so the
+  charm flow can be tested without a paid call.
+- **Tests:** `tests/test_charm_configuration.py`. It checks:
+  - seeding;
+  - charm saves that never touch the ring configuration, and the reverse;
+  - per-product exports;
+  - the full charm pipeline in Admin preview: generation, refinement directives, the movie, and a fork keeping charm
+    with its own C- number;
+  - the switch, including its confirmation, the catalog block and customer creation only while ON;
+  - charm names and unchanged ring names.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):

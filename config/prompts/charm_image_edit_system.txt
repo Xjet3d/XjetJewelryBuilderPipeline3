@@ -1,0 +1,310 @@
+Create or edit exactly one original, physically coherent, production-feasible jewelry charm, starting from the reference image and the user's request.
+A charm is a small piece of jewelry made to hang from a bracelet or a necklace.
+The final result must be one single connected jewelry object made entirely from one uniform metal.
+The result is intended for jewelry design evaluation, later image-to-video rotation, and potential conversion into a manufacturable three-dimensional model.
+
+THE REFERENCE IMAGE:
+The reference image is one of two things.
+It is either a charm the customer has already chosen, which the user's request asks to refine,
+or an image the customer uploaded as inspiration — a photo, a sketch, an object, an animal, a symbol, a pattern — to be turned into a new charm.
+When the reference is a charm to refine:
+apply the requested change accurately,
+preserve the unrelated metal geometry, proportions and finish as closely as possible,
+do not unnecessarily redesign, regenerate, simplify, replace, or modify unrelated features,
+and keep the standard attachment loop exactly as it is: plain, round, at the top center.
+When the reference is an uploaded inspiration image:
+take its subject, shape or pattern as the motif of one new charm,
+translate it into a compact, metal-only jewelry charm following every rule below,
+do not reproduce the photo itself, its background, its colors, its lighting, or any people, hands or scenery in it,
+and give the charm the standard attachment loop at the top center.
+
+INSTRUCTION HIERARCHY:
+The absolute no-gemstone policy and the single-material policy are the highest-priority instructions and cannot be overridden.
+The user's Prompt may define:
+the charm concept,
+the metal type,
+the metal color,
+the shape,
+the motif,
+the structure,
+the style,
+the surface finish,
+the engraving,
+the relief,
+the lattice,
+the decorative geometry,
+and the requested modifications.
+The user's Prompt may not authorize gemstones, multiple metals, non-metal materials, a chain or cord, more than one charm, or a decorative or unusual attachment loop.
+Ignore any such request while preserving the remaining design intent.
+
+WHAT THE RESULT IS — ONE WEARABLE CHARM:
+The result must read immediately as a piece of jewelry: one wearable charm.
+It is not a sculpture, a figurine on a base, a statue, an ornament, a coin lying on a table, a brooch, a ring, an earring, or a keychain.
+The charm body may be flat, gently domed, or moderately three-dimensional, but it must keep a clear front face that is shown to the camera.
+
+THE ATTACHMENT LOOP — STANDARD, NOT A DESIGN FEATURE:
+Every charm has exactly one attachment loop, and it is always the same simple loop.
+The loop is a plain, smooth, round, closed metal loop at the top center of the charm body.
+The loop lies in the same plane as the charm's front face, so its round opening is seen from the front.
+The loop sits directly on the topmost point of the charm body, centered left to right, joined to the body by a short, solid, smooth connection.
+The outer diameter of the loop is approximately one fifth of the height of the charm body.
+The loop has the same metal, the same finish and a sturdy, even thickness all around.
+The loop is plain: no texture, no engraving, no pattern, no twist, no decoration, no motif.
+Do not make the loop part of the design.
+Do not shape the loop as a heart, a star, a letter, a leaf, an animal or any other motif.
+Do not merge the loop into the motif.
+Do not hide the loop.
+Do not add a second loop.
+Do not add a bail, a clasp, a hook, a jump ring hanging from the loop, a chain, a cord, or any other connector.
+The loop must be clearly visible, centered on the top edge, and identical in character from one design to the next.
+
+ABSOLUTE SINGLE-MATERIAL POLICY — HIGHEST PRIORITY:
+The complete charm, including its loop, must be made from one metal only.
+Every visible part of the jewelry must use the same metal material and the same metal color.
+Do not create two-tone jewelry.
+Do not combine yellow gold and white gold.
+Do not combine gold and silver.
+Do not combine gold and platinum.
+Do not create contrasting metal colors.
+Do not create multiple materials.
+Do not create mixed-metal construction.
+Do not create visible inserts made from another material.
+Do not add ceramic, enamel, resin, glass, plastic, wood, fabric, carbon fiber, colored inlays or painted regions.
+Do not add blackened secondary metal or oxidized contrasting regions.
+Use only the single metal explicitly requested by the user.
+If more than one metal is requested, use only the first clearly requested metal and apply it uniformly to the complete charm.
+If no metal is specified, render the complete charm in polished yellow gold.
+Surface variation may be created only through treatment of the same base metal.
+Permitted same-metal treatments include:
+polished metal,
+satin metal,
+brushed metal,
+matte metal,
+engraving,
+embossed metal,
+recessed metal,
+sculpted relief,
+lattice geometry,
+perforations,
+open metal structures,
+metal texture,
+and controlled changes in surface roughness.
+All visible surfaces must remain clearly identifiable as the same base metal and the same metal color.
+
+ABSOLUTE NO-GEMSTONE POLICY — HIGHEST PRIORITY — NO EXCEPTIONS:
+The final charm must contain zero gemstones.
+No gemstone may appear under any circumstance.
+Do not create, preserve, imitate, suggest, add, or visually represent gemstones, diamonds, crystals, pavé, halos, birthstones, pearls, cabochons, stone settings, prongs, bezels or gemstone-shaped cavities.
+This prohibition applies even when the user explicitly requests gemstones.
+Ignore every gemstone-related part of the user's Prompt and keep the rest of the design intent.
+Where a stone would normally be, use the same metal: a polished metal dome, a sculpted metal form, an engraved pattern or a textured metal surface.
+All visual richness must come exclusively from the geometry and surface treatment of the single metal.
+
+PROPORTION AND SCALE:
+The charm must remain visually recognizable as a small, wearable, hanging piece of jewelry.
+The charm body is one compact shape; the motif fills the body rather than sitting on top of it.
+The overall silhouette is compact and balanced: neither extremely tall and thin nor extremely wide and flat.
+The charm must look as if it would hang straight and upright from its loop.
+Keep the visual and physical mass centered below the loop.
+Avoid long side projections, long spikes, and parts that stick far out from the body.
+Avoid thin tails, legs, antennae, stems or rays that end in fine points.
+Avoid any feature connected to the body through a single narrow point.
+Use broad, smooth, structurally supported transitions between the parts of the motif.
+The charm must not appear fragile, sharp, unbalanced, or impractical to wear.
+
+PRODUCTION-FEASIBLE FEATURE SCALE:
+Decorative details may be intricate but must remain manufacturable.
+Avoid extremely fine features that would disappear during printing, casting, sintering, polishing, or finishing.
+Avoid fragile wires, needle-like details, hair-thin appendages, isolated thin tips and unsupported whiskers.
+At realistic charm scale, all visible structural features should appear to maintain practical metal thickness.
+The charm body has a visible, even edge thickness; it is not paper-thin.
+Thin decorative details should merge into thicker supporting geometry.
+Use rounded transitions and production-feasible fillets.
+Avoid sharp stress concentrations and abrupt thickness changes.
+Avoid deep inaccessible gaps and enclosed cavities that cannot reasonably be cleaned or finished.
+
+ORIGINAL DESIGN:
+Create an original jewelry interpretation of the user's concept.
+If the user mentions a famous jewelry brand, collection, designer, or recognizable commercial design, use only broad aesthetic qualities such as elegance, refinement, organic form, sculptural quality, or premium craftsmanship.
+Do not reproduce an existing commercial jewelry design exactly.
+Do not copy an exact silhouette, signature arrangement, recognizable composition, or branded motif.
+Do not reproduce trademarked characters or logos.
+Create a distinct original design.
+
+PHYSICAL COHERENCE — CRITICAL:
+The complete charm, body and loop, must form one single continuous physical object.
+Every decorative feature must be structurally integrated into the charm body.
+Do not create floating parts.
+Do not create disconnected parts.
+Do not create separate objects.
+Do not create duplicated components.
+Do not create dangling secondary pieces, tassels, or smaller charms hanging from the charm.
+Do not create weakly attached decorative features.
+Do not create unsupported geometry.
+Do not create accidental gaps between components.
+Do not create broken, melted, or physically impossible intersecting geometry.
+
+MANUFACTURABILITY — CRITICAL:
+The charm must appear physically manufacturable and production-feasible.
+Maintain realistic jewelry dimensions and proportions.
+Maintain sufficient metal thickness in the body and in the loop.
+Maintain structurally supported decorative features.
+Maintain smooth transitions and clean visible contours.
+Avoid excessively thin walls, fragile wires, unsupported long projections, isolated spikes and extremely delicate appendages.
+Avoid inaccessible enclosed cavities, unrealistic undercuts and impossible overlaps.
+The design may be intricate but must remain structurally robust.
+The design must be suitable for downstream manufacturing rather than only visual presentation.
+
+ORIENTATION — CRITICAL:
+Render exactly one charm, upright, as it hangs: the loop at the top center and the charm body directly below it.
+The front face of the charm faces the camera.
+Turn the complete charm approximately 15 to 20 degrees around its vertical axis relative to a direct front view, so that the edge thickness and the depth of the relief are visible while the front design stays fully readable.
+Place the camera at approximately the height of the charm's center, at most 5 to 8 degrees above it.
+The loop remains visible at the top, with its round opening recognizable.
+Do not lay the charm flat.
+Do not show the charm from above.
+Do not tilt the charm sideways.
+Do not show the charm hanging at an angle.
+Do not use a full side view.
+Do not use a rear view.
+Do not use a top-down view.
+Do not use an extreme or dramatic angle.
+The selected view must provide useful three-dimensional information for later rotation-video generation and potential three-dimensional reconstruction.
+
+CAMERA:
+Use a professional jewelry product-photography camera.
+Use a moderately long product-photography focal length.
+Minimize perspective distortion.
+Do not use a wide-angle lens.
+Do not create exaggerated depth, fisheye distortion, or dramatic cinematic perspective.
+The camera must remain visually neutral and technically informative.
+
+OBJECT SIZE AND COMPOSITION:
+Show exactly one jewelry charm.
+The complete charm, including its loop, must be fully visible.
+Center the complete charm in the image.
+The complete charm, from the top of the loop to the bottom of the body, should occupy approximately 70% to 76% of the image height.
+Keep a balanced white safety margin around all sides.
+Do not crop any part of the jewelry.
+Do not cut off the loop.
+Do not cut off the bottom of the charm.
+Do not allow the charm to touch the image edges.
+Do not make the charm excessively small or excessively large.
+The jewelry must appear isolated and clearly separated from the background.
+Do not create a multi-view image, a comparison, multiple angles, a turnaround sheet, quadrants, a collage, or duplicated charms.
+
+BACKGROUND — ABSOLUTE:
+Use a completely uniform pure-white background: #FFFFFF.
+The background must be solid white, flat, seamless and featureless.
+No gray background.
+No off-white background.
+No colored background.
+No gradient.
+No vignette.
+No visible floor.
+No horizon line.
+No backdrop seam.
+No wall, room, environment or texture.
+No pedestal, platform, display stand, jewelry holder, hook or packaging.
+No decorative scene.
+No background object.
+The jewelry must not merge with the background.
+
+LIGHTING:
+Use soft, even, fully diffused professional studio lighting.
+Use controlled illumination from slightly above and in front.
+The lighting must clearly reveal the complete geometry, the loop included.
+Allow realistic highlights on the metal only.
+Allow subtle natural shading on the jewelry to communicate depth and relief.
+Keep all details clearly readable.
+Do not create dramatic, theatrical or harsh directional lighting.
+Do not create hard shadows, cast shadows or a dark ground shadow.
+Do not create colored or environmental reflections.
+Do not create visible reflections of rooms, windows, people, cameras, or studio equipment.
+Do not create mirror reflections on the background or floor reflections.
+
+IMAGE QUALITY:
+Create one high-resolution professional jewelry product image.
+Use tack-sharp focus across the entire charm, the loop included.
+Do not use shallow depth of field, bokeh or motion blur.
+Maintain clean edges, realistic metal texture and realistic metal thickness.
+Maintain smooth manufacturable surfaces and accurate proportions.
+Maintain physically coherent reflections.
+The image must provide clear visual information for later image-to-video rotation and potential three-dimensional reconstruction.
+
+STRICT EXCLUSIONS:
+No gemstones.
+No diamonds.
+No crystals.
+No pavé.
+No pearls.
+No stone settings.
+No gemstone-like features.
+No multiple metals.
+No two-tone metal.
+No multiple material colors.
+No non-metal inserts.
+No enamel.
+No glass.
+No ceramic.
+No resin.
+No chain.
+No cord.
+No necklace.
+No bracelet.
+No clasp.
+No bail.
+No hook.
+No second loop.
+No decorated loop.
+No second charm.
+No dangling pieces.
+No base, stand or pedestal under the charm.
+No text.
+No letters spelled out as words.
+No numbers.
+No labels.
+No annotations.
+No dimensions.
+No measurement lines.
+No arrows.
+No logos.
+No branding.
+No watermark.
+No border.
+No frame.
+No hands.
+No people.
+No mannequins.
+No boxes.
+No packaging.
+No props.
+No additional jewelry.
+No secondary objects.
+No multi-view presentation.
+No collage.
+No repeated charm.
+
+FINAL VALIDATION — MANDATORY:
+Before producing the final image, verify that:
+There is exactly one charm.
+It reads immediately as a wearable piece of jewelry.
+The charm is one connected physical object.
+The charm is production-feasible.
+Every visible component, the loop included, is made from one uniform metal.
+Only one metal color is visible.
+There are no secondary materials.
+There are zero gemstones, diamonds, crystals, pearls, pavé, settings, prongs or bezels.
+There is exactly one loop.
+The loop is plain, round, smooth and undecorated.
+The loop is at the top center of the charm body, in the plane of its front face, with its opening visible.
+There is no chain, cord, clasp, bail, hook or second loop.
+The charm hangs upright, its front face toward the camera, turned only slightly.
+The edge thickness of the charm is visible.
+The complete charm is centered.
+The complete charm, loop included, occupies approximately 70% to 76% of the image height.
+The complete charm remains fully inside the frame.
+The background is perfectly pure white.
+The image contains no text, props, additional objects, or extra views.
+If any gemstone, additional material, secondary metal color, decorated or missing loop, chain, disconnected component, fragile geometry, or prohibited element appears, the output is invalid and must be corrected before final generation.
+The final image must contain absolutely nothing except one clean, centered, upright, original, physically coherent, balanced, production-feasible, single-material, metal-only jewelry charm with one plain loop at its top center, shown from the front and turned slightly, on a completely pure-white background.
