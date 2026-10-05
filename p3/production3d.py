@@ -554,9 +554,27 @@ class Production3D:
                 "bytes": Out.stat().st_size if Ready else None, "server_now": Now()}
 
     # ── recovery ─────────────────────────────────────────────────────────
+    # The only review note the first charm path (until 2026-10-05) gave every charm result
+    LegacyLoopNote = "Scaled by the overall height with the attachment loop included: check the main body's height."
+
+    def ClearLegacyLoopReviews(self) -> int:
+        """Charm results made before the size became the total height were flagged only because the loop is part of
+        the measured height. A charm's size is now its total height, loop included — exactly how those results were
+        scaled — so they are complete; their numbers stay as they are. A result with any other problem stays flagged."""
+        N = 0
+        for R in self.Ctx.Db.All("SELECT s.id FROM session_3d s JOIN designs d ON d.id = s.design_id WHERE d.product_type = 'charm' "
+                                 "AND s.status = 'needs_review' AND s.error = ?", (self.LegacyLoopNote,)):
+            self.Ctx.Db.Update("session_3d", R["id"], status="measured", error=None)
+            Stages.Begin(self.Ctx.Db, R["id"], "ready")
+            N += 1
+        if N:
+            Logger.info("Cleared the former loop review flag of %d charm 3D result(s)", N)
+        return N
+
     def Reconcile(self) -> int:
         """After a restart: continue every request whose raw STL is on disk; Hi3D ones resume via the mesh."""
         self.RepriceMissing()
+        self.ClearLegacyLoopReviews()
         N = 0
         for R in self.Ctx.Db.All("SELECT DISTINCT s.mesh_id, m.status FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
                                  f"WHERE s.status IN ({','.join('?' * len(Waiting))})", Waiting):

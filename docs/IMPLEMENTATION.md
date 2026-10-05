@@ -412,7 +412,9 @@ implementation of before is the reference: its tests are unchanged and must keep
   `products.CharmSizeDefinition` (measure `total_height`, `includes_loop`, label, short and full text) and
   `products.Charm3DHeight` (the height the 3D model is scaled to). It is used by Customize (the definition text),
   order snapshots and emails, the 3D scaling and the STL header (`XJet P3 scaled charm 20 mm total height incl.
-  loop`). The blanket review item for charms was removed.
+  loop`). The blanket review item for charms was removed. At start-up, `Production3D.ClearLegacyLoopReviews` marks
+  as `measured` the charm results that the first path had flagged only for the loop in the height (their numbers
+  already follow the total height); a result with any other problem keeps its flag.
 - **Promo messages** are product-neutral: "Add a piece to your bag before using a promo code." and "This promo code
   applies to Silver pieces only."
 - **AI models & prompts editor.** Alpine 3.13.3 does not clean up template blocks (`x-if` / `x-for`) nested inside a

@@ -195,3 +195,23 @@ def test_the_charm_frame_follows_the_model_up_direction(tmp_path):
     # Lying flat (the face level): the longest direction is used instead
     WriteStl(Tri[:, :, [0, 2, 1]].copy(), P)
     assert CharmGeo.MeasureCharmRaw(P)["up_source"] == "largest_spread"
+
+
+async def test_charm_results_flagged_only_for_the_loop_become_complete(H3):
+    H = H3
+    B, _C = await CharmJourney(H, 20)
+    await H.Client.post(f"/api/admin/sessions/{B['design_id']}/3d", json={}, headers=Admin)
+    await H.Idle()
+    T = (await Session(H, B["design_id"]))["three_d"][0]
+    # As the first charm path left it: flagged only for the loop in the height
+    Note = H.Svc.Production3D.LegacyLoopNote
+    H.Ctx.Db.Update("session_3d", T["id"], status="needs_review", error=Note)
+    Other = H.Ctx.Db.One("SELECT * FROM session_3d WHERE id = ?", (T["id"],))
+    assert Other["status"] == "needs_review"
+    assert H.Svc.Production3D.ClearLegacyLoopReviews() == 1 and H.Svc.Production3D.ClearLegacyLoopReviews() == 0
+    T2 = (await Session(H, B["design_id"]))["three_d"][0]
+    assert (T2["status"], T2["production_state"], T2["error"], T2["review"]) == ("measured", "complete", None, [])
+    assert T2["geometry"]["production"] == T["geometry"]["production"] and T2["price"]["weight_g"] == T["price"]["weight_g"]
+    # Any other problem keeps the flag
+    H.Ctx.Db.Update("session_3d", T["id"], status="needs_review", error=Note + " The volume reference check suggests the mesh may not be closed — check the volume.")
+    assert H.Svc.Production3D.ClearLegacyLoopReviews() == 0
