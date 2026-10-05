@@ -845,12 +845,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         except ConfigError as E:
             return _Invalid(E)
 
-    # ── Products: rings and charms (customer availability of charms; charm sizes come with phase 3) ──
-    ShowCharmsConfirmation = "SHOW CHARMS"
-
+    # ── Products: rings and charms (customer availability of charms, charm sizes) ──
     def _ProductsState() -> dict:
-        return {**Ctx.Products.State(), "charm_configuration_ready": Ctx.Models.Supports(Products.Charm),
-                "show_confirmation": ShowCharmsConfirmation}
+        return {**Ctx.Products.State(), "charm_configuration_ready": Ctx.Models.Supports(Products.Charm)}
 
     @App_.get("/api/admin/products")
     async def AdminProducts(authorization: str | None = Header(None)):
@@ -859,13 +856,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.put("/api/admin/products/availability")
     async def SetCharmsAvailable(Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """Charms available to customers: ON / OFF. Turning them on is typed out (it changes the public site)."""
+        """Charms available to customers: ON / OFF (the Admin confirms the change in a normal dialog)."""
         Who = Admin(authorization)
         On = Body_.get("charms_available")
         if not isinstance(On, bool):
             raise HttpError(400, "invalid_value", "charms_available must be true or false.")
-        if On and str(Body_.get("confirm") or "").strip() != ShowCharmsConfirmation:
-            raise HttpError(400, "confirmation_required", f"Type {ShowCharmsConfirmation} to show charms to customers.")
         if On and not Ctx.Models.Supports(Products.Charm):
             raise HttpError(409, "charm_configuration_missing", "The charm AI configuration is not ready.")
         if On != Ctx.Products.CharmsAvailable:
@@ -874,8 +869,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.put("/api/admin/products/charm-sizes")
     async def SetCharmSizes(Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """The charm sizes on offer, in mm: the height of the main charm body, excluding the standard attachment
-        loop. Prices are set per size (Pricing & Materials → Charm); a size without a price is "Price unavailable"."""
+        """The charm sizes on offer, in mm, as products.CharmSizeDefinition says (for now the charm's total height,
+        the loop included). Prices are set per size (Pricing & Materials → Charm); a size without a price is
+        "Price unavailable"."""
         Who = Admin(authorization)
         New, Old = Products.ValidateCharmSizes(Body_.get("sizes")), Ctx.Products.CharmSizes
         if New != Old:

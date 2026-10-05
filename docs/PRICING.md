@@ -69,9 +69,8 @@ Luxury, or an unavailable Fashion price, returns `pricing_status: "unavailable"`
 Everything above is ring pricing and is unchanged. Charms have their own price book, edited in Admin → Settings →
 Pricing & Materials → **Charm** (`p3/charmprices.py`, table `charm_price_lists`, versions `charms-v<N>`):
 
-- **A fixed price per material *and* size.** A charm's size is the height of its main body, excluding the standard
-  attachment loop, and the sizes are set in Admin → Settings → Products. Unlike a ring, a charm's size can change its
-  price.
+- **A fixed price per material *and* size.** A charm's size is its total height, including the attachment loop at
+  the top, and the sizes are set in Admin → Settings → Products. Unlike a ring, a charm's size can change its price.
 - **Materials.** Stainless Steel, Sterling Silver and 14K Gold Vermeil have fixed prices. Gold uses the quote flow,
   like gold rings.
 - **Price and cost per gram** for the 3D calculated price and the production cost of a charm.

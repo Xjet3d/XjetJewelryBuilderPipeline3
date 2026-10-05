@@ -1,6 +1,6 @@
-"""Charms, phase 4 — a 3D path of their own. No bore and no ring size: a charm is measured once, scaled by its
-height to the size in mm, priced from the charm price book, and exported lying flat. The loop is not detected,
-so every charm result asks for a size check. The ring 3D path is unchanged (tests/test_sessions.py)."""
+"""Charms, phase 4 — a 3D path of their own. No bore and no ring size: a charm is measured once, the whole charm
+(loop included — a charm's size is its total height) is scaled to the size in mm, priced from the charm price
+book, and exported lying flat. No loop detection. The ring 3D path is unchanged (tests/test_sessions.py)."""
 
 import math
 
@@ -62,9 +62,9 @@ async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
     assert Prod["size_z_mm"] < Prod["size_x_mm"] < Prod["size_y_mm"]                       # thin, narrower than tall (loop on top)
     assert (T["product_type"], T["target_height_mm"], T["target_inner_diameter_mm"], T["size_label"], T["material_label"]) == \
         ("charm", 25.0, None, "25 mm", "Sterling Silver")
-    # Never "complete": the loop is in the measured height, so production needs a size check
-    assert T["status"] == "needs_review" and T["production_state"] == "review_required"
-    assert [I["code"] for I in T["review"]] == ["charm_height_includes_loop"]
+    # The size is the total height, loop included: a closed charm model is complete, nothing to review
+    assert T["status"] == "measured" and T["production_state"] == "complete" and T["review"] == []
+    assert T["height_basis"] == "The total height of the charm, including the attachment loop at the top."
     Price = T["price"]
     assert Price["cost_model_version"] == "charms-v2" and Price["breakdown"]["pricing"] == "charm"
     assert math.isclose(Price["weight_g"], Prod["volume_mm3"] / 1000 * Price["density_g_cm3"], rel_tol=1e-3)
@@ -77,7 +77,7 @@ async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
     E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()
     assert E["status"] == "done", E
     File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert File.status_code == 200 and File.content[:20] == b"XJet P3 scaled charm"
+    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled charm 25 mm total height incl. loop"
     assert "C-1001-A_Sterling-Silver_25mm.stl" in File.headers["content-disposition"]
     Tri = np.frombuffer(File.content[84:], dtype=Stl)["v"].reshape(-1, 3)
     Span = Tri.max(0) - Tri.min(0)
@@ -172,7 +172,7 @@ async def test_an_ordered_charm_line_gets_its_3d_at_the_ordered_size(H3):
     assert R.status_code == 200 and R.json()["prepared"]
     await H.Idle()
     L = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["lines"][0]
-    assert L["three_d_match"] is True and L["three_d_state"] == "review_required"
+    assert L["three_d_match"] is True and L["three_d_state"] == "complete"
     T = H.Ctx.Db.One("SELECT production_size, material_id FROM session_3d WHERE id = ?", (L["three_d_id"],))
     assert (T["production_size"], T["material_id"]) == (20.0, "silver")
 

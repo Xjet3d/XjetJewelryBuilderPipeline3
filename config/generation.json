@@ -47,6 +47,7 @@
     "generate_system_prompt_file": "prompts/charm_image_generate_system.txt",
     "edit_system_prompt_file": "prompts/charm_image_edit_system.txt",
     "prompt_suffix_file": "prompts/charm_image_suffix.txt",
-    "movie_prompt_file": "prompts/charm_movie_prompt.txt"
+    "movie_prompt_file": "prompts/charm_movie_prompt.txt",
+    "anyllm_system_prompt_file": "prompts/charm_anyllm_system.txt"
   }
 }

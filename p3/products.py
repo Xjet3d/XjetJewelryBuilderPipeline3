@@ -12,8 +12,9 @@ product choice, no charm text, no charm tiles — and the server refuses charm r
 customers. A browser signed in to the Admin sees charms anyway (a preview), so the whole charm system
 can be built and tested internally before customers see it.
 
-The charm size definition lives here, in one place: the selected size is the height of the main charm
-body in millimetres, excluding the standard attachment loop.
+The charm size definition lives here, in one place (CharmSizeDefinition, Charm3DHeight): for now the
+selected size is the charm's TOTAL height in millimetres, the attachment loop included — a 20 mm charm is
+20 mm from its lowest point to the top of its loop, and its 3D model is scaled as a whole to that height.
 """
 
 import json
@@ -29,14 +30,28 @@ Labels = {Ring: "Ring", Charm: "Charm"}
 Plurals = {Ring: "Rings", Charm: "Charms"}
 Prefixes = {Ring: "R", Charm: "C"}          # customer-facing IDs: R-1001 … and C-1001 … (separate sequences)
 
-# ── the charm size: one central definition ───────────────────────────────────
+# ── the charm size: one central definition (the only place to change it) ──────
+# Decision of 2026-10-05: a charm's size is its total height, the loop included. Customize, the bag, checkout,
+# orders, emails, prices (per size), the 3D scaling and the STL all follow this. There is no loop detection or
+# loop measurement: should the definition change later (e.g. the body height with a standard loop attached
+# separately), change it here and in Charm3DHeight.
 CharmSizeUnit = "mm"
 CharmSizeDefinition = {
-    "measure": "body_height",
+    "measure": "total_height",
+    "includes_loop": True,
     "unit": CharmSizeUnit,
     "label": "Charm height",
-    "text": "The height of the main charm body, excluding the standard attachment loop.",
+    "short": "total height incl. loop",
+    "text": "The total height of the charm, including the attachment loop at the top.",
 }
+
+
+def Charm3DHeight(SizeMm) -> float:
+    """The overall height a charm's 3D model is scaled to for a chosen size: the size itself, while the size is
+    the charm's total height (the loop included)."""
+    if CharmSizeDefinition["measure"] == "total_height":
+        return float(SizeMm)
+    raise ValueError(f"No 3D scaling is defined for the charm size measure {CharmSizeDefinition['measure']!r}.")
 DefaultCharmSizes = (15.0, 20.0, 25.0, 30.0)   # a starting list only — edited in Admin → Settings → Products
 CharmSizeMin, CharmSizeMax, CharmSizesMax = 3.0, 100.0, 12
 

@@ -305,8 +305,9 @@ implementation of before is the reference: its tests are unchanged and must keep
   - Ring names are byte-identical to before. A snapshot of 75 prompts was compared before and after the change, and
     tests cover it.
 - **Customer availability** (`products.ProductSettings`, Admin → Settings → Products).
-  - `PUT /api/admin/products/availability` needs the typed `SHOW CHARMS` to turn charms on and refuses if the charm
-    configuration is incomplete (`Supports("charm")`). Changes are logged in `product_settings_log`.
+  - `PUT /api/admin/products/availability` turns charms on or off; it refuses to turn them on when the charm
+    configuration is incomplete (`Supports("charm")`). Changes are logged in `product_settings_log`. (The typed
+    phrase of the first version was removed on 2026-10-05: the Admin confirms in a normal dialog.)
   - `/api/catalog` gains a `products` block (available products, default, admin `preview` flag, charm sizes and the
     size definition) only when charms are visible to that browser, and is served `no-store`.
 - **Mock provider.** A charm request (its system prompt says "jewelry charm") gets a placeholder charm image, so the
@@ -374,8 +375,9 @@ implementation of before is the reference: its tests are unchanged and must keep
   - `Request` uses `_CharmSize` (customer size, else `products.CharmDefaultSize`, any 3–100 mm by the Admin) and
     charm materials.
   - `_Continue` measures a charm mesh with `product: "charm"`.
-  - `_FinalizeCharm` writes the raw and production rows with no inner diameter. Status is always `needs_review`,
-    because the loop is in the height, and the review item is `charm_height_includes_loop`.
+  - `_FinalizeCharm` writes the raw and production rows with no inner diameter. The whole charm, loop included, is
+    scaled to the size (the size is the total height). The status is `measured`, or `needs_review` only when the
+    closed-mesh heuristic disagrees.
   - `_Price` uses `Ctx.CharmPrices` (`Price3D`, version `charms-vN`) and the charm quote for the produced size and
     material.
   - `RepriceMissing` uses each product's own book, and `CharmPriceBook.OnSave` triggers it.
@@ -399,6 +401,30 @@ implementation of before is the reference: its tests are unchanged and must keep
   - the unchanged ring path beside a charm;
   - an ordered charm line;
   - the up-direction frame on synthetic models.
+
+**Corrections of 2026-10-05.**
+
+- **Charms available to customers** is a simple switch with a normal confirmation dialog (no typed phrase).
+- **any-llm · Charm** (`any-llm-charm`) completes the Charm side of AI models & prompts: every Ring model has a Charm
+  counterpart. The Any-LLM parameters are one shared definition (`_AnyLlmParams`); the settings are separate. Its
+  v1 = the Ring Any-LLM's active settings, copied by value, plus `config/prompts/charm_anyllm_system.txt`.
+- **Charm size = total height including the loop** (decision of 2026-10-05). It is central in
+  `products.CharmSizeDefinition` (measure `total_height`, `includes_loop`, label, short and full text) and
+  `products.Charm3DHeight` (the height the 3D model is scaled to). It is used by Customize (the definition text),
+  order snapshots and emails, the 3D scaling and the STL header (`XJet P3 scaled charm 20 mm total height incl.
+  loop`). The blanket review item for charms was removed.
+- **Promo messages** are product-neutral: "Add a piece to your bag before using a promo code." and "This promo code
+  applies to Silver pieces only."
+- **AI models & prompts editor.** Alpine 3.13.3 does not clean up template blocks (`x-if` / `x-for`) nested inside a
+  removed `x-for` row or `x-if` block: their bindings kept running against later models and threw console errors
+  (tens to hundreds per switch, growing with every switch).
+  - The parameter rows are now fixed slots (`paramSlots`, as many as the largest model has) that persist across
+    models. Each slot reads its parameter live from the current model, and the kind editors use `x-show`, never
+    `x-if`.
+  - Keyframe cells are written out, and all draft reads are null-safe. The placeholder list and the
+    refinement-directive preview use `x-show`.
+  - Verified with an error counter across every model, Ring → Charm → Ring, saving, loading a version into the form,
+    discarding, restoring, previews and parameter edits: no console errors.
 
 **Phase 5 — the customer experience** (`web/app.js`, `web/index.html`; `web/products.js` for the icons).
 

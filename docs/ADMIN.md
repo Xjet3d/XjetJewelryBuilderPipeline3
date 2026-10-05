@@ -150,10 +150,10 @@ ring path above is unchanged.
 
   A model lying flat falls back to its longest direction. Volume, area and the closed-mesh heuristic are as for rings.
 - **Scaling:** s = target height / measured height, then lengths × s, area × s², volume × s³, all arithmetic.
-  - The measured height is the **overall** height: main body and attachment loop together. The loop is not detected
-    (no loop logic yet), so the main body comes out smaller than the chosen size.
-  - Every charm result is therefore `needs_review` with the review item *charm_height_includes_loop*: check the body's
-    height before production.
+  - A charm's size is its **total height, the loop included** (`products.CharmSizeDefinition`), so the whole charm —
+    body and loop — is scaled to it (`products.Charm3DHeight`). There is no loop detection or measurement.
+  - A charm result is `measured` (complete) like a ring; only a real problem, such as the closed-mesh heuristic
+    disagreeing, makes it `needs_review`.
   - There is no wall-thickness check or printability rule.
 - **Weight, cost and 3D price:**
   - Weight = volume × the material's density.
@@ -162,8 +162,9 @@ ring path above is unchanged.
     a charm.
   - The customer price shown beside it is the charm price for the produced material and size.
 - **Scaled STL:** exported on demand, lying flat (width X, height Y, thickness Z), centred, in millimetres, with the
-  header `XJet P3 scaled charm`. Its file name gives the size in mm: `Lune-Drop_C-1003-B_ORD-10482_Sterling-Silver_20mm.stl`.
-- **The panel** shows *Height* (target and result, "overall, loop included") in place of *Inner diameter*, sizes in
+  header `XJet P3 scaled charm 20 mm total height incl. loop`. Its file name gives the size in mm:
+  `Lune-Drop_C-1003-B_ORD-10482_Sterling-Silver_20mm.stl`.
+- **The panel** shows *Height* (target and result, "total height incl. loop") in place of *Inner diameter*, sizes in
   mm, and the charm explanation under *What was done to the model*.
 
 ## Working in the Admin
@@ -280,7 +281,12 @@ versions and history:
 | Product | Models |
 |---|---|
 | Ring | `any-llm`, `nano-banana-pro`, `nano-banana-pro-edit`, `minimax-camera`, `hi3d` (the table above, unchanged) |
-| Charm | `nano-banana-pro-charm`, `nano-banana-pro-edit-charm`, `minimax-camera-charm`, `hi3d-charm`: the same endpoints, their own versions |
+| Charm | `any-llm-charm`, `nano-banana-pro-charm`, `nano-banana-pro-edit-charm`, `minimax-camera-charm`, `hi3d-charm`: the same endpoints, their own versions |
+
+Every Ring model has its Charm counterpart. **any-llm · Charm** is the Charm request check — like the Ring one, it is
+not used by the P3 pipeline yet. It has its own model, instructions, parameters, versions and history. Version 1
+copied the Ring Any-LLM's active settings by value (model, temperature, token limit, priority, reasoning) with its
+own charm instructions (`config/prompts/charm_anyllm_system.txt`, the same JSON answer as the Ring check).
 
 - Saving, activating or restoring a Charm version never changes a Ring prompt, parameter, version or active pointer, and
   the reverse is also true. A version can only be restored into its own model (tested).
@@ -348,8 +354,9 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
     product did not exist.
   - **Admin preview:** a browser signed in to the Admin sees and can test charms on the customer site while they are
     OFF.
-  - **Turning charms on** requires typing **SHOW CHARMS**, because it changes the public site. An optional note is kept.
-  - **Hiding them again** asks for confirmation. Charm designs, orders and settings are kept.
+  - **A simple switch.** Turning it on asks *Enable Charms for customers?* (Enable Charms | Cancel); turning it off asks
+    *Hide Charms from customers?* (Hide Charms | Cancel). No phrase is typed. Charm designs, orders and settings are
+    kept when charms are hidden.
   - **What customers see while ON:**
     - "What would you like to design? Ring / Charm" on the Design screen (Ring is the default);
     - charm sizes with their prices in Customize;
@@ -360,9 +367,11 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
     While OFF, all of this is absent, and the customer API answers carry no product fields. A customer who already
     holds charms still sees their own charm orders correctly. The Admin preview shows the ON experience marked "Admin
     preview · charms are hidden from customers".
-  - Every change is logged with its date, the Admin who made it and the note.
-- **Charm sizes** are the heights of the main charm body, *excluding* the standard attachment loop. The definition is
-  kept in one place (`products.CharmSizeDefinition`). The starting sizes are 15, 20, 25 and 30 mm.
+  - Every change is logged with its date and the Admin who made it.
+- **Charm sizes** are the charm's **total height, including the attachment loop** at the top: a 20 mm charm is 20 mm
+  from its lowest point to the top of its loop. This applies everywhere: Customize, the bag, checkout, orders, emails,
+  prices (per size), the 3D scaling and the STL. The definition is kept in one place (`products.CharmSizeDefinition`
+  and `products.Charm3DHeight`), so it can be changed later. The starting sizes are 15, 20, 25 and 30 mm.
   - Edit them in *Charm sizes* (`PUT /api/admin/products/charm-sizes`): sizes between 3 and 100 mm, at most 12.
     Every change is logged.
   - Ring sizes are not affected.

@@ -130,7 +130,7 @@ class OrderService:
         Promo, PromoError_ = None, None
         if PromoCode and str(PromoCode).strip():
             if not Ok:
-                PromoError_ = {"code": "promo_no_items", "message": "Add a ring to the bag before using a promo code."}
+                PromoError_ = {"code": "promo_no_items", "message": "Add a piece to your bag before using a promo code."}
             else:
                 try:
                     Promo = self.Promos.Evaluate(PromoCode, Ok)

@@ -547,7 +547,7 @@
                         {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ring in a 360° movie before adding it to your bag.'},
                         {q:'How is the price calculated?',       a: productsOn ? 'Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the price. A charm is priced by material and size.' : 'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.'},
                         {q:'How long does production take?',     a:'Design happens the same day. Production takes 7–10 business days. Shipping adds about 5 business days with Express or up to 14 with free Standard delivery.'},
-                        {q:'Are prices in USD?',                 a: productsOn ? 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen); a charm size is its height in millimetres.' : 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
+                        {q:'Are prices in USD?',                 a: productsOn ? 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen); a charm size is its total height in millimetres, including the loop at the top.' : 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
                         {q:'What is NanoParticle Jetting™?',     a:'It is XJet\'s proprietary metal printing technology. It jets ultra-fine metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than traditional casting.'},
                         {q:'Can I make changes?',                a:'Yes. Select any of your four designs and describe what should change — you get four new variations of that design each time.'},
                         {q:'Who can I contact for help?',        a:'If you need assistance at any stage, reach out and a specialist will respond within one business day.'}
@@ -1303,9 +1303,9 @@
 
                     <!-- Charm size: the height of the main body (without the loop); each size has its own price -->
                     <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
-                        <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(height)</span></h3>
+                        <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h3>
                         <p class="text-[12px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
-                        <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (height)">
+                        <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
                             <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
                                 <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
                                         :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500'"

@@ -16,9 +16,9 @@ Rules:
   * The customer's fixed price is copied in for comparison only; nothing here changes it.
 
 Charms have a path of their own (p3/charmgeometry.py), chosen by the design's product: no bore and no ring
-size — the size is a height in mm, the charm is scaled by its overall height (the attachment loop is not
-detected yet, so every charm result asks for a size check), and its weight, cost and 3D price come from the
-charm price book. The ring path below is unchanged.
+size — the size is the charm's total height in mm, loop included (products.CharmSizeDefinition), the whole
+charm is scaled to it (products.Charm3DHeight), and its weight, cost and 3D price come from the charm price
+book. There is no loop detection or measurement. The ring path below is unchanged.
 """
 
 import json
@@ -74,11 +74,6 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None) -> list[di
     if Status in ("failed", "cancelled") or Status in Waiting:
         return Items
     Raw = Raw or {}
-    if Raw.get("method_version") == CharmGeo.CharmMethodVersion:
-        Items.append({"code": "charm_height_includes_loop",
-                      "text": "The charm was scaled by its overall height with the attachment loop included (the loop is "
-                              "not detected), so its main body is smaller than the chosen size.",
-                      "action": "Check the main body's height in the 3D view and adjust the scale before production if needed."})
     if not Raw.get("bore_ok", True):
         Items.append({"code": "no_bore", "text": "No ring bore was found — the model may not be a ring.",
                       "action": "Inspect the model in 3D. If it is not a ring, do not produce it: model a different "
@@ -406,16 +401,15 @@ class Production3D:
                         status=Status, inner_diameter_mm=G["inner_diameter_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
 
     def _FinalizeCharm(self, Row: dict, RawRow: dict, Raw: dict) -> None:
-        """A charm: scaled by its overall height to the production size in mm — arithmetic only, no bore, no ring
-        size. The attachment loop is part of the measured height (it is not detected), so the result always asks
-        for a size check before production (ReviewItems)."""
+        """A charm: the whole charm, loop included, scaled to the height its size stands for (products.Charm3DHeight)
+        — arithmetic only, no bore, no ring size, no loop measurement."""
         Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
         T = Now()
         Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
         Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
         Checks = {"closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
                   "volume_alt_reference": Raw["volume_alt_reference"], "faces": Raw["faces"], "raw_sha256": RawRow["sha256"],
-                  "height_basis": "overall height, attachment loop included", "up_source": Raw.get("up_source")}
+                  "height_basis": Products.CharmSizeDefinition["text"], "up_source": Raw.get("up_source")}
 
         def Insert(Stage, G, Scale, StlPath):
             Gid = NewId("geo")
@@ -428,17 +422,17 @@ class Production3D:
 
         Insert("raw", {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
                        "volume_mm3": Raw["volume"], "surface_area_mm2": Raw["area"]}, None, RawRow["stl_path"])
-        G = CharmGeo.CharmScaled(Raw, float(Row["production_size"]))
+        G = CharmGeo.CharmScaled(Raw, Products.Charm3DHeight(Row["production_size"]))
         Gid = Insert("production", G, G["scale_factor"], None)          # scaled STL: exported on demand only
         Weight = self._Price(Row, Gid, G["volume_mm3"] if Raw["closed_heuristic"] else None)
-        Problems = ["Scaled by the overall height with the attachment loop included: check the main body's height."]
-        if not Raw["closed_heuristic"]:
-            Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
-        Db.Update("session_3d", Sid, status="needs_review", error=" ".join(Problems))
-        Stages.Begin(Db, Sid, "review_required", problems=Problems)
+        Problems = [] if Raw["closed_heuristic"] else \
+            ["The volume reference check suggests the mesh may not be closed — check the volume."]
+        Status = "needs_review" if Problems else "measured"
+        Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
+        Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Problems} if Problems else {}))
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
-                        status="needs_review", height_mm=G["height_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
+                        status=Status, height_mm=G["height_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
 
     def _Price(self, Row: dict, Gid: str, VolumeMm3: float | None) -> float | None:
         """Weight, production cost and 3D price from Admin → Material pricing (current version); a charm's from the
@@ -535,7 +529,7 @@ class Production3D:
         if not Charm and not Measured.get("bore_ok"):
             raise HttpError(409, "no_bore", "No ring bore was found, so the model cannot be scaled to a ring size.")
         self.Queue.CleanupExports()
-        Target = float(Row["production_size"]) if Charm else UsSizeToInnerDiameterMm(Row["production_size"])   # a charm: its height
+        Target = Products.Charm3DHeight(Row["production_size"]) if Charm else UsSizeToInnerDiameterMm(Row["production_size"])
         for J in self.Ctx.Db.All("SELECT * FROM geometry_jobs WHERE kind = 'export' AND session_3d_id = ? AND status IN "
                                  "('queued','running','done') ORDER BY created_at DESC", (Sid,)):
             P = json.loads(J["params_json"])
@@ -544,7 +538,8 @@ class Production3D:
                 return self.ExportStatus(Sid, J["id"])
         Job = self.Queue.Enqueue("export", Row["mesh_id"], Sid, Dedupe=False, Params={
             "source": Raw["stl_path"], "raw": Measured, "target_mm": Target, "raw_sha256": Raw["sha256"],
-            "output": f"exports/{Sid}_{NewId('x')}.stl", **({"product": "charm"} if Charm else {})})
+            "output": f"exports/{Sid}_{NewId('x')}.stl",
+            **({"product": "charm", "label": f"{float(Row['production_size']):g} mm {Products.CharmSizeDefinition['short']}"} if Charm else {})})
         return self.ExportStatus(Sid, Job["id"])
 
     def ExportStatus(self, Sid: str, Jid: str) -> dict:
@@ -644,7 +639,7 @@ class Production3D:
             Out.update({"product_type": Products.Charm, "target_inner_diameter_mm": None, "target_height_mm": R["production_size"],
                         "size_label": Products.CharmSizeLabel(R["production_size"]),
                         "material_label": CharmPrices.Label(self.Ctx.Catalog, R["material_id"]),
-                        "height_basis": "overall height, attachment loop included"})
+                        "height_basis": Products.CharmSizeDefinition["text"]})
         return Out
 
     def ForDesign(self, DesignId: str) -> list[dict]:

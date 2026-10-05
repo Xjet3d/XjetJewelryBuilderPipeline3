@@ -4,8 +4,8 @@ The raw Hi3D model is measured once, exactly; every charm size after that is ari
   * the charm's frame: thickness = the direction of least spread (front to back); height = the model's up
     direction (Hi3D STL models are Z-up: the image's vertical) laid into the charm's face plane; width = across;
   * the height is the model's OVERALL height along that direction: the main body and the attachment loop
-    together. The loop is not detected — deliberately, there is no loop logic yet — so a charm is scaled by
-    its overall height, and every charm result asks for a size check before production (production3d);
+    together — which is what a charm's size means for now (products.CharmSizeDefinition). The loop is not
+    detected or measured; the whole charm is scaled;
   * scale = target height / measured height: lengths × s, area × s², volume × s³.
 The scaled STL is written on demand only: the charm lies flat (thickness along Z), width along X, height
 along Y (the top of the charm toward +Y), centred on the middle of its box, in millimetres.
@@ -62,13 +62,14 @@ def CharmScaled(Raw: dict, HeightMm: float) -> dict:
             "volume_mm3": Raw["volume"] * S ** 3, "surface_area_mm2": Raw["area"] * S ** 2}
 
 
-def ExportScaledCharmStl(Source, Raw: dict, HeightMm: float, Out) -> int:
-    """Write the scaled STL of a charm: lying flat, width along X, height along Y, thickness along Z, millimetres."""
+def ExportScaledCharmStl(Source, Raw: dict, HeightMm: float, Out, Label: str = "") -> int:
+    """Write the scaled STL of a charm: lying flat, width along X, height along Y, thickness along Z, millimetres.
+    The 80-byte header says what it is: "XJet P3 scaled charm 20 mm total height incl. loop"."""
     Origin, M = _Transform(Raw, CharmScaled(Raw, HeightMm)["scale_factor"])
     Count = (os.path.getsize(Source) - 84) // 50
     Rec = np.memmap(Source, dtype=StlRecord, mode="r", offset=84, shape=(Count,))
     with open(Out, "wb") as F:
-        F.write(b"XJet P3 scaled charm".ljust(80, b" "))
+        F.write(" ".join(X for X in ("XJet P3 scaled charm", Label) if X).encode("ascii", "replace")[:80].ljust(80, b" "))
         F.write(np.uint32(Count).tobytes())
         for S in range(0, Count, Chunk):
             C = (Rec["v"][S:S + Chunk].astype(np.float64) - Origin) @ M

@@ -1075,7 +1075,7 @@
               <div class="space-y-4">
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div x-show="!t.target_height_mm"><p class="lbl">Inner diameter</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_inner_diameter_mm + ' mm (US ' + t.production_size + ')'"></p></div>
-                  <div x-show="t.target_height_mm"><p class="lbl">Height</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.size_y_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_height_mm + ' mm · overall, loop included'"></p></div>
+                  <div x-show="t.target_height_mm"><p class="lbl">Height</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.size_y_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_height_mm + ' mm · total height incl. loop'"></p></div>
                   <div><p class="lbl">Volume</p><p class="text-xl font-semibold tabular-nums" x-text="t.geometry.production.volume_mm3 != null ? (t.geometry.production.volume_mm3 / 1000).toFixed(3) + ' cc' : 'not reliable'"></p></div>
                   <div><p class="lbl">Weight</p><p class="text-xl font-semibold tabular-nums flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(t.material_id)"></span><span x-text="t.price?.weight_g != null ? t.price.weight_g.toFixed(2) + ' g' : '—'"></span></p><p class="text-[11px] text-zinc-500" x-text="t.material_label + ' · ' + t.density_g_cm3 + ' g/cm³'"></p></div>
                   <div><p class="lbl">Production cost</p><p class="text-xl font-semibold tabular-nums" x-text="t.price?.production_cost != null ? '$' + t.price.production_cost.toFixed(2) : '—'"></p><p class="text-[11px] text-zinc-500">weight × cost $/g</p></div>
@@ -1517,23 +1517,20 @@
         </div>
         <div class="border p-4 space-y-3" :class="products.charms_available ? 'border-[#E8D9B8] bg-[#FBF7EF]' : 'border-zinc-200'">
           <p class="flex items-center gap-2 font-semibold"><span class="text-[#8A6420]" x-html="pIcon('charm', 'w-5 h-5')"></span>Charms</p>
-          <p class="text-sm flex flex-wrap items-center gap-2">Charms available to customers:
-            <span class="badge" :class="products.charms_available ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="products.charms_available ? 'ON' : 'OFF'"></span></p>
+          <div class="flex flex-wrap items-center gap-3">
+            <span id="charms-switch-label" class="text-sm">Charms available to customers:</span>
+            <button type="button" role="switch" aria-labelledby="charms-switch-label" :aria-checked="products.charms_available ? 'true' : 'false'"
+                    @click="toggleCharms()" :disabled="productsBusy || (!products.charms_available && !products.charm_configuration_ready)"
+                    class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+                    :class="products.charms_available ? 'bg-emerald-600' : 'bg-zinc-300'">
+              <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="products.charms_available ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+            </button>
+            <span class="badge" :class="products.charms_available ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="products.charms_available ? 'ON' : 'OFF'"></span>
+          </div>
           <p class="text-[12px] text-zinc-600" x-show="!products.charms_available">Customers see the ring-only site: no product choice, no charm text, no charm tiles. A browser signed in to the Admin previews charms on the site, so the whole charm system can be tested first.</p>
           <p class="text-[12px] text-zinc-600" x-show="products.charms_available">Customers can choose a ring or a charm when they start a design, and charms appear in the Inspiration Gallery.</p>
           <p class="text-[12px] text-zinc-500" x-show="products.charms_available_changed" x-text="'Last changed ' + dateTime(products.charms_available_changed?.updated_at) + ' by ' + (products.charms_available_changed?.updated_by || '—')"></p>
           <p x-show="!products.charm_configuration_ready" class="text-[12px] text-amber-700">The charm AI configuration is not ready yet.</p>
-          <template x-if="!products.charms_available">
-            <form class="space-y-2" @submit.prevent="setCharmsAvailable(true)">
-              <label class="lbl block" for="show-charms" x-text="'Type ' + products.show_confirmation + ' to show charms to customers'"></label>
-              <input id="show-charms" class="inp" x-model="showConfirm" :placeholder="products.show_confirmation" autocomplete="off">
-              <input class="inp" x-model="productsNote" placeholder="Note (optional): why now" aria-label="Note">
-              <button class="btn" :disabled="productsBusy || showConfirm.trim() !== products.show_confirmation || !products.charm_configuration_ready">Show charms to customers</button>
-            </form>
-          </template>
-          <template x-if="products.charms_available">
-            <button class="btn2" :disabled="productsBusy" @click="setCharmsAvailable(false)">Hide charms from customers</button>
-          </template>
         </div>
       </div>
       </template>
@@ -1767,31 +1764,32 @@
               <span class="text-zinc-600" x-text="' — ' + f.description"></span></li>
           </template>
         </ul>
-        <template x-if="placeholdersFor(mc).length">
-          <div class="pt-2">
-            <p class="lbl mb-1">Template placeholders</p>
-            <template x-for="ph in placeholdersFor(mc)" :key="ph">
-              <p><code class="font-mono text-[12px] bg-amber-50 border border-amber-200 px-1" x-text="'{{' + ph + '}}'"></code>
-                <span class="text-zinc-600" x-text="' — ' + (runtimePlaceholders[ph] || '')"></span></p>
-            </template>
-          </div>
-        </template>
+        <div class="pt-2" x-show="placeholdersFor(mc).length">
+          <p class="lbl mb-1">Template placeholders</p>
+          <template x-for="ph in placeholdersFor(mc)" :key="ph">
+            <p><code class="font-mono text-[12px] bg-amber-50 border border-amber-200 px-1" x-text="'{{' + ph + '}}'"></code>
+              <span class="text-zinc-600" x-text="' — ' + (runtimePlaceholders[ph] || '')"></span></p>
+          </template>
+        </div>
       </section>
 
-      <!-- Parameters -->
+      <!-- Parameters, in fixed slots that persist from one model to the next: switching models only changes what each
+           slot shows (its parameter is read live from the current model). Rows are never removed — Alpine 3.13 does
+           not clean up the template blocks nested inside a removed x-for row, whose bindings then kept running and
+           threw console errors on every later change. Every editor below is shown with x-show, never x-if. -->
       <section class="card divide-y divide-zinc-100">
-        <template x-for="(p, i) in mc.model.params" :key="mid + p.name">
-          <div>
+        <template x-for="s in paramSlots" :key="s">
+          <div x-data="{ get p() { return mc?.model.params[s - 1] || emptyParam }, get i() { return s - 1 } }" x-show="p.name">
           <!-- A group heading (e.g. the refinement variations) above the first parameter of the group -->
-          <div x-show="p.group && (i === 0 || mc.model.params[i - 1].group !== p.group)" class="px-5 pt-5 pb-1">
-            <p class="text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-800" x-text="p.group.split(' — ')[0]"></p>
-            <p class="text-[12px] text-zinc-500 leading-snug mt-0.5" x-text="p.group.includes(' — ') ? p.group.slice(p.group.indexOf(' — ') + 3) : ''"></p>
+          <div x-show="p.group && (i === 0 || mc?.model.params[i - 1]?.group !== p.group)" class="px-5 pt-5 pb-1">
+            <p class="text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-800" x-text="(p.group || '').split(' — ')[0]"></p>
+            <p class="text-[12px] text-zinc-500 leading-snug mt-0.5" x-text="(p.group || '').includes(' — ') ? p.group.slice(p.group.indexOf(' — ') + 3) : ''"></p>
           </div>
           <div class="p-5 grid grid-cols-1 md:grid-cols-[230px_1fr] gap-4">
             <div class="space-y-1">
               <p class="font-mono text-[13px] font-semibold" x-text="p.name"></p>
               <p class="text-[12px] text-zinc-500 leading-snug" x-text="p.description"></p>
-              <p class="text-[12px] text-zinc-500" x-text="rangeText(p)"></p>
+              <p class="text-[12px] text-zinc-500" x-text="p.name ? rangeText(p) : ''"></p>
               <label class="flex items-center gap-2 text-xs pt-1" :class="p.required ? 'text-zinc-500' : ''">
                 <input type="checkbox" :checked="draft[p.name]?.set" :disabled="p.required" @change="setParam(p, $event.target.checked)">
                 <span x-text="p.required ? 'Required — always sent' : p.internal ? 'Use this directive' : 'Configure (send this value)'"></span>
@@ -1799,69 +1797,68 @@
             </div>
             <div>
               <div x-show="!draft[p.name]?.set" class="text-sm text-zinc-500 italic py-2"
-                   x-text="p.internal ? 'Not used — this image gets the plain prompt, the same as the others (as before).' : 'Not sent — provider default: ' + defaultText(p)"></div>
+                   x-text="p.internal ? 'Not used — this image gets the plain prompt, the same as the others (as before).' : 'Not sent — provider default: ' + (p.name ? defaultText(p) : '')"></div>
               <div x-show="draft[p.name]?.set" class="space-y-2">
                 <!-- text / template -->
-                <template x-if="p.kind === 'text' || p.kind === 'template'">
-                  <div>
-                    <textarea class="inp font-mono !text-[12px] leading-relaxed" :rows="(p.name.includes('system') || p.kind === 'template') ? 14 : 5"
-                              x-model="draft[p.name].value" @input="dirty = true"></textarea>
-                    <div class="flex flex-wrap items-center gap-2 mt-1 text-[12px] text-zinc-500">
-                      <span x-text="(draft[p.name].value || '').length + (p.max_length ? ' / ' + p.max_length : '') + ' characters'"></span>
-                      <template x-for="ph in p.placeholders"><button class="font-mono bg-amber-50 border border-amber-200 px-1 text-amber-800"
-                        @click="draft[p.name].value = (draft[p.name].value || '') + '{{' + ph + '}}'; dirty = true" x-text="'+ {{' + ph + '}}'"></button></template>
-                      <span x-show="p.required_placeholders.length" x-text="'must contain ' + p.required_placeholders.map(x => '{{' + x + '}}').join(', ')"></span>
-                    </div>
+                <div x-show="p.kind === 'text' || p.kind === 'template'">
+                  <textarea class="inp font-mono !text-[12px] leading-relaxed" :rows="(p.name.includes('system') || p.kind === 'template') ? 14 : 5"
+                            :value="(p.kind === 'text' || p.kind === 'template') ? (draft[p.name]?.value ?? '') : ''"
+                            @input="draft[p.name].value = $event.target.value; dirty = true"></textarea>
+                  <div class="flex flex-wrap items-center gap-2 mt-1 text-[12px] text-zinc-500">
+                    <span x-text="String(draft[p.name]?.value ?? '').length + (p.max_length ? ' / ' + p.max_length : '') + ' characters'"></span>
+                    <template x-for="ph in p.placeholders"><button class="font-mono bg-amber-50 border border-amber-200 px-1 text-amber-800"
+                      @click="draft[p.name].value = (draft[p.name].value || '') + '{{' + ph + '}}'; dirty = true" x-text="'+ {{' + ph + '}}'"></button></template>
+                    <span x-show="p.required_placeholders.length" x-text="'must contain ' + p.required_placeholders.map(x => '{{' + x + '}}').join(', ')"></span>
                   </div>
-                </template>
+                </div>
                 <!-- enum -->
-                <template x-if="p.kind === 'enum'">
-                  <select class="inp !w-auto" x-model="draft[p.name].value" @change="dirty = true">
-                    <template x-for="o in p.enum"><option :value="o" :selected="o === draft[p.name].value" :disabled="!p.allowed.includes(o)"
+                <div x-show="p.kind === 'enum'">
+                  <select class="inp !w-auto" @change="draft[p.name].value = $event.target.value; dirty = true">
+                    <template x-for="o in (p.kind === 'enum' ? p.enum : [])"><option :value="o" :selected="o === draft[p.name]?.value" :disabled="!p.allowed.includes(o)"
                       x-text="o + (o === p.default ? '  (provider default)' : '') + (!p.allowed.includes(o) ? '  — not supported by the pipeline' : '')"></option></template>
                   </select>
-                </template>
+                </div>
                 <!-- numbers -->
-                <template x-if="p.kind === 'int' || p.kind === 'number'">
+                <div x-show="p.kind === 'int' || p.kind === 'number'">
                   <input type="number" class="inp !w-48" :min="p.min" :max="p.max" :step="p.kind === 'int' ? 1 : 'any'"
-                         :value="draft[p.name].value" @input="draft[p.name].value = $event.target.value === '' ? null : Number($event.target.value); dirty = true">
-                </template>
+                         :value="(p.kind === 'int' || p.kind === 'number') ? draft[p.name]?.value : ''"
+                         @input="draft[p.name].value = $event.target.value === '' ? null : Number($event.target.value); dirty = true">
+                </div>
                 <!-- boolean -->
-                <template x-if="p.kind === 'bool'">
+                <div x-show="p.kind === 'bool'">
                   <button class="inline-flex items-center gap-2 text-sm" @click="draft[p.name].value = !draft[p.name].value; dirty = true">
-                    <span class="w-10 h-5 rounded-full relative transition" :class="draft[p.name].value ? 'bg-zinc-900' : 'bg-zinc-300'">
-                      <span class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" :class="draft[p.name].value ? 'left-5' : 'left-0.5'"></span></span>
-                    <span x-text="draft[p.name].value ? 'On (true)' : 'Off (false)'"></span>
+                    <span class="w-10 h-5 rounded-full relative transition" :class="draft[p.name]?.value ? 'bg-zinc-900' : 'bg-zinc-300'">
+                      <span class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" :class="draft[p.name]?.value ? 'left-5' : 'left-0.5'"></span></span>
+                    <span x-text="draft[p.name]?.value ? 'On (true)' : 'Off (false)'"></span>
                   </button>
-                </template>
-                <!-- camera keyframes -->
-                <template x-if="p.kind === 'keyframes'">
-                  <div class="space-y-2">
-                    <table class="w-full !text-xs">
-                      <thead><tr><th>#</th><th>time (0–1)</th><th>azimuth °</th><th>elevation ° (−90…90)</th><th>distance (&gt;0)</th><th></th></tr></thead>
-                      <tbody>
-                        <template x-for="(k, i) in (draft[p.name].value || [])" :key="i">
-                          <tr>
-                            <td class="text-zinc-500" x-text="i + 1"></td>
-                            <template x-for="f in ['time', 'azimuth', 'elevation', 'distance']">
-                              <td><input type="number" step="any" class="inp !py-1 !w-24" :value="k?.[f]" @input="k[f] = Number($event.target.value); dirty = true"></td>
-                            </template>
-                            <td class="whitespace-nowrap text-zinc-500 space-x-2">
-                              <button @click="moveKey(p.name, i, -1)" :disabled="i === 0">↑</button>
-                              <button @click="moveKey(p.name, i, 1)" :disabled="i === draft[p.name].value.length - 1">↓</button>
-                              <button class="text-red-500" @click="removeKey(p.name, i)" :disabled="draft[p.name].value.length <= 2">✕</button>
-                            </td>
-                          </tr>
-                        </template>
-                      </tbody>
-                    </table>
-                    <div class="flex flex-wrap gap-4 text-xs">
-                      <button class="underline" @click="addKey(p.name)" :disabled="(draft[p.name].value || []).length >= 12">+ Add keyframe</button>
-                      <button class="underline text-zinc-500" @click="orbitPreset(p.name)">Reset to a 360° orbit (5 keyframes)</button>
-                      <span class="text-zinc-500" x-text="(draft[p.name].value || []).length + ' of 2–12 keyframes · total azimuth travel ' + azimuthTravel(draft[p.name].value) + '° (max 11520°)'"></span>
-                    </div>
+                </div>
+                <!-- camera keyframes (each keyframe's four cells written out: no template nested in a keyframe row) -->
+                <div x-show="p.kind === 'keyframes'" class="space-y-2">
+                  <table class="w-full !text-xs">
+                    <thead><tr><th>#</th><th>time (0–1)</th><th>azimuth °</th><th>elevation ° (−90…90)</th><th>distance (&gt;0)</th><th></th></tr></thead>
+                    <tbody>
+                      <template x-for="(k, n) in (p.kind === 'keyframes' ? (draft[p.name]?.value || []) : [])" :key="n">
+                        <tr>
+                          <td class="text-zinc-500" x-text="n + 1"></td>
+                          <td><input type="number" step="any" class="inp !py-1 !w-24" :value="k?.time" @input="k.time = Number($event.target.value); dirty = true"></td>
+                          <td><input type="number" step="any" class="inp !py-1 !w-24" :value="k?.azimuth" @input="k.azimuth = Number($event.target.value); dirty = true"></td>
+                          <td><input type="number" step="any" class="inp !py-1 !w-24" :value="k?.elevation" @input="k.elevation = Number($event.target.value); dirty = true"></td>
+                          <td><input type="number" step="any" class="inp !py-1 !w-24" :value="k?.distance" @input="k.distance = Number($event.target.value); dirty = true"></td>
+                          <td class="whitespace-nowrap text-zinc-500 space-x-2">
+                            <button @click="moveKey(p.name, n, -1)" :disabled="n === 0">↑</button>
+                            <button @click="moveKey(p.name, n, 1)" :disabled="n === (draft[p.name]?.value || []).length - 1">↓</button>
+                            <button class="text-red-500" @click="removeKey(p.name, n)" :disabled="(draft[p.name]?.value || []).length <= 2">✕</button>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                  <div class="flex flex-wrap gap-4 text-xs">
+                    <button class="underline" @click="addKey(p.name)" :disabled="(draft[p.name]?.value || []).length >= 12">+ Add keyframe</button>
+                    <button class="underline text-zinc-500" @click="orbitPreset(p.name)">Reset to a 360° orbit (5 keyframes)</button>
+                    <span class="text-zinc-500" x-text="p.kind === 'keyframes' ? (draft[p.name]?.value || []).length + ' of 2–12 keyframes · total azimuth travel ' + azimuthTravel(draft[p.name]?.value) + '° (max 11520°)' : ''"></span>
                   </div>
-                </template>
+                </div>
               </div>
             </div>
           </div>
@@ -1895,14 +1892,12 @@
         <p class="text-[12px] text-amber-700">Values marked [SAMPLE …] and example.invalid are sample runtime inputs; real requests use the customer's text, the selected image and a random seed.</p>
         <p class="text-[12px] text-zinc-500" x-text="'POST ' + preview?.endpoint + (preview?.omitted?.length ? ' · not sent (provider defaults): ' + preview.omitted.join(', ') : '')"></p>
         <pre class="bg-zinc-50 border border-zinc-200 p-3 text-[12px] overflow-x-auto max-h-[480px] whitespace-pre-wrap" x-text="JSON.stringify(preview?.payload, null, 2)"></pre>
-        <template x-if="preview?.slot_directives">
-          <div class="text-[12px] text-zinc-600 space-y-1 pt-1">
-            <p class="font-semibold text-zinc-700">Refinement variations — the payload above is image A; images B–D send the same request with their own directive at the end of the prompt:</p>
-            <template x-for="k in ['A', 'B', 'C', 'D']" :key="k">
-              <p><span class="font-mono">Image <span x-text="k"></span>:</span> <span x-text="preview.slot_directives[k] || 'no directive — plain prompt (as before)'"></span></p>
-            </template>
-          </div>
-        </template>
+        <div class="text-[12px] text-zinc-600 space-y-1 pt-1" x-show="preview?.slot_directives">
+          <p class="font-semibold text-zinc-700">Refinement variations — the payload above is image A; images B–D send the same request with their own directive at the end of the prompt:</p>
+          <template x-for="k in ['A', 'B', 'C', 'D']" :key="k">
+            <p><span class="font-mono">Image <span x-text="k"></span>:</span> <span x-text="preview?.slot_directives?.[k] || 'no directive — plain prompt (as before)'"></span></p>
+          </template>
+        </div>
       </section>
 
       <!-- Version history -->

@@ -149,7 +149,7 @@ async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     B, C = await CharmCustomize(H)
     assert (C["product_type"], C["ring_size"], C["charm_size"], C["material_id"], C["material_label"]) == \
         ("charm", None, None, "silver", "Sterling Silver")
-    assert C["size_definition"]["text"] == "The height of the main charm body, excluding the standard attachment loop."
+    assert C["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
     assert [M["label"] for M in C["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold Vermeil"]
     assert all(not M["purchasable"] for M in C["materials"][3:])                      # gold: the quote flow
     R = await H.Client.patch(f"/api/customizations/{C['id']}", json={"ring_size": 7})
@@ -185,7 +185,7 @@ async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):
     assert [(R["product_type"], R["ring_size"], R["charm_size"]) for R in Rows] == [("ring", 7.0, None), ("charm", None, 20.0)]
     Snap = json.loads(Rows[1]["purchase_json"])
     assert Snap["product"] == "charm" and Snap["size"]["label"] == "20 mm" and Snap["size"]["unit"] == "mm"
-    assert Snap["size"]["definition"].startswith("The height of the main charm body")
+    assert Snap["size"]["definition"] == "The total height of the charm, including the attachment loop at the top."
     assert Snap["material"] == {"id": "silver", "label": "Sterling Silver"}
     assert Snap["price"] == {"unit_price": 145.0, "currency": "USD", "pricing_version": "charms-v2"}
     assert json.loads(Rows[0]["purchase_json"])["price"]["pricing_version"].startswith("materials-v")

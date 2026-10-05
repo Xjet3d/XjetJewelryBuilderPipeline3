@@ -183,7 +183,7 @@ function adminApp() {
     get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProduct: 'ring',                              // AI models & prompts: which product's configuration is shown (Ring | Charm)
-    products: null, productsMsg: '', productsErr: false, productsBusy: false, showConfirm: '', productsNote: '',
+    products: null, productsMsg: '', productsErr: false, productsBusy: false,
     mProblems: [], mMessage: '', mBusy: false, preview: null,
     prices: null, pricesEdit: null, pricesBusy: false, pricesMsg: '', pricesErr: false,
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
@@ -353,12 +353,17 @@ function adminApp() {
       this.productsMsg = ''; this.productsErr = false;
       try { this.products = await this.api('GET', '/api/admin/products'); } catch (e) { this.productsErr = true; this.productsMsg = e.message; }
     },
-    async setCharmsAvailable(on) {
-      if (!on && !await this.ask({ title: 'Hide charms from customers?', text: 'Customers will see the ring-only site again: no product choice, no charm text, no charm tiles. Charm designs, orders and settings are kept, and a browser signed in to the Admin still previews them.', confirmLabel: 'Hide charms' })) return;
+    // Charms available to customers: one switch, each change confirmed in a normal dialog
+    async toggleCharms() {
+      if (!this.products || this.productsBusy) return;
+      const on = !this.products.charms_available;
+      const ok = await this.ask(on
+        ? { title: 'Enable Charms for customers?', text: 'Customers will be able to choose a ring or a charm when they start a design, and charms will appear in the Inspiration Gallery.', confirmLabel: 'Enable Charms', cancelLabel: 'Cancel' }
+        : { title: 'Hide Charms from customers?', text: 'Customers will see the ring-only site again: no product choice, no charm text, no charm tiles. Charm designs, orders and settings are kept, and a browser signed in to the Admin still previews them.', confirmLabel: 'Hide Charms', cancelLabel: 'Cancel' });
+      if (!ok) return;
       this.productsBusy = true; this.productsMsg = ''; this.productsErr = false;
       try {
-        this.products = await this.api('PUT', '/api/admin/products/availability', { charms_available: on, confirm: this.showConfirm, note: this.productsNote });
-        this.showConfirm = ''; this.productsNote = '';
+        this.products = await this.api('PUT', '/api/admin/products/availability', { charms_available: on });
         this.productsMsg = on ? 'Charms are now available to customers.' : 'Charms are hidden from customers.';
         this.notify(this.productsMsg);
       } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
@@ -950,15 +955,22 @@ function adminApp() {
       if (first) this.go(this.modelHash(first.model.id));       // the unsaved-changes guard in route() still applies
     },
     async selectModel(id) {
-      this.mc = await this.api('GET', '/api/admin/models/' + encodeURIComponent(id));
-      this.mProduct = this.mc.model.product || 'ring';
+      const mc = await this.api('GET', '/api/admin/models/' + encodeURIComponent(id));
+      // The parameter rows are fixed slots that read the current model (web/admin.html), so the model and its draft
+      // (exactly its saved settings) change together, in one step.
+      this.draft = this.draftFrom(mc.active.params, mc);
+      this.mc = mc;
+      this.mProduct = mc.model.product || 'ring';
       this.mid = id; this.note = ''; this.mProblems = []; this.mMessage = ''; this.preview = null;
-      this.draft = this.draftFrom(this.mc.active.params);
       this.dirty = false;
     },
-    draftFrom(params) {
+    // The parameter editor's slots: as many as the largest model has parameters (they persist across models)
+    get paramSlots() { return this.models.reduce((n, m) => Math.max(n, m.model.params.length), 0); },
+    emptyParam: { name: '', kind: '', description: '', default: null, enum: [], allowed: [], allowed_reason: null, min: null, max: null,
+                  required: false, placeholders: [], required_placeholders: [], max_length: null, internal: false, group: null },
+    draftFrom(params, mc = this.mc) {
       const d = {};
-      for (const p of this.mc.model.params) {
+      for (const p of mc.model.params) {
         const has = Object.prototype.hasOwnProperty.call(params, p.name);
         let v = has ? params[p.name] : p.default;
         if (p.kind === 'keyframes') v = JSON.parse(JSON.stringify(has ? v : this.orbit()));
@@ -1297,7 +1309,7 @@ function adminApp() {
       ];
       if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g; cost and 3D price from the charm price book.`);
       out.push('The scaled STL (lying flat: width along X, height along Y, thickness along Z, centred, millimetres) is created on demand and deleted after an hour.');
-      out.push('The attachment loop is not detected yet, so the main body is smaller than the chosen size — check it before production.');
+      out.push('A charm size is its total height, the attachment loop included: the whole charm is scaled to it (no loop measurement).');
       return out;
     },
 

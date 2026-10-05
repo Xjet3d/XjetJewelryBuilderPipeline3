@@ -134,7 +134,7 @@ class PromoService:
         EligibleSubtotal = round(sum(L["line_total"] for L in Eligible), 2)
         if not Eligible:
             Names = ", ".join(self.Ctx.Catalog.Get(M).Label for M in P["materials"] if self.Ctx.Catalog.Get(M))
-            raise PromoError("promo_not_applicable", f"This promo code applies to {Names} rings only.")
+            raise PromoError("promo_not_applicable", f"This promo code applies to {Names} pieces only.")
         if P["min_subtotal"] and Subtotal < P["min_subtotal"]:
             raise PromoError("promo_minimum", f"This promo code needs a subtotal of at least ${P['min_subtotal']:.0f}.")
         if P["kind"] == "percent":

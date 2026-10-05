@@ -72,7 +72,7 @@ async def test_a_ring_customer_gets_the_ring_only_answers_while_charms_are_hidde
 
 async def test_a_customer_who_holds_charms_keeps_seeing_them_after_charms_are_hidden(HC5):
     H = HC5
-    On = await H.Client.put("/api/admin/products/availability", json={"charms_available": True, "confirm": "SHOW CHARMS"}, headers=Admin)
+    On = await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
     assert On.json()["charms_available"] is True
     await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
     B = await H.NewDesign("A crescent moon charm", product="charm")
@@ -109,3 +109,28 @@ async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):
         Cat = (await Browser.get("/api/catalog")).json()
     assert Cat["products"]["preview"] is True
     assert [M["label"] for M in Cat["products"]["charm"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold Vermeil"]
+
+
+async def test_promo_messages_are_product_neutral(HC5):
+    H = HC5
+    H.Svc.Promos.Save({"code": "VERMEIL10", "kind": "percent", "value": 10, "materials": ["vermeil"]}, "test")
+    Empty = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
+    assert Empty == {"code": "promo_no_items", "message": "Add a piece to your bag before using a promo code."}
+    # A ring in the bag: the material restriction speaks of pieces, not rings
+    await RingOrder(H)
+    Ring = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
+    assert Ring == {"code": "promo_not_applicable", "message": "This promo code applies to Vermeil pieces only."}
+    # … and the same message for a charm
+    await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
+    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
+    for L in (await H.Client.get("/api/bag")).json()["lines"]:
+        await H.Client.delete(f"/api/bag/{L['id']}")
+    B = await H.NewDesign("A heart charm", product="charm")
+    C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
+    await H.Idle()
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.post("/api/bag", json={"customization_id": C["id"]})
+    Charm = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
+    assert Charm == Ring
+    for Text in (Empty["message"], Ring["message"]):
+        assert "ring" not in Text.lower() and "charm" not in Text.lower()

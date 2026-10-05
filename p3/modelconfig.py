@@ -262,12 +262,8 @@ _MeshParams = (
 _MeshFixed = (Fixed("image_url", "The session's selected design image.", Runtime="image_url"),
               Fixed("model", "Fixed by the endpoint (Hi3D v3.0); not sent.", None))
 
-Models: dict[str, ModelSpec] = {S.Id: S for S in (
-    ModelSpec(
-        "any-llm", "any-llm", "fal-ai/any-llm",
-        "Not used by the Pipeline 3 flow yet (Pipeline 2 uses it as its prompt gate). Settings can be prepared and "
-        "previewed here; no P3 request uses them until a feature is connected.", False,
-        (
+# Any-LLM parameters: one definition, shared by the ring and the charm model
+_AnyLlmParams = (
             Param("model", "enum", "Language model to use. Premium models are charged at 10× the standard rate.",
                   Default="google/gemini-2.5-flash-lite", Enum=(
                       "deepseek/deepseek-r1", "deepseek/deepseek-v3.1-terminus", "anthropic/claude-sonnet-4.5",
@@ -289,7 +285,14 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
             Param("priority", "enum", "Throughput (recommended for most uses) or low latency.", Default="latency",
                   Enum=("throughput", "latency")),
             Param("reasoning", "bool", "Include the model's reasoning in the final answer.", Default=False),
-        )),
+)
+
+Models: dict[str, ModelSpec] = {S.Id: S for S in (
+    ModelSpec(
+        "any-llm", "any-llm", "fal-ai/any-llm",
+        "Not used by the Pipeline 3 flow yet (Pipeline 2 uses it as its prompt gate). Settings can be prepared and "
+        "previewed here; no P3 request uses them until a feature is connected.", False,
+        _AnyLlmParams),
     ModelSpec(
         "nano-banana-pro", "fal-ai/nano-banana-pro", endpoints.ImageGenerate,
         "Design images for a New Design without a reference image (four separate requests, one image each).", True,
@@ -312,6 +315,11 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         _MeshParams,
         _MeshFixed),
     # ── Charms: their own models, versions and history — the same providers, never the ring configuration ──
+    ModelSpec(
+        "any-llm-charm", "any-llm · Charm", "fal-ai/any-llm",
+        "The Charm request check (not used by the Pipeline 3 flow yet, like the Ring one). Its own model, instructions "
+        "and parameters can be prepared and previewed here; no P3 request uses them until a feature is connected.", False,
+        _AnyLlmParams, Product="charm"),
     ModelSpec(
         "nano-banana-pro-charm", "fal-ai/nano-banana-pro · Charm", endpoints.ImageGenerate,
         "Charm design images for a New Design without a reference image (four separate requests, one image each).", True,
@@ -536,10 +544,12 @@ def CharmSeed(ModelId: str, RingParams: dict) -> dict:
         return Out
     if ModelId == "minimax-camera-charm":
         return {**Keep, "prompt": _ReadText(Raw["movie_prompt_file"])}
+    if ModelId == "any-llm-charm":                # the ring's model and settings (copied), the charm's own instructions
+        return {**Keep, "prompt": "{{user_prompt}}", "system_prompt": _ReadText(Raw["anyllm_system_prompt_file"])}
     return dict(RingParams)                                    # hi3d-charm: the same 3D settings as rings
 
 
-RingCounterpart = {"nano-banana-pro-charm": "nano-banana-pro", "nano-banana-pro-edit-charm": "nano-banana-pro-edit",
+RingCounterpart = {"any-llm-charm": "any-llm", "nano-banana-pro-charm": "nano-banana-pro", "nano-banana-pro-edit-charm": "nano-banana-pro-edit",
                    "minimax-camera-charm": "minimax-camera", "hi3d-charm": "hi3d"}
 
 

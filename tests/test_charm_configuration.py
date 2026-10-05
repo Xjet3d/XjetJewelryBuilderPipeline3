@@ -29,7 +29,7 @@ async def test_charm_models_start_from_the_ring_settings_with_their_own_prompts(
     H = HK
     L = (await H.Client.get("/api/admin/models", headers=Admin)).json()["models"]
     assert {M["model"]["id"]: M["model"]["product"] for M in L} == {
-        "any-llm": "ring", **{M: "ring" for M in RingModels}, **{M: "charm" for M in CharmModels}}
+        "any-llm": "ring", **{M: "ring" for M in RingModels}, "any-llm-charm": "charm", **{M: "charm" for M in CharmModels}}
     Gen, RingGen = await _Model(H, "nano-banana-pro-charm"), await _Model(H, "nano-banana-pro")
     assert Gen["active"]["id"].startswith("nano-banana-pro-charm@v1-") and len(Gen["history"]) == 1
     P = Gen["active"]["params"]
@@ -77,7 +77,7 @@ async def test_exports_are_per_product_and_the_ring_export_is_unchanged(HK):
     Rings = (await H.Client.get("/api/admin/models/export?format=json", headers=Admin)).json()["models"]
     assert [M["model"] for M in Rings] == ["any-llm", *RingModels] and {M["product"] for M in Rings} == {"ring"}
     Charms = await H.Client.get("/api/admin/models/export?format=json&product=charm", headers=Admin)
-    assert [M["model"] for M in Charms.json()["models"]] == list(CharmModels)
+    assert [M["model"] for M in Charms.json()["models"]] == ["any-llm-charm", *CharmModels]
     assert 'filename="p3-ai-config-all-charm.json"' in Charms.headers["content-disposition"]
     Text = (await H.Client.get("/api/admin/models/export?format=txt&product=charm", headers=Admin)).text
     assert "Charm configuration" in Text and "Ring configuration" not in Text
@@ -128,18 +128,17 @@ async def test_customers_create_charms_only_while_charms_are_available(HK):
     assert (await Try()).status_code == 400
     Cat = (await H.Client.get("/api/catalog", headers=Customer)).json()
     assert "products" not in Cat                                                                   # the ring-only catalog of before
-    # Turning charms on is typed out
-    Bad = await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
-    assert Bad.status_code == 400 and Bad.json()["error"]["code"] == "confirmation_required"
-    On = await H.Client.put("/api/admin/products/availability", json={"charms_available": True, "confirm": "SHOW CHARMS",
-                                                                      "note": "launch"}, headers=Admin)
-    assert On.status_code == 200 and On.json()["charms_available"] is True and On.json()["log"][0]["note"] == "launch"
+    # A simple switch: no typed phrase (the Admin confirms in a normal dialog)
+    On = await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
+    assert On.status_code == 200 and On.json()["charms_available"] is True and "show_confirmation" not in On.json()
+    assert On.json()["log"][0]["key"] == "charms_available" and On.json()["log"][0]["value"] is True
     R = await Try()
     assert R.status_code == 200 and R.json()["config_version"].startswith("nano-banana-pro-charm@")
     Cat = (await H.Client.get("/api/catalog", headers=Customer)).json()
     assert Cat["products"]["available"] == ["ring", "charm"] and Cat["products"]["preview"] is False
     assert Cat["products"]["charm"]["sizes"] == [15.0, 20.0, 25.0, 30.0]
-    assert Cat["products"]["charm"]["size_definition"]["text"].startswith("The height of the main charm body")
+    assert Cat["products"]["charm"]["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
+    assert Cat["products"]["charm"]["size_definition"]["includes_loop"] is True
     Off = await H.Client.put("/api/admin/products/availability", json={"charms_available": False}, headers=Admin)
     assert Off.json()["charms_available"] is False and (await Try()).status_code == 400
     assert (await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Customer)).status_code == 403
@@ -167,3 +166,41 @@ def test_rings_are_named_exactly_as_before():
     for P in ("A slim twisted band", "Bold signet with a lion crest", "an infinity loop ring", "Midi knuckle ring, slim"):
         assert Naming.RingName(P) == Naming.RingName(P, Product="ring")
         assert list(Naming.Candidates(P)) == list(Naming.Candidates(P, Product="ring"))
+
+
+async def test_any_llm_has_a_charm_configuration_of_its_own(HK):
+    H = HK
+    Ring, Charm = await _Model(H, "any-llm"), await _Model(H, "any-llm-charm")
+    assert Charm["model"]["product"] == "charm" and Charm["model"]["endpoint"] == Ring["model"]["endpoint"] == "fal-ai/any-llm"
+    assert Charm["active"]["id"].startswith("any-llm-charm@v1-") and len(Charm["history"]) == 1
+    P = Charm["active"]["params"]
+    assert P["prompt"] == "{{user_prompt}}" and P["system_prompt"].startswith("You validate requests for an AI charm-design application.")
+    assert "wearable finger rings" not in P["system_prompt"] and "plain loop at its top" in P["system_prompt"]
+    # Saving the charm configuration never changes the ring one, and the reverse
+    New = {**P, "model": "openai/gpt-4o-mini", "temperature": 0.2, "system_prompt": "Charm check, edited"}
+    R = await H.Client.post("/api/admin/models/any-llm-charm/activate", json={"params": New, "note": "charm"}, headers=Admin)
+    assert R.json()["changed"] and R.json()["active"]["number"] == 2
+    assert (await _Model(H, "any-llm"))["active"] == Ring["active"]
+    RingNew = {**Ring["active"]["params"], "system_prompt": "Ring check, edited", "max_tokens": 300}
+    assert (await H.Client.post("/api/admin/models/any-llm/activate", json={"params": RingNew}, headers=Admin)).json()["changed"]
+    Now_ = (await _Model(H, "any-llm-charm"))["active"]["params"]
+    assert (Now_["system_prompt"], Now_["model"], Now_.get("max_tokens")) == ("Charm check, edited", "openai/gpt-4o-mini", None)
+    # Restoring stays within each product's own history
+    R = await H.Client.post("/api/admin/models/any-llm-charm/restore", json={"version_id": Charm["active"]["id"]}, headers=Admin)
+    assert R.json()["active"]["number"] == 3 and R.json()["active"]["params"] == P
+    assert (await H.Client.post("/api/admin/models/any-llm-charm/restore", json={"version_id": Ring["active"]["id"]},
+                                headers=Admin)).status_code == 400
+    Preview = (await H.Client.post("/api/admin/models/any-llm-charm/preview", json={}, headers=Admin)).json()
+    assert "charm" in Preview["payload"]["prompt"].lower() and Preview["submitted"] is False
+
+
+def test_the_charm_any_llm_seed_copies_the_ring_settings_by_value():
+    from p3.modelconfig import CharmSeed
+    Ring = {"prompt": "{{user_prompt}}", "system_prompt": "ring rules", "model": "google/gemini-2.5-flash", "temperature": 0.0,
+            "max_tokens": 512, "priority": "latency", "reasoning": False}
+    Seed = CharmSeed("any-llm-charm", Ring)
+    assert {K: Seed[K] for K in ("model", "temperature", "max_tokens", "priority", "reasoning")} == \
+        {K: Ring[K] for K in ("model", "temperature", "max_tokens", "priority", "reasoning")}
+    assert Seed["system_prompt"] != "ring rules" and Seed["prompt"] == "{{user_prompt}}"
+    Seed["model"] = "openai/gpt-4o"
+    assert Ring["model"] == "google/gemini-2.5-flash"                     # a copy, never a reference

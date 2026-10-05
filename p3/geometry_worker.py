@@ -66,7 +66,7 @@ def Run(A: dict) -> dict:
         Out = g.IntegrityCheck(A["source"])
     elif Kind == "export" and A.get("product") == "charm":
         from p3 import charmgeometry as cg
-        Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
+        Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"], A.get("label", ""))}
     elif Kind == "export":
         Out = {"faces": g.ExportScaledStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
     else:
