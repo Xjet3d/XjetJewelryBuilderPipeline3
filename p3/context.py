@@ -33,6 +33,7 @@ class Context:
     Accounts: AccountProvider
     Models: "ModelConfigStore" = None             # versioned AI prompts & parameters (source of truth)
     MaterialPrices: "MaterialPriceBook" = None    # versioned density / price $/g / cost $/g / fixed price
+    Products: "ProductSettings" = None            # rings and charms: customer availability of charms, charm sizes
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

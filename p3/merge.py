@@ -61,10 +61,12 @@ def MergeTarget(Ctx: Context, Design: dict) -> dict | None:
     if not Design or not Design.get("source_design_id"):
         return None
     Db = Ctx.Db
-    Master = Db.One("SELECT id, title, ring_no, owner_account_id FROM designs WHERE id = ?", (Design["source_design_id"],))
-    if Master is None or CopyMapping(Db, Design["id"], Master["id"]) is None:
-        return None
-    return {"master_id": Master["id"], "master_ring_id": RingIds.DesignRef(Master["ring_no"]), "master_title": Master["title"],
+    Master = Db.One("SELECT id, title, ring_no, charm_no, product_type, owner_account_id FROM designs WHERE id = ?",
+                    (Design["source_design_id"],))
+    if Master is None or (Master.get("product_type") or "ring") != (Design.get("product_type") or "ring") \
+            or CopyMapping(Db, Design["id"], Master["id"]) is None:
+        return None                                       # a copy is always the same product as its master
+    return {"master_id": Master["id"], "master_ring_id": RingIds.Ref(Master), "master_title": Master["title"],
             "same_owner": Master["owner_account_id"] == Design["owner_account_id"]}
 
 
@@ -74,7 +76,7 @@ def LegacyCopies(Ctx: Context) -> list[dict]:
     for D in Ctx.Db.All("SELECT * FROM designs WHERE source_design_id IS NOT NULL ORDER BY created_at"):
         Target = MergeTarget(Ctx, D)
         if Target:
-            Out.append({"design_id": D["id"], "ring_id": RingIds.DesignRef(D["ring_no"]), "title": D["title"],
+            Out.append({"design_id": D["id"], "ring_id": RingIds.Ref(D), "title": D["title"],
                         "owner_account_id": D["owner_account_id"], "created_at": D["created_at"], **Target})
     return Out
 
@@ -89,6 +91,8 @@ def MergeLegacyCopy(Ctx: Context, DesignId: str, By: str) -> dict:
     Master = Db.One("SELECT * FROM designs WHERE id = ?", (Copy["source_design_id"],))
     if Master is None:
         raise HttpError(409, "master_missing", "The gallery design this copy came from no longer exists.")
+    if (Master.get("product_type") or "ring") != (Copy.get("product_type") or "ring"):
+        raise HttpError(409, "not_a_copy", "A ring and a charm are never merged into each other.")
     if Db.One("SELECT 1 AS x FROM batches WHERE design_id = ? AND kind = 'refine'", (DesignId,)):
         raise HttpError(409, "not_a_copy", "This design has refinements of its own: it is a variation, not a copy of the master.")
     Map = CopyMapping(Db, DesignId, Master["id"])
@@ -98,7 +102,7 @@ def MergeLegacyCopy(Ctx: Context, DesignId: str, By: str) -> dict:
     SameOwner = Owner == Master["owner_account_id"]
     MasterRefs = RingIds.CandidateRefs(Db, [Master["id"]])
     CopyRefs = RingIds.CandidateRefs(Db, [DesignId])
-    CopyRing, MasterRing = RingIds.DesignRef(Copy["ring_no"]), RingIds.DesignRef(Master["ring_no"])
+    CopyRing, MasterRing = RingIds.Ref(Copy), RingIds.Ref(Master)
     Assets = {C["id"]: C["asset_path"] for C in _Candidates(Db, Master["id"])}
 
     def Mapped(CandidateId):
@@ -204,7 +208,7 @@ def MergeLegacyCopy(Ctx: Context, DesignId: str, By: str) -> dict:
                          (Master["id"], Data.replace(DesignId, Master["id"]), Ev["id"]))
             Moved["events"] += 1
         # 8. The copy's Ring ID is retired for good; the copy itself goes.
-        RingIds.Retire(Conn, Copy["ring_no"], DesignId, Master["id"], Copy["title"], T)
+        RingIds.RetireDesign(Conn, Copy, Master["id"], T)
         Conn.execute("DELETE FROM candidates WHERE batch_id IN (SELECT id FROM batches WHERE design_id = ?)", (DesignId,))
         Conn.execute("DELETE FROM batches WHERE design_id = ?", (DesignId,))
         Conn.execute("DELETE FROM designs WHERE id = ?", (DesignId,))
@@ -270,10 +274,11 @@ def SplitRefinement(Ctx: Context, BatchId: str, By: str) -> dict:
         MasterSelection = (Tile["candidate_id"] if Tile else None) or B["parent_candidate_id"]
     Moved = {}
     with Db.Transaction() as Conn:
+        # The split-off refinement is the same product as the design it came from
         Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, selected_candidate_id, created_at, updated_at, ai_mode, "
-                     "source_design_id, source_candidate_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     "source_design_id, source_candidate_id, product_type) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                      (New, D["owner_account_id"], Title, D["prompt"], D["selected_candidate_id"] if D["selected_candidate_id"] in CandIds else None,
-                      B["created_at"], D["updated_at"], D["ai_mode"], D["id"], B["parent_candidate_id"]))
+                      B["created_at"], D["updated_at"], D["ai_mode"], D["id"], B["parent_candidate_id"], D.get("product_type") or "ring"))
         for X in Moving:
             Conn.execute("UPDATE batches SET design_id = ? WHERE id = ?", (New, X["id"]))
         Moved["batches"] = len(Moving)
@@ -288,16 +293,16 @@ def SplitRefinement(Ctx: Context, BatchId: str, By: str) -> dict:
             if any(M in (Ev["data_json"] or "") for M in Mentions):
                 Conn.execute("UPDATE session_events SET design_id = ? WHERE id = ?", (New, Ev["id"]))
                 Moved["events"] += 1
-    NewRow = Db.One("SELECT ring_no FROM designs WHERE id = ?", (New,))
+    NewRow = Db.One("SELECT ring_no, charm_no, product_type FROM designs WHERE id = ?", (New,))
     Refs = RingIds.CandidateRefs(Db, [New])
     for Table in ("order_lines", "quote_requests"):                   # snapshots carry the option's new Ring ID and the new name
         for R in Db.All(f"SELECT id, candidate_id FROM {Table} WHERE design_id = ?", (New,)):
             Db.Execute(f"UPDATE {Table} SET ring_id = ?, title = ? WHERE id = ?", (Refs.get(R["candidate_id"]), Title, R["id"]))
-    Ring = RingIds.DesignRef(NewRow["ring_no"])
+    Ring = RingIds.Ref(NewRow)
     Sessions.Record(Ctx, D["owner_account_id"], "design_forked", New, source_design_id=D["id"],
                     source_ring_id=RingIds.CandidateRef(Db, B["parent_candidate_id"]), parent_candidate_id=B["parent_candidate_id"],
                     reason="split", by=By, batch_id=BatchId)
     Sessions.Record(Ctx, D["owner_account_id"], "admin_refinement_split", D["id"], batch_id=BatchId, text=B["user_text"],
                     new_design_id=New, new_ring_id=Ring, new_title=Title, by=By, moved=Moved)
-    return {"design_id": New, "ring_id": Ring, "title": Title, "master": {"id": D["id"], "ring_id": RingIds.DesignRef(D["ring_no"]),
+    return {"design_id": New, "ring_id": Ring, "title": Title, "master": {"id": D["id"], "ring_id": RingIds.Ref(D),
             "title": D["title"], "selected_candidate_id": MasterSelection}, "moved": Moved}

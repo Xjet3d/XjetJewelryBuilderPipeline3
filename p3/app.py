@@ -21,6 +21,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from p3 import assets
 from p3 import media as Media
+from p3 import products as Products
 from p3 import showcase as Showcase
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
@@ -104,7 +105,7 @@ def _VersionedPage(Name: str, BasePath: str) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
     ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
-    for Asset in ("app.js", "admin.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
+    for Asset in ("app.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
@@ -134,6 +135,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Gen=LoadGenerationConfig(), Catalog=Catalog,
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
+    Ctx.Products = Products.ProductSettings(Ctx.Db)   # rings and charms (charms hidden from customers by default)
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
@@ -220,21 +222,22 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
         Html = _VersionedPage("index.html", Base)
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
-        Found = Svc.Gallery.Resolve(Slug)
+        Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:
             return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
         Origin = PublicOrigin(request)
         Url = f"{Origin}{Base}/design/{Found['slug']}"
         Title = html.escape(Found["title"], quote=True)
         Image = html.escape(f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}", quote=True)
-        Description = "Designed with XJet Atelier — a ring from the Inspiration Gallery. See it in 360°, choose your metal and make it yours."
+        Noun = "charm" if Found.get("product_type") == Products.Charm else "ring"
+        Description = f"Designed with XJet Atelier — a {Noun} from the Inspiration Gallery. See it in 360°, choose your metal and make it yours."
         Tags = "\n".join([
             f'<meta property="og:type" content="website">',
             f'<meta property="og:site_name" content="XJet Atelier">',
             f'<meta property="og:title" content="{Title}">',
             f'<meta property="og:description" content="{Description}">',
             f'<meta property="og:image" content="{Image}">',
-            f'<meta property="og:image:alt" content="{Title} — a ring designed with XJet Atelier">',
+            f'<meta property="og:image:alt" content="{Title} — a {Noun} designed with XJet Atelier">',
             f'<meta property="og:url" content="{html.escape(Url, quote=True)}">',
             f'<meta name="twitter:card" content="summary_large_image">',
             f'<meta name="twitter:title" content="{Title}">',
@@ -334,20 +337,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                                           Body_.get("design_id") or None)
 
     # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
+    def Seen(request: Request) -> tuple[tuple, bool]:
+        """The products this browser may see, and whether to label tiles with their product (only beside charms)."""
+        Visible = Products.VisibleProducts(Ctx, request)
+        return Visible, Products.Charm in Visible
+
     @App_.get("/api/gallery")
-    async def GalleryTiles():
-        return {"items": Svc.Gallery.List()}
+    async def GalleryTiles(request: Request):
+        return {"items": Svc.Gallery.List(*Seen(request))}
 
     @App_.post("/api/gallery/{ItemId}/start")
-    async def GalleryStart(ItemId: str, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+    async def GalleryStart(ItemId: str, request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None))
+        return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None, Seen(request)[0]))
 
     @App_.get("/api/gallery/{ItemId}/share")
     async def GalleryShare(ItemId: str, request: Request):
         """What the Share button (and Admin's Copy link) uses: the design name, the line under it and the clean
         customer link by name — no Ring ID in anything a customer passes on."""
-        Share = Svc.Gallery.ShareFor(ItemId)
+        Share = Svc.Gallery.ShareFor(ItemId, Seen(request)[0])
         if Share is None:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
@@ -355,16 +363,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── ♥ favorites: saved references to gallery masters, per account ──
     @App_.get("/api/favorites")
-    async def FavoritesRoute(x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Favorites(Tok(x_access_token))}
+    async def FavoritesRoute(request: Request, x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Favorites(Tok(x_access_token), *Seen(request))}
 
     @App_.put("/api/favorites/{DesignId}")
-    async def FavoriteRoute(DesignId: str, x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Favorite(Tok(x_access_token), DesignId)}
+    async def FavoriteRoute(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Favorite(Tok(x_access_token), DesignId, *Seen(request))}
 
     @App_.delete("/api/favorites/{DesignId}")
-    async def UnfavoriteRoute(DesignId: str, x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId)}
+    async def UnfavoriteRoute(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
+        return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId, *Seen(request))}
 
     @App_.get("/api/catalog")
     async def CatalogRoute():
@@ -381,10 +389,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── designs & batches ────────────────────────────────────────────────
     @App_.post("/api/designs")
-    async def CreateDesign(prompt: str = Form(...), client_request_id: str | None = Form(None),
+    async def CreateDesign(request: Request, prompt: str = Form(...), client_request_id: str | None = Form(None),
                            rights_confirmed: bool = Form(False), reference: UploadFile | None = File(None),
-                           x_access_token: str | None = Header(None)):
+                           product: str | None = Form(None), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
+        # The product is fixed here, once, for the design and everything refined from it. A ring needs nothing
+        # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
+        Product = Products.RequireVisible(Ctx, Products.Normalize(product), request)
         ReferencePng = None
         if reference is not None and reference.filename:
             if not rights_confirmed:
@@ -395,24 +406,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 ReferencePng = assets.NormalizeReferenceImage(Raw)
             except assets.AssetError as E:
                 raise HttpError(400, "invalid_reference", str(E))
-        return Svc.Images.CreateInitial(Who, prompt, ReferencePng, client_request_id)
+        return Svc.Images.CreateInitial(Who, prompt, ReferencePng, client_request_id, Product)
 
     @App_.get("/api/designs")
-    async def ListDesigns(x_access_token: str | None = Header(None)):
-        return {"designs": Svc.Designs.List(Tok(x_access_token))}
+    async def ListDesigns(request: Request, x_access_token: str | None = Header(None)):
+        return {"designs": Svc.Designs.List(Tok(x_access_token), Products.VisibleProducts(Ctx, request))}
 
     @App_.get("/api/designs/{DesignId}")
-    async def GetDesign(DesignId: str, x_access_token: str | None = Header(None)):
-        return Svc.Designs.Get(Tok(x_access_token), DesignId)
+    async def GetDesign(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
+        return Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request))
 
     @App_.delete("/api/designs/{DesignId}")
     async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):
         return Svc.Designs.Remove(Tok(x_access_token), DesignId)
 
     @App_.post("/api/designs/{DesignId}/batches")
-    async def Refine(DesignId: str, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+    async def Refine(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         return Svc.Images.CreateRefinement(Tok(x_access_token), DesignId, Body_.get("parent_candidate_id"),
-                                           Body_.get("instruction", ""), Body_.get("client_request_id"))
+                                           Body_.get("instruction", ""), Body_.get("client_request_id"),
+                                           Products.VisibleProducts(Ctx, request))
 
     @App_.get("/api/batches/{BatchId}")
     async def GetBatch(BatchId: str, x_access_token: str | None = Header(None)):

@@ -169,6 +169,8 @@ function adminApp() {
     viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '', zoom: null,
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
+    sProduct: '', oProduct: '', gProduct: '',         // product filters: '' = All · 'ring' · 'charm'
+    productFilters: ['', 'ring', 'charm'],
     sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
@@ -204,7 +206,8 @@ function adminApp() {
       this.installZoom();
       try {   // the Sessions filters survive a reload
         const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
-        if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started' });
+        if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started',
+                                     sProduct: ['ring', 'charm'].includes(f.sProduct) ? f.sProduct : '' });
       } catch (_) {}
       // A remembered browser: the session cookie signs in without asking for the key again.
       try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = ''; }
@@ -319,6 +322,7 @@ function adminApp() {
         if (this.oStatus) q.set('status', this.oStatus);
         if (this.oPayment) q.set('payment', this.oPayment);
         if (this.oq.trim()) q.set('q', this.oq.trim());
+        if (this.oProduct) q.set('product', this.oProduct);
         const r = await this.api('GET', '/api/admin/orders' + (q.toString() ? '?' + q : ''));
         this.orders = r.orders; this.quoteRequests = r.quote_requests;
         this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses };
@@ -336,6 +340,21 @@ function adminApp() {
                            refunded: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-zinc-100 text-zinc-500' }[s] || 'bg-zinc-100 text-zinc-600'; },
     addrClass(s) { return { verified: 'bg-emerald-100 text-emerald-800', corrected: 'bg-sky-100 text-sky-800', failed: 'bg-red-100 text-red-700',
                             unverified: 'bg-zinc-100 text-zinc-600' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    // ── rings and charms: one icon set (web/products.js), the size as people read it ──
+    pIcon(p, cls) { return window.P3Products ? window.P3Products.icon(p || 'ring', cls) : ''; },
+    pLabel(p) { return window.P3Products ? window.P3Products.label(p) : 'Ring'; },
+    pPlural(p) { return window.P3Products ? window.P3Products.plural(p) : 'Rings'; },
+    isCharm(x) { return !!x && (x.product_type || 'ring') === 'charm'; },
+    // An order line / quote request: "US 7" for a ring, "20 mm" for a charm (the server's label; rings read as before)
+    sizeOf(l) { return l?.size_label || (l?.ring_size != null ? 'US ' + l.ring_size : (this.isCharm(l) ? 'size TBC' : 'size TBC')); },
+    // A session's chosen size: rings exactly as before ("US 7", "US 10 (default)"); a charm in millimetres
+    sessionSize(x) {
+      if (this.isCharm(x)) return x.charm_size_chosen ? x.charm_size + ' mm' : (x.stage_times.customize ? 'Size not chosen' : '—');
+      return x.ring_size_chosen ? 'US ' + x.ring_size : (x.stage_times.customize ? 'US 10 (default)' : '—');
+    },
+    sessionSizeChosen(x) { return this.isCharm(x) ? !!x.charm_size_chosen : !!x.ring_size_chosen; },
+    orderProducts(o) { return (o && o.product_types && o.product_types.length) ? o.product_types : ['ring']; },
+    productMix(o) { const p = this.orderProducts(o); return p.length > 1 ? 'Ring + Charm' : this.pLabel(p[0]); },
     orderLineText(o) {
       const l = o.lines[0]; if (!l) return '—';
       return l.title + (o.lines.length > 1 ? ' +' + (o.lines.length - 1) : '');
@@ -504,9 +523,9 @@ function adminApp() {
       this.saveFilters();
     },
     saveFilters() {
-      try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort })); } catch (_) {}
+      try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort, sProduct: this.sProduct })); } catch (_) {}
     },
-    resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sAttention = false; this.saveFilters(); },
+    resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sAttention = false; this.sProduct = ''; this.saveFilters(); },
     activeFilterText() {
       const parts = [];
       if (this.sq.trim()) parts.push('search “' + this.sq.trim() + '”');
@@ -514,6 +533,7 @@ function adminApp() {
       if (this.sStage) parts.push('stopped at ' + (this.stageOptions.find(o => o[0] === this.sStage)?.[1] || this.sStage));
       if (this.sBag) parts.push(this.sBag === 'yes' ? 'reached Bag' : 'no Bag');
       if (this.s3d) parts.push(this.s3d === 'any' ? 'has 3D' : 'no 3D');
+      if (this.sProduct) parts.push(this.pPlural(this.sProduct) + ' only');
       return parts.length ? 'filters on: ' + parts.join(', ') : 'filters on';
     },
     // The list refreshes itself while it is open (new sessions appear without a reload), and when the tab comes back
@@ -527,7 +547,7 @@ function adminApp() {
         if (!document.hidden && this.ok && this.tab === 'sessions' && !this.sessionId) this.loadSessions({ quiet: true }).catch(() => {});
       });
     },
-    get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sAttention); },
+    get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sAttention || this.sProduct); },
     // Search by what staff actually use: Ring ID (R-1013), option ID (R-1013-B), design name, Order ID, customer, email
     sessionMatches(x, q) {
       if (!q) return true;
@@ -547,6 +567,7 @@ function adminApp() {
         (!this.sStage || x.stage_reached === this.sStage) &&
         (!this.sBag || (this.sBag === 'yes') === x.add_to_bag) &&
         (!this.s3d || (this.s3d === 'any') === !!x.three_d_status) &&
+        (!this.sProduct || (x.product_type || 'ring') === this.sProduct) &&
         (!this.sAttention || attention.has(x.session_id)));
       const k = this.sSort;
       return rows.sort((a, b) => k === 'activity' ? (b.last_activity_at || '').localeCompare(a.last_activity_at || '')
@@ -1020,7 +1041,7 @@ function adminApp() {
       catch (e) { this.galleryMsg = e.message; this.galleryState = 'failed'; }
     },
     gallerySorted() {
-      const k = this.gallerySort, items = [...this.galleryItems];
+      const k = this.gallerySort, items = this.galleryItems.filter(g => !this.gProduct || (g.product_type || 'ring') === this.gProduct);
       if (k === 'position') return items.sort((a, b) => (a.in_gallery ? a.position : 1e9) - (b.in_gallery ? b.position : 1e9));
       if (k === 'last_used_at') return items.sort((a, b) => (b.last_used_at || '').localeCompare(a.last_used_at || ''));
       return items.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (a.in_gallery ? a.position : 1e9) - (b.in_gallery ? b.position : 1e9));

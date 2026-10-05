@@ -192,12 +192,13 @@ class Production3D:
         if not Design or not Design.get("source_design_id"):
             return None
         Db = self.Ctx.Db
-        M = Db.One("SELECT m.id, m.candidate_id, d.id AS design_id, d.title, d.ring_no FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+        M = Db.One("SELECT m.id, m.candidate_id, d.id AS design_id, d.title, d.ring_no, d.charm_no, d.product_type FROM meshes m "
+                   "JOIN candidates c ON c.id = m.candidate_id "
                    "JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id WHERE b.design_id = ? AND m.status = 'ready' "
                    "ORDER BY m.created_at DESC LIMIT 1", (Design["source_design_id"],))
         if M is None:
             return None
-        return {"design_id": M["design_id"], "title": M["title"], "design_ring_id": RingIds.DesignRef(M["ring_no"]),
+        return {"design_id": M["design_id"], "title": M["title"], "design_ring_id": RingIds.Ref(M),
                 "ring_id": RingIds.CandidateRef(Db, M["candidate_id"]), "mesh_id": M["id"]}
 
     # ── pipeline (event driven: mesh ready → measure job → finalize) ─────

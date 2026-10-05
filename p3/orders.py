@@ -22,6 +22,7 @@ import re
 
 from p3 import addressing as Addressing
 from p3 import payments as Payments
+from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import Principal
@@ -99,6 +100,7 @@ class OrderService:
                         "customization_id": L["customization_id"], "title": L["title"], "image_path": L["asset_path"],
                         "image_url": self.Ctx.AssetUrl(L["asset_path"]), "material_id": L["material_id"],
                         "material_label": Mat.Label if Mat else L["material_id"], "ring_size": L["ring_size"],
+                        "product_type": L.get("product_type") or Products.Ring, "charm_size": L.get("charm_size"),
                         "quantity": L["quantity"], "unit_price": Unit, "currency": Q.currency if Q else L["currency"],
                         "pricing_version": Q.pricing_version if Q else None,
                         "line_total": round(Unit * L["quantity"], 2) if Unit is not None else None,
@@ -211,11 +213,15 @@ class OrderService:
                           TermsVersion, T, Rid, T, T))
             for N, L in enumerate(Q["lines"], start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
-                             "title, ring_id, material_id, material_label, ring_size, quantity, unit_price, line_total, currency, "
-                             "pricing_version, image_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
+                             "line_total, currency, pricing_version, image_path, purchase_json) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, N, L["design_id"], L["candidate_id"], L["bag_line_id"], L["customization_id"],
-                              L["title"], L["ring_id"], L["material_id"], L["material_label"], L["ring_size"], L["quantity"],
-                              L["unit_price"], L["line_total"], L["currency"], L["pricing_version"], L["image_path"]))
+                              L["title"], L["ring_id"], L["product_type"], L["material_id"], L["material_label"],
+                              L["ring_size"] if L["product_type"] == Products.Ring else None,
+                              L["charm_size"] if L["product_type"] == Products.Charm else None, L["quantity"],
+                              L["unit_price"], L["line_total"], L["currency"], L["pricing_version"], L["image_path"],
+                              Dumps(PurchaseSnapshot(L))))
                 Conn.execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (L["bag_line_id"], Who.AccountId))
             if Promo:
                 self.Promos.Redeem(Conn, Promo["promo_id"])
@@ -279,8 +285,12 @@ class OrderService:
             "promo_code": O["promo_code"], "promo": json.loads(O["promo_json"]) if O["promo_json"] else None,
             "terms_version": O["terms_version"], "terms_accepted_at": O["terms_accepted_at"],
             "count": sum(L["quantity"] for L in Lines),
+            # Which products the order holds — both for a mixed order
+            "product_types": sorted({L.get("product_type") or Products.Ring for L in Lines}, key=Products.All.index),
             "lines": [{"id": L["id"], "design_id": L["design_id"], "candidate_id": L["candidate_id"], "title": L["title"],
                        "ring_id": L["ring_id"], "material_id": L["material_id"], "material_label": L["material_label"],
+                       "product_type": L.get("product_type") or Products.Ring, "charm_size": L.get("charm_size"),
+                       "size_label": Products.SizeLabel(L.get("product_type") or Products.Ring, L["ring_size"], L.get("charm_size")),
                        "ring_size": L["ring_size"], "quantity": L["quantity"], "unit_price": L["unit_price"],
                        "line_total": L["line_total"], "currency": L["currency"], "image_url": self.Ctx.AssetUrl(L["image_path"])}
                       for L in Lines],
@@ -343,8 +353,11 @@ class OrderService:
 
     def QuoteRequestJson(self, R: dict, Cand: dict | None = None) -> dict:
         Cand = Cand or self.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
+        Product = R.get("product_type") or Products.Ring
         return {"id": R["id"], "ref": QuoteRef(R["request_no"]), "design_id": R["design_id"], "candidate_id": R["candidate_id"],
                 "title": R["title"], "ring_id": R["ring_id"], "material_id": R["material_id"], "material_label": R["material_label"],
+                "product_type": Product, "charm_size": R.get("charm_size"),
+                "size_label": Products.SizeLabel(Product, R["ring_size"], R.get("charm_size")),
                 "ring_size": R["ring_size"], "quantity": R["quantity"], "customer": json.loads(R["customer_json"]),
                 "message": R["message"], "status": R["status"], "created_at": R["created_at"], "updated_at": R["updated_at"],
                 "image_url": self.Ctx.AssetUrl(Cand["asset_path"]) if Cand else None, "owner_account_id": R["owner_account_id"]}
@@ -358,9 +371,12 @@ class OrderService:
         Rows = self.Ctx.Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, r.integrity FROM session_3d s "
                                "LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? ORDER BY s.created_at DESC", (L["design_id"],))
         Done = ("measured", "needs_review")
-        Match = next((R for R in Rows if R["status"] in Done and float(R["production_size"]) == float(L["ring_size"])
-                      and R["material_id"] == L["material_id"]), None)
-        Pending = next((R for R in Rows if R["status"] not in Done + ("failed", "cancelled") and float(R["production_size"]) == float(L["ring_size"])
+        Size = LineSize(L)                               # the US size of a ring, the mm size of a charm (None: no match)
+
+        def SameSize(R):
+            return Size is not None and R["production_size"] is not None and float(R["production_size"]) == float(Size)
+        Match = next((R for R in Rows if R["status"] in Done and SameSize(R) and R["material_id"] == L["material_id"]), None)
+        Pending = next((R for R in Rows if R["status"] not in Done + ("failed", "cancelled") and SameSize(R)
                         and R["material_id"] == L["material_id"]), None)
         Latest = Rows[0] if Rows else None
         Model = self.Ctx.Db.One("SELECT m.candidate_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
@@ -392,15 +408,20 @@ class OrderService:
         if self.Production is None:
             raise HttpError(503, "production_unavailable", "3D production is not available.")
         Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
-        T = self.Production.Request(L["design_id"], ProductionSize=L["ring_size"], MaterialId=L["material_id"], RequestedBy=By, Customer=Customer)
+        T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"], RequestedBy=By, Customer=Customer)
         self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                             (O["id"], "3d_prepared", Dumps({"line_id": LineId, "session_3d_id": T["id"], "ring_size": L["ring_size"],
+                                                            "charm_size": L.get("charm_size"), "product_type": L.get("product_type"),
                                                             "material_id": L["material_id"], "reused_model": bool(T.get("raw_available"))}), By, Now()))
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
         return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
 
-    def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int = 300) -> list[dict]:
+    def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int = 300,
+                  Product: str | None = None) -> list[dict]:
         Where, Params = [], []
+        if Product:
+            Where.append("EXISTS (SELECT 1 FROM order_lines l WHERE l.order_id = o.id AND l.product_type = ?)")
+            Params.append(Products.Normalize(Product))
         if Status:
             Where.append("o.status = ?")
             Params.append(Status)
@@ -523,7 +544,28 @@ class OrderService:
                 "reserved_value": round(sum(O["total"] for O in Live if O["payment_status"] != "paid"), 2),
                 "by_status": {S: sum(1 for O in Orders if O["status"] == S) for S in StatusOrder + ["cancelled"]},
                 "quote_requests_open": self.Ctx.Db.One("SELECT COUNT(*) AS n FROM quote_requests WHERE status = 'new'")["n"],
+                "by_product": {P: sum(1 for O in Orders if P in {L.get("product_type") or Products.Ring for L in self._Lines(O["id"])})
+                               for P in Products.All},
                 "latest": [self.ToJson(O, self._Lines(O["id"]), ForCustomer=False) for O in Orders[:5]]}
+
+
+def LineSize(L: dict):
+    """The size a line was ordered in: a ring's US size, a charm's size in mm (None when it has none)."""
+    return L.get("charm_size") if (L.get("product_type") or Products.Ring) == Products.Charm else L.get("ring_size")
+
+
+def PurchaseSnapshot(L: dict) -> dict:
+    """What was bought, as it was understood at the moment of ordering — kept with the order line so it stays clear
+    if sizes, definitions or names change later."""
+    Product = L.get("product_type") or Products.Ring
+    if Product == Products.Charm:
+        Size = {"value": L.get("charm_size"), "unit": Products.CharmSizeUnit, "label": Products.SizeLabel(Product, None, L.get("charm_size")),
+                "definition": Products.CharmSizeDefinition["text"]}
+    else:
+        Size = {"value": L.get("ring_size"), "system": "US", "label": Products.SizeLabel(Product, L.get("ring_size"))}
+    return {"product": Product, "product_label": Products.Labels[Product], "size": Size,
+            "material": {"id": L["material_id"], "label": L["material_label"]},
+            "price": {"unit_price": L["unit_price"], "currency": L["currency"], "pricing_version": L["pricing_version"]}}
 
 
 def _OrderNo(Ref: str):

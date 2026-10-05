@@ -27,6 +27,7 @@ from p3 import merge as Merge
 from p3 import naming as Naming
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
+from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import AccountNotFound, DuplicateEmail
@@ -123,17 +124,18 @@ def Lineage(Ctx: Context, DesignId: str) -> dict:
     D = Db.One("SELECT source_design_id, source_candidate_id FROM designs WHERE id = ?", (DesignId,))
     Source = None
     if D and D["source_design_id"]:
-        S = Db.One("SELECT id, title, ring_no, owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],))
+        S = Db.One("SELECT id, title, ring_no, charm_no, product_type, owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],))
         if S:
-            Source = {"design_id": S["id"], "title": S["title"], "ring_id": RingIds.DesignRef(S["ring_no"]),
+            Source = {"design_id": S["id"], "title": S["title"], "ring_id": RingIds.Ref(S),
                       "option_ring_id": RingIds.CandidateRef(Db, D["source_candidate_id"]) if D["source_candidate_id"] else None}
     Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (DesignId,))
     Variations = []
-    for V in Db.All("SELECT d.id, d.title, d.ring_no, d.owner_account_id, d.created_at, d.source_candidate_id FROM designs d "
+    for V in Db.All("SELECT d.id, d.title, d.ring_no, d.charm_no, d.product_type, d.owner_account_id, d.created_at, "
+                    "d.source_candidate_id FROM designs d "
                     "WHERE d.source_design_id = ? ORDER BY d.created_at", (DesignId,)):
         Use = None if Owner and V["owner_account_id"] == Owner["owner_account_id"] else Db.One(
             "SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (DesignId, V["owner_account_id"]))
-        Variations.append({"design_id": V["id"], "title": V["title"], "ring_id": RingIds.DesignRef(V["ring_no"]), "created_at": V["created_at"],
+        Variations.append({"design_id": V["id"], "title": V["title"], "ring_id": RingIds.Ref(V), "created_at": V["created_at"],
                            "own": bool(Owner and V["owner_account_id"] == Owner["owner_account_id"]),
                            "from_option": RingIds.CandidateRef(Db, V["source_candidate_id"]) if V["source_candidate_id"] else None,
                            "customer_session_id": Use["id"] if Use else None})
@@ -278,6 +280,10 @@ def Dashboard(Ctx: Context, Orders=None, Days: int | None = None) -> dict:
         "sessions": N, "active_sessions": sum(1 for X in S if X["state"] == "active"),
         "new_design_clicks": Clicks,
         "funnel": Funnel(S),
+        # Rings and charms apart (sessions, the funnel, generations, orders); the totals above include both
+        "by_product": {P: {"sessions": len(Rows), "active_sessions": sum(1 for X in Rows if X["state"] == "active"),
+                           "funnel": Funnel(Rows), "generation_failed": sum(1 for X in Rows if "Generation failed" in X["path"])}
+                       for P, Rows in ((P, [X for X in S if X.get("product_type", "ring") == P]) for P in Products.All)},
         "funnel_by_origin": {K: {"sessions": len(V), "funnel": Funnel(V)} for K, V in
                              (("prompt", [X for X in S if X["origin"] != "gallery"]),
                               ("gallery", [X for X in S if X["origin"] == "gallery"]))},
@@ -305,10 +311,12 @@ def Dashboard(Ctx: Context, Orders=None, Days: int | None = None) -> dict:
         "mock_excluded": True,
         # Admin activity log: every admin action recorded on a journey (3D requests, new-model overrides …).
         "admin_activity": [
-            {"at": E["created_at"], "kind": E["kind"], "design_id": E["design_id"], "ring_id": RingIds.DesignRef(E["ring_no"]),
+            {"at": E["created_at"], "kind": E["kind"], "design_id": E["design_id"], "ring_id": RingIds.Ref(E),
+             "product_type": E["product_type"],
              "title": E["title"], "by": json.loads(E["data_json"] or "{}").get("by"),
              "data": {K: V for K, V in json.loads(E["data_json"] or "{}").items() if K not in ("ai_mode", "by")}}
-            for E in Ctx.Db.All("SELECT e.*, d.title, d.ring_no FROM session_events e JOIN designs d ON d.id = e.design_id "
+            for E in Ctx.Db.All("SELECT e.*, d.title, d.ring_no, d.charm_no, d.product_type FROM session_events e "
+                                "JOIN designs d ON d.id = e.design_id "
                                 "WHERE e.kind LIKE 'admin_%' ORDER BY e.created_at DESC LIMIT 25")],
     }
 
@@ -540,10 +548,10 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Title = " ".join(str(Body_.get("title") or "").split())
         if not 2 <= len(Title) <= 60:
             raise HttpError(400, "invalid_title", "The name must be 2–60 characters.")
-        Dup = Ctx.Db.One("SELECT d.id, d.ring_no FROM gallery_items g JOIN designs d ON d.id = g.design_id "
+        Dup = Ctx.Db.One("SELECT d.id, d.ring_no, d.charm_no, d.product_type FROM gallery_items g JOIN designs d ON d.id = g.design_id "
                          "WHERE lower(d.title) = lower(?) AND d.id != ?", (Title, DesignId))
         if Dup and not Body_.get("force"):
-            raise HttpError(409, "duplicate_title", f"Another gallery design is already called “{Title}” ({RingIds.DesignRef(Dup['ring_no'])}). "
+            raise HttpError(409, "duplicate_title", f"Another gallery design is already called “{Title}” ({RingIds.Ref(Dup)}). "
                                                     "Give each master design a distinctive name, or confirm to use it anyway.")
         Ctx.Db.Execute("UPDATE designs SET title = ?, updated_at = ? WHERE id = ?", (Title, Now(), DesignId))
         Sessions.Record(Ctx, D["owner_account_id"], "admin_design_renamed", DesignId, from_title=D["title"], to_title=Title, by=Who.Id)
@@ -594,9 +602,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")
     async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None,
-                          authorization: str | None = Header(None)):
+                          product: str | None = None, authorization: str | None = Header(None)):
         Admin(authorization)
-        return {"orders": Orders.AdminList(status or None, payment or None, q or None),
+        return {"orders": Orders.AdminList(status or None, payment or None, q or None, Product=product or None),
                 "statuses": [{"id": S, "label": OrdersModule.StatusLabels[S]} for S in OrdersModule.StatusOrder + ["cancelled"]],
                 "payment_statuses": [{"id": S, "label": PaymentsModule.Labels[S]} for S in PaymentsModule.Statuses],
                 "quote_requests": Orders.AdminQuoteRequests()}

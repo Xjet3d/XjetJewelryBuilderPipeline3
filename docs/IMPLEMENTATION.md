@@ -251,6 +251,32 @@ At the product owner's request, the customer UI was rebuilt to look like P2. The
 - **Metal filters** live in `web/metal.js` (`P3MetalFilterDefs(materials)`), shared by the site and the showcase; the output is byte-identical to the former in-component getter.
 - **Homepage hero showcase** (approved 2026-10-03): the hero's right side is the animated story of one real gallery design (Aurora Mesh, `design: 'aurora-mesh'`; another story is chosen automatically if it leaves the gallery) — Your idea → Four possibilities → Make it yours → Every angle → Your finish: its prompt typed, its first four options, the one chosen ("Selected"), its refinement request typed and the refined ring revealed by a soft wipe, its 360° movie settling on the front view, Silver and 18K Yellow Gold on the same still (same angle and scale), and the finished ring in gold with only its name and "Designed with XJet Atelier", held about 3.5 s. About 16 s, muted, loops; no call to action inside it (the hero's buttons are beside it). Engine `web/showcase.js` + `web/showcase.css`: every movement is computed from one clock, so nothing overlaps; the clock stops while the stage is off screen or the tab is hidden; reduced motion shows the finished ring still. Data: `GET /api/showcase[?design=<link name>]` (`p3/showcase.py`, read-only; the render's own metal is shown untouched, Silver on a gold render uses a contrast curve that keeps depth and highlights). The movie is played as `GET /clip/<movie>?tail=2&w=720|480` — its last two seconds as a small H.264 clip made once with the bundled ffmpeg (about 0.15 MB instead of 8 MB). Square stage on a computer, 4:5 on a phone, where it follows the headline and the buttons. `/showcase` stays as the reference page (the same engine, with a design picker, Phone preview, timeline and storyboard; not linked, noindex).
 
+## 8c. Rings and charms — product types (2026-10-05)
+
+Charms are a second product beside rings, each with its own configuration and behaviour (`p3/products.py`). The ring
+implementation of before is the reference: its tests are unchanged and must keep passing.
+
+- **Product type on every design** (`designs.product_type`, `'ring'` by default, so every existing design, session and
+  order is a ring without being rewritten). It is set when a design is created (`POST /api/designs`, form field
+  `product`; none = ring) and never changes: a database trigger refuses any update and any value other than ring or
+  charm. Refinements and forks (`images.CreateRefinement`), split refinements (`merge.SplitRefinement`) and gallery
+  journeys inherit the product; a legacy-copy merge never joins a ring and a charm.
+- **Separate customer-facing IDs**: rings keep `designs.ring_no` (R-1001 …, unchanged); charms have their own sequence in
+  `designs.charm_no` (C-1001 …), each assigned by its own trigger for its own product only, each with its own retired
+  numbers (`retired_rings`, `retired_charms`). `ringids.Ref(row)` gives the ID of either product; option IDs follow
+  (C-1003-B, C-1003-R1B).
+- **Bag and order lines** carry `product_type` and `charm_size` next to `ring_size`; a CHECK keeps every ring line with a
+  ring size and every charm line with a charm size (the guarantee the former NOT NULL gave rings). Both tables were
+  rebuilt once (rows, ids and values copied unchanged, atomically). `order_lines.purchase_json` snapshots the purchased
+  configuration (product, size with its label and — for a charm — what the size measures, material, price).
+  `customizations.charm_size`, `quote_requests.product_type` / `charm_size` were added as columns.
+- **Customer visibility** (Admin → Settings → Products, OFF by default): while charms are hidden the customer site and
+  its API are the ring-only ones of before — no charm tile, favorite, share page, design or "Make it yours"; gallery
+  tiles keep exactly their former fields. A browser signed in to the Admin previews charms (`products.CharmsVisible`).
+- **Admin**: sessions, session pages, orders (`GET /api/admin/orders?product=ring|charm`), order pages, the user page,
+  the gallery list and the dashboard (`by_product`) show the product with its icon (`web/products.js`: a band with a
+  stone, a neutral pendant on a loop — no emoji) and filter All · Rings · Charms; a mixed order says so.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):

@@ -4,15 +4,47 @@
     {
       "name": "p3-mock",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "p3.app:App", "--port", "8310"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "p3.app:App",
+        "--port",
+        "8310"
+      ],
       "port": 8310
     },
     {
       "name": "p3-verify",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "p3.app:App", "--port", "8311"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "p3.app:App",
+        "--port",
+        "8311"
+      ],
       "port": 8311,
-      "env": { "P3_DATA_DIR": "var/verify", "P3_MOCK_LATENCY_S": "2" }
+      "env": {
+        "P3_DATA_DIR": "var/verify",
+        "P3_MOCK_LATENCY_S": "2"
+      }
+    },
+    {
+      "name": "p3-charms",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "p3.app:App",
+        "--port",
+        "8312"
+      ],
+      "port": 8312,
+      "env": {
+        "P3_DATA_DIR": "var/charms",
+        "P3_MOCK_LATENCY_S": "2",
+        "P3_PROVIDER": "mock"
+      }
     }
   ]
 }

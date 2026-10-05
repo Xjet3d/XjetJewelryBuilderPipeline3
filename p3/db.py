@@ -33,23 +33,32 @@ CREATE TABLE IF NOT EXISTS designs (
 );
 """
 
-BagLinesTable = """
-CREATE TABLE IF NOT EXISTS bag_lines (
+def BagLinesDdl(Name: str) -> str:
+    """A bag line is a quote snapshot of one product: a ring carries its US size, a charm its size in mm
+    (the CHECK keeps that true for every row, as the former NOT NULL ring size did for rings)."""
+    return f"""
+CREATE TABLE IF NOT EXISTS {Name} (
     id                TEXT PRIMARY KEY,
     owner_account_id  TEXT NOT NULL,
     design_id         TEXT NOT NULL REFERENCES designs(id),
     candidate_id      TEXT NOT NULL REFERENCES candidates(id),
     customization_id  TEXT NOT NULL REFERENCES customizations(id),
+    product_type      TEXT NOT NULL DEFAULT 'ring' CHECK (product_type IN ('ring', 'charm')),
     material_id       TEXT NOT NULL,
-    ring_size         REAL NOT NULL,
+    ring_size         REAL,                      -- rings: the US size
+    charm_size        REAL,                      -- charms: the size in mm (p3/products.py: body height, loop excluded)
     quantity          INTEGER NOT NULL,
     unit_price        REAL NOT NULL,
     currency          TEXT NOT NULL,
     pricing_version   TEXT NOT NULL,
     quote_json        TEXT NOT NULL,
-    created_at        TEXT NOT NULL
+    created_at        TEXT NOT NULL,
+    CHECK ((product_type = 'ring' AND ring_size IS NOT NULL) OR (product_type = 'charm' AND charm_size IS NOT NULL))
 );
 """
+
+
+BagLinesTable = BagLinesDdl("bag_lines")
 
 # ── Sessions (Admin analytics) ──────────────────────────────────────────────
 # A session is one design journey: it starts when the customer submits the first prompt of a New
@@ -218,6 +227,39 @@ CREATE TABLE IF NOT EXISTS price_calculations (
 
 
 # ── Orders ───────────────────────────────────────────────────────────────────
+def OrderLinesDdl(Name: str) -> str:
+    """One ordered product. Everything is a snapshot taken at the moment of ordering: name, item ID, product,
+    material, size, price — and purchase_json, the purchased configuration as it was understood then (the size
+    label and, for a charm, what the size measured), so a historical order stays clear whatever changes later."""
+    return f"""
+CREATE TABLE IF NOT EXISTS {Name} (
+    id                TEXT PRIMARY KEY,
+    order_id          TEXT NOT NULL REFERENCES orders(id),
+    position          INTEGER NOT NULL,
+    design_id         TEXT NOT NULL REFERENCES designs(id),
+    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
+    bag_line_id       TEXT,
+    customization_id  TEXT,
+    title             TEXT NOT NULL,               -- the design's unique name at order time
+    ring_id           TEXT,                        -- the item ID: R-1013-A for a ring, C-1003-A for a charm
+    product_type      TEXT NOT NULL DEFAULT 'ring' CHECK (product_type IN ('ring', 'charm')),
+    material_id       TEXT NOT NULL,
+    material_label    TEXT NOT NULL,
+    ring_size         REAL,                        -- rings: the US size
+    charm_size        REAL,                        -- charms: the size in mm
+    quantity          INTEGER NOT NULL,
+    unit_price        REAL NOT NULL,
+    line_total        REAL NOT NULL,
+    currency          TEXT NOT NULL,
+    pricing_version   TEXT NOT NULL,
+    image_path        TEXT,
+    purchase_json     TEXT NOT NULL DEFAULT '{{}}',
+    CHECK ((product_type = 'ring' AND ring_size IS NOT NULL) OR (product_type = 'charm' AND charm_size IS NOT NULL))
+);
+"""
+
+
+
 # An order is a snapshot: every price, name, ring ID, address and promo value is copied in at the
 # moment of ordering and never recomputed. The order number (ORD-10001 …) is assigned by a trigger,
 # so every way of creating an order gets one — it is never random and never reused.
@@ -257,26 +299,7 @@ WHEN NEW.order_no IS NULL BEGIN
   UPDATE orders SET order_no = (SELECT COALESCE(MAX(order_no), 10000) + 1 FROM orders) WHERE id = NEW.id;
 END;
 
-CREATE TABLE IF NOT EXISTS order_lines (
-    id                TEXT PRIMARY KEY,
-    order_id          TEXT NOT NULL REFERENCES orders(id),
-    position          INTEGER NOT NULL,
-    design_id         TEXT NOT NULL REFERENCES designs(id),
-    candidate_id      TEXT NOT NULL REFERENCES candidates(id),
-    bag_line_id       TEXT,
-    customization_id  TEXT,
-    title             TEXT NOT NULL,               -- the design's unique name at order time
-    ring_id           TEXT,                        -- R-1013-A
-    material_id       TEXT NOT NULL,
-    material_label    TEXT NOT NULL,
-    ring_size         REAL NOT NULL,
-    quantity          INTEGER NOT NULL,
-    unit_price        REAL NOT NULL,
-    line_total        REAL NOT NULL,
-    currency          TEXT NOT NULL,
-    pricing_version   TEXT NOT NULL,
-    image_path        TEXT
-);
+""" + OrderLinesDdl("order_lines") + """
 CREATE INDEX IF NOT EXISTS order_lines_order ON order_lines(order_id, position);
 CREATE INDEX IF NOT EXISTS order_lines_design ON order_lines(design_id);
 
@@ -345,6 +368,7 @@ CREATE TABLE IF NOT EXISTS {Name} (
     candidate_id      TEXT NOT NULL REFERENCES candidates(id),
     material_id       TEXT NOT NULL,
     ring_size         REAL,
+    charm_size        REAL,                      -- charms only: the size in mm
     quantity          INTEGER NOT NULL DEFAULT 1,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
@@ -431,6 +455,76 @@ CREATE INDEX IF NOT EXISTS bag_lines_owner ON bag_lines(owner_account_id, create
 """
 
 
+ProductTriggers = """
+CREATE TRIGGER IF NOT EXISTS designs_product_valid BEFORE INSERT ON designs
+WHEN NEW.product_type IS NULL OR NEW.product_type NOT IN ('ring', 'charm') BEGIN
+  SELECT RAISE(ABORT, 'product_type must be ring or charm');
+END;
+CREATE TRIGGER IF NOT EXISTS designs_product_immutable BEFORE UPDATE OF product_type ON designs
+WHEN NEW.product_type IS NOT OLD.product_type BEGIN
+  SELECT RAISE(ABORT, 'product_type is set when a design is created and never changes');
+END;
+"""
+
+
+def _Columns(Conn, Table: str) -> dict:
+    return {R[1]: R for R in Conn.execute(f"PRAGMA table_info({Table})")}
+
+
+def _Rebuild(Conn, Table: str, Ddl, Indexes: list[str]) -> None:
+    """Rebuild a table into a new shape, keeping every row, id and value (SQLite cannot drop NOT NULL in place).
+    Atomic: a failure (e.g. a row the new CHECK refuses) rolls back and leaves the old table untouched."""
+    Old = list(_Columns(Conn, Table))
+    Fk = Conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    Conn.execute("PRAGMA foreign_keys=OFF")      # other rows keep pointing at the same ids; enforcement off while swapping
+    Conn.execute("BEGIN")
+    try:
+        Conn.execute(f"DROP TABLE IF EXISTS {Table}_new")
+        Conn.execute(Ddl(f"{Table}_new"))
+        Keep = [C for C in Old if C in _Columns(Conn, f"{Table}_new")]
+        Cols = ", ".join(Keep)
+        Conn.execute(f"INSERT INTO {Table}_new ({Cols}) SELECT {Cols} FROM {Table}")
+        Before = Conn.execute(f"SELECT COUNT(*) FROM {Table}").fetchone()[0]
+        After = Conn.execute(f"SELECT COUNT(*) FROM {Table}_new").fetchone()[0]
+        if Before != After:
+            raise RuntimeError(f"{Table}: {Before} rows before the rebuild, {After} after")
+        Conn.execute(f"DROP TABLE {Table}")
+        Conn.execute(f"ALTER TABLE {Table}_new RENAME TO {Table}")
+        for Sql in Indexes:
+            Conn.execute(Sql)
+        Conn.execute("COMMIT")
+    except Exception:
+        Conn.execute("ROLLBACK")
+        raise
+    finally:
+        Conn.execute(f"PRAGMA foreign_keys={'ON' if Fk else 'OFF'}")
+
+
+def _InstallProducts(Conn) -> None:
+    """Rings and charms (p3/products.py). Everything that already exists is a ring: the new columns default to
+    'ring', and the bag / order tables are rebuilt only to let a charm line carry a charm size instead of a ring
+    size (their rows, ids and values are copied unchanged)."""
+    if "product_type" not in _Columns(Conn, "designs"):
+        Conn.execute("ALTER TABLE designs ADD COLUMN product_type TEXT NOT NULL DEFAULT 'ring'")
+    Conn.executescript(ProductTriggers)
+    if "charm_size" not in _Columns(Conn, "customizations"):
+        Conn.execute("ALTER TABLE customizations ADD COLUMN charm_size REAL")
+    Q = _Columns(Conn, "quote_requests")
+    if "product_type" not in Q:
+        Conn.execute("ALTER TABLE quote_requests ADD COLUMN product_type TEXT NOT NULL DEFAULT 'ring'")
+    if "charm_size" not in Q:
+        Conn.execute("ALTER TABLE quote_requests ADD COLUMN charm_size REAL")
+    B = _Columns(Conn, "bag_lines")
+    if "product_type" not in B or B["ring_size"][3]:              # [3] = notnull
+        _Rebuild(Conn, "bag_lines", BagLinesDdl,
+                 ["CREATE INDEX IF NOT EXISTS bag_lines_owner ON bag_lines(owner_account_id, created_at)"])
+    O = _Columns(Conn, "order_lines")
+    if "product_type" not in O or O["ring_size"][3]:
+        _Rebuild(Conn, "order_lines", OrderLinesDdl,
+                 ["CREATE INDEX IF NOT EXISTS order_lines_order ON order_lines(order_id, position)",
+                  "CREATE INDEX IF NOT EXISTS order_lines_design ON order_lines(design_id)"])
+
+
 def Now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
@@ -495,8 +589,9 @@ class Database:
                     # Customer share link by design name (/design/aurora-twist): assigned once, stable through renames
                     Conn.execute("ALTER TABLE designs ADD COLUMN share_slug TEXT")
                 if "owner_account_id" in Cols:
+                    _InstallProducts(Conn)                 # product type on designs (rings by default), charm sizes
                     from p3 import ringids
-                    ringids.Install(Conn)                 # shared ring IDs (R-1042, R-1042-B …)
+                    ringids.Install(Conn)                 # item IDs: R-1042 … for rings, C-1001 … for charms
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 

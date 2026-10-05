@@ -46,6 +46,12 @@ def _Day(Iso: str | None) -> str | None:
     return Iso[:10] if Iso else None
 
 
+def _SizeText(L: dict) -> str:
+    """'US 7' for a ring line, '20 mm' for a charm line."""
+    from p3.products import SizeLabel
+    return SizeLabel(L.get("product_type") or "ring", L.get("ring_size"), L.get("charm_size")) or "size not chosen"
+
+
 def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: bool = True) -> dict:
     Db, Url = Ctx.Db, Ctx.AssetUrl
     Designs = Db.All("SELECT * FROM designs WHERE owner_account_id = ? ORDER BY created_at DESC", (AccountId,))
@@ -83,6 +89,7 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
         "movies": Jobs(Movies),
         "meshes": Jobs(Meshes),
         "bag_lines": len(Bag),
+        "designs_by_product": {P: sum(1 for D in Designs if (D.get("product_type") or "ring") == P) for P in ("ring", "charm")},
         "bag_units": sum(L["quantity"] for L in Bag),
     }
     AllJobs = Initial + Refined + Movies + Meshes
@@ -106,6 +113,7 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
         Thumb = next((C for C in Ready if C["id"] == D["selected_candidate_id"]), Ready[0] if Ready else None)
         Gallery.append({
             "id": D["id"], "title": D["title"], "prompt": D["prompt"], "created_at": D["created_at"],
+            "product_type": D.get("product_type") or "ring",
             "updated_at": D["updated_at"], "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "batches": [{
                 "id": B["id"], "kind": B["kind"], "user_text": B["user_text"], "created_at": B["created_at"],
@@ -129,7 +137,7 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
         + [{"at": M["created_at"], "kind": "mesh", "status": M["status"], "text": Titles.get(M["design_id"], ""),
             "design_id": M["design_id"]} for M in Meshes]
         + [{"at": L["created_at"], "kind": "bag_add", "text": f"{Titles.get(L['design_id'], '')} · {L['material_id']} · "
-            f"US {L['ring_size']:g} × {L['quantity']}", "design_id": L["design_id"]} for L in Bag]
+            f"{_SizeText(L)} × {L['quantity']}", "design_id": L["design_id"]} for L in Bag]
     )
 
     # Daily counts over the last `Days` days (UTC dates), per kind.

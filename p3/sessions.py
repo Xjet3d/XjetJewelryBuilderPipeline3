@@ -289,7 +289,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Name, Email = Names.get(Owner, ("", ""))
         SourceCandidate = U["source_candidate_id"] if U else D.get("source_candidate_id")
         Out.append({
-            "session_id": U["id"] if U else Did, "design_id": Did, "ring_id": RingIds.DesignRef(D.get("ring_no")),
+            "session_id": U["id"] if U else Did, "design_id": Did, "ring_id": RingIds.Ref(D),
+            "product_type": D.get("product_type") or "ring",
             "selected_candidate_id": Selected, "selected_ring_id": OptionRefs.get(Selected) if Selected else None,
             "option_ring_ids": sorted(OptionRefs[X["id"]] for X in C[Did] if X["id"] in OptionRefs),
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
@@ -396,7 +397,7 @@ def _Reference(Ctx: Context, Design: dict, Batch: dict | None, Refs: dict) -> di
     if not Batch or not Batch["reference_asset"]:
         return {}
     from p3.production3d import SlugPart
-    Ring = RingIds.DesignRef(Design.get("ring_no"))
+    Ring = RingIds.Ref(Design)
     Slug = SlugPart(Design["title"])
     Url = Ctx.AssetUrl(Batch["reference_asset"])
     if Batch["kind"] == "initial":

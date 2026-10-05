@@ -15,6 +15,7 @@ import logging
 import secrets
 
 from p3 import assets
+from p3 import products as Products
 from p3.accounts import Principal, UsageImage
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
@@ -59,10 +60,13 @@ class ImageService:
 
     # ── creation ─────────────────────────────────────────────────────────
     def CreateInitial(self, Who: Principal, Prompt: str, ReferencePng: bytes | None,
-                      ClientRequestId: str | None) -> dict:
-        """Create a design and its first four-candidate batch. Idempotent per ClientRequestId."""
+                      ClientRequestId: str | None, Product: str = Products.Ring) -> dict:
+        """Create a design of one product (ring or charm — fixed for good) and its first four-candidate batch.
+        Idempotent per ClientRequestId."""
         Db = self.Ctx.Db
         Prompt = ValidateText(Prompt, "design")
+        Product = Products.Normalize(Product)
+        self.RequireConfigured(Product)
         if ClientRequestId:
             Existing = Db.One("SELECT id FROM designs WHERE owner_account_id = ? AND client_request_id = ?",
                               (Who.AccountId, ClientRequestId))
@@ -79,17 +83,17 @@ class ImageService:
         with Db.Transaction() as Conn:
             T = Now()
             Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
-                         "ai_mode) VALUES (?,?,?,?,?,?,?,?)",
-                         (DesignId, Who.AccountId, Title, Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name))
+                         "ai_mode, product_type) VALUES (?,?,?,?,?,?,?,?,?)",
+                         (DesignId, Who.AccountId, Title, Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name, Product))
             self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
 
     def CreateRefinement(self, Who: Principal, DesignId: str, ParentCandidateId: str, Instruction: str,
-                         ClientRequestId: str | None) -> dict:
+                         ClientRequestId: str | None, Visible: tuple = ("ring", "charm")) -> dict:
         Db = self.Ctx.Db
         Instruction = ValidateText(Instruction, "refinement")
-        D = self.RequireDesign(Who, DesignId)
+        D = self.RequireDesign(Who, DesignId, Visible)
         # A customer refining a shared gallery design gets their own design (a fork): the XJet master
         # design is never changed, and the four new images are theirs alone. The owner's own design is
         # treated the same way once it has become a master (a 360° movie, a 3D request, an order or a
@@ -124,10 +128,11 @@ class ImageService:
         with Db.Transaction() as Conn:
             T = Now()
             if Fork:
+                # A fork is always the same product as the design it was refined from
                 Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, "
-                             "updated_at, ai_mode, source_design_id, source_candidate_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                             "updated_at, ai_mode, source_design_id, source_candidate_id, product_type) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                              (Target, Who.AccountId, ForkTitle, D["prompt"], ClientRequestId, T, T,
-                              self.Ctx.Provider.Name, DesignId, ParentCandidateId))
+                              self.Ctx.Provider.Name, DesignId, ParentCandidateId, D.get("product_type") or Products.Ring))
             self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
                               Parent["asset_path"], None if Fork else ClientRequestId)
             Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, Target))
@@ -146,6 +151,11 @@ class ImageService:
                                 reason=Committed)
         self._StartBatch(BatchId)
         return self.GetBatch(BatchId)
+
+    def RequireConfigured(self, Product: str) -> None:
+        """A design can only be made for a product the AI configuration supports (charms need their own models)."""
+        if not self.Ctx.Models.Supports(Product):
+            raise HttpError(409, "product_unavailable", "This product cannot be designed yet.")
 
     def CommittedReason(self, DesignId: str) -> str | None:
         """Why a design is a master that a refinement must not change any more: it sits in the gallery, has
@@ -337,9 +347,12 @@ class ImageService:
         return {"resumed": Resumed, "interrupted": Interrupted}
 
     # ── reads / ownership ────────────────────────────────────────────────
-    def RequireDesign(self, Who: Principal, DesignId: str) -> dict:
-        """The customer's own design, or a shared XJet master design they started from the gallery."""
+    def RequireDesign(self, Who: Principal, DesignId: str, Visible: tuple = ("ring", "charm")) -> dict:
+        """The customer's own design, or a shared XJet master design they started from the gallery (of a product
+        this browser can see: a charm is not found on a ring-only site)."""
         D = self.Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
+        if D is not None and (D.get("product_type") or "ring") not in Visible:
+            D = None
         Own = D is not None and D["owner_account_id"] == Who.AccountId and not D.get("removed_at")
         Linked = D is not None and not Own and self.Ctx.Db.One(
             "SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL",

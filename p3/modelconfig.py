@@ -595,6 +595,13 @@ class ModelConfigStore:
     def ActiveFor(self, Endpoint: str) -> Version:
         return self.Active(ByEndpoint[Endpoint])
 
+    def Supports(self, Product: str) -> bool:
+        """Every pipeline endpoint (design images, refinement, movie, 3D) has a model for this product."""
+        if Product == "ring":
+            return True
+        return all(any(getattr(S, "Product", "ring") == Product and S.Endpoint == E for S in Models.values())
+                   for E in (endpoints.ImageGenerate, endpoints.ImageEdit, endpoints.Movie, endpoints.Mesh))
+
     def Resolve(self, Vid: str | None, Endpoint: str) -> Version:
         """The version a request was created with. Requests created before versioned configs carry an
         old content hash; they get version 1 — exactly the settings the pipeline sent at the time."""

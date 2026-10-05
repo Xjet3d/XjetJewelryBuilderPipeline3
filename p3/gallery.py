@@ -35,29 +35,38 @@ class GalleryService:
     # ── reading ──────────────────────────────────────────────────────────
     def _Rows(self) -> list[dict]:
         return self.Ctx.Db.All(
-            "SELECT g.*, d.title, d.prompt, d.ring_no, d.owner_account_id, d.share_slug, c.asset_path, c.status AS candidate_status "
+            "SELECT g.*, d.title, d.prompt, d.ring_no, d.charm_no, d.product_type, d.owner_account_id, d.share_slug, c.asset_path, "
+            "c.status AS candidate_status "
             "FROM gallery_items g JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id "
             "ORDER BY g.position, g.created_at")
 
-    def List(self) -> list[dict]:
+    def List(self, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
         """Public tiles: the title, the image and the master design's id (what a favorite refers to) — nothing
-        about the design's owner."""
-        return [{"id": R["id"], "design_id": R["design_id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
-                for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"]]
+        about the design's owner. Only the products the customer can see (Visible); the product of each tile is
+        given only when the customer can see more than rings (WithProduct), so the ring-only site is unchanged."""
+        Out = []
+        for R in self._Rows():
+            if R["candidate_status"] != "ready" or not R["asset_path"] or (R["product_type"] or "ring") not in Visible:
+                continue
+            Tile = {"id": R["id"], "design_id": R["design_id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
+            if WithProduct:
+                Tile["product_type"] = R["product_type"] or "ring"
+            Out.append(Tile)
+        return Out
 
     # ── sharing: a clean customer link by design name ────────────────────
-    def ShareFor(self, ItemId: str) -> dict | None:
+    def ShareFor(self, ItemId: str, Visible: tuple = ("ring", "charm")) -> dict | None:
         """The share details of a gallery design. Its link name comes from the design name the first time it is
         shared ("Aurora Twist" → aurora-twist, unique) and then never changes, so every link that was ever
         sent keeps working, whatever the design is called later."""
-        R = self.Ctx.Db.One("SELECT g.id, g.design_id, d.title, d.share_slug, c.asset_path, c.status AS candidate_status "
+        R = self.Ctx.Db.One("SELECT g.id, g.design_id, d.title, d.share_slug, d.product_type, c.asset_path, c.status AS candidate_status "
                             "FROM gallery_items g JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id "
                             "WHERE g.id = ?", (ItemId,))
-        if R is None or R["candidate_status"] != "ready" or not R["asset_path"]:
+        if R is None or R["candidate_status"] != "ready" or not R["asset_path"] or (R["product_type"] or "ring") not in Visible:
             return None
         Slug = R["share_slug"] or self._AssignSlug(R["design_id"], R["title"])
         return {"item_id": R["id"], "design_id": R["design_id"], "slug": Slug, "title": R["title"],
-                "image_url": self.Ctx.AssetUrl(R["asset_path"])}
+                "image_url": self.Ctx.AssetUrl(R["asset_path"]), "product_type": R["product_type"] or "ring"}
 
     def _AssignSlug(self, DesignId: str, Title: str) -> str:
         Db = self.Ctx.Db
@@ -69,37 +78,37 @@ class GalleryService:
         Db.Execute("UPDATE designs SET share_slug = ? WHERE id = ? AND share_slug IS NULL", (Slug, DesignId))
         return Db.One("SELECT share_slug FROM designs WHERE id = ?", (DesignId,))["share_slug"]
 
-    def Resolve(self, Slug: str) -> dict | None:
+    def Resolve(self, Slug: str, Visible: tuple = ("ring", "charm")) -> dict | None:
         """The gallery design behind a share link: by its assigned link name first, else by its current name."""
         S = (Slug or "").strip().lower()
         if not S:
             return None
-        Rows = [R for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"]]
+        Rows = [R for R in self._Rows() if R["candidate_status"] == "ready" and R["asset_path"] and (R["product_type"] or "ring") in Visible]
         Hit = next((R for R in Rows if (R["share_slug"] or "").lower() == S), None) \
             or next((R for R in Rows if ShareSlug(R["title"]) == S), None)
         if Hit is None:
             return None
         return {"item_id": Hit["id"], "design_id": Hit["design_id"], "slug": Hit["share_slug"] or ShareSlug(Hit["title"]),
-                "title": Hit["title"], "image_url": self.Ctx.AssetUrl(Hit["asset_path"])}
+                "title": Hit["title"], "image_url": self.Ctx.AssetUrl(Hit["asset_path"]), "product_type": Hit["product_type"] or "ring"}
 
     # ── ♥ favorites: a saved reference to a master design, never a copy ──
-    def Favorites(self, Who: Principal) -> list[dict]:
+    def Favorites(self, Who: Principal, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
         """The customer's favorites that are in the gallery now, newest first (public tile data only)."""
         Saved = self.Ctx.Db.All("SELECT design_id, created_at FROM gallery_favorites WHERE owner_account_id = ? "
                                 "ORDER BY created_at DESC, rowid DESC", (Who.AccountId,))
         Order = {F["design_id"]: I for I, F in enumerate(Saved)}
-        return sorted([T for T in self.List() if T["design_id"] in Order], key=lambda T: Order[T["design_id"]])
+        return sorted([T for T in self.List(Visible, WithProduct) if T["design_id"] in Order], key=lambda T: Order[T["design_id"]])
 
-    def Favorite(self, Who: Principal, DesignId: str) -> list[dict]:
-        if not any(T["design_id"] == DesignId for T in self.List()):
+    def Favorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
+        if not any(T["design_id"] == DesignId for T in self.List(Visible)):
             raise HttpError(404, "not_in_gallery", "This design is not in the Inspiration Gallery.")
         self.Ctx.Db.Execute("INSERT OR IGNORE INTO gallery_favorites (owner_account_id, design_id, created_at) VALUES (?,?,?)",
                             (Who.AccountId, DesignId, Now()))
-        return self.Favorites(Who)
+        return self.Favorites(Who, Visible, WithProduct)
 
-    def Unfavorite(self, Who: Principal, DesignId: str) -> list[dict]:
+    def Unfavorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
         self.Ctx.Db.Execute("DELETE FROM gallery_favorites WHERE owner_account_id = ? AND design_id = ?", (Who.AccountId, DesignId))
-        return self.Favorites(Who)
+        return self.Favorites(Who, Visible, WithProduct)
 
     def Stats(self, DesignIds: list[str]) -> dict[str, dict]:
         """Usage of master designs: who selected them and how far they went (every journey counts — a
@@ -138,7 +147,8 @@ class GalleryService:
         gallery that customers still use (position None)."""
         Rows = self._Rows()
         InGallery = {R["design_id"] for R in Rows}
-        Former = self.Ctx.Db.All("SELECT DISTINCT d.id AS design_id, d.title, d.prompt, d.ring_no, d.owner_account_id "
+        Former = self.Ctx.Db.All("SELECT DISTINCT d.id AS design_id, d.title, d.prompt, d.ring_no, d.charm_no, d.product_type, "
+                                 "d.owner_account_id "
                                  "FROM gallery_uses u JOIN designs d ON d.id = u.design_id "
                                  + (f"WHERE d.id NOT IN ({','.join('?' * len(InGallery))})" if InGallery else ""), list(InGallery))
         Ids = [R["design_id"] for R in Rows] + [F["design_id"] for F in Former]
@@ -148,7 +158,7 @@ class GalleryService:
         for R in Rows:
             Names[R["title"].strip().lower()] = Names.get(R["title"].strip().lower(), 0) + 1
         Out = [{"id": R["id"], "design_id": R["design_id"], "candidate_id": R["candidate_id"],
-                "ring_id": Refs.get(R["candidate_id"]), "design_ring_id": RingIds.DesignRef(R["ring_no"]),
+                "ring_id": Refs.get(R["candidate_id"]), "design_ring_id": RingIds.Ref(R), "product_type": R["product_type"] or "ring",
                 "title": R["title"], "prompt": R["prompt"], "image_url": self.Ctx.AssetUrl(R["asset_path"]),
                 # Every master design should have a distinctive name; a shared one is flagged for renaming
                 "duplicate_name": Names.get(R["title"].strip().lower(), 0) > 1,
@@ -161,7 +171,8 @@ class GalleryService:
                 if Sel and Sel["selected_candidate_id"] else None
             Out.append({"id": None, "design_id": F["design_id"], "candidate_id": Sel["selected_candidate_id"] if Sel else None,
                         "ring_id": Refs.get(Sel["selected_candidate_id"]) if Sel else None,
-                        "design_ring_id": RingIds.DesignRef(F["ring_no"]), "title": F["title"], "prompt": F["prompt"],
+                        "design_ring_id": RingIds.Ref(F), "product_type": F["product_type"] or "ring",
+                        "title": F["title"], "prompt": F["prompt"],
                         "image_url": self.Ctx.AssetUrl(C["asset_path"]) if C else None, "ready": bool(C),
                         "in_gallery": False, "position": None, "created_at": None, "created_by": None,
                         **Stats[F["design_id"]]})
@@ -238,13 +249,13 @@ class GalleryService:
                 Conn.execute("UPDATE gallery_items SET position = ? WHERE id = ?", (N, Id))
 
     # ── "Make it yours" (customer) ───────────────────────────────────────
-    def Start(self, Who: Principal, ItemId: str, ClientRequestId: str | None = None) -> str:
+    def Start(self, Who: Principal, ItemId: str, ClientRequestId: str | None = None, Visible: tuple = ("ring", "charm")) -> str:
         """Link the customer to the shared master design (or bring their existing link back to the
         top of My Designs). Nothing is copied, generated or charged. Returns the master design id."""
         Db = self.Ctx.Db
-        R = Db.One("SELECT g.*, d.owner_account_id, c.status AS candidate_status FROM gallery_items g "
+        R = Db.One("SELECT g.*, d.owner_account_id, d.product_type, c.status AS candidate_status FROM gallery_items g "
                    "JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id WHERE g.id = ?", (ItemId,))
-        if R is None or R["candidate_status"] != "ready":
+        if R is None or R["candidate_status"] != "ready" or (R["product_type"] or "ring") not in Visible:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         T = Now()
         if R["owner_account_id"] == Who.AccountId:                   # XJet opening its own design

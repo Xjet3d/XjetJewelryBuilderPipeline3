@@ -24,20 +24,24 @@ class DesignService:
                             "WHERE b.design_id = ? AND c.status = 'ready' ORDER BY b.created_at DESC, c.slot LIMIT 1", (DesignId,))
         return self.Ctx.AssetUrl(C["asset_path"]) if C else None
 
-    def List(self, Who: Principal) -> list[dict]:
-        """The customer's own designs and the shared gallery designs they started, latest activity first."""
+    def List(self, Who: Principal, Visible: tuple = ("ring", "charm")) -> list[dict]:
+        """The customer's own designs and the shared gallery designs they started, latest activity first — of the
+        products this browser can see (a charm stays out of a ring-only site)."""
         Out = []
         for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? AND removed_at IS NULL "
                                  "ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
             Out.append({"id": D["id"], "title": D["title"], "thumbnail_url": self._Thumb(D["id"], D["selected_candidate_id"]),
                         "updated_at": D["updated_at"], "created_at": D["created_at"], "shared": False,
-                        "origin": "gallery" if D.get("source_design_id") else "prompt"})
-        for U in self.Ctx.Db.All("SELECT u.*, d.title FROM gallery_uses u JOIN designs d ON d.id = u.design_id "
+                        "origin": "gallery" if D.get("source_design_id") else "prompt",
+                        "product_type": D.get("product_type") or "ring"})
+        for U in self.Ctx.Db.All("SELECT u.*, d.title, d.product_type FROM gallery_uses u JOIN designs d ON d.id = u.design_id "
                                  "WHERE u.owner_account_id = ? AND u.removed_at IS NULL ORDER BY u.last_active_at DESC LIMIT 100",
                                  (Who.AccountId,)):
             Out.append({"id": U["design_id"], "title": U["title"],
                         "thumbnail_url": self._Thumb(U["design_id"], U["selected_candidate_id"] or U["source_candidate_id"]),
-                        "updated_at": U["last_active_at"], "created_at": U["started_at"], "shared": True, "origin": "gallery"})
+                        "updated_at": U["last_active_at"], "created_at": U["started_at"], "shared": True, "origin": "gallery",
+                        "product_type": U.get("product_type") or "ring"})
+        Out = [X for X in Out if X["product_type"] in Visible]
         Out.sort(key=lambda X: X["updated_at"] or "", reverse=True)
         return Out[:100]
 
@@ -59,8 +63,8 @@ class DesignService:
             return {"removed": True, "shared": True}
         raise HttpError(404, "design_not_found", "Design not found.")
 
-    def Get(self, Who: Principal, DesignId: str) -> dict:
-        D = self.Images.RequireDesign(Who, DesignId)
+    def Get(self, Who: Principal, DesignId: str, Visible: tuple = ("ring", "charm")) -> dict:
+        D = self.Images.RequireDesign(Who, DesignId, Visible)
         Batches = [self.Images.GetBatch(B["id"]) for B in self.Ctx.Db.All(
             "SELECT id FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))]
         # A shared XJet master design: the customer's own selection and choices, the images shared.
@@ -77,7 +81,7 @@ class DesignService:
         # fork of a master); the owner's own refinement of their own master is a design of their own
         Source = self.Ctx.Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],)) if D.get("source_design_id") else None
         FromGallery = bool(Use) or bool(D.get("source_design_id") and (Source is None or Source["owner_account_id"] != D["owner_account_id"]))
-        return {"id": D["id"], "title": D["title"], "prompt": D["prompt"],
+        return {"id": D["id"], "title": D["title"], "prompt": D["prompt"], "product_type": D.get("product_type") or "ring",
                 "selected_candidate_id": Selected, "created_at": Use["started_at"] if Use else D["created_at"],
                 "updated_at": Use["last_active_at"] if Use else D["updated_at"], "batches": Batches,
                 "customization": Customization, "shared": bool(Use),

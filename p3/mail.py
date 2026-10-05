@@ -99,6 +99,22 @@ def _Esc(V) -> str:
     return html.escape(str(V if V is not None else ""))
 
 
+def _IsCharm(L: dict) -> bool:
+    return (L.get("product_type") or "ring") == "charm"
+
+
+def _IdLabel(L: dict) -> str:
+    return "Charm ID" if _IsCharm(L) else "Ring ID"
+
+
+def _Size(L: dict) -> str:
+    """'US 7' for a ring, '20 mm' for a charm; a line without a size says so instead of failing."""
+    Value = L.get("charm_size") if _IsCharm(L) else L.get("ring_size")
+    if Value is None:
+        return "size to be confirmed"
+    return f"{float(Value):g} mm" if _IsCharm(L) else f"US {float(Value):g}"
+
+
 def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
     """Order received: what, where, totals, payment status, what happens next. Every customer value
     is escaped; nothing about production cost or 3D pricing is ever in it."""
@@ -107,7 +123,7 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
           <tr>
             <td style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;">
               <strong>{_Esc(L['title'])}</strong><br>
-              <span style="color:#6F6F6F;font-size:12px;">Ring ID {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · US {_Esc(f"{L['ring_size']:g}")} · ×{_Esc(L['quantity'])}</span>
+              <span style="color:#6F6F6F;font-size:12px;">{_Esc(_IdLabel(L))} {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}</span>
             </td>
             <td align="right" style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;white-space:nowrap;">{_Esc(_Money(L['line_total'], L['currency']))}</td>
           </tr>""" for L in Order["lines"])
@@ -122,7 +138,7 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
     Address = "<br>".join(_Esc(L) for L in Order["address_lines"])
     return (f"Order {Order['ref']} received — XJet Atelier", _Layout(f"Thank you — order {_Esc(Order['ref'])} received", f"""\
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
-        <p style="margin:0 0 20px;">We have received your order. Your ring is reserved: our team now reviews the design for
+        <p style="margin:0 0 20px;">We have received your order. {_Esc(_Reserved(Order))}: our team now reviews the design for
            production feasibility and confirms it to you before anything is made.</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Rows}</table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">{TotalRows}
@@ -145,13 +161,23 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
            Questions? Reply to this email and quote {_Esc(Order['ref'])}.</p>"""))
 
 
+def _Reserved(Order: dict) -> str:
+    """'Your ring is reserved' — or charm, or pieces for an order that holds both (the wording of before for rings)."""
+    Kinds = {"charm" if _IsCharm(L) else "ring" for L in Order.get("lines") or []} or {"ring"}
+    Count = sum(int(L.get("quantity") or 1) for L in Order.get("lines") or []) or 1
+    if len(Kinds) > 1:
+        return "Your pieces are reserved"
+    Noun = Kinds.pop()
+    return f"Your {Noun} is reserved" if Count == 1 or Noun == "ring" else f"Your {Noun}s are reserved"
+
+
 def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
     C = Request["customer"]
-    Size = f"US {Request['ring_size']:g}" if Request.get("ring_size") is not None else "size to be confirmed"
+    Size = _Size(Request)
     return (f"Your quote request {Request['ref']} — XJet Atelier", _Layout("We have received your request", f"""\
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
         <p style="margin:0 0 16px;">Thank you for your interest in <strong>{_Esc(Request['title'])}</strong>
-           (Ring ID {_Esc(Request['ring_id'] or '—')}) in <strong>{_Esc(Request['material_label'])}</strong>, {_Esc(Size)}, ×{_Esc(Request['quantity'])}.</p>
+           ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')}) in <strong>{_Esc(Request['material_label'])}</strong>, {_Esc(Size)}, ×{_Esc(Request['quantity'])}.</p>
         <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will come back to you within one business day
            with a price and the next steps. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
         {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}

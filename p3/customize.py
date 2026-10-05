@@ -9,6 +9,7 @@ an order at today's fixed prices. Purchase rules are enforced here, not just in 
 
 import json
 
+from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import Principal
@@ -139,10 +140,13 @@ class CustomizeService:
                         "ring_size_required": "Please choose a ring size."}
             raise HttpError(409, Reason, Messages[Reason])
         LineId = NewId("bag")
+        Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         self.Ctx.Db.Execute(
-            "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, material_id, ring_size, "
-            "quantity, unit_price, currency, pricing_version, quote_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Row["material_id"], Row["ring_size"],
+            "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, product_type, material_id, "
+            "ring_size, charm_size, quantity, unit_price, currency, pricing_version, quote_json, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Product, Row["material_id"],
+             Row["ring_size"] if Product == Products.Ring else None, Row.get("charm_size") if Product == Products.Charm else None,
              Row["quantity"], Quote.unit_price, Quote.currency, Quote.pricing_version, Dumps(Quote.ToJson()), Now()))
         Sessions.Record(self.Ctx, Who.AccountId, "bag_added", Row["design_id"], line_id=LineId,
                         material_id=Row["material_id"], ring_size=Row["ring_size"], quantity=Row["quantity"],
@@ -180,7 +184,10 @@ class CustomizeService:
             Lines.append({"id": L["id"], "design_id": L["design_id"], "title": L["title"], "ring_id": Refs.get(L["candidate_id"]),
                           "candidate_id": L["candidate_id"], "image_url": self.Ctx.AssetUrl(L["asset_path"]),
                           "material_id": L["material_id"], "material_label": Mat.Label if Mat else L["material_id"],
-                          "ring_size": L["ring_size"], "quantity": L["quantity"], "unit_price": L["unit_price"],
+                          "ring_size": L["ring_size"], "product_type": L.get("product_type") or Products.Ring,
+                          "charm_size": L.get("charm_size"),
+                          "size_label": Products.SizeLabel(L.get("product_type") or Products.Ring, L["ring_size"], L.get("charm_size")),
+                          "quantity": L["quantity"], "unit_price": L["unit_price"],
                           "currency": L["currency"], "line_total": Total, "pricing_version": L["pricing_version"],
                           "price_is_stale": L["pricing_version"] != Q.pricing_version,
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
