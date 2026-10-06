@@ -32,18 +32,37 @@ class MovieService:
         """The movie model of the candidate's product: rings keep minimax-camera, charms have their own."""
         return ModelIdFor(endpoints.Movie, Products.OfCandidate(self.Ctx.Db, CandidateId))
 
+    def _Chosen(self, CandidateId: str) -> str | None:
+        """The movie the Admin chose to show for the image (candidates.movie_id), when an image has several."""
+        Row = self.Ctx.Db.One("SELECT movie_id FROM candidates WHERE id = ?", (CandidateId,))
+        return Row["movie_id"] if Row else None
+
     def Latest(self, CandidateId: str) -> dict | None:
-        """The candidate's movie: its newest live or ready one, whatever configuration made it, else its latest
-        failed one."""
-        return self.Ctx.Db.One(
+        """The candidate's movie: the one the Admin chose for it if that one is ready, else its newest live or
+        ready one (whatever configuration made it), else its latest failed one."""
+        Rows = self.Ctx.Db.All(
             "SELECT * FROM movies WHERE candidate_id = ? "
-            "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
-            (CandidateId,))
+            "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC", (CandidateId,))
+        Chosen = self._Chosen(CandidateId)
+        return next((M for M in Rows if M["id"] == Chosen and M["status"] == "ready"), Rows[0] if Rows else None)
 
     def _Live(self, CandidateId: str) -> dict | None:
-        """The candidate's newest live or ready movie, from any configuration version: it is reused, never remade."""
-        return self.Ctx.Db.One("SELECT * FROM movies WHERE candidate_id = ? AND status IN ('queued','running','ready') "
-                               "ORDER BY created_at DESC LIMIT 1", (CandidateId,))
+        """The candidate's live or ready movie to reuse — the Admin's choice for it, else the newest — from any
+        configuration version: it is never remade."""
+        Rows = self.Ctx.Db.All("SELECT * FROM movies WHERE candidate_id = ? AND status IN ('queued','running','ready') "
+                               "ORDER BY created_at DESC", (CandidateId,))
+        Chosen = self._Chosen(CandidateId)
+        return next((M for M in Rows if M["id"] == Chosen), Rows[0] if Rows else None)
+
+    def Choose(self, CandidateId: str, MovieId: str) -> dict:
+        """Admin: make one of the image's finished movies the one shown (Customize, the Admin session page)."""
+        M = self.Ctx.Db.One("SELECT * FROM movies WHERE id = ? AND candidate_id = ?", (MovieId, CandidateId))
+        if M is None:
+            raise HttpError(404, "movie_not_found", "That movie does not belong to this image.")
+        if M["status"] != "ready":
+            raise HttpError(409, "movie_not_ready", "Only a finished movie can be the one shown.")
+        self.Ctx.Db.Update("candidates", CandidateId, movie_id=MovieId)
+        return self.ToJson(M)
 
     def _Payer(self, Movie: dict, Cand: dict) -> str:
         """Who is charged: the customer who requested the movie (shared gallery designs), else the owner."""

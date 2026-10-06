@@ -1114,6 +1114,20 @@ function adminApp() {
       if (await copyText(url)) { this.galleryLinkCopied = g.id; setTimeout(() => { this.galleryLinkCopied = ''; }, 2000); this.notify('Share link copied — ' + url); }
       else await this.ask({ title: 'Share link', text: 'Copy this link:', copy: url, confirmLabel: 'Done', cancelLabel: '' });
     },
+    // An image may have several movies (made under different movie configurations). The one the customer sees in
+    // Customize and this page shows is the Admin's choice (c.movie_id), else the newest ready one.
+    shownMovie(c) {
+      const ready = (c.movies || []).filter(m => m.status === 'ready');
+      const chosen = ready.find(m => m.id === c.movie_id);
+      return chosen ? chosen.id : (ready.length ? ready.reduce((a, b) => (b.created_at > a.created_at ? b : a)).id : null);
+    },
+    async useMovie(c, m) {
+      try {
+        await this.api('POST', `/api/admin/candidates/${encodeURIComponent(c.id)}/movie`, { movie_id: m.id });
+        await this.loadSession();
+        this.notify('This movie is now the one shown for ' + (c.ring_id || 'this image'));
+      } catch (e) { this.fail(e); }
+    },
     async galleryAdd(candidateId) {
       try {
         await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
@@ -1375,6 +1389,7 @@ function adminApp() {
         return 'Refinement of ' + (d.source_ring_id || 'the selected image') + ' into this new design — the original ' + why + ', so it stays as it was';
       }
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
+      if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       // The size in the product's own unit: the row's product (Dashboard activity), else the open session's
       const charm = e.product_type ? e.product_type === 'charm' : this.isCharm(this.sd?.session);

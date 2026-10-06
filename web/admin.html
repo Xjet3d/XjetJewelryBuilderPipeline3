@@ -368,7 +368,7 @@
                       <!-- Why a slot failed, in the provider's own words (the customer saw only "This option couldn't be generated") -->
                       <p x-show="c.status === 'failed'" class="text-[11px] text-red-700 break-words" :title="c.provider_request_id ? 'Provider request ' + c.provider_request_id : ''" x-text="(c.error_code ? c.error_code + ' · ' : '') + (c.error || '')"></p>
                       <template x-for="m in c.movies" :key="m.id">
-                        <a :href="m.url" target="_blank" class="text-[12px] underline" :class="m.status === 'ready' ? 'text-black' : 'text-red-600 no-underline'" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a>
+                        <a :href="m.url" target="_blank" class="text-[12px] underline" :class="m.status === 'ready' ? 'text-black' : 'text-red-600 no-underline'" x-text="(m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status) + ' · ' + dateTime(m.created_at)"></a>
                       </template>
                     </div>
                   </template>
@@ -1146,8 +1146,17 @@
                 <div class="space-y-1">
                   <a :href="c.image_url" target="_blank" class="block aspect-square bg-zinc-100 border" :class="c.selected ? 'border-black border-2' : 'border-zinc-200'"><img x-show="c.image_url" :src="small(c.image_url, 800)" :data-full="c.image_url" class="w-full h-full object-cover" loading="lazy" alt=""></a>
                   <p class="text-[12px] text-zinc-500"><span class="font-mono text-zinc-700" x-text="c.ring_id || ('Option ' + (c.slot + 1))"></span><span x-text="(c.selected ? ' · selected' : '') + (c.status !== 'ready' ? ' · ' + c.status : '')"></span></p>
+                  <!-- Why a slot failed, in the provider's own words (the customer saw only "This option couldn't be generated") -->
+                  <p x-show="c.status === 'failed'" class="text-[11px] text-red-700 break-words" :title="c.provider_request_id ? 'Provider request ' + c.provider_request_id : ''" x-text="(c.error_code ? c.error_code + ' · ' : '') + (c.error || '')"></p>
                   <button x-show="c.status === 'ready'" class="block text-[11px] uppercase tracking-widest underline" :class="sd.gallery?.candidate_id === c.id ? 'text-amber-700' : 'text-zinc-500 hover:text-zinc-700'" @click="sd.gallery?.candidate_id === c.id ? galleryRemove(sd.gallery) : galleryAdd(c.id)" x-text="sd.gallery?.candidate_id === c.id ? 'In gallery' : 'Use in gallery'"></button>
-                  <template x-for="m in c.movies" :key="m.id"><a :href="m.url" target="_blank" class="text-[12px] underline" x-text="m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status"></a></template>
+                  <!-- An image may have several movies (different movie configurations): the one shown is the Admin's choice, else the newest -->
+                  <template x-for="m in c.movies" :key="m.id">
+                    <p class="text-[12px] flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <a :href="m.url" target="_blank" class="underline" :class="m.status === 'ready' ? 'text-black' : 'text-red-600 no-underline'" x-text="(m.status === 'ready' ? '▶ 360° movie' : '360° movie · ' + m.status) + ' · ' + dateTime(m.created_at)"></a>
+                      <span x-show="shownMovie(c) === m.id" class="badge bg-emerald-100 text-emerald-800">shown</span>
+                      <button x-show="m.status === 'ready' && shownMovie(c) !== m.id" class="underline text-zinc-600 hover:text-black" @click="useMovie(c, m)">Use this movie</button>
+                    </p>
+                  </template>
                 </div>
               </template>
             </div>

@@ -123,8 +123,9 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
                     # Admin only: why a slot failed, in the provider's own (capped) words, and its request
                     "error": C["error"], "error_code": C["error_code"], "provider_request_id": C["provider_request_id"],
                     "attempts": C["attempts"],
+                    "movie_id": C["movie_id"],                  # the Admin's choice of the movie shown, when there are several
                     "movies": [{"id": M["id"], "status": M["status"], "url": Url(M["asset_path"]),
-                                "created_at": M["created_at"]} for M in MoviesByCand[C["id"]]],
+                                "created_at": M["created_at"], "chosen": M["id"] == C["movie_id"]} for M in MoviesByCand[C["id"]]],
                 } for C in ByDesign[D["id"]] if C["batch_id"] == B["id"]],
             } for B in BatchesByDesign[D["id"]]],
             "in_bag": sum(1 for L in Bag if L["design_id"] == D["id"]),

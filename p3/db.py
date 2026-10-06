@@ -407,6 +407,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     content_sha256       TEXT,
     error                TEXT,
     error_code           TEXT,
+    movie_id             TEXT,                     -- the movie the Admin chose to show for this image (else its newest)
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL,
     UNIQUE (batch_id, slot)
@@ -580,6 +581,9 @@ class Database:
                 MCols = {R[1] for R in Conn.execute("PRAGMA table_info(movies)")}
                 if MCols and "requested_by" not in MCols:
                     Conn.execute("ALTER TABLE movies ADD COLUMN requested_by TEXT")   # who pays for a movie on a shared design
+                CandCols = {R[1] for R in Conn.execute("PRAGMA table_info(candidates)")}
+                if CandCols and "movie_id" not in CandCols:
+                    Conn.execute("ALTER TABLE candidates ADD COLUMN movie_id TEXT")   # the movie the Admin chose to show for an image
                 if "owner_account_id" in Cols and "removed_at" not in Cols:
                     Conn.execute("ALTER TABLE designs ADD COLUMN removed_at TEXT")   # removed from My Designs (journey kept)
                 UCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_uses)")}

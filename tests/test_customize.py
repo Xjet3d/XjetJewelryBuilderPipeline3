@@ -66,6 +66,25 @@ async def test_an_images_movie_is_reused_after_the_movie_configuration_changes(t
         await H.Client.put(f"/api/designs/{DesignId}/selection", json={"candidate_id": Cand["id"]})
         D = (await H.Client.get(f"/api/admin/sessions/{DesignId}", headers=Admin)).json()
         assert D["artifacts"]["movie_url"] == H.Ctx.AssetUrl(Old["asset_path"])
+        # … unless the Admin chooses the older one: then Customize, the customer's answer and the Admin page show it
+        R = await H.Client.post(f"/api/admin/candidates/{Cand['id']}/movie", json={"movie_id": "mov_older"}, headers=Admin)
+        assert R.status_code == 200 and R.json()["id"] == "mov_older"
+        assert H.Svc.Movies.Latest(Cand["id"])["id"] == "mov_older"
+        Third = await H.Proceed(DesignId, Cand["id"])
+        await H.Idle()
+        assert Third["movie"]["id"] == "mov_older" and len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2   # reused, not remade
+        assert (await H.Client.get(f"/api/customizations/{Third['id']}")).json()["movie"]["movie_url"] == H.Ctx.AssetUrl("older.mp4")
+        D = (await H.Client.get(f"/api/admin/sessions/{DesignId}", headers=Admin)).json()
+        assert D["artifacts"]["movie_url"] == H.Ctx.AssetUrl("older.mp4")
+        Shown = next(C for B in D["design"]["batches"] for C in B["candidates"] if C["id"] == Cand["id"])
+        assert Shown["movie_id"] == "mov_older" and [M["chosen"] for M in Shown["movies"]].count(True) == 1
+        assert any(E["kind"] == "admin_movie_chosen" for E in D["timeline"])
+        # Only one of the image's own finished movies can be chosen
+        Foreign = H.Ctx.Db.One("SELECT id FROM movies WHERE candidate_id = ?", (Other["id"],))["id"]
+        assert (await H.Client.post(f"/api/admin/candidates/{Cand['id']}/movie", json={"movie_id": Foreign}, headers=Admin)).status_code == 404
+        H.Ctx.Db.Execute("UPDATE movies SET status = 'failed' WHERE id = 'mov_older'")
+        assert (await H.Client.post(f"/api/admin/candidates/{Cand['id']}/movie", json={"movie_id": "mov_older"}, headers=Admin)).status_code == 409
+        assert H.Svc.Movies.Latest(Cand["id"])["id"] == First["movie"]["id"]      # a choice that is no longer ready falls back
     finally:
         await H.Close()
 

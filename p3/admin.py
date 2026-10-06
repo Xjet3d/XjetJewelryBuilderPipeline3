@@ -371,10 +371,14 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
     Timeline = Sessions.Timeline(Ctx, DesignId, Owner=Owner, Use=Use)
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices, Owner=Owner)
-    def NewestReadyMovie(Cands):            # an older movie may remain from an earlier configuration: the newest one counts
-        return max((M for C in Cands for M in C["movies"] if M["status"] == "ready"), key=lambda M: M["created_at"], default=None)
-    Movie = NewestReadyMovie([C for B in Batches for C in B["candidates"] if C["selected"]]) \
-        or NewestReadyMovie([C for B in Batches for C in B["candidates"]])
+    def ShownMovie(Cands):
+        """An image may have several movies (made under different movie configurations): the Admin's choice for it,
+        else its newest ready one."""
+        Ready = [(C, M) for C in Cands for M in C["movies"] if M["status"] == "ready"]
+        Chosen = next((M for C, M in Ready if M["id"] == C.get("movie_id")), None)
+        return Chosen or max((M for _, M in Ready), key=lambda M: M["created_at"], default=None)
+    Movie = ShownMovie([C for B in Batches for C in B["candidates"] if C["selected"]]) \
+        or ShownMovie([C for B in Batches for C in B["candidates"]])
     Keep = ("material_id", "ring_size", "charm_size", "quantity", "unit_price", "pricing_version", "pricing_status")
     Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
                for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
@@ -902,6 +906,20 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def AdminGallery(authorization: str | None = Header(None)):
         Admin(authorization)
         return {"items": Gallery.AdminList()}
+
+    # ── the movie shown for an image: it may have several, made under different movie configurations ──
+    @App_.post("/api/admin/candidates/{CandidateId}/movie")
+    async def ChooseMovie(CandidateId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        from p3.movies import MovieService
+        Who = Admin(authorization)
+        Cand = Ctx.Db.One("SELECT c.id, b.design_id, d.owner_account_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
+                          "JOIN designs d ON d.id = b.design_id WHERE c.id = ?", (CandidateId,))
+        if Cand is None:
+            raise HttpError(404, "candidate_not_found", "Image not found.")
+        M = MovieService(Ctx).Choose(CandidateId, str(Body_.get("movie_id") or ""))
+        Sessions.Record(Ctx, Cand["owner_account_id"], "admin_movie_chosen", Cand["design_id"], candidate_id=CandidateId,
+                        movie_id=M["id"], by=Who.Id)
+        return M
 
     @App_.get("/api/admin/gallery/usage/{DesignId}")
     async def AdminGalleryUsage(DesignId: str, authorization: str | None = Header(None)):
