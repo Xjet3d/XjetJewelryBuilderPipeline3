@@ -72,6 +72,19 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     assert (await H.Client.get("/api/admin/session")).status_code == 403
 
 
+async def test_the_3d_viewer_never_shows_another_sessions_model(HA):
+    """The session page's 3D viewer shares one WebGL canvas across sessions, and a canvas keeps its last frame:
+    clearing the viewer takes the canvas off the page (a session without a 3D model showed the previous session's
+    model, frozen), and a model is started only for the session that is still open."""
+    Js = (await HA.Client.get("/static/admin.js")).text
+    Clear = Js[Js.index("    clear3d() {"):Js.index("    glRenderer() {")]
+    assert "if (GL.renderer?.domElement.parentNode) GL.renderer.domElement.remove();" in Clear
+    Show = Js[Js.index("    async show3d(t) {"):Js.index("    parsePreview(buf) {")]
+    assert Show.index("this.clear3d();") < Show.index("el.appendChild(renderer.domElement)")      # back once drawn
+    assert "if (this.viewer3d.id !== t.id) return;" in Show                       # another session or model meanwhile
+    assert "setTimeout(() => { if (this.sd?.session.session_id === sid) this.show3d(latest); }, 50);" in Js
+
+
 async def test_admin_disabled_without_a_key(tmp_path):
     H = Harness(tmp_path)
     try:

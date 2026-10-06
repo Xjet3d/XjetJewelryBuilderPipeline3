@@ -678,7 +678,8 @@ function adminApp() {
         this.showChoices = false;
         for (const t of sd.three_d) this.setLive(t.id, t.live);
         const latest = sd.three_d.find(t => this.previewReady(t));       // visual only: also for "needs review"
-        if (latest && this.viewer3d.id !== latest.id) setTimeout(() => this.show3d(latest), 50);
+        const sid = sd.session.session_id;                               // still this session when the viewer starts
+        if (latest && this.viewer3d.id !== latest.id) setTimeout(() => { if (this.sd?.session.session_id === sid) this.show3d(latest); }, 50);
         if (!latest) this.clear3d();
         await this.$nextTick();                 // the <option>s must exist before the selects get their value
         await new Promise(r => setTimeout(r));  // (a freshly created detail block renders its options a tick later)
@@ -1208,6 +1209,9 @@ function adminApp() {
       if (GL.controls) { GL.controls.dispose(); GL.controls = null; }
       if (GL.io) { GL.io.disconnect(); GL.io = null; }
       if (GL.soft) { GL.soft.dispose(); GL.soft = null; }
+      // The shared canvas keeps showing its last frame: take it off the page (show3d puts it back once the next model
+      // is drawn), so a session without a 3D model never shows the previous session's model.
+      if (GL.renderer?.domElement.parentNode) GL.renderer.domElement.remove();
       this.viewer3d = { id: null, label: '', loading: false, error: '', note: '' };
     },
     glRenderer() {
