@@ -168,7 +168,7 @@ function adminApp() {
     tab: 'sessions', materials: {}, charmMaterials: {}, swatches: {}, showChoices: false,
     viewer3d: { id: null, label: '', loading: false, error: '' }, downloadNote: '', zoom: null,
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
-    dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sMock: false, mockSessions: 0,
+    dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sGallery: '', sMock: false, mockSessions: 0,
     sProduct: '', oProduct: '', gProduct: '',         // product filters: '' = All · 'ring' · 'charm'
     productFilters: ['', 'ring', 'charm'],
     sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
@@ -211,7 +211,7 @@ function adminApp() {
       this.installZoom();
       try {   // the Sessions filters survive a reload
         const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
-        if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started',
+        if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sGallery: f.sGallery || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started',
                                      sProduct: ['ring', 'charm'].includes(f.sProduct) ? f.sProduct : '' });
       } catch (_) {}
       // A remembered browser: the session cookie signs in without asking for the key again.
@@ -552,9 +552,16 @@ function adminApp() {
       this.saveFilters();
     },
     saveFilters() {
-      try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort, sProduct: this.sProduct })); } catch (_) {}
+      try { sessionStorage.setItem('p3_admin_filters', JSON.stringify({ sq: this.sq, sStage: this.sStage, sBag: this.sBag, s3d: this.s3d, sGallery: this.sGallery, sMock: this.sMock, sAttention: this.sAttention, sSort: this.sSort, sProduct: this.sProduct })); } catch (_) {}
     },
-    resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sAttention = false; this.sProduct = ''; this.saveFilters(); },
+    resetFilters() { this.sq = ''; this.sStage = ''; this.sBag = ''; this.s3d = ''; this.sGallery = ''; this.sAttention = false; this.sProduct = ''; this.saveFilters(); },
+    // Gallery filter: a master shown in the gallery · a journey started from a gallery design · neither
+    galleryMatches(x) {
+      if (!this.sGallery) return true;
+      if (this.sGallery === 'master') return !!x.in_gallery;
+      if (this.sGallery === 'from') return x.origin === 'gallery';
+      return !x.in_gallery && x.origin !== 'gallery';
+    },
     activeFilterText() {
       const parts = [];
       if (this.sq.trim()) parts.push('search “' + this.sq.trim() + '”');
@@ -562,6 +569,7 @@ function adminApp() {
       if (this.sStage) parts.push('stopped at ' + (this.stageOptions.find(o => o[0] === this.sStage)?.[1] || this.sStage));
       if (this.sBag) parts.push(this.sBag === 'yes' ? 'reached Bag' : 'no Bag');
       if (this.s3d) parts.push(this.s3d === 'any' ? 'has 3D' : 'no 3D');
+      if (this.sGallery) parts.push({ master: 'in the gallery', from: 'started from the gallery', none: 'not from the gallery' }[this.sGallery]);
       if (this.sProduct) parts.push(this.pPlural(this.sProduct) + ' only');
       return parts.length ? 'filters on: ' + parts.join(', ') : 'filters on';
     },
@@ -576,7 +584,7 @@ function adminApp() {
         if (!document.hidden && this.ok && this.tab === 'sessions' && !this.sessionId) this.loadSessions({ quiet: true }).catch(() => {});
       });
     },
-    get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sAttention || this.sProduct); },
+    get filtersActive() { return !!(this.sq.trim() || this.sStage || this.sBag || this.s3d || this.sGallery || this.sAttention || this.sProduct); },
     // Search by what staff actually use: Ring ID (R-1013), option ID (R-1013-B), design name, Order ID, customer, email
     sessionMatches(x, q) {
       if (!q) return true;
@@ -596,6 +604,7 @@ function adminApp() {
         (!this.sStage || x.stage_reached === this.sStage) &&
         (!this.sBag || (this.sBag === 'yes') === x.add_to_bag) &&
         (!this.s3d || (this.s3d === 'any') === !!x.three_d_status) &&
+        this.galleryMatches(x) &&
         (!this.sProduct || (x.product_type || 'ring') === this.sProduct) &&
         (!this.sAttention || attention.has(x.session_id)));
       const k = this.sSort;
@@ -1128,6 +1137,29 @@ function adminApp() {
         this.notify('This movie is now the one shown for ' + (c.ring_id || 'this image'));
       } catch (e) { this.fail(e); }
     },
+    // A new movie with the movie configuration active now (the current one stays shown until the new one is ready)
+    async newMovie(c) {
+      const ok = await this.ask({ title: `Make a new 360° movie for ${c.ring_id || 'this image'}?`,
+        text: `This is a ${this.mode === 'mock' ? 'mock (free, simulated)' : 'PAID live'} MiniMax call with the movie settings active now. ` +
+              'The movie shown today stays until the new one is ready, which then becomes the one shown. The customer’s allowance is not used.',
+        confirmLabel: this.mode === 'mock' ? 'Make it (mock)' : 'Make it — paid call', danger: this.mode !== 'mock' });
+      if (!ok) return;
+      try {
+        await this.api('POST', `/api/admin/candidates/${encodeURIComponent(c.id)}/movies`);
+        await this.loadSession();
+        this.notify('A new movie is being made for ' + (c.ring_id || 'this image') + ' — refresh in a minute');
+      } catch (e) { this.fail(e); }
+    },
+    // The Admin's decision on a flagged 3D result: produce it as measured
+    async accept3d(t) {
+      const reasons = (t.review || []).map(r => r.text).join(' ') || t.error || '';
+      const ok = await this.ask({ title: `Accept ${t.ring_id || 'this result'} for production as measured?`,
+        text: `${reasons} The numbers (${t.size_label || 'US ' + t.production_size} · ${t.material_label}) stand as they are; the reasons stay on the record with your name and the time.`,
+        confirmLabel: 'Accept — produce as measured' });
+      if (!ok) return;
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/accept`, {}); await this.loadSession(); this.notify('Accepted for production'); }
+      catch (e) { this.fail(e); }
+    },
     async galleryAdd(candidateId) {
       try {
         await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
@@ -1390,6 +1422,8 @@ function adminApp() {
       }
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
+      if (e.kind === 'admin_movie_requested') return 'A new 360° movie was requested by ' + (d.by || 'admin') + (d.config_version ? ' (' + d.config_version + ')' : '');
+      if (e.kind === 'admin_3d_accepted') return 'Accepted for production as measured by ' + (d.by || 'admin') + (d.reasons ? ' — ' + d.reasons : '') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       // The size in the product's own unit: the row's product (Dashboard activity), else the open session's
       const charm = e.product_type ? e.product_type === 'charm' : this.isCharm(this.sd?.session);

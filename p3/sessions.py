@@ -111,9 +111,9 @@ def _Parse(Iso: str | None) -> datetime | None:
     return datetime.fromisoformat(Iso) if Iso else None
 
 
-def _ProductionState(Status: str, Integrity: str | None) -> str:
+def _ProductionState(Status: str, Integrity: str | None, Accepted=False) -> str:
     from p3.production3d import ProductionState          # late import: production3d imports this module
-    return ProductionState(Status, Integrity)
+    return ProductionState(Status, Integrity, bool(Accepted))
 
 
 def _Min(*Values):
@@ -172,6 +172,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         return []
     Ids = list({D["id"] for D, _ in Journeys})
     Q = ",".join("?" * len(Ids))
+    InGallery = {R["design_id"] for R in Db.All(f"SELECT design_id FROM gallery_items WHERE design_id IN ({Q})", Ids)}
     Batches = Db.All(f"SELECT id, design_id, kind, user_text, created_at FROM batches WHERE design_id IN ({Q})", Ids)
     Cands = Db.All(f"SELECT c.id, c.batch_id, c.slot, c.status, c.asset_path, c.updated_at, b.design_id, b.kind "
                    f"FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id IN ({Q})", Ids)
@@ -308,6 +309,7 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
                 "SELECT 1 AS x FROM batches WHERE design_id = ? AND kind = 'refine'", (Did,))),
             "source_ring_id": SourceRefs.get(SourceCandidate) if SourceCandidate else None,
             "shared": bool(U), "use_id": U["id"] if U else None,
+            "in_gallery": Did in InGallery,              # a master design shown in the Inspiration Gallery
             "removed": bool(U.get("removed_at")) if U else bool(D.get("removed_at")),
             "account_id": Owner, "customer_name": Name, "customer_email": Email,
             "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
@@ -326,8 +328,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "fixed_price": Fixed,
             "three_d_status": Last3D["status"] if Last3D else None, "three_d_id": Last3D["id"] if Last3D else None,
             # Production readiness of the latest result (processing · complete · review_required · failed · cancelled)
-            "three_d_state": _ProductionState(Last3D["status"], Last3D["integrity"]) if Last3D else None,
-            "three_d_review": any(_ProductionState(X["status"], X["integrity"]) == "review_required" for X in T3[Did]),
+            "three_d_state": _ProductionState(Last3D["status"], Last3D["integrity"], Last3D["accepted_at"]) if Last3D else None,
+            "three_d_review": any(_ProductionState(X["status"], X["integrity"], X["accepted_at"]) == "review_required" for X in T3[Did]),
             "user_status": Status.get(Owner, "unknown"),
             "has_image": bool(Ready), "has_movie": any(X["status"] == "ready" for X in M[Did]),
             "has_3d": any(X["status"] in ("measured", "needs_review") for X in T3[Did]),

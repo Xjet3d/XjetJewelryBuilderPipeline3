@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS session_3d (
     status             TEXT NOT NULL,             -- requested | generating | measuring | measured | needs_review | failed
     requested_by       TEXT NOT NULL,
     error              TEXT,
+    accepted_at        TEXT,                      -- the Admin accepted a flagged result for production as measured
+    accepted_by        TEXT,
+    accepted_note      TEXT,
     created_at         TEXT NOT NULL,
     updated_at         TEXT NOT NULL
 );
@@ -425,12 +428,13 @@ CREATE TABLE IF NOT EXISTS movies (
     asset_path           TEXT,
     error                TEXT,
     error_code           TEXT,
+    made_by_admin        TEXT,                    -- the Admin asked for this movie ("Make a new movie"): no allowance charge
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 );
--- At most one live (queued/running/ready) movie per candidate + config: dedupes repeated Proceed clicks.
+-- At most one live (queued/running/ready) customer movie per candidate + config: dedupes repeated Proceed clicks.
 CREATE UNIQUE INDEX IF NOT EXISTS movies_one_live
-    ON movies(candidate_id, config_version) WHERE status IN ('queued', 'running', 'ready');
+    ON movies(candidate_id, config_version) WHERE status IN ('queued', 'running', 'ready') AND made_by_admin IS NULL;
 
 CREATE TABLE IF NOT EXISTS meshes (
     id                   TEXT PRIMARY KEY,
@@ -584,6 +588,16 @@ class Database:
                 CandCols = {R[1] for R in Conn.execute("PRAGMA table_info(candidates)")}
                 if CandCols and "movie_id" not in CandCols:
                     Conn.execute("ALTER TABLE candidates ADD COLUMN movie_id TEXT")   # the movie the Admin chose to show for an image
+                if MCols and "made_by_admin" not in MCols:
+                    # A movie the Admin asked for ("Make a new movie"): outside the one-live-movie rule, no allowance charge
+                    Conn.execute("ALTER TABLE movies ADD COLUMN made_by_admin TEXT")
+                    Conn.execute("DROP INDEX IF EXISTS movies_one_live")
+                    Conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS movies_one_live ON movies(candidate_id, config_version) "
+                                 "WHERE status IN ('queued', 'running', 'ready') AND made_by_admin IS NULL")
+                S3Cols = {R[1] for R in Conn.execute("PRAGMA table_info(session_3d)")}
+                if S3Cols and "accepted_at" not in S3Cols:            # the Admin accepted a flagged 3D result for production
+                    for Col in ("accepted_at TEXT", "accepted_by TEXT", "accepted_note TEXT"):
+                        Conn.execute(f"ALTER TABLE session_3d ADD COLUMN {Col}")
                 if "owner_account_id" in Cols and "removed_at" not in Cols:
                     Conn.execute("ALTER TABLE designs ADD COLUMN removed_at TEXT")   # removed from My Designs (journey kept)
                 UCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_uses)")}

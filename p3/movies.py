@@ -38,13 +38,15 @@ class MovieService:
         return Row["movie_id"] if Row else None
 
     def Latest(self, CandidateId: str) -> dict | None:
-        """The candidate's movie: the one the Admin chose for it if that one is ready, else its newest live or
-        ready one (whatever configuration made it), else its latest failed one."""
-        Rows = self.Ctx.Db.All(
-            "SELECT * FROM movies WHERE candidate_id = ? "
-            "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC", (CandidateId,))
+        """The candidate's movie: the one the Admin chose for it if that one is ready, else its newest ready one
+        (whatever configuration made it — a ready movie stays shown while a new one is being made), else the one
+        being made, else its latest failed one."""
+        Rows = self.Ctx.Db.All("SELECT * FROM movies WHERE candidate_id = ? ORDER BY created_at DESC", (CandidateId,))
         Chosen = self._Chosen(CandidateId)
-        return next((M for M in Rows if M["id"] == Chosen and M["status"] == "ready"), Rows[0] if Rows else None)
+        Ready = [M for M in Rows if M["status"] == "ready"]
+        Live = [M for M in Rows if M["status"] in ("queued", "running")]
+        return (next((M for M in Ready if M["id"] == Chosen), None) or (Ready[0] if Ready else None)
+                or (Live[0] if Live else None) or (Rows[0] if Rows else None))
 
     def _Live(self, CandidateId: str) -> dict | None:
         """The candidate's live or ready movie to reuse — the Admin's choice for it, else the newest — from any
@@ -64,6 +66,24 @@ class MovieService:
         self.Ctx.Db.Update("candidates", CandidateId, movie_id=MovieId)
         return self.ToJson(M)
 
+    def Remake(self, CandidateId: str, By: str) -> dict:
+        """Admin ("Make a new movie"): a new movie for a finished image with the movie configuration active now,
+        whatever movies it already has. It becomes the one shown once it is ready (the current one stays until
+        then, Latest); it is outside the one-live-movie rule and does not use the customer's allowance."""
+        Db = self.Ctx.Db
+        Cand = Db.One("SELECT * FROM candidates WHERE id = ? AND status = 'ready'", (CandidateId,))
+        if Cand is None:
+            raise HttpError(409, "no_ready_image", "Only a finished image can have a movie.")
+        if Db.One("SELECT 1 AS x FROM movies WHERE candidate_id = ? AND status IN ('queued', 'running')", (CandidateId,)):
+            raise HttpError(409, "movie_in_progress", "A movie is already being made for this image.")
+        Version = self.Ctx.Models.Active(self._Model(CandidateId)).Id
+        MovieId, T = NewId("mov"), Now()
+        Db.Execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, created_at, updated_at, made_by_admin) "
+                   "VALUES (?,?,?,?,?,?,?,?)", (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T, By))
+        Db.Update("candidates", CandidateId, movie_id=MovieId)
+        self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId))
+        return self.ToJson(Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,)))
+
     def _Payer(self, Movie: dict, Cand: dict) -> str:
         """Who is charged: the customer who requested the movie (shared gallery designs), else the owner."""
         if Movie.get("requested_by"):
@@ -74,9 +94,8 @@ class MovieService:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
         Version = self.Ctx.Models.Active(self._Model(CandidateId)).Id
-        Live = self._Live(CandidateId)      # the candidate already has a movie (any configuration) → reuse, no new charge
-        if Live:
-            return self.ToJson(Live)
+        if self._Live(CandidateId):         # the candidate already has a movie (any configuration) → reuse, no new charge
+            return self.ToJson(self.Latest(CandidateId))
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageMovie, 1)
         MovieId = NewId("mov")
         T = Now()
@@ -123,8 +142,10 @@ class MovieService:
             RelPath = f"designs/{Cand['design_id']}/movies/{MovieId}.mp4"
             assets.WriteAtomic(S.AssetsDir, RelPath, Data)
             Db.Update("movies", MovieId, status="ready", asset_path=RelPath, error=None, error_code=None)
-            # P2 rule: a finished 360° movie uses one generation (charged once, on success only).
-            Ctx.Accounts.CommitCharge(self._Payer(Movie, Cand), UsageMovie, MovieId)
+            # P2 rule: a finished 360° movie uses one generation (charged once, on success only) — the customer's,
+            # never for a movie the Admin asked for.
+            if not Movie["made_by_admin"]:
+                Ctx.Accounts.CommitCharge(self._Payer(Movie, Cand), UsageMovie, MovieId)
         except Exception as E:
             Message, Code = FailureFor(E)
             Logger.warning("Movie %s failed (%s): %s", MovieId, Code, E)
@@ -155,5 +176,5 @@ class MovieService:
         return {"id": M["id"], "candidate_id": M["candidate_id"], "status": M["status"],
                 "config_version": M["config_version"], "endpoint": M["endpoint"],
                 "movie_url": self.Ctx.AssetUrl(M["asset_path"]) if M["status"] == "ready" else None,
-                "error": M["error"], "error_code": M["error_code"],
+                "error": M["error"], "error_code": M["error_code"], "by_admin": bool(M["made_by_admin"]),
                 "retryable": M["status"] in ("failed", "interrupted")}

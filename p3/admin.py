@@ -767,6 +767,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Admin(authorization)
         return Production.Retry(Sid)
 
+    @App_.post("/api/admin/3d/{Sid}/accept")
+    async def Accept3D(Sid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """A flagged result is accepted for production as measured (the reasons stay with it)."""
+        Who = Admin(authorization)
+        return Production.Accept(Sid, Who.Id, str(Body_.get("note") or ""))
+
     # Scaled STL: queue export → temporary file → slot released → native signed download → TTL delete.
     @App_.post("/api/admin/3d/{Sid}/export")
     async def Export3D(Sid: str, authorization: str | None = Header(None)):
@@ -919,6 +925,20 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         M = MovieService(Ctx).Choose(CandidateId, str(Body_.get("movie_id") or ""))
         Sessions.Record(Ctx, Cand["owner_account_id"], "admin_movie_chosen", Cand["design_id"], candidate_id=CandidateId,
                         movie_id=M["id"], by=Who.Id)
+        return M
+
+    # ── "Make a new movie": a new paid movie for an image with the movie configuration active now ──
+    @App_.post("/api/admin/candidates/{CandidateId}/movies")
+    async def NewMovie(CandidateId: str, authorization: str | None = Header(None)):
+        from p3.movies import MovieService
+        Who = Admin(authorization)
+        Cand = Ctx.Db.One("SELECT c.id, b.design_id, d.owner_account_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
+                          "JOIN designs d ON d.id = b.design_id WHERE c.id = ?", (CandidateId,))
+        if Cand is None:
+            raise HttpError(404, "candidate_not_found", "Image not found.")
+        M = MovieService(Ctx).Remake(CandidateId, Who.Id)
+        Sessions.Record(Ctx, Cand["owner_account_id"], "admin_movie_requested", Cand["design_id"], candidate_id=CandidateId,
+                        movie_id=M["id"], config_version=M["config_version"], by=Who.Id)
         return M
 
     @App_.get("/api/admin/gallery/usage/{DesignId}")

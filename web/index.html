@@ -2111,8 +2111,10 @@
     <!-- ── Fullscreen zoomable preview overlay (P2) ── -->
     <!-- Inspiration Gallery inside the studio (signed-in): the same tiles; one tap opens a design -->
     <template x-if="galleryGridOpen">
-        <div class="fixed inset-0 z-[105] bg-black/60 flex items-start md:items-center justify-center p-4 overflow-y-auto" @click.self="galleryGridOpen = false" @keydown.escape.window="galleryGridOpen = false" role="dialog" aria-modal="true" aria-label="Inspiration Gallery">
-            <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl p-6 md:p-8 fade-in">
+        <!-- The panel centres itself (my-auto) while it fits, and starts at the top once it is taller than the screen —
+             a centred flex child that overflows would cut its top off (the heading was unreachable with 14 designs) -->
+        <div class="fixed inset-0 z-[105] bg-black/60 flex items-start justify-center p-4 overflow-y-auto" @click.self="galleryGridOpen = false" @keydown.escape.window="galleryGridOpen = false" role="dialog" aria-modal="true" aria-label="Inspiration Gallery">
+            <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl p-6 md:p-8 my-auto fade-in">
                 <div class="flex items-start justify-between gap-4 mb-6">
                     <div><span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
                         <h3 class="brand-font text-2xl text-zinc-900 mt-1">Start from a design you love</h3>

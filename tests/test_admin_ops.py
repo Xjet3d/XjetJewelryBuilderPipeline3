@@ -3,6 +3,7 @@ searchable identifiers on sessions."""
 
 import pytest
 
+from p3.providers import endpoints
 from tests.conftest import Harness, MakeLive
 
 AdminKey = "ops-admin-key"
@@ -174,7 +175,8 @@ async def test_design_names_are_never_shared_and_variations_follow_their_master(
     R = (await H.Client.patch(f"/api/admin/designs/{A['design_id']}", json={"title": "Vesper Twist"}, headers=Admin)).json()
     assert [V["title"] for V in R["variations"]] == ["Vesper Lattice"]
     assert (await H.Client.get(f"/api/designs/{Fork2['design_id']}", headers=Cust)).json()["title"] == "Petite"
-    # The master has a 3D model → the variation's Generate 3D is not open: the typed confirmation is required
+    # The master has a 3D model → the variation (new images, a different design) still gets its own first model
+    # normally: Generate 3D is open, the source model is only noted (until 2026-10-06 a typed phrase was required)
     T = (await H.Client.post(f"/api/admin/sessions/{A['design_id']}/3d", json={}, headers=Admin)).json()
     await H.Idle()
     S = (await H.Client.get(f"/api/admin/sessions/{Fork['design_id']}", headers=Admin)).json()
@@ -182,15 +184,15 @@ async def test_design_names_are_never_shared_and_variations_follow_their_master(
     assert S["three_d_defaults"]["source_model"]["design_id"] == A["design_id"] and S["three_d_defaults"]["source_model"]["ring_id"] == "R-1001-A"
     Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
     R = await H.Client.post(f"/api/admin/sessions/{Fork['design_id']}/3d", json={}, headers=Admin)
-    assert R.status_code == 409 and R.json()["error"]["code"] == "hi3d_source_model_exists" and "R-1001-A" in R.json()["error"]["message"]
-    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs
-    R = await H.Client.post(f"/api/admin/sessions/{Fork['design_id']}/3d", json={"override": "GENERATE NEW 3D"}, headers=Admin)
     assert R.status_code == 200 and len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs + 1
     await H.Idle()
     S = (await H.Client.get(f"/api/admin/sessions/{Fork['design_id']}", headers=Admin)).json()
     assert S["three_d_defaults"]["existing_model"] and S["three_d_defaults"]["source_model"] is None
-    Ov = [E for E in S["timeline"] if E["kind"] == "admin_3d_new_model_override"]
-    assert len(Ov) == 1 and Ov[0]["data"]["source_ring_id"] == "R-1001-A"
+    assert not [E for E in S["timeline"] if E["kind"] == "admin_3d_new_model_override"]
+    # A second model of the SAME design still needs the typed confirmation
+    Other = next(O for O in S["three_d_defaults"]["options"] if O["id"] != S["three_d_defaults"]["existing_model"]["candidate_id"])
+    R = await H.Client.post(f"/api/admin/sessions/{Fork['design_id']}/3d", json={"candidate_id": Other["id"]}, headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "hi3d_model_exists"
 
 
 async def test_sessions_carry_every_searchable_identifier(HX):
@@ -201,3 +203,111 @@ async def test_sessions_carry_every_searchable_identifier(HX):
     assert X["ring_id"] == "R-1001" and X["selected_ring_id"] == "R-1001-A"
     assert X["option_ring_ids"] == ["R-1001-A", "R-1001-B", "R-1001-C", "R-1001-D"]
     assert X["order_refs"] == ["ORD-10001"] and X["ordered"] and X["legacy_copy"] is False
+
+
+async def test_a_flagged_3d_result_can_be_accepted_for_production_as_measured(HX, monkeypatch):
+    """A result that needs production review (here: a bore that is not quite round) is the Admin's decision: accepting
+    it makes it complete everywhere — the result, the session list, the order line — while its reasons stay on it,
+    with who accepted it, when and why."""
+    H = HX
+    from p3 import production3d
+    Did, O = await _Order(H)
+    monkeypatch.setattr(production3d, "MaxRoundness", -1.0)             # every bore is "not round": flagged for review
+    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    S = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()
+    R3 = S["three_d"][0]
+    assert R3["production_state"] == "review_required" and R3["review"][0]["code"] == "bore_not_round"
+    assert R3["accepted"] is None and not R3["review_stale"] and S["session"]["three_d_state"] == "review_required"
+    R = await H.Client.post(f"/api/admin/3d/{R3['id']}/accept", json={"note": "fits the customer's finger"}, headers=Admin)
+    assert R.status_code == 200, R.text
+    A = R.json()
+    assert A["production_state"] == "complete" and A["status"] == "needs_review"              # accepted, not re-measured
+    assert A["accepted"]["by"] == "developer-key" and A["accepted"]["note"] == "fits the customer's finger" and A["accepted"]["at"]
+    assert A["review"][0]["code"] == "bore_not_round"                                           # the reasons stay
+    S = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()
+    assert S["session"]["three_d_state"] == "complete" and not S["session"]["three_d_review"]
+    Ev = next(E for E in S["timeline"] if E["kind"] == "admin_3d_accepted")
+    assert Ev["data"]["note"] == "fits the customer's finger" and "not round" in Ev["data"]["reasons"]
+    L = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
+    assert next(X for X in L if X["design_id"] == Did)["three_d_state"] == "complete"
+    Od = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
+    assert Od["lines"][0]["three_d_state"] == "complete"
+    # Accepting twice, or a result that needs no review, is refused
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/accept", json={}, headers=Admin)).status_code == 409
+    monkeypatch.setattr(production3d, "MaxRoundness", 0.04)
+    T2 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 8}, headers=Admin)).json()
+    await H.Idle()
+    assert (await H.Client.post(f"/api/admin/3d/{T2['id']}/accept", json={}, headers=Admin)).status_code == 409
+
+
+async def test_a_flag_from_an_earlier_measurement_is_shown_as_stale_and_cleared_by_re_measuring(HX, monkeypatch):
+    """A result flagged by an earlier measurement whose reasons the current one no longer shows (Aurora Curve on proto:
+    flagged by the first method, never measured with the current one) says so, with its stored reason; a local
+    re-measure (no Hi3D call) clears it."""
+    H = HX
+    from p3 import production3d
+    Did = (await H.NewDesign("Plain band"))["design_id"]
+    monkeypatch.setattr(production3d, "MaxRoundness", -1.0)
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)
+    await H.Idle()
+    monkeypatch.setattr(production3d, "MaxRoundness", 0.04)             # today's rule: the measurement shows no reason
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert R3["status"] == "needs_review" and R3["review"] == [] and R3["review_stale"] and R3["production_state"] == "review_required"
+    assert "not round" in R3["error"]
+    Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
+    R = await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)
+    assert R.status_code == 200 and R.json()["retried"] == "geometry"
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert R3["status"] == "measured" and R3["production_state"] == "complete" and not R3["review_stale"]
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs                                 # no new Hi3D request
+
+
+async def test_session_summaries_say_which_designs_are_in_the_gallery(HX):
+    H = HX
+    A = await H.NewDesign("A slim band for the gallery")
+    await H.Client.put(f"/api/designs/{A['design_id']}/selection", json={"candidate_id": A["candidates"][0]["id"]})
+    B = await H.NewDesign("A plain band of its own")
+    assert (await H.Client.post("/api/admin/gallery", json={"design_id": A["design_id"]}, headers=Admin)).status_code == 200
+    L = {X["design_id"]: X for X in (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]}
+    assert L[A["design_id"]]["in_gallery"] is True and L[B["design_id"]]["in_gallery"] is False
+    Js = (await H.Client.get("/static/admin.js")).text
+    assert "galleryMatches(x)" in Js and "this.galleryMatches(x) &&" in Js
+    assert 'x-model="sGallery"' in (await H.Client.get("/admin/")).text
+
+
+async def test_the_admin_can_make_a_new_movie_for_an_image(HX):
+    """"Make a new movie": a new paid movie with the movie configuration active now, whatever movies the image has.
+    The customer keeps seeing the ready one until the new one is ready, which then becomes the one shown; the
+    customer's allowance is not used (the request is still recorded as usage, for the cost view)."""
+    H = HX
+    Batch = await H.NewDesign("Band")
+    Did, Cand = Batch["design_id"], Batch["candidates"][0]
+    Cus = (await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": Cand["id"]})).json()
+    await H.Idle()
+    First = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()["movie"]
+    assert First["status"] == "ready" and not First["by_admin"] and len(H.Provider.SubmissionsFor(endpoints.Movie)) == 1
+    Used = lambda: H.Ctx.Accounts.Db.One("SELECT generations_used FROM accounts WHERE account_id = ?", (H.Who.AccountId,))["generations_used"]
+    U0 = Used()
+    H.Provider.LatencyS = 1.0                                           # the new movie takes a moment
+    R = await H.Client.post(f"/api/admin/candidates/{Cand['id']}/movies", headers=Admin)
+    assert R.status_code == 200, R.text
+    New = R.json()
+    assert New["by_admin"] and New["status"] in ("queued", "running") and New["id"] != First["id"]
+    # While it is being made the customer still sees the ready one; a second request is refused
+    assert (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()["movie"]["id"] == First["id"]
+    assert (await H.Client.post(f"/api/admin/candidates/{Cand['id']}/movies", headers=Admin)).status_code == 409
+    await H.Idle()
+    H.Provider.LatencyS = 0.0
+    Shown = (await H.Client.get(f"/api/customizations/{Cus['id']}")).json()["movie"]
+    assert Shown["id"] == New["id"] and Shown["status"] == "ready" and Shown["config_version"] == First["config_version"]   # same settings: allowed
+    assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2 and Used() == U0                   # not charged to the customer
+    S = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()
+    assert S["artifacts"]["movie_url"].endswith(New["id"] + ".mp4")
+    assert any(E["kind"] == "admin_movie_requested" for E in S["timeline"])
+    assert sum(1 for U in H.Ctx.Accounts.AdminActivity(H.Who.AccountId)["usage"] if U["kind"] == "movie") == 2
+    # Proceeding again reuses it: still two movies, nothing new
+    await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": Cand["id"]})
+    await H.Idle()
+    assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2

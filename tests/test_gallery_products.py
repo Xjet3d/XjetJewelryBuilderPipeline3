@@ -112,6 +112,16 @@ async def test_ring_and_charm_gallery_items_both_open_as_their_product(HG):
     assert "products" not in (await H.Client.get("/api/catalog", headers=Customer)).json()
 
 
+async def test_the_full_gallery_dialog_starts_at_the_top_when_it_is_taller_than_the_screen(HG):
+    """With 14 designs the dialog is taller than a laptop screen; a centred flex child that overflows has its top cut
+    off (the heading was above the screen). The panel centres itself while it fits and starts at the top otherwise."""
+    Page = (await HG.Client.get("/")).text
+    Start = Page.index('<template x-if="galleryGridOpen">')
+    Dlg = Page[Start:Page.index('x-for="g in galleryShown"', Start)]
+    assert 'class="fixed inset-0 z-[105] bg-black/60 flex items-start justify-center p-4 overflow-y-auto"' in Dlg
+    assert "md:items-center" not in Dlg and "shadow-2xl p-6 md:p-8 my-auto fade-in" in Dlg
+
+
 async def test_the_homepage_showcase_is_unchanged(HG):
     Source = (Web / "index.html").read_text(encoding="utf-8")
     S = Source.index('<template x-if="view === \'home\'">')

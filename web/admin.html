@@ -695,6 +695,7 @@
           </select>
           <select class="inp !w-auto !py-1.5" x-model="sBag" @change="saveFilters()" aria-label="Bag"><option value="">Bag: any</option><option value="yes">Reached Bag</option><option value="no">No Bag</option></select>
           <select class="inp !w-auto !py-1.5" x-model="s3d" @change="saveFilters()" aria-label="3D"><option value="">3D: any</option><option value="none">No 3D</option><option value="any">Has 3D</option></select>
+          <select class="inp !w-auto !py-1.5" x-model="sGallery" @change="saveFilters()" aria-label="Gallery"><option value="">Gallery: any</option><option value="master">In the gallery</option><option value="from">Started from the gallery</option><option value="none">Not from the gallery</option></select>
           <select class="inp !w-auto !py-1.5" x-model="sSort" @change="saveFilters()" aria-label="Sort"><option value="started">Newest first</option><option value="activity">Last activity</option><option value="customer">Customer A–Z</option><option value="price">Price</option></select>
           <label class="flex items-center gap-1.5 text-zinc-600 px-1"><input type="checkbox" x-model="sMock" @change="loadSessions()"><span x-text="'Show mock (' + mockSessions + ')'"></span></label>
           <button type="button" class="act text-zinc-600 hover:text-black" @click="loadSessions()">Refresh</button>
@@ -969,7 +970,7 @@
               <template x-for="m in sd.catalog.materials"><option :value="m.id" :selected="m.id === g3.material" x-text="m.label + ' · ' + m.density_g_cm3 + ' g/cm³'"></option></template>
             </select>
           </div>
-          <button class="btn h-[38px]" x-show="!sd.three_d_defaults.source_model" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
+          <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
           <button class="btn2 h-[38px] !text-amber-800 !border-amber-400" x-show="sd.three_d_defaults.source_model" @click="openNewModel()">New model for this variation…</button>
           <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : (isCharm(sd.session) ? 'Default ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
           <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'Manual override' : 'Same as customer / default'"></p>
@@ -1003,16 +1004,14 @@
             <button class="text-[12px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
           </div>
         </template>
-        <!-- A variation of a gallery master whose model exists: no open "Generate 3D" — the admin decides on purpose -->
+        <!-- A variation of a master whose model exists: a different design (new images), so Generate 3D is open; the
+             source model is only noted -->
         <template x-if="sd.three_d_defaults.source_model && !sd.three_d_defaults.existing_model">
-          <div class="border border-amber-200 bg-amber-50 p-4 space-y-2">
-            <p class="text-sm font-semibold text-amber-900">This is a variation of <span x-text="sd.three_d_defaults.source_model.title"></span> — the source design already has a 3D model</p>
-            <p class="text-[12px] text-amber-900/80">
-              Source model <span class="font-mono" x-text="sd.three_d_defaults.source_model.ring_id"></span>. If the refinement did not change the shape, use that model:
-              <a class="underline font-medium" :href="'#/sessions/' + encodeURIComponent(sd.three_d_defaults.source_model.design_id)" x-text="'open ' + sd.three_d_defaults.source_model.design_ring_id + ' and recalculate for this customer’s size and material'"></a>.
-              A model for this variation is <strong>another paid Hi3D call</strong> and needs the typed confirmation.
-            </p>
-          </div>
+          <p class="text-[12px] text-zinc-500">
+            Refined from <span x-text="sd.three_d_defaults.source_model.title"></span> (<span class="font-mono" x-text="sd.three_d_defaults.source_model.ring_id"></span>), which has a 3D model of its own —
+            <a class="underline" :href="'#/sessions/' + encodeURIComponent(sd.three_d_defaults.source_model.design_id)" x-text="'open ' + sd.three_d_defaults.source_model.design_ring_id"></a>.
+            This is a different image, so it gets a model of its own.
+          </p>
         </template>
         <!-- Typed confirmation for a second paid Hi3D model -->
         <template x-if="newModel.open">
@@ -1056,7 +1055,7 @@
             <p x-show="t.error && t.production_state === 'failed'" class="text-sm text-red-700" x-text="t.error"></p>
             <!-- Production review: the reasons and the next step come BEFORE the measurements. Inspecting or
                  downloading the model never approves it. -->
-            <template x-if="t.review && t.review.length">
+            <template x-if="t.review && t.review.length && !t.accepted">
               <div class="border border-amber-300 bg-amber-50 p-4 space-y-2">
                 <p class="text-sm font-semibold text-amber-900">Processing complete — production review required</p>
                 <ul class="space-y-2">
@@ -1066,6 +1065,28 @@
                   </template>
                 </ul>
                 <p class="text-[12px] text-amber-900/70">Viewing or downloading the model does not approve it for production.</p>
+                <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
+                <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
+              </div>
+            </template>
+            <!-- Flagged by an earlier measurement (the current one shows no reason, or the model was never measured with the
+                 current method): the stored reason is all there is -->
+            <template x-if="t.review_stale">
+              <div class="border border-amber-300 bg-amber-50 p-4 space-y-2">
+                <p class="text-sm font-semibold text-amber-900">Production review required — flagged by an earlier measurement</p>
+                <p class="text-[13px] text-amber-900 leading-snug" x-text="t.error || 'No reason was recorded.'"></p>
+                <p class="text-[12px] text-amber-900/80">The model has not been checked with the current measurement. Re-measure it (local, no Hi3D call) to get the current checks, or accept it as it is.</p>
+                <div class="flex flex-wrap gap-2">
+                  <button class="btn2 !py-1.5" :disabled="!live3d[t.id]?.can_retry" @click="retry3d(t)">Re-measure</button>
+                  <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
+                </div>
+              </div>
+            </template>
+            <template x-if="t.accepted">
+              <div class="border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+                <p class="text-sm font-semibold text-emerald-900" x-text="'Accepted for production as measured — ' + (t.accepted.by || 'admin') + ', ' + dateTime(t.accepted.at)"></p>
+                <p x-show="t.accepted.note" class="text-[13px] text-emerald-900" x-text="t.accepted.note"></p>
+                <p class="text-[12px] text-emerald-900/80" x-text="'Accepted with: ' + ((t.review || []).map(r => r.text).join(' · ') || t.error || 'no open reason')"></p>
               </div>
             </template>
             <div class="flex flex-wrap gap-4 text-xs uppercase tracking-widest">
@@ -1149,6 +1170,8 @@
                   <!-- Why a slot failed, in the provider's own words (the customer saw only "This option couldn't be generated") -->
                   <p x-show="c.status === 'failed'" class="text-[11px] text-red-700 break-words" :title="c.provider_request_id ? 'Provider request ' + c.provider_request_id : ''" x-text="(c.error_code ? c.error_code + ' · ' : '') + (c.error || '')"></p>
                   <button x-show="c.status === 'ready'" class="block text-[11px] uppercase tracking-widest underline" :class="sd.gallery?.candidate_id === c.id ? 'text-amber-700' : 'text-zinc-500 hover:text-zinc-700'" @click="sd.gallery?.candidate_id === c.id ? galleryRemove(sd.gallery) : galleryAdd(c.id)" x-text="sd.gallery?.candidate_id === c.id ? 'In gallery' : 'Use in gallery'"></button>
+                  <!-- A new paid movie with the movie configuration active now; the current one stays shown until it is ready -->
+                  <button x-show="c.status === 'ready' && !(c.movies || []).some(m => m.status === 'queued' || m.status === 'running')" class="block text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-zinc-700" @click="newMovie(c)">Make a new movie</button>
                   <!-- An image may have several movies (different movie configurations): the one shown is the Admin's choice, else the newest -->
                   <template x-for="m in c.movies" :key="m.id">
                     <p class="text-[12px] flex flex-wrap items-center gap-x-2 gap-y-0.5">

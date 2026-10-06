@@ -53,15 +53,18 @@ def _Seconds(A: str | None, B: str | None) -> float | None:
     return round((datetime.fromisoformat(B) - datetime.fromisoformat(A)).total_seconds(), 3)
 
 
-def ProductionState(Status: str, Integrity: str | None = None) -> str:
+def ProductionState(Status: str, Integrity: str | None = None, Accepted: bool = False) -> str:
     """Production readiness, kept apart from processing: processing · complete · review_required ·
     failed · cancelled. "Complete" means the numbers exist AND nothing was flagged; any warning
     (no bore, bore not round, open mesh heuristic, open edges found later in the background)
-    makes it review_required — inspecting or downloading the model never approves it."""
+    makes it review_required — inspecting or downloading the model never approves it. Only the
+    Admin's explicit acceptance of a flagged result (session_3d.accepted_at) does."""
     if Status in ("failed", "cancelled"):
         return Status
     if Status in Waiting:
         return "processing"
+    if Accepted and Status in ("measured", "needs_review"):
+        return "complete"
     if Status == "needs_review" or Integrity == "open":
         return "review_required"
     return "complete"
@@ -174,19 +177,9 @@ class Production3D:
             Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_new_model_override", DesignId,
                             candidate_id=CandidateId, candidate_ring_id=RingIds.CandidateRef(Db, CandidateId),
                             existing_mesh_id=Existing["id"], existing_ring_id=ExistingRef, by=RequestedBy)
-        # A variation of a gallery master (a customer's refinement): its own design, but the master's model
-        # already exists — a new paid model needs the same typed confirmation, so the admin decides on purpose
-        # whether the shape really changed or the master's model should be used (from the master's session).
-        Source = self.SourceModel(Design) if Raw is None and Existing is None else None
-        if Source is not None:
-            if (Override or "").strip() != NewModelConfirmation:
-                raise HttpError(409, "hi3d_source_model_exists",
-                                f"This design is a variation of {Source['title']} ({Source['ring_id']}), which already has a 3D model. "
-                                f"If the shape changed, type {NewModelConfirmation} to create a new paid Hi3D model; otherwise use "
-                                f"the source design's model from its session ({Source['design_ring_id']}).")
-            Sessions.Record(self.Ctx, Design["owner_account_id"], "admin_3d_new_model_override", DesignId,
-                            candidate_id=CandidateId, candidate_ring_id=RingIds.CandidateRef(Db, CandidateId),
-                            source_design_id=Source["design_id"], source_ring_id=Source["ring_id"], by=RequestedBy)
+        # A variation (a refinement forked from a master): its images are new, so it is a different design and gets its
+        # own first model normally. That the source design has a model is only noted on the session page
+        # (SourceModel) — until 2026-10-06 it also required the typed confirmation, which was wrong for a different design.
         Mesh = Raw or self.Meshes.Create(CandidateId, None)      # the paid Hi3D call, only when needed
         Sid, T = NewId("s3d"), Now()
         Db.Execute("INSERT INTO session_3d (id, design_id, candidate_id, mesh_id, customer_size, production_size, "
@@ -518,6 +511,21 @@ class Production3D:
         self.Ctx.Db.Update("session_3d", Sid, status="generating", mesh_id=New["id"], error=None)
         return {**self.Get(Sid), "retried": "hi3d"}
 
+    def Accept(self, Sid: str, By: str, Note: str = "") -> dict:
+        """Admin: a flagged result (a bore that is not quite round, open edges, …) is accepted for production as
+        measured. The reasons stay on the result; its production state becomes complete, and the acceptance is
+        recorded (who, when, note) on the result and in the journey."""
+        Db, Row = self.Ctx.Db, self._Row(Sid)
+        Raw = Db.One("SELECT integrity FROM raw_geometry WHERE mesh_id = ?", (Row["mesh_id"],))
+        if ProductionState(Row["status"], Raw["integrity"] if Raw else None, bool(Row["accepted_at"])) != "review_required":
+            raise HttpError(409, "nothing_to_accept", "Only a finished result that needs review can be accepted.")
+        Db.Update("session_3d", Sid, accepted_at=Now(), accepted_by=By, accepted_note=(Note or "").strip()[:300] or None)
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_accepted", Row["design_id"], session_3d_id=Sid,
+                        production_size=Row["production_size"], material_id=Row["material_id"], reasons=Row["error"],
+                        note=(Note or "").strip()[:300], by=By)
+        return self.Get(Sid)
+
     def StartExport(self, Sid: str) -> dict:
         """Queue a temporary scaled STL (deleted after the TTL); the download itself never holds the queue."""
         Row = self._Row(Sid)
@@ -608,7 +616,7 @@ class Production3D:
                     "AND status IN ('queued','running')", (R["mesh_id"],))
         return {
             "id": Sid, "status": R["status"], "error": R["error"], "server_now": Now(),
-            "production_state": ProductionState(R["status"], Raw["integrity"] if Raw else None),
+            "production_state": ProductionState(R["status"], Raw["integrity"] if Raw else None, bool(R["accepted_at"])),
             "done": R["status"] in Terminal, "stages": All,
             "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
             "can_cancel": bool(Job),
@@ -637,13 +645,19 @@ class Production3D:
         RawMeasured = json.loads(RawRow["measurement_json"]) if RawRow and RawRow["measurement_json"] else None
         Integrity = RawRow["integrity"] if RawRow else None
         Charm = Products.Of(Db, R["design_id"]) == Products.Charm
+        Review = ReviewItems(R["status"], RawMeasured, Integrity)
         Out = {
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
             "image_url": Url(Cand["asset_path"]) if Cand else None,
-            # Production readiness is separate from processing: warnings → review_required, never "Ready".
-            "production_state": ProductionState(R["status"], Integrity),
-            "review": ReviewItems(R["status"], RawMeasured, Integrity),
+            # Production readiness is separate from processing: warnings → review_required, never "Ready" — unless
+            # the Admin accepted the flagged result as measured.
+            "production_state": ProductionState(R["status"], Integrity, bool(R["accepted_at"])),
+            "review": Review,
+            # Flagged by an earlier measurement whose reasons the current one no longer shows (or the model was never
+            # measured with the current method): the stored reason is all there is — re-measure, or accept
+            "review_stale": R["status"] == "needs_review" and not Review and not R["accepted_at"],
+            "accepted": {"at": R["accepted_at"], "by": R["accepted_by"], "note": R["accepted_note"]} if R["accepted_at"] else None,
             "raw_available": bool(Mesh and Mesh["status"] == "ready"),
             "hi3d": Mesh and {"mesh_id": Mesh["id"], "status": Mesh["status"], "endpoint": Mesh["endpoint"],
                               "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else

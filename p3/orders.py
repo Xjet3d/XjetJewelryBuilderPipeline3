@@ -397,7 +397,7 @@ class OrderService:
         ordered material. A result for another size or material is never offered as the line's file —
         it is reported as `latest` so the admin sees what exists and can prepare the right one."""
         from p3.production3d import ProductionState
-        Rows = self.Ctx.Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, r.integrity FROM session_3d s "
+        Rows = self.Ctx.Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, s.accepted_at, r.integrity FROM session_3d s "
                                "LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? ORDER BY s.created_at DESC", (L["design_id"],))
         Done = ("measured", "needs_review")
         Size = LineSize(L)                               # the US size of a ring, the mm size of a charm (None: no match)
@@ -413,13 +413,13 @@ class OrderService:
         Chosen = Match or Pending
         return {"three_d_id": Chosen["id"] if Chosen else None,
                 "three_d_status": Chosen["status"] if Chosen else None,
-                "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"]) if Chosen else None,
+                "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"], bool(Chosen["accepted_at"])) if Chosen else None,
                 "three_d_match": bool(Match),
                 "has_model": Model is not None,
                 # the modelled option: the one Hi3D model per design may be of another option than the ordered one
                 "model_ring_id": RingIds.CandidateRef(self.Ctx.Db, Model["candidate_id"]) if Model else None,
                 "three_d_latest": {"id": Latest["id"], "size": Latest["production_size"], "material_id": Latest["material_id"],
-                                   "state": ProductionState(Latest["status"], Latest["integrity"])} if Latest and not Chosen else None}
+                                   "state": ProductionState(Latest["status"], Latest["integrity"], bool(Latest["accepted_at"]))} if Latest and not Chosen else None}
 
     def PrepareLine3D(self, OrderId: str, LineId: str, By: str) -> dict:
         """The STL for an ordered ring must be the ordered size and material. Reuse the design's model
