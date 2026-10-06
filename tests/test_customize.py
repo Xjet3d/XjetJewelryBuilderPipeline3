@@ -29,6 +29,47 @@ async def test_the_metal_preview_colours_the_whole_frame_except_the_light_backdr
     assert Js.count('x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"') == 1    # the one opener
 
 
+async def test_an_images_movie_is_reused_after_the_movie_configuration_changes(tmp_path):
+    """One movie per selected image: a movie configuration activated later never makes a second movie for an image
+    that already has one (Marée Facet got one on proto on 2026-10-06); a new configuration applies to images without
+    a movie. Customize and the Admin session page show the image's newest existing movie."""
+    from p3.db import Now
+    from tests.conftest import Harness
+    Key = "movie-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        DesignId, Cand = await _Ready(H)
+        First = await H.Proceed(DesignId, Cand["id"])
+        await H.Idle()
+        assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 1
+        Active = H.Ctx.Models.Active("minimax-camera")
+        H.Ctx.Models.SaveAndActivate("minimax-camera", dict(Active.Params, duration=8), "admin", "a longer turn")
+        assert H.Ctx.Models.Active("minimax-camera").Id != Active.Id
+        Again = await H.Proceed(DesignId, Cand["id"])                                  # back to the same image
+        await H.Idle()
+        assert Again["movie"]["id"] == First["movie"]["id"] and Again["movie"]["status"] == "ready"
+        assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 1                     # no second movie, nothing paid
+        assert (await H.Client.get(f"/api/customizations/{Again['id']}")).json()["movie"]["id"] == First["movie"]["id"]
+        # An image without a movie gets one with the new configuration
+        Other = (await H.Client.get(f"/api/batches/{Cand['batch_id']}")).json()["candidates"][0]
+        await H.Proceed(DesignId, Other["id"])
+        await H.Idle()
+        Subs = H.Provider.SubmissionsFor(endpoints.Movie)
+        assert len(Subs) == 2 and Subs[-1][1]["duration"] == 8
+        # Two ready movies for one image (an older configuration's and a newer one): the newest is the one shown
+        Old = H.Ctx.Db.One("SELECT * FROM movies WHERE id = ?", (First["movie"]["id"],))
+        H.Ctx.Db.Execute("INSERT INTO movies (id, candidate_id, config_version, endpoint, status, asset_path, created_at, updated_at) "
+                         "VALUES (?,?,?,?,?,?,?,?)", ("mov_older", Cand["id"], "minimax-camera@v0-older", Old["endpoint"], "ready",
+                                                     "older.mp4", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"))
+        assert H.Svc.Movies.Latest(Cand["id"])["id"] == First["movie"]["id"]
+        Admin = {"Authorization": f"Bearer {Key}"}
+        await H.Client.put(f"/api/designs/{DesignId}/selection", json={"candidate_id": Cand["id"]})
+        D = (await H.Client.get(f"/api/admin/sessions/{DesignId}", headers=Admin)).json()
+        assert D["artifacts"]["movie_url"] == H.Ctx.AssetUrl(Old["asset_path"])
+    finally:
+        await H.Close()
+
+
 async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])

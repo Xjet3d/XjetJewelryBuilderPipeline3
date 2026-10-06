@@ -1,9 +1,10 @@
 """Customize movie: one Minimax camera-controls video from the selected image.
 
   * generated only on Proceed (never for every candidate);
-  * keyed by (candidate, movie config_version): a live or ready movie is reused,
-    so repeated Proceed clicks and returning to the same candidate never
-    duplicate paid work (enforced by the movies_one_live partial unique index);
+  * one movie per candidate: a live or ready movie of the candidate is reused whatever the movie configuration
+    says now, so repeated Proceed clicks, returning to the same candidate and a configuration activated in the
+    meantime never duplicate paid work (a new configuration applies to candidates that have no movie yet; the
+    movies_one_live partial unique index also stops a race between two Proceed clicks);
   * a failed movie is retried on its own — the image batch is untouched;
   * movie state never gates pricing or the bag.
 """
@@ -32,21 +33,17 @@ class MovieService:
         return ModelIdFor(endpoints.Movie, Products.OfCandidate(self.Ctx.Db, CandidateId))
 
     def Latest(self, CandidateId: str) -> dict | None:
-        """Most relevant movie for the candidate under the current config (live first, then latest)."""
-        Same = self.Ctx.Models.Equivalent(self._Model(CandidateId))    # versions with the active settings
-        Q = ",".join("?" * len(Same))
-        Row = self.Ctx.Db.One(
-            f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
+        """The candidate's movie: its newest live or ready one, whatever configuration made it, else its latest
+        failed one."""
+        return self.Ctx.Db.One(
+            "SELECT * FROM movies WHERE candidate_id = ? "
             "ORDER BY CASE WHEN status IN ('queued','running','ready') THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
-            (CandidateId, *Same))
-        return Row
+            (CandidateId,))
 
     def _Live(self, CandidateId: str) -> dict | None:
-        Same = self.Ctx.Models.Equivalent(self._Model(CandidateId))
-        Q = ",".join("?" * len(Same))
-        return self.Ctx.Db.One(f"SELECT * FROM movies WHERE candidate_id = ? AND config_version IN ({Q}) "
-                               "AND status IN ('queued','running','ready') ORDER BY created_at DESC LIMIT 1",
-                               (CandidateId, *Same))
+        """The candidate's newest live or ready movie, from any configuration version: it is reused, never remade."""
+        return self.Ctx.Db.One("SELECT * FROM movies WHERE candidate_id = ? AND status IN ('queued','running','ready') "
+                               "ORDER BY created_at DESC LIMIT 1", (CandidateId,))
 
     def _Payer(self, Movie: dict, Cand: dict) -> str:
         """Who is charged: the customer who requested the movie (shared gallery designs), else the owner."""
@@ -58,7 +55,7 @@ class MovieService:
         """Start the movie for a ready candidate, or return the live/ready one."""
         Db = self.Ctx.Db
         Version = self.Ctx.Models.Active(self._Model(CandidateId)).Id
-        Live = self._Live(CandidateId)      # same settings (any equivalent version) → reuse, no new charge
+        Live = self._Live(CandidateId)      # the candidate already has a movie (any configuration) → reuse, no new charge
         if Live:
             return self.ToJson(Live)
         self.Ctx.Accounts.AuthorizeSpend(Who, UsageMovie, 1)

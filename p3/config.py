@@ -32,9 +32,8 @@ class ImageConfig:
     admin configurations (p3/modelconfig.py, Admin → AI prompts & params)."""
     CandidatesPerBatch: int
     MaxConcurrentRequests: int
-    RequestTimeoutS: float
+    RequestTimeoutS: float               # a slot's deadline from its submission (90 s): then it is shown as unavailable
     MaxDuplicateRetriesPerSlot: int
-    MaxModelRetriesPerSlot: int          # re-requests of a slot the model finished without an image (new seed each time)
 
 
 @dataclass(frozen=True)
@@ -61,7 +60,6 @@ def LoadGenerationConfig(ConfigPath: Path | None = None) -> GenerationConfig:
         MaxConcurrentRequests=max(1, int(Img["max_concurrent_requests"])),
         RequestTimeoutS=float(Img["request_timeout_s"]),
         MaxDuplicateRetriesPerSlot=max(0, int(Img["max_duplicate_retries_per_slot"])),
-        MaxModelRetriesPerSlot=max(0, int(Img.get("max_model_retries_per_slot", 2))),
     )
     Movie = JobConfig(float(Raw["movie"]["request_timeout_s"]))
     Mesh = JobConfig(float(Raw["mesh"]["request_timeout_s"]))

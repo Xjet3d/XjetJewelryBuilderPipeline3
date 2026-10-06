@@ -955,10 +955,13 @@
                                                         <span x-text="'Design ' + (c.slot + 1)"></span>
                                                     </div>
                                                 </template>
+                                                <!-- An option that could not be made (the model returned no image, or it ran out of time): a quiet
+                                                     state, never the provider's words; "Generate another option" is the customer's explicit request -->
                                                 <template x-if="c.status === 'failed'">
-                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-[12px]" style="color:#8A2424; background:#FFFBFB;">
-                                                        <span x-text="c.error || 'This design could not be created.'"></span>
-                                                        <button @click.stop="retrySlot(c)" class="btn-outline px-4 py-2">Retry</button>
+                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-4 text-center" style="background:#FAFAF8;">
+                                                        <span class="text-[13px] font-medium" style="color:#1A1A1A;" x-text="c.error || 'This option couldn\'t be generated.'"></span>
+                                                        <span class="text-[12px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
+                                                        <button @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]">Generate another option</button>
                                                     </div>
                                                 </template>
                                                 <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">

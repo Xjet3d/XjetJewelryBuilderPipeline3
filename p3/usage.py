@@ -120,6 +120,9 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
                 "candidates": [{
                     "id": C["id"], "slot": C["slot"], "status": C["status"], "image_url": Url(C["asset_path"]),
                     "selected": C["id"] == D["selected_candidate_id"],
+                    # Admin only: why a slot failed, in the provider's own (capped) words, and its request
+                    "error": C["error"], "error_code": C["error_code"], "provider_request_id": C["provider_request_id"],
+                    "attempts": C["attempts"],
                     "movies": [{"id": M["id"], "status": M["status"], "url": Url(M["asset_path"]),
                                 "created_at": M["created_at"]} for M in MoviesByCand[C["id"]]],
                 } for C in ByDesign[D["id"]] if C["batch_id"] == B["id"]],

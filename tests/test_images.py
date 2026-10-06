@@ -166,35 +166,98 @@ async def test_exact_duplicate_output_is_retried_then_bounded(H):
     assert Codes.count("duplicate_output") == 1 and Batch["status"] == "partial"
 
 
-async def test_a_slot_the_model_returns_no_image_for_is_re_requested_automatically_then_bounded(H):
-    """fal.ai's `no_media_generated`: the model finished without an image on one attempt. The slot is re-requested
-    with a new seed before anyone sees a failure (as a duplicate is), a bounded number of times; the ready slots
-    are untouched, and each request is recorded as usage. Other failures are never resubmitted automatically."""
-    Max = H.Ctx.Gen.Images.MaxModelRetriesPerSlot
-    assert Max == 2
+Generic = "This option couldn't be generated."
+
+
+async def _Usable(H, Batch):
+    """The ready options of a batch work as usual: selecting, Customize and refining from one."""
+    Ready = [C for C in Batch["candidates"] if C["status"] == "ready"]
+    R = await H.Client.put(f"/api/designs/{Batch['design_id']}/selection", json={"candidate_id": Ready[0]["id"]})
+    assert R.status_code == 200
+    Cus = await H.Proceed(Batch["design_id"], Ready[0]["id"])
+    assert Cus["image_url"] == Ready[0]["image_url"]
+    R = await H.Client.post(f"/api/designs/{Batch['design_id']}/batches",
+                            json={"parent_candidate_id": Ready[1]["id"], "instruction": "thinner band", "client_request_id": "r1"})
+    assert R.status_code == 200 and R.json()["kind"] == "refine"
+    await H.Idle()
+
+
+async def test_a_slot_the_model_returns_no_image_for_is_unavailable_with_no_automatic_retry(H):
+    """fal.ai's `no_media_generated` (the model finished without an image): only that slot is unavailable, at once,
+    with the app's own sentence; the other three are ready and usable; nothing is re-requested by the app — the
+    customer's "Generate another option" is the only second request."""
     H.Provider.Script(endpoints.ImageGenerate, "nomedia")
     Batch = await H.NewDesign("Band")
-    assert Batch["status"] == "complete" and len(H.Provider.Submissions) == N + 1          # one quiet re-request
-    Seeds = [S[1]["seed"] for S in H.Provider.Submissions]
-    assert len(set(Seeds)) == N + 1                                                           # a new seed each time
-    Rows = H.Ctx.Db.All("SELECT attempts, error, error_code FROM candidates WHERE batch_id = ? ORDER BY slot", (Batch["id"],))
-    assert sorted(R["attempts"] for R in Rows) == [1, 1, 1, 2] and all(R["error"] is None for R in Rows)
-    Usage = H.Ctx.Accounts.AdminActivity(H.Who.AccountId)["usage"]
-    assert sum(1 for U in Usage if U["kind"] == "image") == N + 1                              # every request is usage
-    # Misses every time: the bound (1 + 2 re-requests per slot), then a short, retryable failure
-    H.Provider.Script(endpoints.ImageGenerate, *["nomedia"] * (N * (1 + Max)))
-    Batch = await H.NewDesign("Band two")
-    assert Batch["status"] == "failed" and len(H.Provider.Submissions) == (N + 1) + N * (1 + Max)
-    for C in Batch["candidates"]:
-        assert C["status"] == "failed" and C["error_code"] == "no_media_generated" and C["retryable"]
-        assert "returned no image" in C["error"] and len(C["error"]) < 200
-        assert H.Ctx.Db.One("SELECT attempts FROM candidates WHERE id = ?", (C["id"],))["attempts"] == 1 + Max
-    # A plain provider failure is still shown at once, not resubmitted
-    Before = len(H.Provider.Submissions)
-    H.Provider.Script(endpoints.ImageGenerate, "fail")
-    Batch = await H.NewDesign("Band three")
-    assert Batch["status"] == "partial" and len(H.Provider.Submissions) == Before + N
-    assert [C["error_code"] for C in Batch["candidates"] if C["status"] == "failed"] == ["provider_error"]
+    assert len(H.Provider.Submissions) == N                                                   # one request per slot
+    Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
+    assert Batch["status"] == "partial" and len(Failed) == 1 and sum(C["status"] == "ready" for C in Batch["candidates"]) == 3
+    assert Failed[0]["error_code"] == "no_media_generated" and Failed[0]["error"] == Generic and Failed[0]["retryable"]
+    await H.Idle()
+    assert len(H.Provider.Submissions) == N                                                   # still: no quiet retry
+    assert H.Ctx.Db.One("SELECT attempts FROM candidates WHERE id = ?", (Failed[0]["id"],))["attempts"] == 1
+    await _Usable(H, Batch)
+    # The explicit replacement is one more request, with a new seed
+    Before = {S[2] for S in H.Provider.Submissions}
+    assert (await H.Client.post(f"/api/candidates/{Failed[0]['id']}/retry")).status_code == 200
+    await H.Idle()
+    After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
+    assert After["status"] == "complete" and len(H.Provider.SubmissionsFor(endpoints.ImageGenerate)) == N + 1
+    assert next(C for C in After["candidates"] if C["id"] == Failed[0]["id"])["status"] == "ready"
+
+
+async def test_a_slot_still_unresolved_after_the_deadline_times_out_without_a_second_request(H):
+    """Each slot has images.request_timeout_s (90 s) from its submission. A slot still running then is marked
+    timed out — only that slot, with the generic sentence — and its provider request is left alone: its outcome
+    is unknown, so the app never resubmits it (that could pay twice). The customer can ask for another option."""
+    from dataclasses import replace
+    from p3.config import LoadGenerationConfig
+    assert LoadGenerationConfig().Images.RequestTimeoutS == 90                              # the shipped deadline
+    H.Ctx.Gen = replace(H.Ctx.Gen, Images=replace(H.Ctx.Gen.Images, RequestTimeoutS=0.3))   # the same rule, faster
+    H.Provider.Script(endpoints.ImageGenerate, "hang")
+    Batch = await H.NewDesign("Band")
+    Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
+    assert Batch["status"] == "partial" and len(Failed) == 1 and sum(C["status"] == "ready" for C in Batch["candidates"]) == 3
+    assert Failed[0]["error_code"] == "timeout" and Failed[0]["error"] == Generic and Failed[0]["retryable"]
+    assert len(H.Provider.Submissions) == N                                                   # no second request
+    Row = H.Ctx.Db.One("SELECT provider_request_id, attempts, error FROM candidates WHERE id = ?", (Failed[0]["id"],))
+    assert Row["provider_request_id"] in H.Provider.Requests and Row["attempts"] == 1          # the request is kept, for the Admin
+    assert "took too long" in Row["error"]                                                    # the Admin's reason
+    await H.Idle()
+    assert len(H.Provider.Submissions) == N
+    await _Usable(H, Batch)
+    # Only the customer's explicit request makes a second one (a new seed; the old request is not reused)
+    H.Provider.Requests[Row["provider_request_id"]]["outcome"] = "ok"                         # even if it finished meanwhile
+    assert (await H.Client.post(f"/api/candidates/{Failed[0]['id']}/retry")).status_code == 200
+    await H.Idle()
+    assert len(H.Provider.SubmissionsFor(endpoints.ImageGenerate)) == N + 1
+    assert (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["status"] == "complete"
+
+
+async def test_no_provider_error_text_reaches_the_customer(tmp_path):
+    """The provider's words (fal.ai's message, an HTTP status, an exception) stay with the slot for the Admin's
+    session page and the log; every customer answer carries the app's own sentence instead."""
+    from tests.conftest import Harness
+    Key = "images-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        H.Provider.Script(endpoints.ImageGenerate, "fail", "nomedia")
+        Batch = await H.NewDesign("Band")
+        Failed = {C["error_code"]: C for C in Batch["candidates"] if C["status"] == "failed"}
+        assert set(Failed) == {"provider_error", "no_media_generated"}
+        Customer = [(await H.Client.get(f"/api/batches/{Batch['id']}")).text, (await H.Client.get(f"/api/designs/{Batch['design_id']}")).text]
+        for Text in Customer:
+            assert "Mock" not in Text and "no image" not in Text and Text.count(Generic) == 2
+        assert all(C["error"] == Generic for C in Failed.values())
+        # The Admin sees the provider's own words, the code and the request id
+        Admin = {"Authorization": f"Bearer {Key}"}
+        D = (await H.Client.get(f"/api/admin/sessions/{Batch['design_id']}", headers=Admin)).json()
+        Seen = {C["error_code"]: C for B in D["design"]["batches"] for C in B["candidates"] if C["status"] == "failed"}
+        assert Seen["provider_error"]["error"] == "Mock provider failure"
+        assert Seen["no_media_generated"]["error"] == "Mock: the model returned no image."
+        assert all(C["provider_request_id"] in H.Provider.Requests and C["attempts"] == 1 for C in Seen.values())
+        assert len(H.Provider.Submissions) == N                                                 # and nothing was retried
+    finally:
+        await H.Close()
 
 
 async def test_transient_poll_errors_retry_same_request(H):

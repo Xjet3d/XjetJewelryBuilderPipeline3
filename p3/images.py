@@ -39,6 +39,23 @@ def ValidateText(Text: str, What: str) -> str:
     return Text
 
 
+# What a customer is told about an option that could not be made: the app's own sentence for the kind of failure,
+# never the provider's words (fal.ai's message, an HTTP status, an exception), which stay with the slot for the
+# Admin's session page and the log.
+CustomerFailureText = {
+    "content_policy": "We couldn't create this option because the description or image may not meet our content "
+                      "guidelines. Please revise it.",
+    "billing": "The design service is temporarily unavailable. Please try again later.",
+    "reference_unavailable": "The reference image could not be loaded.",
+    "duplicate_output": "This option came out identical to another one.",
+}
+GenericFailureText = "This option couldn't be generated."
+
+
+def CustomerError(Code: str | None) -> str:
+    return CustomerFailureText.get(Code or "", GenericFailureText)
+
+
 def _NewSeed() -> int:
     return secrets.randbelow(2**31 - 1) + 1
 
@@ -226,16 +243,13 @@ class ImageService:
                            error=None, error_code=None, duplicate_retries=0, seed=_NewSeed())
 
     # ── background driver ────────────────────────────────────────────────
-    # Failures the provider reports as the model's own miss on one attempt (no image came back; the partner service
-    # failed): nothing is wrong with the input, so the slot is re-requested with a new seed, a bounded number of
-    # times, before it is shown as failed. Never for a billing, content, timeout or unknown-outcome failure.
-    AutoRetryCodes = ("no_media_generated", "provider_failed")
-
     async def _Drive(self, CandidateId: str) -> None:
+        """One slot: submit once, wait up to images.request_timeout_s (90 s) from the submission, store the image.
+        A slot that fails or runs out of time is shown as unavailable; it is never re-requested on its own (the
+        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen."""
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
-        Retried = 0                                   # automatic re-requests in this run of the slot
         async with Ctx.Semaphore():
             while True:
                 Cand = Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
@@ -266,14 +280,10 @@ class ImageService:
                         return
                     # Duplicate that was reset for another attempt: loop and resubmit.
                 except Exception as E:
+                    # The provider's own words stay here (the Admin's session page and the log); the customer gets
+                    # CustomerError(Code). A timed-out slot keeps its request id: its outcome is unknown, so it is
+                    # never resubmitted by the app.
                     Message, Code = FailureFor(E)
-                    if Code in self.AutoRetryCodes and Retried < Ctx.Gen.Images.MaxModelRetriesPerSlot:
-                        Retried += 1
-                        Logger.info("Candidate %s: %s — re-requesting with a new seed (%d of %d)", CandidateId, Code,
-                                    Retried, Ctx.Gen.Images.MaxModelRetriesPerSlot)
-                        Db.Update("candidates", CandidateId, status="pending", provider_request_id=None,
-                                  error=None, error_code=None, seed=_NewSeed())
-                        continue
                     Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
                     Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
                     return
@@ -401,9 +411,11 @@ class ImageService:
         return self.GetBatch(B["id"])
 
     def CandidateJson(self, C: dict) -> dict:
+        """The customer's view of a slot. `error` is the app's own sentence for the failure (CustomerError); the
+        provider's text and the request id are for the Admin only (sessions.AccountActivity)."""
         return {"id": C["id"], "batch_id": C["batch_id"], "slot": C["slot"], "status": C["status"],
                 "image_url": self.Ctx.AssetUrl(C["asset_path"]) if C["status"] == "ready" else None,
-                "error": C["error"], "error_code": C["error_code"],
+                "error": CustomerError(C["error_code"]) if C["status"] == "failed" else None, "error_code": C["error_code"],
                 "retryable": C["status"] == "failed"}
 
     def GetBatch(self, BatchId: str) -> dict:

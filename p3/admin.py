@@ -371,8 +371,10 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     Cost = [U["cost_usd"] for U in Usage if U["cost_usd"] is not None]
     Timeline = Sessions.Timeline(Ctx, DesignId, Owner=Owner, Use=Use)
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices, Owner=Owner)
-    Movie = next((M for B in Batches for C in B["candidates"] if C["selected"] for M in C["movies"] if M["status"] == "ready"), None) \
-        or next((M for B in Batches for C in B["candidates"] for M in C["movies"] if M["status"] == "ready"), None)
+    def NewestReadyMovie(Cands):            # an older movie may remain from an earlier configuration: the newest one counts
+        return max((M for C in Cands for M in C["movies"] if M["status"] == "ready"), key=lambda M: M["created_at"], default=None)
+    Movie = NewestReadyMovie([C for B in Batches for C in B["candidates"] if C["selected"]]) \
+        or NewestReadyMovie([C for B in Batches for C in B["candidates"]])
     Keep = ("material_id", "ring_size", "charm_size", "quantity", "unit_price", "pricing_version", "pricing_status")
     Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
                for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
