@@ -162,11 +162,12 @@ class CustomizeService:
         size measures, and the materials a charm is made in."""
         Cat = self.Ctx.Catalog
         Sizes = []
-        for S in self.Ctx.Products.CharmSizes:
-            Q = self.Ctx.CharmPrices.QuoteFor(Row["material_id"], S)
-            Sizes.append({"size": S, "label": Products.CharmSizeLabel(S), "unit_price": Q.unit_price, "pricing_status": Q.pricing_status})
+        for O in self.Ctx.Products.CharmSizeOptions():       # '14 mm — Classic · Recommended', each with its price
+            Q = self.Ctx.CharmPrices.QuoteFor(Row["material_id"], O["size"])
+            Sizes.append({**O, "unit_price": Q.unit_price, "pricing_status": Q.pricing_status})
         return {"product_type": Products.Charm, "charm_size": Row.get("charm_size"),
                 "size_label": Products.SizeLabel(Products.Charm, None, Row.get("charm_size")),
+                "recommended_size": self.Ctx.Products.CharmDefaultSize,     # suggested until the customer picks a size
                 "material_label": CharmPrices.Label(Cat, Row["material_id"]),
                 "charm_sizes": Sizes, "size_definition": Products.CharmSizeDefinition,
                 "materials": [{"id": M.Id, "label": CharmPrices.Label(Cat, M.Id), "group": M.Group,

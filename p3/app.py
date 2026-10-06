@@ -408,7 +408,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             # Rings and charms: what the Design screen offers. Absent while charms are hidden — the ring-only site.
             Out["products"] = {"available": list(Products.All), "default": Products.Default,
                                "preview": not Ctx.Products.CharmsAvailable,      # an admin previewing hidden charms
-                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_definition": Products.CharmSizeDefinition,
+                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_options": Ctx.Products.CharmSizeOptions(),
+                                         "recommended_size": Ctx.Products.CharmDefaultSize,
+                                         "size_definition": Products.CharmSizeDefinition,
                                          "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": M.Group,
                                                         "purchasable": Ctx.Catalog.IsPurchasableGroup(M.Group)}
                                                        for M in CharmPrices.Offered(Ctx.Catalog)]}}

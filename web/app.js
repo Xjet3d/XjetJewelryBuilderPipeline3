@@ -1321,7 +1321,7 @@ function p3App() {
         case 'ring_size_required': return 'Choose your ring size';
         case 'charm_size_required': return 'Choose your charm size';
         case 'charm_size_not_offered': return 'Choose another size';
-        default: return this.sizeConfirmed ? 'Add to Bag' : (this.custIsCharm ? 'Choose your charm size' : 'Confirm your ring size');
+        default: return this.sizeConfirmed ? 'Add to Bag' : (this.custIsCharm ? 'Confirm your charm size' : 'Confirm your ring size');
       }
     },
     get bagBlockedText() {
@@ -1332,10 +1332,19 @@ function p3App() {
         case 'ring_size_required': return 'Choose your ring size to continue.';
         case 'charm_size_required': return 'Choose your charm size to continue.';
         case 'charm_size_not_offered': return 'This size is no longer offered — please choose another size.';
-        default: return this.sizeConfirmed ? '' : (this.custIsCharm ? 'Choose your charm size above.' : 'Tap your ring size above — the suggested size is only a suggestion.');
+        default: return this.sizeConfirmed ? '' : (this.custIsCharm ? 'Tap your charm size above — the recommended size is only a suggestion.' : 'Tap your ring size above — the suggested size is only a suggestion.');
       }
     },
-    sizeIsSuggested(size) { return !this.sizeConfirmed && this.cust?.ring_size == size; },
+    // The suggested size: a ring's US 10 (or its stored size), a charm's recommended size (e.g. 14 mm — Classic) until confirmed
+    sizeIsSuggested(size) {
+      if (this.sizeConfirmed) return false;
+      return (this.custIsCharm ? (this.cust?.charm_size ?? this.cust?.recommended_size) : this.cust?.ring_size) == size;
+    },
+    suggestedCharmSize() { return this.custIsCharm && !this.sizeConfirmed ? (this.cust?.charm_size ?? this.cust?.recommended_size ?? null) : null; },
+    suggestedCharmLabel() {
+      const s = this.suggestedCharmSize(), o = (this.cust?.charm_sizes || []).find(x => x.size == s);
+      return o ? o.label.replace(' · Recommended', '') : (s != null ? s + ' mm' : '');
+    },
     // Sticky purchase summary (Customize): "$200 · US 10 · Silver"
     get purchaseSummary() {
       const size = this.custIsCharm ? (this.cust?.size_label || 'Size?') : (this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Size?');

@@ -9,7 +9,7 @@ import pytest
 
 from p3 import charmgeometry as CharmGeo
 from p3.geometry import UsSizeToInnerDiameterMm, WriteStl
-from tests.conftest import Harness
+from tests.conftest import Harness, OfferCharmSizes
 
 AdminKey = "charm-3d-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -20,6 +20,7 @@ Stl = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
 async def H3(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # Admin preview of charms
+    await OfferCharmSizes(Obj, AdminKey)                                                           # 15–30 mm, as written
     yield Obj
     await Obj.Close()
 

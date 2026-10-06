@@ -962,7 +962,7 @@
           </select>
           <!-- A charm: its size is a height in mm (the sizes on offer, plus the size being made if it is another) -->
           <select class="inp h-[38px]" x-model.number="g3.size" x-show="isCharm(sd.session)" aria-label="3D production size (charm height)">
-            <template x-for="z in charm3dSizes()"><option :value="z" :selected="z === g3.size" x-text="z + ' mm height'"></option></template>
+            <template x-for="z in charm3dSizes()"><option :value="z" :selected="z === g3.size" x-text="charmSizeText(z)"></option></template>
           </select>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-zinc-300 pointer-events-none" :style="'background:' + swatch(g3.material)"></span>
@@ -972,7 +972,7 @@
           </div>
           <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
           <button class="btn2 h-[38px] !text-amber-800 !border-amber-400" x-show="sd.three_d_defaults.source_model" @click="openNewModel()">New model for this variation…</button>
-          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : (isCharm(sd.session) ? 'Default ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
+          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : (isCharm(sd.session) ? 'Recommended ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
           <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'Manual override' : 'Same as customer / default'"></p>
           <p class="text-[12px]" :class="sd.three_d_defaults.customer_material && g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-500'"
              x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p>
@@ -1588,18 +1588,24 @@
         </div>
         <p class="text-[12px] text-zinc-600"><strong>What a size measures:</strong> <span x-text="products.charm_size_definition?.text"></span></p>
         <div class="flex flex-wrap gap-2" x-show="!sizesEdit">
-          <template x-for="s in products.charm_sizes" :key="'cs' + s"><span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8]" x-text="s + ' mm'"></span></template>
+          <template x-for="o in (products.charm_size_options || [])" :key="'cs' + o.size"><span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8]" x-text="o.label"></span></template>
         </div>
         <template x-if="sizesEdit">
           <div class="space-y-3">
-            <div class="flex flex-wrap gap-2">
+            <!-- Each size: its name (Delicate, Classic, Bold \u2026) and whether it is the recommended one -->
+            <table class="!text-[13px]"><tbody>
               <template x-for="s in sizesEdit" :key="'ce' + s">
-                <span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8] inline-flex items-center gap-1.5"><span x-text="s + ' mm'"></span>
-                  <button type="button" class="leading-none text-[#7A5A10] hover:text-red-700" :aria-label="'Remove ' + s + ' mm'" @click="removeCharmSize(s)">&times;</button></span>
+                <tr>
+                  <td class="pr-3 whitespace-nowrap font-medium" x-text="s + ' mm'"></td>
+                  <td class="pr-3"><input class="inp !w-40" maxlength="30" x-model="sizeNames[sizeKey(s)]" placeholder="Name (optional)" :aria-label="'Name of ' + s + ' mm'"></td>
+                  <td class="pr-3 whitespace-nowrap"><label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="radio" name="charm-size-default" :value="s" :checked="sizeDefault === s" @change="sizeDefault = s"> Recommended</label></td>
+                  <td><button type="button" class="leading-none text-zinc-500 hover:text-red-700" :aria-label="'Remove ' + s + ' mm'" @click="removeCharmSize(s)">&times;</button></td>
+                </tr>
               </template>
-            </div>
+            </tbody></table>
             <form class="flex flex-wrap items-center gap-2" @submit.prevent="addCharmSize()">
               <input type="number" step="0.5" min="3" max="100" class="inp !w-32" x-model="sizeAdd" placeholder="Size in mm" aria-label="New charm size in mm">
+              <input class="inp !w-40" maxlength="30" x-model="sizeAddName" placeholder="Name (optional)" aria-label="Name of the new charm size">
               <button class="btn2" type="submit">Add size</button>
             </form>
             <div class="flex flex-wrap items-center gap-3">
@@ -1608,7 +1614,7 @@
             </div>
           </div>
         </template>
-        <p class="text-[12px] text-zinc-500" x-text="'Between ' + products.charm_size_limits?.min + ' and ' + products.charm_size_limits?.max + ' mm, at most ' + products.charm_size_limits?.count + ' sizes. Each size has its own price (Pricing & Materials \u2192 Charm); a size without a price shows \u201cPrice unavailable\u201d. Ring sizes are not affected.'"></p>
+        <p class="text-[12px] text-zinc-500" x-text="'Between ' + products.charm_size_limits?.min + ' and ' + products.charm_size_limits?.max + ' mm, at most ' + products.charm_size_limits?.count + ' sizes, each with an optional name. The recommended size is suggested in Customize and used for a 3D when the customer chose none. Each size has its own price (Pricing & Materials \u2192 Charm); a size without a price shows \u201cPrice unavailable\u201d. Ring sizes are not affected.'"></p>
         <p x-show="sizesMsg" class="text-sm" :class="sizesErr ? 'text-red-600' : 'text-emerald-700'" x-text="sizesMsg"></p>
       </div>
       </template>
@@ -1617,7 +1623,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key === 'charms_available' ? ('Charms ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : l.key)"></td>
+            <td x-text="l.key === 'charms_available' ? ('Charms ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : l.key)))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>
@@ -1715,7 +1721,7 @@
       <div class="overflow-x-auto">
       <table class="w-full !text-xs">
         <thead><tr><th>Material</th>
-          <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="s + ' mm $' + ((cprices?.sizes || []).includes(s) ? '' : ' (not offered)')"></th></template>
+          <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="s + ' mm' + (charmSizeName(s) ? ' ' + charmSizeName(s) : '') + ' $' + ((cprices?.sizes || []).includes(s) ? '' : ' (not offered)')"></th></template>
           <th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th></tr></thead>
         <tbody>
           <template x-if="!cpEdit"><template x-for="r in (cprices?.rows || [])" :key="r.id"><tr>

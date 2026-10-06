@@ -52,19 +52,45 @@ def Charm3DHeight(SizeMm) -> float:
     if CharmSizeDefinition["measure"] == "total_height":
         return float(SizeMm)
     raise ValueError(f"No 3D scaling is defined for the charm size measure {CharmSizeDefinition['measure']!r}.")
-DefaultCharmSizes = (15.0, 20.0, 25.0, 30.0)   # a starting list only — edited in Admin → Settings → Products
-CharmSizeMin, CharmSizeMax, CharmSizesMax = 3.0, 100.0, 12
+# The sizes on offer (2026-10-06): 10 mm Delicate · 14 mm Classic (recommended) · 18 mm Bold — a starting list
+# only, edited in Admin → Settings → Products (sizes, their names and which one is recommended)
+DefaultCharmSizes = (10.0, 14.0, 18.0)
+DefaultCharmSizeNames = {"10": "Delicate", "14": "Classic", "18": "Bold"}
+DefaultCharmRecommendedSize = 14.0
+CharmSizeMin, CharmSizeMax, CharmSizesMax, CharmSizeNameMax = 3.0, 100.0, 12, 30
 
 
-def CharmDefaultSize(Sizes) -> float:
-    """The size a charm's 3D is made in when the customer chose none: the middle size on offer (20 mm of 15–30).
-    The Admin can always choose another."""
+def SizeKey(Size) -> str:
+    """The key of a size in mm in the names map and the price table: "14", "22.5"."""
+    return f"{float(Size):g}"
+
+
+def CharmDefaultSize(Sizes, Preferred=None) -> float:
+    """The recommended size — the one a charm's 3D is made in when the customer chose none, and the one Customize
+    suggests: the configured size when it is on offer, else the middle size on offer (14 mm of 10–18). The Admin can
+    always choose another for a 3D."""
     S = sorted(float(V) for V in Sizes) or list(DefaultCharmSizes)
+    if Preferred is not None and float(Preferred) in S:
+        return float(Preferred)
     return S[(len(S) - 1) // 2]
 
 
 def CharmSizeLabel(Size) -> str:
+    """'14 mm': the size itself — bag and order lines, emails, Admin results."""
     return f"{float(Size):g} {CharmSizeUnit}"
+
+
+def CharmSizeChoiceLabel(Size, Name: str | None = None, Recommended: bool = False) -> str:
+    """What a size choice says: '14 mm — Classic · Recommended', '10 mm — Delicate', '22 mm' (a size without a name)."""
+    L = CharmSizeLabel(Size) + (f" — {Name}" if Name else "")
+    return L + " · Recommended" if Recommended else L
+
+
+def CharmSizeOptions(Sizes, Names: dict, Recommended) -> list[dict]:
+    """The size choices in order: size, name (or None), recommended, and the choice label."""
+    return [{"size": float(S), "name": Names.get(SizeKey(S)) or None, "recommended": float(S) == float(Recommended),
+             "label": CharmSizeChoiceLabel(S, Names.get(SizeKey(S)), float(S) == float(Recommended))}
+            for S in sorted(float(V) for V in Sizes)]
 
 
 def SizeLabel(Product: str, RingSize=None, CharmSize=None) -> str | None:
@@ -114,7 +140,43 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 );
 """
 
-Defaults = {"charms_available": False, "charm_sizes": list(DefaultCharmSizes)}
+Defaults = {"charms_available": False, "charm_sizes": list(DefaultCharmSizes),
+            "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize}
+
+
+def ValidateCharmSizeNames(Raw, Sizes) -> dict:
+    """The names of the sizes on offer ({"14": "Classic"}): short texts; a name for a size not on offer is dropped."""
+    if Raw is None:
+        return {}
+    if not isinstance(Raw, dict):
+        raise HttpError(400, "invalid_charm_size_names", "Charm size names are given per size.")
+    Keys = {SizeKey(S) for S in Sizes}
+    Out = {}
+    for K, V in Raw.items():
+        try:
+            Key = SizeKey(K)
+        except (TypeError, ValueError):
+            raise HttpError(400, "invalid_charm_size_names", f"{K!r} is not a size in mm.")
+        if V is None or not str(V).strip():
+            continue
+        if not isinstance(V, str) or len(V.strip()) > CharmSizeNameMax:
+            raise HttpError(400, "invalid_charm_size_names", f"A size name is a short text (at most {CharmSizeNameMax} characters).")
+        if Key in Keys:
+            Out[Key] = V.strip()
+    return {K: Out[K] for K in sorted(Out, key=float)}
+
+
+def ValidateCharmDefaultSize(Raw, Sizes) -> float | None:
+    """The recommended size, one of the sizes on offer (None = not given)."""
+    if Raw is None or Raw == "":
+        return None
+    try:
+        F = round(float(Raw), 2)
+    except (TypeError, ValueError):
+        raise HttpError(400, "invalid_charm_default_size", "The recommended size must be one of the sizes on offer.")
+    if F not in [float(S) for S in Sizes]:
+        raise HttpError(400, "invalid_charm_default_size", "The recommended size must be one of the sizes on offer.")
+    return F
 
 
 def ValidateCharmSizes(Raw) -> list[float]:
@@ -172,14 +234,31 @@ class ProductSettings:
         except (TypeError, ValueError):
             return False
 
+    @property
+    def CharmSizeNames(self) -> dict:
+        """{"14": "Classic"} for the sizes on offer that have a name."""
+        Keys = {SizeKey(S) for S in self.CharmSizes}
+        return {K: V for K, V in (self.Get("charm_size_names") or {}).items() if K in Keys and V}
+
+    @property
+    def CharmDefaultSize(self) -> float:
+        """The recommended size (products.CharmDefaultSize: the configured one when on offer, else the middle)."""
+        return CharmDefaultSize(self.CharmSizes, self.Get("charm_default_size"))
+
+    def CharmSizeOptions(self) -> list[dict]:
+        """The size choices: size, name, recommended and the choice label ('14 mm — Classic · Recommended')."""
+        return CharmSizeOptions(self.CharmSizes, self.CharmSizeNames, self.CharmDefaultSize)
+
     def State(self) -> dict:
         Rows = {R["key"]: R for R in self.Db.All("SELECT * FROM product_settings")}
         Log = self.Db.All("SELECT key, value_json, note, at, by FROM product_settings_log ORDER BY id DESC LIMIT 30")
         return {"charms_available": self.CharmsAvailable,
                 "charms_available_changed": {K: Rows["charms_available"][K] for K in ("updated_at", "updated_by")}
                 if "charms_available" in Rows else None,
-                "charm_sizes": self.CharmSizes, "charm_size_definition": CharmSizeDefinition,
-                "charm_size_limits": {"min": CharmSizeMin, "max": CharmSizeMax, "count": CharmSizesMax},
+                "charm_sizes": self.CharmSizes, "charm_size_names": self.CharmSizeNames,
+                "charm_default_size": self.CharmDefaultSize, "charm_size_options": self.CharmSizeOptions(),
+                "charm_size_definition": CharmSizeDefinition,
+                "charm_size_limits": {"min": CharmSizeMin, "max": CharmSizeMax, "count": CharmSizesMax, "name": CharmSizeNameMax},
                 "log": [{**L, "value": json.loads(L.pop("value_json"))} for L in Log]}
 
 

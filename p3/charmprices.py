@@ -190,6 +190,7 @@ class CharmPriceBook:
         Rows = [{"id": M.Id, "label": Label(self.Catalog, M.Id), "group": M.Group, "fixed_price_allowed": M.Id in FixedPriceMaterials,
                  "density_g_cm3": M.DensityGCm3, **_EmptyRow(), **(Doc["materials"].get(M.Id) or {})} for M in Offered(self.Catalog)]
         return {**Doc, "history": self.History(), "rows": Rows, "sizes": Sizes,
+                "size_names": self.Settings.CharmSizeNames, "default_size": self.Settings.CharmDefaultSize,
                 "other_priced_sizes": sorted(Priced - set(Sizes)), "size_definition": Products.CharmSizeDefinition}
 
 

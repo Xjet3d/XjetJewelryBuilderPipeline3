@@ -393,8 +393,8 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     RawGeo = Ctx.Db.One("SELECT faces, status, integrity, preview_path FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
     # The journey's size/material: the matching result (if any) is what "Prepare / download STL" exports.
     Charm = Summary.get("product_type") == Products.Charm
-    if Charm:                                       # a charm: its size in mm (the customer's, else the middle size on offer)
-        Size = Summary["charm_size"] if Summary.get("charm_size_chosen") else Products.CharmDefaultSize(Ctx.Products.CharmSizes)
+    if Charm:                                       # a charm: its size in mm (the customer's, else the recommended size)
+        Size = Summary["charm_size"] if Summary.get("charm_size_chosen") else Ctx.Products.CharmDefaultSize
     else:
         Size = Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0
     Material = (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId
@@ -452,8 +452,8 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         "catalog": {"ring_sizes": list(Ctx.Catalog.RingSizes),
                     "materials": [{"id": M.Id, "label": M.Label, "density_g_cm3": M.DensityGCm3}
                                   for M in Ctx.Catalog.Materials.values()]} if not Charm else
-                   {"charm_sizes": Ctx.Products.CharmSizes, "charm_default_size": Products.CharmDefaultSize(Ctx.Products.CharmSizes),
-                    "size_definition": Products.CharmSizeDefinition,
+                   {"charm_sizes": Ctx.Products.CharmSizes, "charm_default_size": Ctx.Products.CharmDefaultSize,
+                    "charm_size_options": Ctx.Products.CharmSizeOptions(), "size_definition": Products.CharmSizeDefinition,
                     "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "density_g_cm3": M.DensityGCm3}
                                   for M in CharmPrices.Offered(Ctx.Catalog)]},
         # Shared gallery design: every customer journey on it (the master's own page and each use show it).
@@ -894,12 +894,20 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.put("/api/admin/products/charm-sizes")
     async def SetCharmSizes(Body_: dict = Body(...), authorization: str | None = Header(None)):
         """The charm sizes on offer, in mm, as products.CharmSizeDefinition says (for now the charm's total height,
-        the loop included). Prices are set per size (Pricing & Materials → Charm); a size without a price is
-        "Price unavailable"."""
+        the loop included), with their names ({"14": "Classic"}) and the recommended size (the one Customize
+        suggests and a 3D is made in by default). Prices are set per size (Pricing & Materials → Charm); a size
+        without a price is "Price unavailable"."""
         Who = Admin(authorization)
+        Note = str(Body_.get("note") or "")[:300]
         New, Old = Products.ValidateCharmSizes(Body_.get("sizes")), Ctx.Products.CharmSizes
+        Names = Products.ValidateCharmSizeNames(Body_.get("names", Ctx.Products.CharmSizeNames), New)
+        Default = Products.ValidateCharmDefaultSize(Body_.get("default"), New) or Products.CharmDefaultSize(New, Ctx.Products.CharmDefaultSize)
         if New != Old:
-            Ctx.Products.Set("charm_sizes", New, Who.Id, str(Body_.get("note") or "")[:300])
+            Ctx.Products.Set("charm_sizes", New, Who.Id, Note)
+        if Names != Ctx.Products.CharmSizeNames:
+            Ctx.Products.Set("charm_size_names", Names, Who.Id, Note)
+        if Default != Ctx.Products.Get("charm_default_size"):       # stored explicitly (also a kept or fallen-back one)
+            Ctx.Products.Set("charm_default_size", Default, Who.Id, Note)
         InBags = [{"size": S, "bag_lines": Ctx.Db.One("SELECT COUNT(*) AS n FROM bag_lines WHERE product_type = 'charm' AND charm_size = ?",
                                                      (S,))["n"]} for S in sorted(set(Old) - set(New))]
         return {**_ProductsState(), "removed_in_bags": [X for X in InBags if X["bag_lines"]]}

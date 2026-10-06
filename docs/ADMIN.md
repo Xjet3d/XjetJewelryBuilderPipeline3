@@ -368,12 +368,15 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
     holds charms still sees their own charm orders correctly. The Admin preview shows the ON experience marked "Admin
     preview · charms are hidden from customers".
   - Every change is logged with its date and the Admin who made it.
-- **Charm sizes** are the charm's **total height, including the attachment loop** at the top: a 20 mm charm is 20 mm
+- **Charm sizes** are the charm's **total height, including the attachment loop** at the top: a 14 mm charm is 14 mm
   from its lowest point to the top of its loop. This applies everywhere: Customize, the bag, checkout, orders, emails,
   prices (per size), the 3D scaling and the STL. The definition is kept in one place (`products.CharmSizeDefinition`
-  and `products.Charm3DHeight`), so it can be changed later. The starting sizes are 15, 20, 25 and 30 mm.
-  - Edit them in *Charm sizes* (`PUT /api/admin/products/charm-sizes`): sizes between 3 and 100 mm, at most 12.
-    Every change is logged.
+  and `products.Charm3DHeight`), so it can be changed later. The sizes on offer (2026-10-06): **10 mm — Delicate**,
+  **14 mm — Classic · Recommended** and **18 mm — Bold**; the earlier 15 / 20 / 25 / 30 mm are no longer offered.
+  - Edit them in *Charm sizes* (`PUT /api/admin/products/charm-sizes`): sizes between 3 and 100 mm, at most 12, each
+    with an optional name, and one of them recommended — Customize suggests it ("Recommended: 14 mm — Classic — tap it
+    to confirm, or choose another size") and a 3D is made in it when the customer chose no size. Every change is
+    logged.
   - Ring sizes are not affected.
   - Each size has its own price (see *Charm pricing* below). A size without a price shows "Price unavailable".
   - Removing a size that a customer's bag still holds is allowed. The Admin is told how many bag lines are affected,

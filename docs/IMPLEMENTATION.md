@@ -337,7 +337,18 @@ implementation of before is the reference: its tests are unchanged and must keep
 **Phase 3 — charm sizes and pricing.**
 
 - **Charm sizes**: `PUT /api/admin/products/charm-sizes` with `products.ValidateCharmSizes` (3–100 mm, at most 12,
-  unique) and a change log. The response says how many bag lines still hold a removed size.
+  unique) and a change log. The response says how many bag lines still hold a removed size. Since 2026-10-06 the body
+  also carries `names` (`{"14": "Classic"}`, `ValidateCharmSizeNames`: at most 30 characters, a name of a size not on
+  offer is dropped) and `default` (the recommended size, one of the sizes on offer, `ValidateCharmDefaultSize`; absent
+  → the current one if still offered, else the middle size) — settings `charm_size_names` and `charm_default_size`.
+  The sizes on offer start as 10 Delicate / 14 Classic (recommended) / 18 Bold (`DefaultCharmSizes`,
+  `DefaultCharmSizeNames`, `DefaultCharmRecommendedSize`; 15 / 20 / 25 / 30 mm are no longer offered).
+  `ProductSettings.CharmSizeOptions()` gives the choices with their labels (`CharmSizeChoiceLabel`: "14 mm — Classic ·
+  Recommended"); they are in `/api/catalog` (`charm.size_options`, `charm.recommended_size`), a charm's Customize
+  (`charm_sizes[]` with `name` / `recommended` / `label`, and `recommended_size` — suggested until the customer confirms
+  it or picks another, like a ring's US 10), the Admin products state (`charm_size_options`), the session catalog and
+  the charm price table (`size_names`, `default_size`). `CharmSizeLabel` ("14 mm") is unchanged for bag and order lines,
+  emails and Admin results.
 - **Price book** (`p3/charmprices.py`).
   - `CharmPriceBook`: versioned `charm_price_lists` (`charms-v<N>`) with, per charm material, fixed prices per size
     plus price and cost per gram. It is seeded empty.

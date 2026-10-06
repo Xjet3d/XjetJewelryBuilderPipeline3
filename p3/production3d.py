@@ -206,7 +206,7 @@ class Production3D:
         """A charm's 3D size in mm (the height it is scaled to): the customer's size, else the middle size on offer.
         The Admin may choose any size between the limits (e.g. one no longer offered, for an existing order)."""
         CustomerSize = Summary.get("charm_size") if Summary.get("charm_size_chosen") else None
-        Default = Products.CharmDefaultSize(self.Ctx.Products.CharmSizes)
+        Default = self.Ctx.Products.CharmDefaultSize                         # the recommended size
         if ProductionSize in (None, ""):
             return (float(CustomerSize), "customer", CustomerSize) if CustomerSize is not None else (Default, "default", None)
         try:

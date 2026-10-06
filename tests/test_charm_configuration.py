@@ -136,7 +136,7 @@ async def test_customers_create_charms_only_while_charms_are_available(HK):
     assert R.status_code == 200 and R.json()["config_version"].startswith("nano-banana-pro-charm@")
     Cat = (await H.Client.get("/api/catalog", headers=Customer)).json()
     assert Cat["products"]["available"] == ["ring", "charm"] and Cat["products"]["preview"] is False
-    assert Cat["products"]["charm"]["sizes"] == [15.0, 20.0, 25.0, 30.0]
+    assert Cat["products"]["charm"]["sizes"] == [10.0, 14.0, 18.0] and Cat["products"]["charm"]["recommended_size"] == 14.0
     assert Cat["products"]["charm"]["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
     assert Cat["products"]["charm"]["size_definition"]["includes_loop"] is True
     Off = await H.Client.put("/api/admin/products/availability", json={"charms_available": False}, headers=Admin)

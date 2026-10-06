@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from p3.mail import OrderConfirmationEmail
-from tests.conftest import Harness
+from tests.conftest import Harness, OfferCharmSizes
 from tests.test_orders import Address, Customer
 
 AdminKey = "charm-pricing-key"
@@ -19,6 +19,7 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 async def HP(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # Admin preview of charms
+    await OfferCharmSizes(Obj, AdminKey)                                                           # 15–30 mm, as written
     yield Obj
     await Obj.Close()
 
@@ -88,7 +89,8 @@ async def test_charm_prices_differ_by_material_and_size_and_leave_ring_prices_al
     assert (await Q("silver", 22))["unavailable_reason"] == "charm_size_not_offered"
     assert (await Q("gold_14k_yellow", 20))["unavailable_reason"] == "luxury_pricing_unavailable"
     _B, C = await CharmCustomize(H)
-    assert [(S["label"], S["unit_price"]) for S in C["charm_sizes"]] == [("15 mm", None), ("20 mm", 145.0), ("25 mm", 165.0), ("30 mm", None)]
+    assert [(S["label"], S["unit_price"]) for S in C["charm_sizes"]] == \
+        [("15 mm", None), ("20 mm · Recommended", 145.0), ("25 mm", 165.0), ("30 mm", None)]    # the middle size is recommended
     C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 25, "quantity": 2})).json()
     assert C["quote"]["unit_price"] == 165.0 and C["line_total"] == 330.0 and C["can_add_to_bag"] is True and C["size_label"] == "25 mm"
     # A ring is priced exactly as before
@@ -122,7 +124,8 @@ async def test_charm_sizes_are_set_in_admin_and_checked_everywhere(HP):
     await SetCharmPrices(H, Prices)
     R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [30, 15, 20, 25, 35], "note": "a larger size"}, headers=Admin)
     assert R.status_code == 200 and R.json()["charm_sizes"] == [15.0, 20.0, 25.0, 30.0, 35.0]
-    assert R.json()["log"][0]["value"] == [15.0, 20.0, 25.0, 30.0, 35.0] and R.json()["log"][0]["note"] == "a larger size"
+    Sz = next(L for L in R.json()["log"] if L["key"] == "charm_sizes")           # (the kept recommended size is logged too)
+    assert Sz["value"] == [15.0, 20.0, 25.0, 30.0, 35.0] and Sz["note"] == "a larger size"
     for Bad in ([20, 20], [2], [], "20", [150]):
         assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": Bad}, headers=Admin)).status_code == 400, Bad
     assert (await H.Client.get("/api/catalog")).json()["products"]["charm"]["sizes"] == [15.0, 20.0, 25.0, 30.0, 35.0]

@@ -189,7 +189,7 @@ function adminApp() {
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
     pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
-    sizesEdit: null, sizeAdd: '', sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
+    sizesEdit: null, sizeAdd: '', sizeAddName: '', sizeNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
@@ -703,6 +703,11 @@ function adminApp() {
       const s = [...(this.sd?.catalog?.charm_sizes || [])];
       for (const v of [this.g3.size, this.sd?.three_d_defaults?.customer_size]) if (v != null && !s.includes(v)) s.push(v);   // e.g. a size no longer offered
       return s.sort((a, b) => a - b);
+    },
+    // '14 mm height — Classic · Recommended' (a size no longer offered: just its height)
+    charmSizeText(z) {
+      const o = (this.sd?.catalog?.charm_size_options || []).find(x => x.size === z);
+      return z + ' mm height' + (o?.name ? ' — ' + o.name : '') + (o?.recommended ? ' · Recommended' : '');
     },
     async generate3d() {
       const custom = this.sd.three_d_defaults.customer_size ?? this.default3dSize();
@@ -1236,19 +1241,31 @@ function adminApp() {
         this.cpEdit = null; this.cpMsg = 'Saved as ' + this.cprices.version + '. Charm quotes use it now; ring prices are unchanged.';
       } catch (e) { this.cpErr = true; this.cpMsg = e.message; } finally { this.cpBusy = false; }
     },
-    // ── Settings → Products: the charm sizes on offer ──
-    editCharmSizes() { this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = ''; this.sizeAdd = ''; this.sizesEdit = [...(this.products?.charm_sizes || [])]; },
+    // ── Settings → Products: the charm sizes on offer, their names and the recommended size ──
+    editCharmSizes() {
+      this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = ''; this.sizeAdd = ''; this.sizeAddName = '';
+      this.sizesEdit = [...(this.products?.charm_sizes || [])];
+      this.sizeNames = { ...(this.products?.charm_size_names || {}) };
+      this.sizeDefault = this.products?.charm_default_size ?? null;
+    },
     addCharmSize() {
       const v = Number(String(this.sizeAdd).replace(',', '.'));
       if (this.sizeAdd === '' || !isFinite(v)) return;
       if (!this.sizesEdit.includes(v)) this.sizesEdit = [...this.sizesEdit, v].sort((a, b) => a - b);
-      this.sizeAdd = '';
+      if (this.sizeAddName.trim()) this.sizeNames[this.sizeKey(v)] = this.sizeAddName.trim();
+      this.sizeAdd = ''; this.sizeAddName = '';
     },
-    removeCharmSize(v) { this.sizesEdit = this.sizesEdit.filter(x => x !== v); },
+    removeCharmSize(v) {
+      this.sizesEdit = this.sizesEdit.filter(x => x !== v);
+      delete this.sizeNames[this.sizeKey(v)];
+      if (this.sizeDefault === v) this.sizeDefault = null;        // the server falls back to the middle size
+    },
+    charmSizeName(s) { return (this.cprices?.size_names || this.products?.charm_size_names || {})[this.sizeKey(s)] || ''; },
     async saveCharmSizes() {
       this.sizesBusy = true; this.sizesMsg = ''; this.sizesErr = false;
       try {
-        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, note: this.sizesNote });
+        const names = Object.fromEntries(Object.entries(this.sizeNames).filter(([, n]) => n && n.trim()));
+        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, names, default: this.sizeDefault, note: this.sizesNote });
         this.products = r; this.sizesEdit = null; this.cprices = null;          // the charm price columns follow the sizes
         this.sizesMsg = 'Charm sizes saved.' + (r.removed_in_bags?.length ? ' Still in customers\u2019 bags: ' +
           r.removed_in_bags.map(x => x.size + ' mm (' + x.bag_lines + (x.bag_lines === 1 ? ' line' : ' lines') + ')').join(', ') +

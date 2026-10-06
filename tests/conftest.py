@@ -95,3 +95,13 @@ def MakeLive(H) -> None:
     for T in ("candidates", "movies", "meshes"):
         Db.Execute(f"UPDATE {T} SET provider_request_id = 'falreq_' || id WHERE provider_request_id LIKE 'mockreq_%'")
     H.Ctx.Accounts.Db.Execute("UPDATE usage_events SET provider = 'fal', mode = 'live' WHERE provider = 'mock'")
+
+
+LegacyCharmSizes = [15, 20, 25, 30]      # the sizes the charm tests of 2026-10-05 were written with (on offer today: 10 / 14 / 18)
+
+
+async def OfferCharmSizes(H, AdminKey: str, Sizes=LegacyCharmSizes) -> None:
+    """Put these charm sizes on offer (an Admin setting) so the older charm tests keep their 20 / 25 mm numbers."""
+    R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": Sizes, "names": {}, "default": None},
+                           headers={"Authorization": f"Bearer {AdminKey}"})
+    assert R.status_code == 200, R.text

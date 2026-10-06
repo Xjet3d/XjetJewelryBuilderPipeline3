@@ -1327,14 +1327,18 @@
                         </div>
                     </div>
 
-                    <!-- Charm size: the height of the main body (without the loop); each size has its own price -->
+                    <!-- Charm size: the total height, the loop included; each size has its own price. The choices read
+                         "14 mm — Classic · Recommended": the recommended size is suggested (like a ring's US 10) until the
+                         customer confirms it or picks another. -->
                     <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
                         <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h3>
                         <p class="text-[12px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
+                        <p class="text-[12px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
                         <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
                             <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
-                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
-                                        :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500'"
+                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
+                                        :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : (sizeIsSuggested(s.size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500')"
+                                        :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
                                         class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
                                     <span x-text="s.label"></span>
                                     <span class="text-[11px] mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
@@ -1344,7 +1348,7 @@
                         </div>
                         <p class="text-[12px] text-zinc-500 mt-2">
                             <span x-show="sizeConfirmed && cust?.charm_size != null">Your size: <strong class="text-zinc-700" x-text="cust?.size_label"></strong> · the price depends on the size</span>
-                            <span x-show="cust?.charm_size == null">Choose a size to add this charm to your bag.</span>
+                            <span x-show="!sizeConfirmed">Confirm a size to add this charm to your bag.</span>
                         </p>
                     </div>
 

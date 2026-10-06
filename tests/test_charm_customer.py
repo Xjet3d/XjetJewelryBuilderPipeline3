@@ -7,7 +7,7 @@ import re
 import httpx
 import pytest
 
-from tests.conftest import Harness
+from tests.conftest import Harness, OfferCharmSizes
 from tests.test_orders import Address, Customer
 
 AdminKey = "charm-customer-key"
@@ -18,6 +18,7 @@ ProductKeys = {"product_type", "product_types", "charm_size", "size_label"}
 @pytest.fixture
 async def HC5(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
+    await OfferCharmSizes(Obj, AdminKey)                                     # 15–30 mm, as these tests were written
     yield Obj
     await Obj.Close()
 

@@ -12,7 +12,7 @@ from p3 import ringids as RingIds
 from p3.db import Database, NewId, Now
 from p3.mail import OrderConfirmationEmail, QuoteRequestEmail
 from p3.providers import endpoints
-from tests.conftest import Harness
+from tests.conftest import Harness, OfferCharmSizes
 
 AdminKey = "charm-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -21,6 +21,7 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 @pytest.fixture
 async def HC(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
+    await OfferCharmSizes(Obj, AdminKey)                                     # 15–30 mm, as these tests were written
     yield Obj
     await Obj.Close()
 
