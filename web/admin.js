@@ -1158,10 +1158,14 @@ function adminApp() {
     // A ring whose bore is not round: scale it along the bore's two axes so the bore is a circle of the target size,
     // then measure again — local work on the existing Hi3D model, no Hi3D call
     async fixBore(t) {
-      const r = (t.review || []).find(x => x.code === 'bore_not_round');
+      const r = (t.review || []).find(x => x.code === 'bore_not_round'), exp = t.bore_expected_after;
+      // What the correction will leave (known from the measurement): a true ellipse comes out round, a lobed wall does not
+      const outlook = exp == null ? '' : (exp > 0.04
+        ? ` This inner wall is not an ellipse: about ${(exp * 100).toFixed(1)}% deviation would remain, so the corrected result stays for review (with undo).`
+        : ` Expected: round within about ${(exp * 100).toFixed(1)}%.`);
       const ok = await this.ask({ title: `Make the bore of ${t.ring_id || 'this model'} round at ${t.size_label || 'US ' + t.production_size}?`,
         text: `${r ? r.text + ' ' : ''}The model will be scaled along the bore’s two axes so the bore becomes a circle of the size’s inner diameter; ` +
-              'the outer shape stretches by the same few percent. This is local work on the existing model — no Hi3D call — and it replaces this result’s numbers and STL.',
+              'the outer shape stretches by the same few percent. This is local work on the existing model — no Hi3D call — and it replaces this result’s numbers and STL.' + outlook,
         confirmLabel: 'Make it round' });
       if (!ok) return;
       try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Making the bore round — the numbers follow in a moment'); }

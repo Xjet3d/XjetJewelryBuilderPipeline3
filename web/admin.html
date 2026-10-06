@@ -1070,13 +1070,15 @@
                   <button x-show="(t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.bore_correction && !t.bore_correction_failed" class="btn !py-1.5" @click="fixBore(t)">Make the bore round</button>
                   <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
                   <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
+                  <!-- A correction that made the bore rounder but not round: back to the model as generated -->
+                  <button x-show="(t.review || []).some(r => r.code === 'bore_still_not_round')" class="btn2 !py-1.5" @click="undoBore(t)">Undo — back to the model as generated</button>
                 </div>
               </div>
             </template>
             <template x-if="t.bore_correction">
               <div class="border border-emerald-200 bg-emerald-50 p-4 space-y-1">
-                <p class="text-sm font-semibold text-emerald-900" x-text="'Bore made round for ' + (t.size_label || 'US ' + t.production_size)"></p>
-                <p class="text-[13px] text-emerald-900" x-text="'The bore was ' + ((t.bore_correction.ellipticity - 1) * 100).toFixed(1) + '% longer one way. The model was scaled ×' + t.bore_correction.scale_major.toFixed(3) + ' along the bore’s long axis, ×' + t.bore_correction.scale_minor.toFixed(3) + ' along its short axis and ×' + t.bore_correction.scale_axis.toFixed(3) + ' in height; the bore now deviates ' + ((t.bore_correction.roundness_after || 0) * 100).toFixed(1) + '% from a circle.'"></p>
+                <p class="text-sm font-semibold text-emerald-900" x-text="((t.bore_correction.roundness_after || 0) > 0.04 ? 'Bore corrected for ' : 'Bore made round for ') + (t.size_label || 'US ' + t.production_size)"></p>
+                <p class="text-[13px] text-emerald-900" x-text="'The bore was ' + ((t.bore_correction.ellipticity - 1) * 100).toFixed(1) + '% longer one way. The model was scaled ×' + t.bore_correction.scale_major.toFixed(3) + ' along the bore’s long axis, ×' + t.bore_correction.scale_minor.toFixed(3) + ' along its short axis and ×' + t.bore_correction.scale_axis.toFixed(3) + ' in height; the bore now deviates ' + ((t.bore_correction.roundness_after || 0) * 100).toFixed(1) + '% from a circle' + (t.bore_correction.roundness_before != null ? ' (was ' + (t.bore_correction.roundness_before * 100).toFixed(1) + '%)' : '') + (t.bore_correction.bore_min_diameter_mm != null ? ' and measures ' + t.bore_correction.bore_min_diameter_mm.toFixed(1) + '–' + t.bore_correction.bore_max_diameter_mm.toFixed(1) + ' mm through the centre.' : '.')"></p>
                 <p class="text-[12px] text-emerald-900/80">The measurements are this corrected model, and the scaled STL is made from it. The 3D view shows the model as generated.</p>
                 <div class="pt-1"><button class="btn2 !py-1.5" @click="undoBore(t)">Undo — back to the model as generated</button></div>
               </div>
@@ -1109,7 +1111,7 @@
             <template x-if="t.geometry.production">
               <div class="space-y-4">
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div x-show="!t.target_height_mm"><p class="lbl">Inner diameter</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_inner_diameter_mm + ' mm (US ' + t.production_size + ')'"></p></div>
+                  <div x-show="!t.target_height_mm"><p class="lbl">Inner diameter</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.inner_diameter_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_inner_diameter_mm + ' mm (US ' + t.production_size + ')'"></p><p x-show="t.geometry.production.bore_min_diameter_mm != null" class="text-[11px] text-zinc-500" x-text="'through the centre ' + mm(t.geometry.production.bore_min_diameter_mm) + ' – ' + mm(t.geometry.production.bore_max_diameter_mm) + ' mm'"></p></div>
                   <div x-show="t.target_height_mm"><p class="lbl">Height</p><p class="text-xl font-semibold tabular-nums" x-text="mm(t.geometry.production.size_y_mm) + ' mm'"></p><p class="text-[11px] text-zinc-500" x-text="'target ' + t.target_height_mm + ' mm · total height incl. loop'"></p></div>
                   <div><p class="lbl">Volume</p><p class="text-xl font-semibold tabular-nums" x-text="t.geometry.production.volume_mm3 != null ? (t.geometry.production.volume_mm3 / 1000).toFixed(3) + ' cc' : 'not reliable'"></p></div>
                   <div><p class="lbl">Weight</p><p class="text-xl font-semibold tabular-nums flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(t.material_id)"></span><span x-text="t.price?.weight_g != null ? t.price.weight_g.toFixed(2) + ' g' : '—'"></span></p><p class="text-[11px] text-zinc-500" x-text="t.material_label + ' · ' + t.density_g_cm3 + ' g/cm³'"></p></div>

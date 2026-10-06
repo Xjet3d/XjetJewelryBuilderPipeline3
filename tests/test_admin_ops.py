@@ -333,6 +333,12 @@ async def test_a_bore_that_is_not_round_can_be_made_round_for_a_result(HX, monke
     R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
     assert R3["production_state"] == "review_required" and [r["code"] for r in R3["review"]] == ["bore_not_round"]
     assert R3["bore_correction"] is None and R3["scaled_stl"] == "on_demand"
+    # The review says what the bore measures across its centre and what the correction will leave (an ellipse: nothing)
+    assert "through the centre it measures" in R3["review"][0]["text"] and "expected: round within" in R3["review"][0]["action"]
+    assert R3["bore_expected_after"] < 0.01
+    P0 = R3["geometry"]["production"]
+    assert P0["bore_min_diameter_mm"] == pytest.approx(P0["inner_diameter_mm"] * 15.0 / 16.0, rel=0.02)    # the oval, at this size
+    assert P0["bore_max_diameter_mm"] == pytest.approx(P0["inner_diameter_mm"] * 17.25 / 16.0, rel=0.02)
     Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
     R = await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)
     assert R.status_code == 200, R.text
@@ -413,3 +419,45 @@ async def test_making_the_bore_round_is_not_kept_when_the_bore_is_not_an_ellipse
     E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E['job_id']}", headers=Admin)).json()
     File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
     assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring"
+
+
+async def test_a_correction_that_makes_the_bore_rounder_but_not_round_is_kept_for_review(HX, monkeypatch):
+    """A bore that is oval AND lobed: scaling along its axes removes the oval part but not the lobes — rounder, not
+    round. The correction is kept (its numbers, the on-demand STL) and the result stays for review with the remaining
+    deviation and the bore across its centre; Undo goes back to the model as generated."""
+    import numpy as np
+    import trimesh
+    from p3.geometry import UsSizeToInnerDiameterMm
+    from p3.providers import mock
+
+    def OvalLobed(Format):
+        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+        V = M.vertices.copy()
+        V[:, :2] *= (1 + 0.08 * np.cos(3 * np.arctan2(V[:, 1], V[:, 0])))[:, None]
+        M.vertices = V
+        M.apply_scale([1.15, 1.0, 1.0])
+        return M.export(file_type=Format)
+    monkeypatch.setattr(mock, "_MeshBytes", OvalLobed)
+    H = HX
+    Did = (await H.NewDesign("A band with an oval, lobed bore"))["design_id"]
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert [r["code"] for r in R3["review"]] == ["bore_not_round"] and R3["bore_expected_after"] > 0.04
+    assert "would remain" in R3["review"][0]["action"]                                # said before the click
+    Before = R3["geometry"]["raw"]["checks"]["roundness"]
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200
+    await H.Idle()
+    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert F["status"] == "needs_review" and F["production_state"] == "review_required"
+    C = F["bore_correction"]
+    assert C is not None and 0.04 < C["roundness_after"] < 0.9 * Before and C["roundness_before"] == pytest.approx(Before)
+    assert C["bore_min_diameter_mm"] < C["bore_max_diameter_mm"]
+    assert [r["code"] for r in F["review"]] == ["bore_still_not_round"] and "through the centre" in F["review"][0]["text"]
+    assert "still not round" in F["error"] and F["live"]["can_retry"] and F["scaled_stl"] == "on_demand"
+    assert F["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(7), rel=0.01)
+    # Undo: the model as generated, flagged as before
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 200
+    await H.Idle()
+    U = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert U["bore_correction"] is None and [r["code"] for r in U["review"]] == ["bore_not_round"]

@@ -561,12 +561,16 @@ def test_a_bore_that_is_not_round_is_fitted_as_an_ellipse_and_can_be_made_round(
     assert Raw["bore_ok"] and Raw["roundness"] > 0.04
     E = Raw["bore_ellipse"]
     assert E["a"] == pytest.approx(8.625, rel=0.01) and E["b"] == pytest.approx(7.5, rel=0.01)
+    assert E["residual"] < 0.01                                               # an ellipse: the correction leaves nothing
+    # The bore across its centre: narrowest and widest (what a caliper reads) — 15 × 17.25 for this oval
+    assert Raw["bore_min_diameter"] == pytest.approx(15.0, rel=0.01) and Raw["bore_max_diameter"] == pytest.approx(17.25, rel=0.01)
     Target = g.UsSizeToInnerDiameterMm(7)
     Corr = g.ExportCorrectedStl(D / "oval.stl", Raw, Target, D / "round.stl")
     assert Corr["scale_major"] == pytest.approx(Target / 2 / 8.625, rel=0.01) and Corr["scale_minor"] == pytest.approx(Target / 2 / 7.5, rel=0.01)
     assert Corr["faces"] == len(M.faces)
     Fixed = g.MeasureRaw(D / "round.stl")
     assert Fixed["bore_ok"] and Fixed["inner_diameter"] == pytest.approx(Target, rel=0.005) and Fixed["roundness"] < 0.01
+    assert Fixed["bore_min_diameter"] == pytest.approx(Target, rel=0.01) and Fixed["bore_max_diameter"] == pytest.approx(Target, rel=0.01)
     assert Fixed["extent_x"] == pytest.approx(Fixed["extent_y"], rel=0.01)          # the outer shape is round again
     assert Fixed["extent_z"] == pytest.approx(3.0 * Corr["scale_axis"], rel=0.02)
     assert open(D / "round.stl", "rb").read(80).rstrip() == b"XJet P3 scaled ring, bore made round"

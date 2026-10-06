@@ -79,10 +79,11 @@ def Run(A: dict) -> dict:
         # A ring whose bore is not round: scale along the bore's two axes so it becomes a circle of the target
         # diameter and measure that model. The file is temporary — the STL is exported on demand like the uniform
         # scaling. An older measurement without the ellipse fit is redone first.
-        Raw = A["raw"] if A["raw"].get("bore_ellipse") else g.MeasureRaw(A["source"])
+        Again = not A["raw"].get("bore_ellipse")
+        Raw = g.MeasureRaw(A["source"]) if Again else A["raw"]
         Corr = g.ExportCorrectedStl(A["source"], Raw, float(A["target_mm"]), A["output"])
         try:
-            Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"])}
+            Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"]), **({"raw_measured": Raw} if Again else {})}
         finally:
             try:
                 os.remove(A["output"])
