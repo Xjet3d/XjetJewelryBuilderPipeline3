@@ -21,18 +21,17 @@ function P3MetalFilterDefs(materials) {
     }
     return { body: out.join(''), result: prev };
   };
-  // Where the metal colour goes: the ring, not the backdrop. Two masks, multiplied:
-  //  - near-white pixels are left alone (the white background of the stills and the brightest sparkle);
-  //  - a soft centred window keeps the frame edges exactly as generated, so the grey studio backdrop of a
-  //    360 movie stays the same grey for every metal and only the ring and its immediate surroundings
-  //    carry the colour (a faint warm or cool bounce around a gold or steel ring, as in real photographs).
-  const masks = `<feColorMatrix in="SourceGraphic" type="matrix" result="lum" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 -4 -4 0 11.7"/>
-          <feFlood x="0.13" y="0.07" width="0.74" height="0.86" flood-color="#000" flood-opacity="1" result="box"/>
-          <feGaussianBlur in="box" stdDeviation="0.065" result="centre"/>
-          <feComposite in="metal" in2="lum" operator="in" result="m1"/>
-          <feComposite in="m1" in2="centre" operator="in" result="ring"/>
+  // Where the metal colour goes: the piece, not the backdrop. One mask, by brightness alone, the same at every
+  // point of the frame: light pixels are left as generated (the white background of the stills, the light grey
+  // studio backdrop of a 360° movie, the brightest sparkle) — fully from an average of 0.94, fading in to the full
+  // colour at 0.87 — and everything darker takes the metal. A darker backdrop (the grey wall some movies have)
+  // takes the colour too, evenly, like a tinted room. There is no spatial window: an earlier soft centred window
+  // left the frame edges uncoloured, which showed as grey bands at the top and bottom of a movie and left a
+  // charm's loop or a ring's rim near the edge in the original metal.
+  const masks = `<feColorMatrix in="SourceGraphic" type="matrix" result="lum" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4.545 -4.545 -4.545 0 12.82"/>
+          <feComposite in="metal" in2="lum" operator="in" result="ring"/>
           <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>`;
-  const open = id => `<filter id="p3-metal-${id}" x="0" y="0" width="1" height="1" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">`;
+  const open = id => `<filter id="p3-metal-${id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">`;
   return materials.map(m => {
     const s = hex(m.swatch || '#C8C8C5');
     if (m.recolor === 'tint' && m.tint) {

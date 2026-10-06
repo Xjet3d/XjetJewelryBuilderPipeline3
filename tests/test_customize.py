@@ -10,6 +10,25 @@ async def _Ready(Hx, Prompt="Twisted rope band"):
     return Batch["design_id"], Batch["candidates"][3]
 
 
+async def test_the_metal_preview_colours_the_whole_frame_except_the_light_backdrop(H):
+    """The metal filter (web/metal.js, used on the Customize image and 360° movie) decides by brightness alone, the
+    same at every point of the frame: light pixels (the white background of a still, the light grey backdrop of a
+    movie) stay as generated, everything darker takes the metal. No spatial window: the former soft centred window
+    left grey bands at the top and bottom of a movie and a charm's loop or a ring's rim near the edge uncoloured."""
+    Js = (await H.Client.get("/static/metal.js")).text
+    for Spatial in ("feFlood", "feGaussianBlur", "feOffset", "primitiveUnits", 'result="centre"', 'result="box"'):
+        assert Spatial not in Js, Spatial
+    # The mask: alpha = 12.82 − 4.545 × (r + g + b): fully background from an average of 0.94, the full metal from 0.87
+    assert 'values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4.545 -4.545 -4.545 0 12.82"' in Js
+    assert round(12.82 / 4.545 / 3, 3) == 0.940 and round((12.82 - 1) / 4.545 / 3, 3) == 0.867
+    assert '<feComposite in="metal" in2="lum" operator="in" result="ring"/>' in Js
+    assert '<feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ring"/></feMerge>' in Js
+    # The filter region is the whole element, for every material
+    Page = (await H.Client.get("/")).text
+    assert 'x-html="metalFilterDefs"' in Page
+    assert Js.count('x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"') == 1    # the one opener
+
+
 async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])
