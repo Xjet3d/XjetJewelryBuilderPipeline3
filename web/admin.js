@@ -115,7 +115,7 @@ function SoftViewer(el, geo, colorHex) {
 
 const NEW_MODEL_PHRASE = 'GENERATE NEW 3D';   // the phrase the admin must type for a second paid Hi3D model
 const STAGE_SHORT = { waiting_hi3d: 'Waiting for Hi3D', generating_3d: 'Generating 3D', downloading_stl: 'Download',
-  queued: 'Queued', calculating_geometry: 'Geometry', exporting: 'Scaled STL' };
+  queued: 'Queued', calculating_geometry: 'Geometry', correcting_bore: 'Rounding the bore', exporting: 'Scaled STL' };
 const EVENTS = {
   design_created: ['Design', 'bg-blue-100 text-blue-700'],
   gallery_started: ['Started from gallery', 'bg-amber-100 text-amber-800'],
@@ -1150,6 +1150,18 @@ function adminApp() {
         this.notify('A new movie is being made for ' + (c.ring_id || 'this image') + ' — refresh in a minute');
       } catch (e) { this.fail(e); }
     },
+    // A ring whose bore is not round: scale it along the bore's two axes so the bore is a circle of the target size,
+    // then measure again — local work on the existing Hi3D model, no Hi3D call
+    async fixBore(t) {
+      const r = (t.review || []).find(x => x.code === 'bore_not_round');
+      const ok = await this.ask({ title: `Make the bore of ${t.ring_id || 'this model'} round at ${t.size_label || 'US ' + t.production_size}?`,
+        text: `${r ? r.text + ' ' : ''}The model will be scaled along the bore’s two axes so the bore becomes a circle of the size’s inner diameter; ` +
+              'the outer shape stretches by the same few percent. This is local work on the existing model — no Hi3D call — and it replaces this result’s numbers and STL.',
+        confirmLabel: 'Make it round' });
+      if (!ok) return;
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Making the bore round — the numbers follow in a moment'); }
+      catch (e) { this.fail(e); }
+    },
     // The Admin's decision on a flagged 3D result: produce it as measured
     async accept3d(t) {
       const reasons = (t.review || []).map(r => r.text).join(' ') || t.error || '';
@@ -1423,6 +1435,8 @@ function adminApp() {
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
       if (e.kind === 'admin_movie_requested') return 'A new 360° movie was requested by ' + (d.by || 'admin') + (d.config_version ? ' (' + d.config_version + ')' : '');
+      if (e.kind === 'admin_3d_fix_requested') return 'Making the bore round for ' + (d.production_size ? this.size3dLabel(d.production_size) : 'this result') + (d.roundness != null ? ' (it deviated ' + (d.roundness * 100).toFixed(1) + '%)' : '') + ' — ' + (d.by || 'admin');
+      if (e.kind === 'admin_3d_bore_fixed') return 'Bore made round: ×' + (d.scale_major || 0).toFixed(3) + ' / ×' + (d.scale_minor || 0).toFixed(3) + (d.inner_diameter_mm ? ' · inner Ø ' + d.inner_diameter_mm.toFixed(2) + ' mm' : '') + (d.roundness != null ? ' · deviation ' + (d.roundness * 100).toFixed(1) + '%' : '') + (d.weight_g != null ? ' · ' + d.weight_g + ' g' : '') + (d.status === 'needs_review' ? ' · still needs review' : '');
       if (e.kind === 'admin_3d_accepted') return 'Accepted for production as measured by ' + (d.by || 'admin') + (d.reasons ? ' — ' + d.reasons : '') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       // The size in the product's own unit: the row's product (Dashboard activity), else the open session's

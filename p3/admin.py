@@ -767,6 +767,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Admin(authorization)
         return Production.Retry(Sid)
 
+    @App_.post("/api/admin/3d/{Sid}/fix-bore")
+    async def FixBore3D(Sid: str, authorization: str | None = Header(None)):
+        """A ring's bore that is not round is made round for this result (local geometry work, no Hi3D call)."""
+        Who = Admin(authorization)
+        return Production.FixBore(Sid, Who.Id)
+
     @App_.post("/api/admin/3d/{Sid}/accept")
     async def Accept3D(Sid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
         """A flagged result is accepted for production as measured (the reasons stay with it)."""
@@ -782,6 +788,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/3d/{Sid}/export/{Jid}")
     async def Export3DStatus(Sid: str, Jid: str, order: str | None = None, authorization: str | None = Header(None)):
         Admin(authorization)
+        if Jid == "stored":                           # a production STL kept on disk (its bore made round; or a v2 row)
+            S = Production.StoredProduction(Sid)
+            if S is None:
+                raise HttpError(404, "job_not_found", "Export not found.")
+            S["url"] = _SignedUrl(Sid, "production", _OrderRef(order))
+            return S
         S = Production.ExportStatus(Sid, Jid)
         if S["status"] == "done":
             S["url"] = _SignedUrl(Sid, f"export-{Jid}", _OrderRef(order))

@@ -541,3 +541,37 @@ async def test_processing_complete_is_not_production_ready_when_the_model_has_wa
     Row = next(X for X in (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
                if X["session_id"] == Did2)
     assert Row["three_d_state"] == "review_required"
+
+
+
+def test_a_bore_that_is_not_round_is_fitted_as_an_ellipse_and_can_be_made_round():
+    """A ring whose bore is an ellipse (here 15% longer one way) is flagged (roundness over 4%); MeasureRaw also fits
+    the ellipse, and ExportCorrectedStl scales the model along the ellipse's axes so the bore becomes a circle of the
+    target diameter — measured again, it is round and the right size, and the outer shape is round again too."""
+    import tempfile
+    import trimesh
+    from pathlib import Path
+    from p3 import geometry as g
+    M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+    M.apply_scale([1.15, 1.0, 1.0])                                         # the bore: 8.625 × 7.5 (an ellipse)
+    M.apply_transform(trimesh.transformations.rotation_matrix(0.5, [0.3, 1, 0.2]))
+    D = Path(tempfile.mkdtemp())
+    g.WriteStl(np.asarray(M.triangles, np.float32), D / "oval.stl")
+    Raw = g.MeasureRaw(D / "oval.stl")
+    assert Raw["bore_ok"] and Raw["roundness"] > 0.04
+    E = Raw["bore_ellipse"]
+    assert E["a"] == pytest.approx(8.625, rel=0.01) and E["b"] == pytest.approx(7.5, rel=0.01)
+    Target = g.UsSizeToInnerDiameterMm(7)
+    Corr = g.ExportCorrectedStl(D / "oval.stl", Raw, Target, D / "round.stl")
+    assert Corr["scale_major"] == pytest.approx(Target / 2 / 8.625, rel=0.01) and Corr["scale_minor"] == pytest.approx(Target / 2 / 7.5, rel=0.01)
+    assert Corr["faces"] == len(M.faces)
+    Fixed = g.MeasureRaw(D / "round.stl")
+    assert Fixed["bore_ok"] and Fixed["inner_diameter"] == pytest.approx(Target, rel=0.005) and Fixed["roundness"] < 0.01
+    assert Fixed["extent_x"] == pytest.approx(Fixed["extent_y"], rel=0.01)          # the outer shape is round again
+    assert Fixed["extent_z"] == pytest.approx(3.0 * Corr["scale_axis"], rel=0.02)
+    assert open(D / "round.stl", "rb").read(80).rstrip() == b"XJet P3 scaled ring, bore made round"
+    # A round bore is fitted as (almost) a circle, so nothing would be corrected
+    Plain = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+    g.WriteStl(np.asarray(Plain.triangles, np.float32), D / "plain.stl")
+    R = g.MeasureRaw(D / "plain.stl")
+    assert R["bore_ellipse"]["a"] / R["bore_ellipse"]["b"] == pytest.approx(1.0, abs=0.005)

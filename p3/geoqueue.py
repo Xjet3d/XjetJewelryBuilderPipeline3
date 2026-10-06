@@ -20,7 +20,7 @@ from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 
 Logger = logging.getLogger("p3.geoqueue")
-Priority = {"export": 10, "measure": 20, "preview": 30, "integrity": 90}
+Priority = {"export": 10, "fix_bore": 15, "measure": 20, "preview": 30, "integrity": 90}
 MaxAttempts = 2
 JobTimeoutS = 1800
 ExportTtlS = 3600

@@ -311,3 +311,52 @@ async def test_the_admin_can_make_a_new_movie_for_an_image(HX):
     await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": Cand["id"]})
     await H.Idle()
     assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2
+
+
+async def test_a_bore_that_is_not_round_can_be_made_round_for_a_result(HX, monkeypatch):
+    """"Make the bore round": the model is scaled along the bore's two axes so the bore is a circle of the size's
+    inner diameter, written as this result's production STL and measured again — local work, no Hi3D call. The
+    result is complete, and every download path serves the corrected model."""
+    import trimesh
+    from p3.geometry import UsSizeToInnerDiameterMm
+    from p3.providers import mock
+
+    def Oval(Format):
+        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+        M.apply_scale([1.15, 1.0, 1.0])
+        return M.export(file_type=Format)
+    monkeypatch.setattr(mock, "_MeshBytes", Oval)
+    H = HX
+    Did = (await H.NewDesign("A band with an oval bore"))["design_id"]
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert R3["production_state"] == "review_required" and [r["code"] for r in R3["review"]] == ["bore_not_round"]
+    assert R3["bore_correction"] is None and R3["scaled_stl"] == "on_demand"
+    Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
+    R = await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)
+    assert R.status_code == 200, R.text
+    assert R.json()["status"] in ("queued", "measuring")
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 409     # one at a time
+    await H.Idle()
+    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert F["status"] == "measured" and F["production_state"] == "complete" and F["review"] == [], F["error"]
+    Target = UsSizeToInnerDiameterMm(7)
+    C = F["bore_correction"]
+    assert C["scale_major"] < C["scale_minor"] and C["roundness_after"] < 0.01 and C["target_inner_diameter_mm"] == pytest.approx(Target)
+    P = F["geometry"]["production"]
+    assert P["inner_diameter_mm"] == pytest.approx(Target, rel=0.005) and P["stl_path"].endswith(f"round_{R3['id']}.stl")
+    assert F["scaled_stl"] == "stored" and F["price"]["weight_g"] > 0
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs                     # no Hi3D call
+    # Every download path serves the corrected model
+    E = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
+    assert E["job_id"] == "stored" and E["status"] == "done"
+    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/stored", headers=Admin)).json()
+    File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring, bore made round"
+    L = (await H.Client.post(f"/api/admin/3d/{R3['id']}/download-link", json={"stage": "production"}, headers=Admin)).json()
+    assert L["bytes"] == len(File.content)
+    Kinds = [X["kind"] for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"]]
+    assert "admin_3d_fix_requested" in Kinds and "admin_3d_bore_fixed" in Kinds
+    Lst = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
+    assert next(X for X in Lst if X["design_id"] == Did)["three_d_state"] == "complete"

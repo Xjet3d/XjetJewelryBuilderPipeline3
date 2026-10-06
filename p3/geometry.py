@@ -466,6 +466,38 @@ def _BoreSeed(P, Grid: int = 25, Sample: int = 20_000) -> np.ndarray:
     return Best
 
 
+def _BoreWall(P, C) -> np.ndarray:
+    """The bore wall as one nearest point per direction bin around the centre C (what the circle is fitted to)."""
+    Rel = P - np.asarray(C)
+    Dist = np.hypot(Rel[:, 0], Rel[:, 1])
+    Bin = ((np.arctan2(Rel[:, 1], Rel[:, 0]) + np.pi) / (2 * np.pi) * Directions).astype(int) % Directions
+    Near = np.full(Directions, np.inf)
+    np.minimum.at(Near, Bin, Dist)
+    Ok = np.isfinite(Near)
+    Mid = (np.arange(Directions) + 0.5) / Directions * 2 * np.pi - np.pi
+    return np.asarray(C) + np.c_[np.cos(Mid), np.sin(Mid)][Ok] * Near[Ok][:, None]
+
+
+def _FitEllipse(P: np.ndarray) -> dict | None:
+    """Least-squares ellipse through the bore wall points (relative to the bore centre): centre, semi-axes (a ≥ b)
+    and the angle of the major axis in the (U, V) plane. None when the points do not describe an ellipse."""
+    if len(P) < 8:
+        return None
+    X, Y = P[:, 0], P[:, 1]
+    W, *_ = np.linalg.lstsq(np.c_[X * X, X * Y, Y * Y, X, Y], np.ones(len(P)), rcond=None)
+    Pq, S, Qq, D, E = W
+    Q = np.array([[Pq, S / 2], [S / 2, Qq]])
+    Vals, Vecs = np.linalg.eigh(Q)                               # ascending: the smaller value belongs to the major axis
+    if Vals[0] <= 0:
+        return None
+    C = -0.5 * np.linalg.solve(Q, np.array([D, E]))
+    K = 1 + C @ Q @ C
+    if K <= 0:
+        return None
+    return {"centre": C.tolist(), "a": float(np.sqrt(K / Vals[0])), "b": float(np.sqrt(K / Vals[1])),
+            "angle": float(np.arctan2(Vecs[1, 0], Vecs[0, 0]))}
+
+
 def _FitBore(P) -> dict:
     C2, Radius, Std, Filled = _BoreSeed(P), None, None, 0
     for _ in range(8):
@@ -525,6 +557,10 @@ def MeasureRaw(Source) -> dict:
     Comb = np.concatenate([P for P in Secs if len(P)]) if any(len(P) for P in Secs) else np.zeros((0, 2))
     Fit = _FitBore(Comb)
     Slices = [{"height": float(H), "points": int(len(P)), "bins_filled": _Bins(P, Fit["centre"])} for H, P in zip(Heights, Secs)]
+    # The bore as an ellipse too (its two axes and their directions): what a bore that is not round is corrected by
+    Ell = _FitEllipse(_BoreWall(Comb, Fit["centre"]) - np.asarray(Fit["centre"])) if Fit["radius"] and len(Comb) else None
+    if Ell:
+        Ell["centre"] = (np.asarray(Fit["centre"]) + np.asarray(Ell["centre"])).tolist()
     del Secs, Comb
     MinExtent = float(min(Hi3[0] - Lo3[0], Hi3[1] - Lo3[1]))
     Good = bool(Fit["radius"] and Fit["bins_filled"] >= Directions * 0.9
@@ -543,7 +579,7 @@ def MeasureRaw(Source) -> dict:
         Mid = (Zlo + Zhi) / 2
         Bc = Centre + Fit["centre"][0] * U + Fit["centre"][1] * V + Mid * Axis
         Out.update({"inner_diameter": 2 * Fit["radius"], "roundness": Fit["std"] / Fit["radius"],
-                    "bore_origin": Bc.tolist()})
+                    "bore_origin": Bc.tolist(), "bore_ellipse": Ell})
     return Out
 
 
@@ -580,6 +616,57 @@ def ExportScaledStl(Source, Raw: dict, TargetInnerDiameterMm: float, Out) -> int
             F.write(Block.tobytes())
     del Rec
     return int(Count)
+
+
+def CorrectionFor(Raw: dict, TargetInnerDiameterMm: float) -> dict:
+    """The scaling that makes a bore that is not round a circle of the target diameter: along the bore ellipse's major
+    and minor axes separately, and by their geometric mean along the ring axis (the band keeps the average in-plane
+    scale). The outer shape stretches by the same few percent."""
+    E = Raw.get("bore_ellipse")
+    if not E or not Raw.get("bore_ok"):
+        raise ValueError("The bore was not fitted as an ellipse — measure the model again first.")
+    Rt = TargetInnerDiameterMm / 2
+    Sa, Sb = Rt / E["a"], Rt / E["b"]
+    return {"a": E["a"], "b": E["b"], "ellipticity": E["a"] / E["b"], "angle_deg": float(np.degrees(E["angle"])),
+            "scale_major": float(Sa), "scale_minor": float(Sb), "scale_axis": float(np.sqrt(Sa * Sb)),
+            "uniform_scale": TargetInnerDiameterMm / Raw["inner_diameter"], "target_inner_diameter_mm": TargetInnerDiameterMm}
+
+
+def _CorrectedTransform(Raw: dict, Corr: dict):
+    """(origin, matrix) for `(P - origin) @ matrix`: into the ring frame, turned so the bore ellipse's axes are X and Y,
+    scaled per axis — the output has the bore centre at the origin and the ring axis along Z."""
+    F, E = Raw["frame"], Raw["bore_ellipse"]
+    U, V, Ax = (np.asarray(F[K], np.float64) for K in ("u", "v", "axis"))
+    R = np.vstack([U, V, Ax])
+    Th = np.radians(Corr["angle_deg"])
+    C, S = np.cos(Th), np.sin(Th)
+    Sa, Sb, Sw = Corr["scale_major"], Corr["scale_minor"], Corr["scale_axis"]
+    M = R.T @ np.array([[C * Sa, -S * Sb, 0.0], [S * Sa, C * Sb, 0.0], [0.0, 0.0, Sw]])
+    Fc, Ec = np.asarray(Raw["bore_fit"]["centre"]), np.asarray(E["centre"])
+    Origin = np.asarray(Raw["bore_origin"]) + (Ec[0] - Fc[0]) * U + (Ec[1] - Fc[1]) * V
+    return Origin, M
+
+
+def ExportCorrectedStl(Source, Raw: dict, TargetInnerDiameterMm: float, Out) -> dict:
+    """Write the ring with its bore made round (CorrectionFor): bore centre at the origin, ring axis along Z,
+    millimetres. Returns the correction applied."""
+    Corr = CorrectionFor(Raw, TargetInnerDiameterMm)
+    Origin, M = _CorrectedTransform(Raw, Corr)
+    Count = (os.path.getsize(Source) - 84) // 50
+    Rec = np.memmap(Source, dtype=StlRecord, mode="r", offset=84, shape=(Count,))
+    with open(Out, "wb") as F:
+        F.write(b"XJet P3 scaled ring, bore made round".ljust(80, b" "))
+        F.write(np.uint32(Count).tobytes())
+        for S in range(0, Count, Chunk):
+            C = (Rec["v"][S:S + Chunk].astype(np.float64) - Origin) @ M
+            N = np.cross(C[:, 1] - C[:, 0], C[:, 2] - C[:, 0])
+            L = np.linalg.norm(N, axis=1, keepdims=True)
+            Block = np.zeros(len(C), StlRecord)
+            Block["n"] = N / np.where(L > 0, L, 1)
+            Block["v"] = C
+            F.write(Block.tobytes())
+    del Rec
+    return {**Corr, "faces": int(Count)}
 
 
 def WritePreview(Source, Raw: dict, Out, Target: int = PreviewTargetFaces) -> int:

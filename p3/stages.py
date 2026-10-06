@@ -13,7 +13,7 @@ from p3.db import Database, Dumps, Now
 
 Labels = {
     "waiting_hi3d": "Waiting for Hi3D", "generating_3d": "Generating 3D", "downloading_stl": "Downloading STL",
-    "queued": "Queued", "calculating_geometry": "Calculating Geometry", "ready": "Ready",
+    "queued": "Queued", "calculating_geometry": "Calculating Geometry", "correcting_bore": "Making the bore round", "ready": "Ready",
     # Processing finished but the result carries warnings (bore, roundness, open mesh): production
     # review is a separate decision from "the numbers are there".
     "review_required": "Processing complete — production review required",

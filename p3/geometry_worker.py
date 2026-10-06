@@ -69,6 +69,12 @@ def Run(A: dict) -> dict:
         Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"], A.get("label", ""))}
     elif Kind == "export":
         Out = {"faces": g.ExportScaledStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
+    elif Kind == "fix_bore":
+        # A ring whose bore is not round: scale along the bore's two axes so it becomes a circle of the target
+        # diameter, write that STL, measure it again. An older measurement without the ellipse fit is redone first.
+        Raw = A["raw"] if A["raw"].get("bore_ellipse") else g.MeasureRaw(A["source"])
+        Corr = g.ExportCorrectedStl(A["source"], Raw, float(A["target_mm"]), A["output"])
+        Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"])}
     else:
         raise ValueError(f"unknown job kind {Kind}")
     return {"ok": True, **Out, "seconds": round(time.perf_counter() - T, 3)}

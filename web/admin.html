@@ -1065,8 +1065,19 @@
                   </template>
                 </ul>
                 <p class="text-[12px] text-amber-900/70">Viewing or downloading the model does not approve it for production.</p>
-                <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
-                <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
+                <div class="flex flex-wrap gap-2">
+                  <!-- A bore that is not round: scale the model along the bore's two axes so it is a circle of the target size (local work) -->
+                  <button x-show="(t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.bore_correction" class="btn !py-1.5" @click="fixBore(t)">Make the bore round</button>
+                  <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
+                  <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
+                </div>
+              </div>
+            </template>
+            <template x-if="t.bore_correction">
+              <div class="border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+                <p class="text-sm font-semibold text-emerald-900" x-text="'Bore made round for ' + (t.size_label || 'US ' + t.production_size)"></p>
+                <p class="text-[13px] text-emerald-900" x-text="'The bore was ' + ((t.bore_correction.ellipticity - 1) * 100).toFixed(1) + '% longer one way. The model was scaled ×' + t.bore_correction.scale_major.toFixed(3) + ' along the bore’s long axis, ×' + t.bore_correction.scale_minor.toFixed(3) + ' along its short axis and ×' + t.bore_correction.scale_axis.toFixed(3) + ' in height; the bore now deviates ' + ((t.bore_correction.roundness_after || 0) * 100).toFixed(1) + '% from a circle.'"></p>
+                <p class="text-[12px] text-emerald-900/80">The measurements and the STL are this corrected model. The 3D view shows the model as generated; a re-measure resets the correction.</p>
               </div>
             </template>
             <!-- Flagged by an earlier measurement (the current one shows no reason, or the model was never measured with the
