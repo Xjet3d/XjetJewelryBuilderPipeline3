@@ -534,7 +534,8 @@ class Production3D:
         Row = self._Row(Sid)
         # A complete result can be measured again when its bore was corrected (the undo) or when its measurement is
         # older than the current method (the numbers follow the current definition, in place)
-        Again = Row["status"] == "measured" and (self._Corrected(Sid) or not self._CurrentMeasurement(Row["mesh_id"]))
+        Again = Row["status"] == "measured" and (self._Corrected(Sid) or not self._CurrentMeasurement(Row["mesh_id"])
+                                                 or not self._CurrentResult(Sid))
         if Row["status"] not in ("failed", "cancelled", "needs_review") and not Again:
             raise HttpError(409, "not_retryable", "This request is not in a state that can be retried.")
         Mesh = self.Ctx.Db.One("SELECT * FROM meshes WHERE id = ?", (Row["mesh_id"],))
@@ -666,6 +667,12 @@ class Production3D:
         """The model's stored measurement is by the current method (else a re-measure gives the current numbers)."""
         Raw = self._RawRow(MeshId)
         return bool(Raw and Raw["status"] == "measured" and Raw["method_version"] in (FastMethodVersion, CharmGeo.CharmMethodVersion))
+
+    def _CurrentResult(self, Sid: str) -> bool:
+        """This result's production numbers are by the current method (another result on the same model may have
+        had the model measured again since: then this one is finalized again from that measurement — arithmetic)."""
+        G = self.Ctx.Db.One("SELECT method_version FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
+        return bool(G and G["method_version"] in (FastMethodVersion, CharmGeo.CharmMethodVersion))
 
     def _Corrected(self, Sid: str) -> bool:
         """This result's production geometry is its bore made round (FixBore, kept)."""
@@ -800,7 +807,7 @@ class Production3D:
             "can_retry": R["status"] in ("failed", "cancelled")
                          or (R["status"] == "needs_review" and not Current)    # e.g. an improved measurement
                          or (R["status"] in ("measured", "needs_review") and self._Corrected(Sid))    # undo a bore correction
-                         or (R["status"] == "measured" and not Current),   # re-measure with the current method, in place
+                         or (R["status"] == "measured" and (not Current or not self._CurrentResult(Sid))),   # re-measure in place
             "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
             "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
                             "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),

@@ -462,3 +462,28 @@ async def test_a_correction_that_makes_the_bore_rounder_but_not_round_is_kept_fo
     await H.Idle()
     U = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
     assert U["bore_correction"] is None and [r["code"] for r in U["review"]] == ["bore_not_round"]
+
+
+async def test_a_result_measured_by_an_older_method_can_be_measured_again_in_place(HX):
+    """A complete result whose numbers are older than the current method (a new measurement version, or another result
+    on the same model had it measured again) offers "Re-measure": the retry finalizes it again in place — the same
+    result, current numbers. A current result does not offer it."""
+    H = HX
+    Did = (await H.NewDesign("A plain band for the re-measure"))["design_id"]
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert R3["status"] == "measured" and not R3["live"]["can_retry"]
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 409
+    # The result's numbers fall behind the method (as after a new measurement version): re-measure is offered and works
+    H.Ctx.Db.Execute("UPDATE geometry_results SET method_version = 'ring-measure-once-v0' WHERE session_3d_id = ?", (R3["id"],))
+    S = (await H.Client.get(f"/api/admin/3d/{R3['id']}/status", headers=Admin)).json()
+    assert S["can_retry"] and S["retry_is_local"]
+    R = await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)
+    assert R.status_code == 200 and R.json()["retried"] == "geometry"
+    await H.Idle()
+    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert F["status"] == "measured" and F["geometry"]["production"]["method_version"] == R3["geometry"]["production"]["method_version"]
+    assert F["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(R3["geometry"]["production"]["inner_diameter_mm"])
+    assert not F["live"]["can_retry"]
+    assert len((await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"]) == 1     # in place, no new result
