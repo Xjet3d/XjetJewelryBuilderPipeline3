@@ -1162,6 +1162,15 @@ function adminApp() {
       try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Making the bore round — the numbers follow in a moment'); }
       catch (e) { this.fail(e); }
     },
+    // Undo a bore made round: the result goes back to the uniform scaling of the model as generated (local; the bore is flagged again)
+    async undoBore(t) {
+      const ok = await this.ask({ title: `Undo making the bore of ${t.ring_id || 'this model'} round?`,
+        text: 'The result goes back to the uniform scaling of the model as generated, and the bore is flagged as not round again. Local work — no Hi3D call.',
+        confirmLabel: 'Undo' });
+      if (!ok) return;
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/retry`); await this.loadSession(); this.notify('Back to the model as generated'); }
+      catch (e) { this.fail(e); }
+    },
     // The Admin's decision on a flagged 3D result: produce it as measured
     async accept3d(t) {
       const reasons = (t.review || []).map(r => r.text).join(' ') || t.error || '';
@@ -1436,6 +1445,7 @@ function adminApp() {
       if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
       if (e.kind === 'admin_movie_requested') return 'A new 360° movie was requested by ' + (d.by || 'admin') + (d.config_version ? ' (' + d.config_version + ')' : '');
       if (e.kind === 'admin_3d_fix_requested') return 'Making the bore round for ' + (d.production_size ? this.size3dLabel(d.production_size) : 'this result') + (d.roundness != null ? ' (it deviated ' + (d.roundness * 100).toFixed(1) + '%)' : '') + ' — ' + (d.by || 'admin');
+      if (e.kind === 'admin_3d_bore_fixed' && d.kept === false) return (d.reason || 'Making the bore round did not work.') + ' The model stays as measured.';
       if (e.kind === 'admin_3d_bore_fixed') return 'Bore made round: ×' + (d.scale_major || 0).toFixed(3) + ' / ×' + (d.scale_minor || 0).toFixed(3) + (d.inner_diameter_mm ? ' · inner Ø ' + d.inner_diameter_mm.toFixed(2) + ' mm' : '') + (d.roundness != null ? ' · deviation ' + (d.roundness * 100).toFixed(1) + '%' : '') + (d.weight_g != null ? ' · ' + d.weight_g + ' g' : '') + (d.status === 'needs_review' ? ' · still needs review' : '');
       if (e.kind === 'admin_3d_accepted') return 'Accepted for production as measured by ' + (d.by || 'admin') + (d.reasons ? ' — ' + d.reasons : '') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;

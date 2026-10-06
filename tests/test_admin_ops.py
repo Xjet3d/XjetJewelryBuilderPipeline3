@@ -345,18 +345,71 @@ async def test_a_bore_that_is_not_round_can_be_made_round_for_a_result(HX, monke
     C = F["bore_correction"]
     assert C["scale_major"] < C["scale_minor"] and C["roundness_after"] < 0.01 and C["target_inner_diameter_mm"] == pytest.approx(Target)
     P = F["geometry"]["production"]
-    assert P["inner_diameter_mm"] == pytest.approx(Target, rel=0.005) and P["stl_path"].endswith(f"round_{R3['id']}.stl")
-    assert F["scaled_stl"] == "stored" and F["price"]["weight_g"] > 0
+    assert P["inner_diameter_mm"] == pytest.approx(Target, rel=0.005) and P["stl_path"] is None     # exported on demand
+    assert F["scaled_stl"] == "on_demand" and F["price"]["weight_g"] > 0 and F["live"]["can_retry"]  # (the undo)
     assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs                     # no Hi3D call
-    # Every download path serves the corrected model
+    assert not list((H.Ctx.Settings.DevDir / "exports").glob(f"round_{R3['id']}_*"))   # the measured file is temporary
+    # The scaled STL is the corrected model, exported on demand like the uniform one (and reused while it lasts)
     E = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
-    assert E["job_id"] == "stored" and E["status"] == "done"
-    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/stored", headers=Admin)).json()
+    assert E["job_id"] != "stored"
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E['job_id']}", headers=Admin)).json()
+    assert E["status"] == "done", E
     File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
     assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring, bore made round"
-    L = (await H.Client.post(f"/api/admin/3d/{R3['id']}/download-link", json={"stage": "production"}, headers=Admin)).json()
-    assert L["bytes"] == len(File.content)
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()["job_id"] == E["job_id"]
     Kinds = [X["kind"] for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"]]
     assert "admin_3d_fix_requested" in Kinds and "admin_3d_bore_fixed" in Kinds
     Lst = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
     assert next(X for X in Lst if X["design_id"] == Did)["three_d_state"] == "complete"
+    # Undo: back to the model as generated — the uniform scaling, flagged again; a fresh export is the uniform one
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 200
+    await H.Idle()
+    U = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert U["bore_correction"] is None and [r["code"] for r in U["review"]] == ["bore_not_round"] and not U["live"]["can_retry"]
+    assert U["geometry"]["production"]["volume_mm3"] == pytest.approx(R3["geometry"]["production"]["volume_mm3"])
+    E2 = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
+    assert E2["job_id"] != E["job_id"]
+    await H.Idle()
+    E2 = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E2['job_id']}", headers=Admin)).json()
+    File = await H.Client.get(E2["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring"
+
+
+async def test_making_the_bore_round_is_not_kept_when_the_bore_is_not_an_ellipse(HX, monkeypatch):
+    """A bore that is not an ellipse (here three-lobed) cannot be made round by scaling: the attempt leaves the result
+    as measured — the uniform scaling, its review reason, nothing on disk — and is recorded on it with the next step;
+    the button is not offered again."""
+    import numpy as np
+    import trimesh
+    from p3.providers import mock
+
+    def Lobed(Format):
+        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+        V = M.vertices.copy()
+        V[:, :2] *= (1 + 0.08 * np.cos(3 * np.arctan2(V[:, 1], V[:, 0])))[:, None]
+        M.vertices = V
+        return M.export(file_type=Format)
+    monkeypatch.setattr(mock, "_MeshBytes", Lobed)
+    H = HX
+    Did = (await H.NewDesign("A band with a three-lobed bore"))["design_id"]
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    assert [r["code"] for r in R3["review"]] == ["bore_not_round"] and R3["bore_correction_failed"] is None
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200
+    await H.Idle()
+    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert F["status"] == "needs_review" and F["production_state"] == "review_required" and F["bore_correction"] is None
+    assert F["bore_correction_failed"]["roundness_after"] > 0.04 and "did not work" in F["error"]
+    assert [r["code"] for r in F["review"]] == ["bore_not_round"] and "not an ellipse" in F["review"][0]["action"]
+    assert F["geometry"]["production"]["volume_mm3"] == pytest.approx(R3["geometry"]["production"]["volume_mm3"])
+    assert F["scaled_stl"] == "on_demand" and not F["live"]["can_retry"]
+    assert not list((H.Ctx.Settings.DevDir / "exports").glob(f"round_{R3['id']}_*"))
+    Ev = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"] if X["kind"] == "admin_3d_bore_fixed")
+    assert Ev["data"]["kept"] is False
+    E = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()     # still the uniform scaling
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E['job_id']}", headers=Admin)).json()
+    File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring"

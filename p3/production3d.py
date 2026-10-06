@@ -70,10 +70,12 @@ def ProductionState(Status: str, Integrity: str | None = None, Accepted: bool = 
     return "complete"
 
 
-def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected: bool = False) -> list[dict]:
+def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected: bool = False,
+                Attempt: dict | None = None) -> list[dict]:
     """Why a result needs production review, each with the recommended next step (shown before the
     measurements). Empty when the model passed every check. Corrected = this result's production geometry had its
-    bore made round (Production3D.FixBore), so the raw model's roundness no longer applies to it."""
+    bore made round (Production3D.FixBore), so the raw model's roundness no longer applies to it; Attempt = making
+    it round was tried for this result and did not give a round bore (the attempt, with its reason)."""
     Items = []
     if Status in ("failed", "cancelled") or Status in Waiting:
         return Items
@@ -83,11 +85,14 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected:
                       "action": "Inspect the model in 3D. If it is not a ring, do not produce it: model a different "
                                 "option (a new Hi3D model) instead."})
     elif not Corrected and Raw.get("roundness") is not None and Raw["roundness"] > MaxRoundness:
+        if Attempt:                                   # scaling along the bore's axes was tried and did not give a circle
+            Action = (Attempt["reason"] + " Check the inner diameter in the 3D view and accept it as measured, or model a "
+                      "different option (a new Hi3D model).")
+        else:
+            Action = ("Make the bore round (the model is scaled along the bore's two axes so the bore is a circle of the "
+                      "target size, then measured again), or check the inner diameter in the 3D view and accept it as measured.")
         Items.append({"code": "bore_not_round", "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — "
-                                                        "the inner diameter is uncertain.",
-                      "action": "Make the bore round (the model is scaled along the bore's two axes so the bore is a "
-                                "circle of the target size, then measured again), or check the inner diameter in the "
-                                "3D view and accept it as measured."})
+                                                        "the inner diameter is uncertain.", "action": Action})
     if Raw and not Raw.get("closed_heuristic", True):
         Items.append({"code": "open_mesh_heuristic", "text": "The volume reference check suggests the mesh may not be closed — "
                                                              "volume and weight may be wrong.",
@@ -497,9 +502,10 @@ class Production3D:
         return self.Get(Sid)
 
     def Retry(self, Sid: str) -> dict:
-        """Retry from the last successful stage. With the raw STL on disk this is local only (no Hi3D charge)."""
+        """Retry from the last successful stage. With the raw STL on disk this is local only (no Hi3D charge). A result
+        whose bore was made round goes back to the model as generated (its uniform scaling) this way — the undo."""
         Row = self._Row(Sid)
-        if Row["status"] not in ("failed", "cancelled", "needs_review"):
+        if Row["status"] not in ("failed", "cancelled", "needs_review") and not (Row["status"] == "measured" and self._Corrected(Sid)):
             raise HttpError(409, "not_retryable", "This request is not in a state that can be retried.")
         Mesh = self.Ctx.Db.One("SELECT * FROM meshes WHERE id = ?", (Row["mesh_id"],))
         if Mesh and Mesh["status"] == "ready":
@@ -516,9 +522,10 @@ class Production3D:
 
     def FixBore(self, Sid: str, By: str) -> dict:
         """Admin: a ring whose bore is not round is scaled along the bore's two axes so the bore becomes a circle of
-        the target diameter, written as this result's production STL and measured again — local work on the existing
-        Hi3D model, no Hi3D call (geometry.ExportCorrectedStl in the geometry queue). The outer shape stretches by
-        the same few percent; the 3D view keeps showing the model as generated."""
+        the target diameter and measured again — local work on the existing Hi3D model, no Hi3D call
+        (geometry.ExportCorrectedStl in the geometry queue; _BoreFixed keeps the correction only if the bore came out
+        round and the right size). The outer shape stretches by the same few percent; the scaled STL is made on demand
+        from the same correction, and the 3D view keeps showing the model as generated."""
         Db, Row = self.Ctx.Db, self._Row(Sid)
         if self._IsCharmMesh(Row["mesh_id"]):
             raise HttpError(409, "not_a_ring", "Only a ring's bore can be made round.")
@@ -534,8 +541,8 @@ class Production3D:
         Target = UsSizeToInnerDiameterMm(Row["production_size"])
         Db.Update("session_3d", Sid, status="queued", error=None, accepted_at=None, accepted_by=None, accepted_note=None)
         Stages.Begin(Db, Sid, "queued")
-        self.Queue.Enqueue("fix_bore", Row["mesh_id"], Sid, Params={
-            "source": Raw["stl_path"], "raw": M, "target_mm": Target, "output": f"meshes/{Row['mesh_id']}/round_{Sid}.stl",
+        self.Queue.Enqueue("fix_bore", Row["mesh_id"], Sid, Params={           # output: measured, then deleted
+            "source": Raw["stl_path"], "raw": M, "target_mm": Target, "output": f"exports/round_{Sid}_{NewId('x')}.stl",
             "previous_error": Row["error"]}, Dedupe=False)
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_fix_requested", Row["design_id"], session_3d_id=Sid,
@@ -551,12 +558,28 @@ class Production3D:
             return
         P = json.loads(Job["params_json"] or "{}")
         if Error:
-            Msg = ((P.get("previous_error") or "") + f" Making the bore round failed: {Error}.").strip()
-            Db.Update("session_3d", Sid, status="needs_review", error=Msg)
-            Stages.Begin(Db, Sid, "review_required", problems=[Msg])
+            self._BoreNotKept(Sid, P, f"Making the bore round failed: {Error}.", {})
             return
         Row, T = self._Row(Sid), Now()
         Mz, Corr = Result["measured"], Result["correction"]
+        Target = UsSizeToInnerDiameterMm(Row["production_size"])
+        # The correction only counts if it gives a round bore of the size's diameter
+        if not Mz.get("bore_ok"):
+            Why = "no ring bore was found after the correction"
+        elif Mz["roundness"] > MaxRoundness:
+            Why = (f"the bore still deviates {Mz['roundness'] * 100:.1f}% from a circle after the correction — its inner wall "
+                   "is not an ellipse, so scaling cannot make it round")
+        elif abs(Mz["inner_diameter"] - Target) > 0.01 * Target:
+            Why = f"the corrected bore measures {Mz['inner_diameter']:.2f} mm, not the {Target:.2f} mm of the size"
+        else:
+            Why = None
+        if Why:
+            self._BoreNotKept(Sid, P, f"Making the bore round did not work: {Why}.",
+                              {**Corr, "roundness_after": Mz.get("roundness"), "inner_diameter_after": Mz.get("inner_diameter")})
+            return
+        # The corrected model's own numbers become this result's production geometry (the STL is made on demand from
+        # the same correction, like the uniform scaling)
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))
         Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
         Checks = {"bore_corrected": Corr, "roundness": Mz.get("roundness"), "closed_heuristic": Mz["closed_heuristic"],
@@ -567,31 +590,44 @@ class Production3D:
                    "inner_diameter_mm, volume_mm3, surface_area_mm2, watertight, scale_factor, stl_path, "
                    "method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (Gid, Sid, "production", Mz["extent_x"], Mz["extent_y"], Mz["extent_z"], Mz.get("inner_diameter"),
-                    Mz["volume"], Mz["area"], int(Mz["closed_heuristic"]), Corr["scale_axis"], P["output"],
+                    Mz["volume"], Mz["area"], int(Mz["closed_heuristic"]), Corr["scale_axis"], None,
                     Mz["method_version"], Dumps(Checks), T))
         Weight = self._Price(Row, Gid, Mz["volume"] if Mz["closed_heuristic"] else None)
-        Target = UsSizeToInnerDiameterMm(Row["production_size"])
-        Problems = []
-        if not Mz.get("bore_ok"):
-            Problems.append("No ring bore was found after the correction.")
-        elif Mz["roundness"] > MaxRoundness:
-            Problems.append(f"The bore is still not round ({Mz['roundness'] * 100:.1f}% deviation) after the correction.")
-        elif abs(Mz["inner_diameter"] - Target) > 0.01 * Target:
-            Problems.append(f"The corrected bore measures {Mz['inner_diameter']:.2f} mm, not the {Target:.2f} mm of the size.")
-        if not Mz["closed_heuristic"]:
-            Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
+        Problems = [] if Mz["closed_heuristic"] else ["The volume reference check suggests the mesh may not be closed — check the volume."]
         Status = "needs_review" if Problems else "measured"
         Db.Update("session_3d", Sid, status=Status, error=" ".join(Problems) or None)
         Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Problems} if Problems else {}))
-        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fixed", Row["design_id"], session_3d_id=Sid,
-                        status=Status, scale_major=Corr["scale_major"], scale_minor=Corr["scale_minor"],
+                        status=Status, kept=True, scale_major=Corr["scale_major"], scale_minor=Corr["scale_minor"],
                         inner_diameter_mm=Mz.get("inner_diameter"), roundness=Mz.get("roundness"), volume_mm3=Mz["volume"],
                         weight_g=Weight)
 
+    def _BoreNotKept(self, Sid: str, P: dict, Msg: str, Details: dict) -> None:
+        """Making the bore round gave no round bore of the right size (or failed): the model stays as measured — the
+        uniform scaling, with its reasons for review — and the attempt is kept with the result's production geometry
+        so it is not offered again for this measurement (a re-measure starts over)."""
+        Db, T = self.Ctx.Db, Now()
+        G = Db.One("SELECT id, checks_json FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
+        if G:
+            Checks = json.loads(G["checks_json"] or "{}")
+            Checks["bore_correction_failed"] = {**Details, "reason": Msg, "at": T}
+            Db.Execute("UPDATE geometry_results SET checks_json = ? WHERE id = ?", (Dumps(Checks), G["id"]))
+        Db.Update("session_3d", Sid, status="needs_review", error=((P.get("previous_error") or "") + " " + Msg).strip())
+        Stages.Begin(Db, Sid, "review_required", problems=[Msg])
+        Row = self._Row(Sid)
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fixed", Row["design_id"], session_3d_id=Sid,
+                        status="needs_review", kept=False, reason=Msg,
+                        **{K: Details[K] for K in ("scale_major", "scale_minor", "roundness_after") if K in Details})
+
+    def _Corrected(self, Sid: str) -> bool:
+        """This result's production geometry is its bore made round (FixBore, kept)."""
+        G = self.Ctx.Db.One("SELECT checks_json FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
+        return bool(G and json.loads(G["checks_json"] or "{}").get("bore_corrected"))
+
     def StoredProduction(self, Sid: str) -> dict | None:
-        """A production STL kept on disk for this result (its bore made round; or a v2 row): served as a finished
-        export — nothing to queue."""
+        """A production STL kept on disk for this result (a v2 row — later results export on demand): served as a
+        finished export, nothing to queue."""
         G = self.Ctx.Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production' "
                             "AND stl_path IS NOT NULL", (Sid,))
         P = assets.Resolve(self.Ctx.Settings.DevDir, G["stl_path"]) if G else None
@@ -631,15 +667,16 @@ class Production3D:
             raise HttpError(409, "no_bore", "No ring bore was found, so the model cannot be scaled to a ring size.")
         self.Queue.CleanupExports()
         Target = Products.Charm3DHeight(Row["production_size"]) if Charm else UsSizeToInnerDiameterMm(Row["production_size"])
+        Round = self._Corrected(Sid)                 # this result's bore was made round: the corrected scaling, not the uniform one
         for J in self.Ctx.Db.All("SELECT * FROM geometry_jobs WHERE kind = 'export' AND session_3d_id = ? AND status IN "
                                  "('queued','running','done') ORDER BY created_at DESC", (Sid,)):
             P = json.loads(J["params_json"])
             Usable = J["status"] != "done" or (J["output_path"] and (self.Ctx.Settings.DevDir / J["output_path"]).is_file())
-            if Usable and P.get("target_mm") == Target and P.get("raw_sha256") == Raw["sha256"]:
+            if Usable and P.get("target_mm") == Target and P.get("raw_sha256") == Raw["sha256"] and bool(P.get("round")) == Round:
                 return self.ExportStatus(Sid, J["id"])
         Job = self.Queue.Enqueue("export", Row["mesh_id"], Sid, Dedupe=False, Params={
             "source": Raw["stl_path"], "raw": Measured, "target_mm": Target, "raw_sha256": Raw["sha256"],
-            "output": f"exports/{Sid}_{NewId('x')}.stl",
+            "output": f"exports/{Sid}_{NewId('x')}.stl", **({"round": True} if Round else {}),
             **({"product": "charm", "label": f"{float(Row['production_size']):g} mm {Products.CharmSizeDefinition['short']}"} if Charm else {})})
         return self.ExportStatus(Sid, Job["id"])
 
@@ -714,7 +751,8 @@ class Production3D:
             "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
             "can_cancel": bool(Job),
             "can_retry": R["status"] in ("failed", "cancelled")
-                         or (R["status"] == "needs_review" and not Current),   # e.g. an improved measurement
+                         or (R["status"] == "needs_review" and not Current)    # e.g. an improved measurement
+                         or (R["status"] == "measured" and self._Corrected(Sid)),   # undo a bore made round
             "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
             "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
                             "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),
@@ -738,8 +776,9 @@ class Production3D:
         RawMeasured = json.loads(RawRow["measurement_json"]) if RawRow and RawRow["measurement_json"] else None
         Integrity = RawRow["integrity"] if RawRow else None
         Charm = Products.Of(Db, R["design_id"]) == Products.Charm
-        Correction = (Prod.get("checks") or {}).get("bore_corrected")      # this result's bore was made round
-        Review = ReviewItems(R["status"], RawMeasured, Integrity, Corrected=bool(Correction))
+        Correction = (Prod.get("checks") or {}).get("bore_corrected")      # this result's bore was made round …
+        Attempt = (Prod.get("checks") or {}).get("bore_correction_failed")  # … or that was tried and gave no circle
+        Review = ReviewItems(R["status"], RawMeasured, Integrity, Corrected=bool(Correction), Attempt=Attempt)
         Out = {
             **R, "target_inner_diameter_mm": UsSizeToInnerDiameterMm(R["production_size"]),
             "material_label": Mat.Label if Mat else R["material_id"], "density_g_cm3": Mat.DensityGCm3 if Mat else None,
@@ -754,6 +793,7 @@ class Production3D:
             "accepted": {"at": R["accepted_at"], "by": R["accepted_by"], "note": R["accepted_note"]} if R["accepted_at"] else None,
             # The bore was made round for this result: the scaling applied, and the corrected model's own roundness
             "bore_correction": {**Correction, "roundness_after": (Prod.get("checks") or {}).get("roundness")} if Correction else None,
+            "bore_correction_failed": Attempt,
             "raw_available": bool(Mesh and Mesh["status"] == "ready"),
             "hi3d": Mesh and {"mesh_id": Mesh["id"], "status": Mesh["status"], "endpoint": Mesh["endpoint"],
                               "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else

@@ -4,9 +4,10 @@ Multi-million-face models need a lot of memory. Running each job in a child proc
 address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit only fails this job —
 it can never take the web server down.
 
-args.json: {"kind": "measure" | "preview" | "integrity" | "export", "source": <raw STL>, "result": <json out>,
+args.json: {"kind": "measure" | "preview" | "integrity" | "export" | "fix_bore", "source": <raw STL>, "result": <json out>,
             "product": "charm" for a charm's measure / export (p3/charmgeometry.py; rings: absent),
             "raw": {measurement}, "target_mm": <float>, "output": <file out>,
+            export only: "round": true for a ring whose bore was made round (the corrected scaling, not the uniform one),
             measure only: "hash": bool (SHA-256 when not hashed at download), "convert_to": <binary STL path>,
             "format": <source format>}
 exit: 0 = result written · 3 = out of memory · 1 = other error (message in the result file)
@@ -67,14 +68,26 @@ def Run(A: dict) -> dict:
     elif Kind == "export" and A.get("product") == "charm":
         from p3 import charmgeometry as cg
         Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"], A.get("label", ""))}
+    elif Kind == "export" and A.get("round"):
+        # A result whose bore was made round: the same correction again (the measurement is deterministic, so an
+        # older measurement without the ellipse fit is simply redone)
+        Raw = A["raw"] if A["raw"].get("bore_ellipse") else g.MeasureRaw(A["source"])
+        Out = {"faces": g.ExportCorrectedStl(A["source"], Raw, float(A["target_mm"]), A["output"])["faces"]}
     elif Kind == "export":
         Out = {"faces": g.ExportScaledStl(A["source"], A["raw"], float(A["target_mm"]), A["output"])}
     elif Kind == "fix_bore":
         # A ring whose bore is not round: scale along the bore's two axes so it becomes a circle of the target
-        # diameter, write that STL, measure it again. An older measurement without the ellipse fit is redone first.
+        # diameter and measure that model. The file is temporary — the STL is exported on demand like the uniform
+        # scaling. An older measurement without the ellipse fit is redone first.
         Raw = A["raw"] if A["raw"].get("bore_ellipse") else g.MeasureRaw(A["source"])
         Corr = g.ExportCorrectedStl(A["source"], Raw, float(A["target_mm"]), A["output"])
-        Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"])}
+        try:
+            Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"])}
+        finally:
+            try:
+                os.remove(A["output"])
+            except OSError:
+                pass
     else:
         raise ValueError(f"unknown job kind {Kind}")
     return {"ok": True, **Out, "seconds": round(time.perf_counter() - T, 3)}

@@ -788,7 +788,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/3d/{Sid}/export/{Jid}")
     async def Export3DStatus(Sid: str, Jid: str, order: str | None = None, authorization: str | None = Header(None)):
         Admin(authorization)
-        if Jid == "stored":                           # a production STL kept on disk (its bore made round; or a v2 row)
+        if Jid == "stored":                           # a production STL kept on disk (a v2 row)
             S = Production.StoredProduction(Sid)
             if S is None:
                 raise HttpError(404, "job_not_found", "Export not found.")
