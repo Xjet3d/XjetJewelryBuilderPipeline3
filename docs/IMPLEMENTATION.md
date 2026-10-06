@@ -62,6 +62,7 @@ This document separates three things:
 - **Six requests per batch, one image each.** The provider caps `num_images` at 4 (see §4), so a batch is six single-image requests, each with its own seed. This gives per-slot identity, retry, and status, and a failed slot never regenerates successful ones.
 - **Concurrency.** Up to 6 image requests run at once server-wide (`images.max_concurrent_requests`), so one batch runs fully in parallel.
 - **Duplicate outputs.** An exact duplicate within a batch (by SHA-256) is re-requested once with a new seed (`max_duplicate_retries_per_slot: 1`). A second duplicate marks that slot `failed/duplicate_output`, and the user can retry it.
+- **The model's own misses (2026-10-06).** When fal.ai reports that the model finished without an image (`no_media_generated`: Nano Banana answered with text or declined that one attempt — it happened on 1 slot of 4 of a charm refinement on proto, the three siblings fine) or that its partner service failed (`provider_failed`), the slot is re-requested with a new seed up to `max_model_retries_per_slot: 2` times before it is shown as failed (`images.AutoRetryCodes`); every request is recorded as usage. Billing, content, timeout and unknown-outcome failures are never resubmitted. The error text stored and shown is one sentence with its own code: fal.ai's 422 body echoes the whole request in `detail[].input` (prompt and system prompt — 13,000 characters once reached a customer's tile); `providers/fal._Detail` takes only the messages and the type, and every provider error is capped at `MaxErrorChars` (400).
 - **Refinement presentation.** The current grid stays visible with a "Creating six refinements… n of 6 ready" line. When the new batch finishes, the view switches to it and the selection is cleared so the user chooses again. Earlier batches stay as tabs ("Original", "Refinement 1", …).
 - **Partial batches.** Ready images can be selected while other slots finish or fail. The UI states "n of 6 designs are ready" and offers "Retry missing designs". A batch is only labelled `complete` at 6/6.
 - **Movie does not gate price or bag.** The movie is a preview. A failed movie leaves the image, material, size, price, and Add to Bag usable, with a "Retry movie" action.
@@ -135,7 +136,7 @@ config/                      generation params, prompts, catalog, pricing profil
 **Restart reconciliation** (on startup):
 
 - A job with a persisted `provider_request_id` resumes polling. It is not resubmitted.
-- A job without one (possibly submitted just before a crash) is marked `failed/interrupted` (candidate) or `interrupted` (movie/mesh) and waits for an explicit user retry. **Paid work is never resubmitted automatically.**
+- A job without one (possibly submitted just before a crash) is marked `failed/interrupted` (candidate) or `interrupted` (movie/mesh) and waits for an explicit user retry. **Work whose outcome is unknown is never resubmitted automatically** (a request the provider has reported as finished without an image is a known outcome: it is re-requested as a duplicate is — §3).
 
 **Late results:** workers write only their own candidate, movie, or mesh row. Nothing asynchronous changes `designs.selected_candidate_id`. The UI ignores poll responses for any design or batch other than the one they were issued for.
 

@@ -166,6 +166,37 @@ async def test_fal_error_classification():
     assert Info.value.Code == "billing"
 
 
+def test_no_image_from_the_model_is_a_short_retryable_error_never_the_echoed_request():
+    """fal.ai's 422 for a model that returned no image (`no_media_generated`) echoes the whole request back in
+    `detail[].input` — the prompt, the system prompt and all. The error a customer or the Admin sees is one
+    sentence with its own code; the echoed input never reaches the database or the screen."""
+    from p3.providers.fal import NoMediaMessage, MaxErrorChars, _Detail, _Wrap
+    from p3.providers.base import ProviderError
+    from p3.runner import FailureFor
+    Detail = [{"loc": ["body"], "msg": "The model did not generate the expected output for this prompt. Please review "
+                                        "your inputs and try again.", "type": "no_media_generated",
+               "url": "https://docs.fal.ai/errors#no_media_generated",
+               "input": {"prompt": "Edit the metal jewelry charm " * 400, "system_prompt": "SECRET PROMPT " * 300,
+                         "image_urls": ["https://v3.fal.media/files/x.png"], "seed": 1038744707}}]
+    E = fal_client.FalClientHTTPError(Detail, 422, {}, response=httpx.Response(422))
+    assert _Detail(E) == (Detail[0]["msg"], "no_media_generated")
+    W = _Wrap(E)
+    assert isinstance(W, ProviderError) and W.Code == "no_media_generated"
+    Message, Code = FailureFor(W)
+    assert Message == NoMediaMessage and len(Message) < MaxErrorChars and Code == "no_media_generated"
+    for Leak in ("SECRET PROMPT", "Edit the metal", "input", "fal.media", "1038744707"):
+        assert Leak not in Message
+    # Any other structured 422: the messages only, capped, with the input left out
+    Other = fal_client.FalClientHTTPError([{"loc": ["body", "prompt"], "msg": "field required", "type": "value_error.missing",
+                                           "input": {"system_prompt": "SECRET PROMPT " * 300}}], 422, {},
+                                          response=httpx.Response(422))
+    Message, Code = FailureFor(_Wrap(Other))
+    assert Message == "HTTP 422: field required" and Code == "provider_error"
+    # A plain-text body is capped too
+    Long = fal_client.FalClientHTTPError("x" * 5000, 400, {}, response=httpx.Response(400))
+    assert len(FailureFor(_Wrap(Long))[0]) == MaxErrorChars
+
+
 def test_downstream_service_error_is_a_failed_generation_not_unreachable():
     from p3.providers.fal import _Wrap
     from p3.providers.base import ProviderError, TransientProviderError

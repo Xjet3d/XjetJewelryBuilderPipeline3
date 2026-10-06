@@ -206,6 +206,8 @@ class MockProvider:
         Req = self.Requests[RequestId]
         if Req["outcome"] == "fail":
             raise ProviderError("Mock provider failure")
+        if Req["outcome"] == "nomedia":            # the model finished without an image (fal: no_media_generated)
+            raise ProviderError("Mock: the model returned no image.", "no_media_generated")
         Args = Req["arguments"]
         Url = f"mock://result/{RequestId}"
         if Endpoint in (endpoints.ImageGenerate, endpoints.ImageEdit):

@@ -226,10 +226,16 @@ class ImageService:
                            error=None, error_code=None, duplicate_retries=0, seed=_NewSeed())
 
     # ── background driver ────────────────────────────────────────────────
+    # Failures the provider reports as the model's own miss on one attempt (no image came back; the partner service
+    # failed): nothing is wrong with the input, so the slot is re-requested with a new seed, a bounded number of
+    # times, before it is shown as failed. Never for a billing, content, timeout or unknown-outcome failure.
+    AutoRetryCodes = ("no_media_generated", "provider_failed")
+
     async def _Drive(self, CandidateId: str) -> None:
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
+        Retried = 0                                   # automatic re-requests in this run of the slot
         async with Ctx.Semaphore():
             while True:
                 Cand = Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
@@ -261,6 +267,13 @@ class ImageService:
                     # Duplicate that was reset for another attempt: loop and resubmit.
                 except Exception as E:
                     Message, Code = FailureFor(E)
+                    if Code in self.AutoRetryCodes and Retried < Ctx.Gen.Images.MaxModelRetriesPerSlot:
+                        Retried += 1
+                        Logger.info("Candidate %s: %s — re-requesting with a new seed (%d of %d)", CandidateId, Code,
+                                    Retried, Ctx.Gen.Images.MaxModelRetriesPerSlot)
+                        Db.Update("candidates", CandidateId, status="pending", provider_request_id=None,
+                                  error=None, error_code=None, seed=_NewSeed())
+                        continue
                     Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
                     Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
                     return

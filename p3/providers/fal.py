@@ -7,23 +7,44 @@ from p3.providers.base import ProviderError, ProviderStatus, TransientProviderEr
 
 _TransientHttp = {408, 425, 429, 500, 502, 503, 504}
 MaxDownloadBytes = 512 * 1024 * 1024
+MaxErrorChars = 400                      # what a customer or the Admin sees of a provider error: a sentence, never a dump
+NoMediaMessage = ("The AI model returned no image for this request. This happens now and then, with nothing wrong in "
+                  "your description — you can retry it.")
+
+
+def _Detail(E) -> tuple[str, str | None]:
+    """fal.ai's error body as (text, error type). A validation-style body is a `detail` list of
+    {loc, msg, type, url, input}: only the messages and the type are used — never `input`, which echoes the whole
+    request (prompt, system prompt and all; a 13,000-character error once reached a customer's screen)."""
+    M = getattr(E, "message", E)
+    Items = [X for X in M if isinstance(X, dict)] if isinstance(M, (list, tuple)) else [M] if isinstance(M, dict) else []
+    if Items:
+        Text = "; ".join(str(X.get("msg") or X.get("message") or "") for X in Items if X.get("msg") or X.get("message"))
+        Kind = next((str(X["type"]) for X in Items if X.get("type")), None)
+        return Text or f"HTTP {getattr(E, 'status_code', '')}".strip(), Kind
+    return str(M), getattr(E, "error_type", None)
 
 
 def _Wrap(E: Exception) -> Exception:
     if isinstance(E, (httpx.TransportError, fal_client.FalClientTimeoutError)):
         return TransientProviderError(str(E))
     if isinstance(E, fal_client.FalClientHTTPError):
-        if "downstream_service_error" in str(E) or "Downstream service error" in str(E):
+        Text, Kind = _Detail(E)
+        if Kind == "no_media_generated" or "no_media_generated" in Text:
+            # The model finished without an image (it answered with text, or declined this one attempt). Not a fault
+            # of the input: the slot is re-requested with a new seed (p3/images.py) before anyone sees a failure.
+            return ProviderError(NoMediaMessage, "no_media_generated")
+        if Kind == "downstream_service_error" or "downstream_service_error" in Text or "Downstream service error" in Text:
             # fal.ai reports that the model's own (partner) service failed on this request. It is a
             # failed generation, not a connection problem, so it is not retried as transient.
             return ProviderError("The AI service failed to generate this result (fal.ai: downstream service error). "
                                  "You can retry; if it keeps failing, check the model settings.", "provider_failed")
         if E.status_code in _TransientHttp:
-            return TransientProviderError(f"HTTP {E.status_code}: {E}")
-        Message, Code = ClassifyErrorMessage(f"HTTP {E.status_code}: {E}")
-        return ProviderError(Message, Code)
+            return TransientProviderError(f"HTTP {E.status_code}: {Text[:MaxErrorChars]}")
+        Message, Code = ClassifyErrorMessage(f"HTTP {E.status_code}: {Text}")
+        return ProviderError(Message[:MaxErrorChars], Code)
     Message, Code = ClassifyErrorMessage(str(E))
-    return ProviderError(Message, Code)
+    return ProviderError(Message[:MaxErrorChars], Code)
 
 
 class FalProvider:

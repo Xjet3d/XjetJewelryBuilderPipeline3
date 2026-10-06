@@ -166,6 +166,37 @@ async def test_exact_duplicate_output_is_retried_then_bounded(H):
     assert Codes.count("duplicate_output") == 1 and Batch["status"] == "partial"
 
 
+async def test_a_slot_the_model_returns_no_image_for_is_re_requested_automatically_then_bounded(H):
+    """fal.ai's `no_media_generated`: the model finished without an image on one attempt. The slot is re-requested
+    with a new seed before anyone sees a failure (as a duplicate is), a bounded number of times; the ready slots
+    are untouched, and each request is recorded as usage. Other failures are never resubmitted automatically."""
+    Max = H.Ctx.Gen.Images.MaxModelRetriesPerSlot
+    assert Max == 2
+    H.Provider.Script(endpoints.ImageGenerate, "nomedia")
+    Batch = await H.NewDesign("Band")
+    assert Batch["status"] == "complete" and len(H.Provider.Submissions) == N + 1          # one quiet re-request
+    Seeds = [S[1]["seed"] for S in H.Provider.Submissions]
+    assert len(set(Seeds)) == N + 1                                                           # a new seed each time
+    Rows = H.Ctx.Db.All("SELECT attempts, error, error_code FROM candidates WHERE batch_id = ? ORDER BY slot", (Batch["id"],))
+    assert sorted(R["attempts"] for R in Rows) == [1, 1, 1, 2] and all(R["error"] is None for R in Rows)
+    Usage = H.Ctx.Accounts.AdminActivity(H.Who.AccountId)["usage"]
+    assert sum(1 for U in Usage if U["kind"] == "image") == N + 1                              # every request is usage
+    # Misses every time: the bound (1 + 2 re-requests per slot), then a short, retryable failure
+    H.Provider.Script(endpoints.ImageGenerate, *["nomedia"] * (N * (1 + Max)))
+    Batch = await H.NewDesign("Band two")
+    assert Batch["status"] == "failed" and len(H.Provider.Submissions) == (N + 1) + N * (1 + Max)
+    for C in Batch["candidates"]:
+        assert C["status"] == "failed" and C["error_code"] == "no_media_generated" and C["retryable"]
+        assert "returned no image" in C["error"] and len(C["error"]) < 200
+        assert H.Ctx.Db.One("SELECT attempts FROM candidates WHERE id = ?", (C["id"],))["attempts"] == 1 + Max
+    # A plain provider failure is still shown at once, not resubmitted
+    Before = len(H.Provider.Submissions)
+    H.Provider.Script(endpoints.ImageGenerate, "fail")
+    Batch = await H.NewDesign("Band three")
+    assert Batch["status"] == "partial" and len(H.Provider.Submissions) == Before + N
+    assert [C["error_code"] for C in Batch["candidates"] if C["status"] == "failed"] == ["provider_error"]
+
+
 async def test_transient_poll_errors_retry_same_request(H):
     H.Provider.Script(endpoints.ImageGenerate, "status_transient:3")
     Batch = await H.NewDesign("Band")

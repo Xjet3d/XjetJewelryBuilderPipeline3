@@ -5,6 +5,7 @@
     "max_concurrent_requests": 8,
     "request_timeout_s": 300,
     "max_duplicate_retries_per_slot": 1,
+    "max_model_retries_per_slot": 2,
     "params": {
       "aspect_ratio": "1:1",
       "resolution": "1K",
