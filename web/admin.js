@@ -1411,9 +1411,9 @@ function adminApp() {
       const r = this.live3d[t.id]?.raw || {};
       const out = [
         `Received the Hi3D STL: ${Number(c.faces || r.faces || 0).toLocaleString()} faces${r.bytes ? ', ' + this.gb(r.bytes) : ''}${r.sha256 ? ', SHA-256 ' + r.sha256.slice(0, 12) + '…' : ''}. Measured once, exactly, on the full model — never on the preview.`,
-        `Raw model: ${n(raw.size_x_mm, 3)} × ${n(raw.size_y_mm, 3)} × ${n(raw.size_z_mm, 3)} model units, bore ${n(raw.inner_diameter_mm, 4)}, roundness deviation ${c.roundness == null ? '?' : (c.roundness * 100).toFixed(2) + '%'}.`,
+        `Raw model: ${n(raw.size_x_mm, 3)} × ${n(raw.size_y_mm, 3)} × ${n(raw.size_z_mm, 3)} model units, bore ${n(raw.inner_diameter_mm, 4)} (the largest circle that passes — what a ring gauge reads), roundness deviation ${c.roundness == null ? '?' : (c.roundness * 100).toFixed(2) + '%'}.`,
         `Closed-mesh heuristic (volume from two reference points ${c.closed_heuristic ? 'agrees' : 'DISAGREES'}) — a cheap check, not proof of watertightness; the edge check runs in the background.`,
-        `Scaled by arithmetic ×${n(prod.scale_factor, 4)} so the inner diameter is ${t.target_inner_diameter_mm} mm (US ${t.production_size}): lengths × s, area × s², volume × s³ — no file is re-read for a new size or material.`,
+        `Scaled by arithmetic ×${n(prod.scale_factor, 4)} so a Ø ${t.target_inner_diameter_mm} mm gauge passes exactly (US ${t.production_size}): lengths × s, area × s², volume × s³ — no file is re-read for a new size or material.`,
         `Result: inner diameter ${n(prod.inner_diameter_mm, 3)} mm, volume ${prod.volume_mm3 == null ? '?' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`,
       ];
       if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);

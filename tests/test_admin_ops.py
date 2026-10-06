@@ -334,11 +334,12 @@ async def test_a_bore_that_is_not_round_can_be_made_round_for_a_result(HX, monke
     assert R3["production_state"] == "review_required" and [r["code"] for r in R3["review"]] == ["bore_not_round"]
     assert R3["bore_correction"] is None and R3["scaled_stl"] == "on_demand"
     # The review says what the bore measures across its centre and what the correction will leave (an ellipse: nothing)
-    assert "through the centre it measures" in R3["review"][0]["text"] and "expected: round within" in R3["review"][0]["action"]
+    assert "gauge passes" in R3["review"][0]["text"] and "expected: round within" in R3["review"][0]["action"]
     assert R3["bore_expected_after"] < 0.01
-    P0 = R3["geometry"]["production"]
-    assert P0["bore_min_diameter_mm"] == pytest.approx(P0["inner_diameter_mm"] * 15.0 / 16.0, rel=0.02)    # the oval, at this size
-    assert P0["bore_max_diameter_mm"] == pytest.approx(P0["inner_diameter_mm"] * 17.25 / 16.0, rel=0.02)
+    P0, Tg = R3["geometry"]["production"], R3["target_inner_diameter_mm"]
+    # The size is the largest circle that passes (a ring gauge): the oval's narrow way is the target, the wide way 15% more
+    assert P0["inner_diameter_mm"] == pytest.approx(Tg, rel=0.005) and P0["bore_min_diameter_mm"] == pytest.approx(Tg, rel=0.005)
+    assert P0["bore_max_diameter_mm"] == pytest.approx(Tg * 17.25 / 15.0, rel=0.02)
     Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
     R = await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)
     assert R.status_code == 200, R.text
@@ -453,7 +454,7 @@ async def test_a_correction_that_makes_the_bore_rounder_but_not_round_is_kept_fo
     C = F["bore_correction"]
     assert C is not None and 0.04 < C["roundness_after"] < 0.9 * Before and C["roundness_before"] == pytest.approx(Before)
     assert C["bore_min_diameter_mm"] < C["bore_max_diameter_mm"]
-    assert [r["code"] for r in F["review"]] == ["bore_still_not_round"] and "through the centre" in F["review"][0]["text"]
+    assert [r["code"] for r in F["review"]] == ["bore_still_not_round"] and "gauge passes" in F["review"][0]["text"]
     assert "still not round" in F["error"] and F["live"]["can_retry"] and F["scaled_stl"] == "on_demand"
     assert F["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(7), rel=0.01)
     # Undo: the model as generated, flagged as before

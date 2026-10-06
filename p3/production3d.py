@@ -88,7 +88,7 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected:
                       "action": "Inspect the model in 3D. If it is not a ring, do not produce it: model a different "
                                 "option (a new Hi3D model) instead."})
     elif Corrected and CorrectedRoundness is not None and CorrectedRoundness > MaxRoundness:
-        Across = (f": through the centre it measures {CorrectedDiameters[0]:.1f}–{CorrectedDiameters[1]:.1f} mm"
+        Across = (f": a Ø {CorrectedDiameters[0]:.2f} mm gauge passes, and the hole is up to {CorrectedDiameters[1]:.1f} mm wide"
                   if CorrectedDiameters and None not in CorrectedDiameters else "")
         Items.append({"code": "bore_still_not_round",
                       "text": f"The bore is still not round after the correction ({CorrectedRoundness * 100:.1f}% deviation){Across}.",
@@ -98,8 +98,8 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected:
     elif not Corrected and Raw.get("roundness") is not None and Raw["roundness"] > MaxRoundness:
         Across = ""
         if Scale and Raw.get("bore_min_diameter") and Raw.get("bore_max_diameter"):
-            Across = (f": through the centre it measures {Raw['bore_min_diameter'] * Scale:.1f}–{Raw['bore_max_diameter'] * Scale:.1f} mm, "
-                      f"and the inner diameter {Raw['inner_diameter'] * Scale:.2f} mm is the circle fitted to it")
+            Across = (f": a Ø {Raw['bore_min_diameter'] * Scale:.2f} mm gauge passes (that is the size), but the hole is up to "
+                      f"{Raw['bore_max_diameter'] * Scale:.1f} mm wide, so the ring is loose that way")
         Expected = (Raw.get("bore_ellipse") or {}).get("residual")      # what scaling along the bore's axes would leave
         if Attempt:                                   # scaling along the bore's axes was tried and not kept
             Action = (Attempt["reason"] + " Check the inner diameter in the 3D view and accept it as measured, or model a "
@@ -112,8 +112,9 @@ def ReviewItems(Status: str, Raw: dict | None, Integrity: str | None, Corrected:
             Soon = f" — expected: round within about {Expected * 100:.1f}%" if Expected is not None else ""
             Action = ("Make the bore round (the model is scaled along the bore's two axes so the bore is a circle of the "
                       f"target size, then measured again{Soon}), or check the inner diameter in the 3D view and accept it as measured.")
-        Items.append({"code": "bore_not_round", "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation){Across} — "
-                                                        "so the size is uncertain.", "action": Action})
+        Items.append({"code": "bore_not_round", "action": Action,
+                      "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation){Across}." if Across else
+                              f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — so the size is uncertain."})
     if Raw and not Raw.get("closed_heuristic", True):
         Items.append({"code": "open_mesh_heuristic", "text": "The volume reference check suggests the mesh may not be closed — "
                                                              "volume and weight may be wrong.",
@@ -531,7 +532,10 @@ class Production3D:
         """Retry from the last successful stage. With the raw STL on disk this is local only (no Hi3D charge). A result
         whose bore was made round goes back to the model as generated (its uniform scaling) this way — the undo."""
         Row = self._Row(Sid)
-        if Row["status"] not in ("failed", "cancelled", "needs_review") and not (Row["status"] == "measured" and self._Corrected(Sid)):
+        # A complete result can be measured again when its bore was corrected (the undo) or when its measurement is
+        # older than the current method (the numbers follow the current definition, in place)
+        Again = Row["status"] == "measured" and (self._Corrected(Sid) or not self._CurrentMeasurement(Row["mesh_id"]))
+        if Row["status"] not in ("failed", "cancelled", "needs_review") and not Again:
             raise HttpError(409, "not_retryable", "This request is not in a state that can be retried.")
         Mesh = self.Ctx.Db.One("SELECT * FROM meshes WHERE id = ?", (Row["mesh_id"],))
         if Mesh and Mesh["status"] == "ready":
@@ -627,7 +631,7 @@ class Production3D:
         Weight = self._Price(Row, Gid, Mz["volume"] if Mz["closed_heuristic"] else None)
         Problems = []
         if After > MaxRoundness:                      # rounder, but not round: kept for the Admin's decision (accept / undo)
-            Across = (f": through the centre it measures {Mz['bore_min_diameter']:.1f}–{Mz['bore_max_diameter']:.1f} mm"
+            Across = (f": a Ø {Mz['bore_min_diameter']:.2f} mm gauge passes, and the hole is up to {Mz['bore_max_diameter']:.1f} mm wide"
                       if Mz.get("bore_min_diameter") and Mz.get("bore_max_diameter") else "")
             Problems.append(f"The bore is still not round after the correction ({After * 100:.1f}% deviation{Across}).")
         if not Mz["closed_heuristic"]:
@@ -657,6 +661,11 @@ class Production3D:
         Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fixed", Row["design_id"], session_3d_id=Sid,
                         status="needs_review", kept=False, reason=Msg,
                         **{K: Details[K] for K in ("scale_major", "scale_minor", "roundness_after") if K in Details})
+
+    def _CurrentMeasurement(self, MeshId: str) -> bool:
+        """The model's stored measurement is by the current method (else a re-measure gives the current numbers)."""
+        Raw = self._RawRow(MeshId)
+        return bool(Raw and Raw["status"] == "measured" and Raw["method_version"] in (FastMethodVersion, CharmGeo.CharmMethodVersion))
 
     def _Corrected(self, Sid: str) -> bool:
         """This result's production geometry is its bore made round (FixBore, kept)."""
@@ -790,7 +799,8 @@ class Production3D:
             "can_cancel": bool(Job),
             "can_retry": R["status"] in ("failed", "cancelled")
                          or (R["status"] == "needs_review" and not Current)    # e.g. an improved measurement
-                         or (R["status"] in ("measured", "needs_review") and self._Corrected(Sid)),   # undo a bore correction
+                         or (R["status"] in ("measured", "needs_review") and self._Corrected(Sid))    # undo a bore correction
+                         or (R["status"] == "measured" and not Current),   # re-measure with the current method, in place
             "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
             "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
                             "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),

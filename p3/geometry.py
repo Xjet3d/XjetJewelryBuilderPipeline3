@@ -365,8 +365,9 @@ def MeasureRing(Data: bytes, Fmt: str, TargetInnerDiameterMm: float) -> RingGeom
 #   lengths × s · area × s² · volume × s³ · weight = volume × density.
 # No scaled copy is written during processing — ExportScaledStl builds one only when it is downloaded,
 # from the stored transform, so every export of the same request is identical.
-FastMethodVersion = "ring-measure-once-v3.4"      # v3.1: bore heights from the 5–95% surface span; v3.4: bore diameters
-                                                  # through the centre and the ellipse fit with what its correction leaves
+FastMethodVersion = "ring-measure-once-v3.5"      # v3.1: bore heights from the 5–95% surface span; v3.4: bore diameters
+                                                  # through the centre and the ellipse fit with what its correction leaves;
+                                                  # v3.5: the inner diameter is the largest circle that passes (a ring gauge)
                                                   # v3.2: bore centre searched (heavy heads move the centroid)
                                                   # v3.3: bore = inner wall of 9 heights combined (open designs)
 BoreMinShare = 0.35        # a ring bore spans at least this share of the ring's smaller in-plane size
@@ -485,6 +486,27 @@ def _BoreWall(P, C) -> np.ndarray:
     return np.asarray(C) + np.c_[np.cos(Mid), np.sin(Mid)][Ok] * Near[Ok][:, None]
 
 
+def _InscribedCircle(P, C0, Span: float) -> dict | None:
+    """The largest circle that passes the bore — what a ring gauge (mandrel) reads, so what the size means: the centre
+    near C0 whose nearest wall, over every direction, is farthest away. A coarse grid within ±Span, then a fine one
+    around the best; the wall must be there in 90% of the directions (an open design is combined over its heights)."""
+    Best, BestR, BestN = None, -1.0, 0
+    Base = np.asarray(C0, np.float64)
+    for Half, Grid in ((Span, 13), (Span / 6, 13)):
+        Centre = Best if Best is not None else Base
+        for Dx in np.linspace(-Half, Half, Grid):
+            for Dy in np.linspace(-Half, Half, Grid):
+                C = Centre + (Dx, Dy)
+                Near = _BoreProfile(P, C)
+                Ok = np.isfinite(Near)
+                if Ok.sum() < Directions * 0.9:
+                    continue
+                R = float(Near[Ok].min())
+                if R > BestR:
+                    Best, BestR, BestN = C, R, int(Ok.sum())
+    return {"centre": Best.tolist(), "radius": BestR, "bins_filled": BestN} if Best is not None else None
+
+
 def _BoreDiameters(Near) -> tuple | None:
     """The narrowest and the widest diameter of the bore through its centre (opposite direction bins summed):
     what a caliper reads across the hole, as opposed to the fitted circle."""
@@ -494,18 +516,22 @@ def _BoreDiameters(Near) -> tuple | None:
     return (float(D.min()), float(D.max())) if len(D) else None
 
 
-def _EllipsePreview(W, Ell) -> dict | None:
-    """What scaling along the ellipse's axes would give — a 2D preview of ExportCorrectedStl on the wall points, in
-    units of the ellipse (a true ellipse becomes the unit circle): `median` = the median wall radius then (the circle
-    fit's radius, ≈ 1; the correction scales by it so the measured inner diameter lands on the target even for a
-    lobed wall) and `residual` = std / median (≈ 0 for a true ellipse, more for a lobed or stepped wall)."""
+def _EllipsePreview(W, P, Ell) -> dict | None:
+    """What scaling along the ellipse's axes would give — a 2D preview of ExportCorrectedStl in units of the ellipse (a
+    true ellipse becomes the unit circle): on the wall points W, `median` = the median wall radius then and `residual`
+    = std / median (≈ 0 for a true ellipse, more for a lobed or stepped wall); on all section points P, `min` = the
+    radius of the largest circle that passes then (the gauge: the correction scales by it, so the corrected bore's
+    gauge circle is the target even for a lobed wall)."""
     Th = Ell["angle"]
     Rot = np.array([[np.cos(-Th), -np.sin(-Th)], [np.sin(-Th), np.cos(-Th)]])
-    Q = (W - np.asarray(Ell["centre"])) @ Rot.T / np.array([Ell["a"], Ell["b"]])
+    Ax = np.array([Ell["a"], Ell["b"]])
+    Q = (W - np.asarray(Ell["centre"])) @ Rot.T / Ax
     R = np.hypot(Q[:, 0], Q[:, 1])
     if not len(R) or np.median(R) <= 0:
         return None
-    return {"median": float(np.median(R)), "residual": float(R.std() / np.median(R))}
+    Ins = _InscribedCircle((P - np.asarray(Ell["centre"])) @ Rot.T / Ax, np.zeros(2), 0.15)
+    return {"median": float(np.median(R)), "min": Ins["radius"] if Ins else float(R.min()),
+            "residual": float(R.std() / np.median(R))}
 
 
 def _FitEllipse(P: np.ndarray) -> dict | None:
@@ -587,19 +613,22 @@ def MeasureRaw(Source) -> dict:
     Comb = np.concatenate([P for P in Secs if len(P)]) if any(len(P) for P in Secs) else np.zeros((0, 2))
     Fit = _FitBore(Comb)
     Slices = [{"height": float(H), "points": int(len(P)), "bins_filled": _Bins(P, Fit["centre"])} for H, P in zip(Heights, Secs)]
-    # The bore across its centre (narrowest and widest diameter — what a caliper reads), and as an ellipse (its two
-    # axes and their directions: what a bore that is not round is corrected by, with what that correction would leave)
-    Dia, Ell = None, None
+    # The size: the largest circle that passes the bore — what a ring gauge reads (v3.5; before: the fitted circle,
+    # which overstated an oval or stepped bore). The hole across that circle's centre (narrowest = the gauge, widest),
+    # and the bore as an ellipse (its two axes and their directions: what a bore that is not round is corrected by,
+    # with what that correction would leave)
+    Ins, Dia, Ell = None, None, None
     if Fit["radius"] and len(Comb):
-        Dia = _BoreDiameters(_BoreProfile(Comb, Fit["centre"]))
+        Ins = _InscribedCircle(Comb, Fit["centre"], 0.15 * Fit["radius"])
+        Dia = _BoreDiameters(_BoreProfile(Comb, Ins["centre"])) if Ins else None
         W = _BoreWall(Comb, Fit["centre"]) - np.asarray(Fit["centre"])
         Ell = _FitEllipse(W)
         if Ell:
-            Ell.update(_EllipsePreview(W, Ell) or {"median": None, "residual": None})
+            Ell.update(_EllipsePreview(W, Comb - np.asarray(Fit["centre"]), Ell) or {"median": None, "min": None, "residual": None})
             Ell["centre"] = (np.asarray(Fit["centre"]) + np.asarray(Ell["centre"])).tolist()
     del Secs, Comb
     MinExtent = float(min(Hi3[0] - Lo3[0], Hi3[1] - Lo3[1]))
-    Good = bool(Fit["radius"] and Fit["bins_filled"] >= Directions * 0.9
+    Good = bool(Fit["radius"] and Ins and Ins["radius"] > 0 and Fit["bins_filled"] >= Directions * 0.9
                 and 2 * Fit["radius"] >= BoreMinShare * MinExtent)      # never a small pocket in the head
     Closed = abs(Mo["v1"] - Mo["v2"]) <= 1e-6 * max(Mo["v1"], 1e-30)
     Out = {
@@ -609,14 +638,16 @@ def MeasureRaw(Source) -> dict:
         "closed_heuristic": bool(Closed),
         "frame": {"centre": Centre.tolist(), "u": U.tolist(), "v": V.tolist(), "axis": Axis.tolist()},
         "bore_ok": Good, "bore_slices": Slices,
-        "bore_fit": {"radius": Fit["radius"], "std": Fit["std"], "bins_filled": Fit["bins_filled"], "centre": Fit["centre"]},
+        "bore_fit": {"radius": Fit["radius"], "std": Fit["std"], "bins_filled": Fit["bins_filled"], "centre": Fit["centre"],
+                     "inscribed": Ins},
     }
     if Good:
         Mid = (Zlo + Zhi) / 2
-        Bc = Centre + Fit["centre"][0] * U + Fit["centre"][1] * V + Mid * Axis
-        Out.update({"inner_diameter": 2 * Fit["radius"], "roundness": Fit["std"] / Fit["radius"],
-                    "bore_origin": Bc.tolist(), "bore_ellipse": Ell,
-                    "bore_min_diameter": Dia[0] if Dia else None, "bore_max_diameter": Dia[1] if Dia else None})
+        Bc = Centre + Ins["centre"][0] * U + Ins["centre"][1] * V + Mid * Axis      # the gauge circle's centre
+        Out.update({"inner_diameter": 2 * Ins["radius"], "fitted_diameter": 2 * Fit["radius"],
+                    "roundness": Fit["std"] / Fit["radius"],
+                    "bore_origin": Bc.tolist(), "bore_origin_uv": list(Ins["centre"]), "bore_ellipse": Ell,
+                    "bore_min_diameter": 2 * Ins["radius"], "bore_max_diameter": Dia[1] if Dia else None})
     return Out
 
 
@@ -666,8 +697,10 @@ def CorrectionFor(Raw: dict, TargetInnerDiameterMm: float) -> dict:
     if not E or not Raw.get("bore_ok"):
         raise ValueError("The bore was not fitted as an ellipse — measure the model again first.")
     Rt = TargetInnerDiameterMm / 2
-    Med = E.get("median") or 1.0                 # the circle fit's radius in ellipse units: the target is the measured diameter
-    Sa, Sb = Rt / (E["a"] * Med), Rt / (E["b"] * Med)
+    # The smallest wall radius after the correction, in ellipse units (≈ 1 for a true ellipse): the gauge circle of the
+    # corrected bore must be the target, as the size means (v3.5; before: the fitted circle's median radius)
+    Ref = E.get("min") or E.get("median") or 1.0
+    Sa, Sb = Rt / (E["a"] * Ref), Rt / (E["b"] * Ref)
     return {"a": E["a"], "b": E["b"], "ellipticity": E["a"] / E["b"], "angle_deg": float(np.degrees(E["angle"])),
             "scale_major": float(Sa), "scale_minor": float(Sb), "scale_axis": float(np.sqrt(Sa * Sb)),
             "uniform_scale": TargetInnerDiameterMm / Raw["inner_diameter"], "target_inner_diameter_mm": TargetInnerDiameterMm}
@@ -683,8 +716,9 @@ def _CorrectedTransform(Raw: dict, Corr: dict):
     C, S = np.cos(Th), np.sin(Th)
     Sa, Sb, Sw = Corr["scale_major"], Corr["scale_minor"], Corr["scale_axis"]
     M = R.T @ np.array([[C * Sa, -S * Sb, 0.0], [S * Sa, C * Sb, 0.0], [0.0, 0.0, Sw]])
-    Fc, Ec = np.asarray(Raw["bore_fit"]["centre"]), np.asarray(E["centre"])
-    Origin = np.asarray(Raw["bore_origin"]) + (Ec[0] - Fc[0]) * U + (Ec[1] - Fc[1]) * V
+    # bore_origin is the gauge circle's centre (v3.5; the fitted circle's before): move to the ellipse's centre
+    Oc, Ec = np.asarray(Raw.get("bore_origin_uv") or Raw["bore_fit"]["centre"]), np.asarray(E["centre"])
+    Origin = np.asarray(Raw["bore_origin"]) + (Ec[0] - Oc[0]) * U + (Ec[1] - Oc[1]) * V
     return Origin, M
 
 
