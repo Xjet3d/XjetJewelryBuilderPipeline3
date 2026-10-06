@@ -487,3 +487,33 @@ async def test_a_result_measured_by_an_older_method_can_be_measured_again_in_pla
     assert F["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(R3["geometry"]["production"]["inner_diameter_mm"])
     assert not F["live"]["can_retry"]
     assert len((await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"]) == 1     # in place, no new result
+
+
+async def test_an_export_made_before_a_re_measure_is_not_served_again(HX):
+    """The scaled STL export is reused while it lasts — but only for the same measurement method: after a re-measure
+    with a newer method (the scaling may differ) a download gets a fresh export."""
+    import json
+    H = HX
+    Did = (await H.NewDesign("A plain band for the export cache"))["design_id"]
+    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    await H.Idle()
+    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    # The model as if measured by an older method, and an export made then
+    Db = H.Ctx.Db
+    Raw = Db.One("SELECT mesh_id, measurement_json FROM raw_geometry WHERE mesh_id = ?", (R3["mesh_id"],))
+    Old = {**json.loads(Raw["measurement_json"]), "method_version": "ring-measure-once-v0"}
+    Db.Execute("UPDATE raw_geometry SET measurement_json = ?, method_version = 'ring-measure-once-v0' WHERE mesh_id = ?", (json.dumps(Old), Raw["mesh_id"]))
+    Db.Execute("UPDATE geometry_results SET method_version = 'ring-measure-once-v0' WHERE session_3d_id = ?", (R3["id"],))
+    A = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
+    await H.Idle()
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()["job_id"] == A["job_id"]   # reused
+    # Re-measured with the current method: the next download is a fresh export, the old one is not served again
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 200
+    await H.Idle()
+    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
+    assert F["geometry"]["production"]["method_version"] != "ring-measure-once-v0"
+    B = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
+    assert B["job_id"] != A["job_id"]
+    await H.Idle()
+    assert (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{B['job_id']}", headers=Admin)).json()["status"] == "done"
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()["job_id"] == B["job_id"]   # now this one

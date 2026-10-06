@@ -726,10 +726,13 @@ class Production3D:
                                  "('queued','running','done') ORDER BY created_at DESC", (Sid,)):
             P = json.loads(J["params_json"])
             Usable = J["status"] != "done" or (J["output_path"] and (self.Ctx.Settings.DevDir / J["output_path"]).is_file())
-            if Usable and P.get("target_mm") == Target and P.get("raw_sha256") == Raw["sha256"] and bool(P.get("round")) == Round:
+            # The same model, size and scaling — and the same measurement method: a re-measure changes the scaling
+            if (Usable and P.get("target_mm") == Target and P.get("raw_sha256") == Raw["sha256"] and bool(P.get("round")) == Round
+                    and P.get("method_version") == Measured.get("method_version")):
                 return self.ExportStatus(Sid, J["id"])
         Job = self.Queue.Enqueue("export", Row["mesh_id"], Sid, Dedupe=False, Params={
             "source": Raw["stl_path"], "raw": Measured, "target_mm": Target, "raw_sha256": Raw["sha256"],
+            "method_version": Measured.get("method_version"),
             "output": f"exports/{Sid}_{NewId('x')}.stl", **({"round": True} if Round else {}),
             **({"product": "charm", "label": f"{float(Row['production_size']):g} mm {Products.CharmSizeDefinition['short']}"} if Charm else {})})
         return self.ExportStatus(Sid, Job["id"])
