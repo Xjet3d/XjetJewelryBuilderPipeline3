@@ -231,3 +231,15 @@ async def test_a_second_admin_session_cookie_from_another_app_on_the_host_does_n
     assert (await H.Client.get("/api/admin/session", headers={"Cookie": "p3_admin_session=stranger; p3_admin_session=other"})).status_code == 403
     assert (await H.Client.post("/api/admin/logout", headers={"Cookie": f"p3_admin_session=stranger; p3_admin_session={Mine}"})).status_code == 200
     assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"p3_admin_session={Mine}"})).status_code == 403
+
+
+async def test_a_basic_auth_header_from_another_app_on_the_host_does_not_hide_the_admin_session(HA):
+    """A browser that answered a Basic-auth challenge from another app on the same host sends
+    "Authorization: Basic …" to every request here too. That is not a key: the session cookie still signs the admin
+    in, and without a session the request is refused as before."""
+    H = HA
+    assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    Basic = {"Authorization": "Basic eGpldDpzZWNyZXQ="}
+    assert (await H.Client.get("/api/admin/session", headers=Basic)).status_code == 200          # cookie + Basic
+    assert (await H.Client.get("/api/admin/users", headers=Basic)).status_code == 200
+    assert (await H.Client.get("/api/admin/session", headers={**Basic, "Cookie": "p3_admin_session=forged"})).status_code == 403

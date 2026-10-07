@@ -128,9 +128,14 @@ def InstallMiddleware(App_, Ctx: Context) -> None:
         Path = Req.url.path
         Rel = Path[len(Ctx.Settings.BasePath):] if Ctx.Settings.BasePath and Path.startswith(Ctx.Settings.BasePath) else Path
         if (Rel.startswith("/api/admin/") or Rel.startswith("/api/dev/")) and not Rel.endswith("/login"):
-            Auth = (Req.headers.get("authorization") or "").removeprefix("Bearer ").strip()
-            if not Auth and Ctx.Settings.AdminKey and any(Validate(Ctx, T) for T in Tokens(Req)):
+            # Only a Bearer counts as a supplied key. A browser that once answered a Basic-auth challenge from
+            # another app on the same host keeps sending "Authorization: Basic …" to every request here — that is
+            # not ours, so the session cookie decides, and the header is dropped so the routes never see it.
+            Raw = (Req.headers.get("authorization") or "").strip()
+            Bearer = Raw[len("Bearer "):].strip() if Raw.lower().startswith("bearer ") else ""
+            if not Bearer and Ctx.Settings.AdminKey:
                 Headers = [(K, V) for K, V in Req.scope["headers"] if K != b"authorization"]
-                Headers.append((b"authorization", ("Bearer " + Ctx.Settings.AdminKey).encode("latin-1")))
+                if any(Validate(Ctx, T) for T in Tokens(Req)):
+                    Headers.append((b"authorization", ("Bearer " + Ctx.Settings.AdminKey).encode("latin-1")))
                 Req.scope["headers"] = Headers
         return await CallNext(Req)
