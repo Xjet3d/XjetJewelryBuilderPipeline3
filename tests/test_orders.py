@@ -236,8 +236,12 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert D["payment_status"] == "paid" and D["payment_provider"] == "manual" and D["payment_ref"] == "TR-77"
     assert D["status"] == "payment_confirmed" and [E["kind"] for E in D["events"]] == ["placed", "email", "payment", "status"]
     assert D["events"][2]["data"]["manual"] and D["events"][2]["by"]
+    # Production and later need complete 3D results for every line: refused without them, allowed as a noted exception
+    R = await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "production", "note": "ok"}, headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "three_d_unresolved"
+    assert (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "production", "force": True}, headers=Admin)).status_code == 400
     for S in ("three_d_ready", "production", "qc", "shipped", "completed"):
-        D = (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": S, "note": "ok"}, headers=Admin)).json()
+        D = (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": S, "note": "ok", "force": True}, headers=Admin)).json()
         assert D["status"] == S
     assert (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "production"}, headers=Admin)).status_code == 409
     assert (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "bogus"}, headers=Admin)).status_code == 400

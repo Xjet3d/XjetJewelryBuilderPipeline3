@@ -41,6 +41,7 @@ ShippingOptions = {
 StatusOrder = ["new", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"]
 StatusLabels = {"new": "New", "payment_confirmed": "Payment confirmed", "three_d_ready": "3D ready", "production": "In production",
                 "qc": "Quality check", "shipped": "Shipped", "completed": "Completed", "cancelled": "Cancelled"}
+ProductionStatuses = ("production", "qc", "shipped", "completed")     # need every line's 3D result complete (SetStatus)
 PhoneDigits = re.compile(r"\d")
 PhonePattern = re.compile(r"^\+?[0-9 ()./-]{7,24}$")
 MaxLines = 20
@@ -262,19 +263,42 @@ class OrderService:
     def _Email(self, Order: dict, SendMail) -> None:
         if self.Mailer is None or not Order["customer"]["email"]:
             return
-        from p3.mail import OrderConfirmationEmail
+        from p3.mail import OrderConfirmationEmail, StaffOrderEmail
         Subject, Body = OrderConfirmationEmail(Order)
         To = Order["customer"]["email"]
+        Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
+
+        def Event(Kind: str, Data: dict) -> None:
+            self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                                (Order["id"], Kind, Dumps(Data), "system", Now()))
 
         def Send():
             try:
                 self.Mailer.Send(To, Subject, Body)
-                self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
-                                    (Order["id"], "email", Dumps({"to": To, "subject": Subject}), "system", Now()))
+                Event("email", {"to": To, "subject": Subject, "delivery": self.Mailer.Mode})
             except Exception as E:  # noqa: BLE001 — an email problem never undoes an order
-                self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
-                                    (Order["id"], "email_failed", Dumps({"to": To, "error": str(E)[:200]}), "system", Now()))
+                Event("email_failed", {"to": To, "error": str(E)[:200]})
+            if Staff:                                            # the people who act on a new order (P3_STAFF_NOTIFY_EMAILS)
+                StaffSubject, StaffBody = StaffOrderEmail(Order)
+                for Address in Staff:
+                    try:
+                        self.Mailer.Send(Address, StaffSubject, StaffBody)
+                        Event("staff_notified", {"to": Address})
+                    except Exception as E:  # noqa: BLE001
+                        Event("staff_notify_failed", {"to": Address, "error": str(E)[:200]})
         (SendMail or (lambda Fn: Fn()))(Send)
+
+    def EmailState(self, OrderId: str, To: str | None) -> dict:
+        """What the customer may be told about their confirmation email: sent (left the server through SMTP),
+        pending (about to be sent), failed, not_sent (no mail delivery is configured — the outbox keeps a copy) or
+        not_configured. Never "sent" unless it was."""
+        if self.Mailer is None or not To:
+            return {"status": "not_configured", "to": To}
+        if self.Mailer.Mode != "smtp":
+            return {"status": "not_sent", "to": To}
+        Kinds = [E["kind"] for E in self.Ctx.Db.All("SELECT kind FROM order_events WHERE order_id = ? AND kind IN ('email', 'email_failed') "
+                                                     "ORDER BY id", (OrderId,))]
+        return {"status": "sent" if "email" in Kinds else "failed" if "email_failed" in Kinds else "pending", "to": To}
 
     # ── reading ──────────────────────────────────────────────────────────
     def _Lines(self, OrderId: str) -> list[dict]:
@@ -296,6 +320,7 @@ class OrderService:
             "currency": O["currency"], "subtotal": O["subtotal"], "discount": O["discount"], "shipping": O["shipping"], "total": O["total"],
             "promo_code": O["promo_code"], "promo": json.loads(O["promo_json"]) if O["promo_json"] else None,
             "terms_version": O["terms_version"], "terms_accepted_at": O["terms_accepted_at"],
+            "confirmation_email": self.EmailState(O["id"], json.loads(O["customer_json"]).get("email")),
             "count": sum(L["quantity"] for L in Lines),
             # Which products the order holds — both for a mixed order
             "product_types": sorted({L.get("product_type") or Products.Ring for L in Lines}, key=Products.All.index),
@@ -368,15 +393,25 @@ class OrderService:
                         ring_id=Ring, material_id=Mat.Id,
                         **({"product_type": Products.Charm, "charm_size": Size} if Charm else {"ring_size": Size}), quantity=Qty)
         Out = self.QuoteRequestJson(Db.One("SELECT * FROM quote_requests WHERE id = ?", (Id,)), C)
+        # What the customer may be told: "sent" only when mail really leaves the server (SMTP); the outbox keeps a copy
+        Out["email_status"] = "not_configured" if self.Mailer is None else ("pending" if self.Mailer.Mode == "smtp" else "not_sent")
         if self.Mailer is not None:
-            from p3.mail import QuoteRequestEmail
+            from p3.mail import QuoteRequestEmail, StaffQuoteEmail
             Subject, Html = QuoteRequestEmail(Out)
+            Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
 
             def Send():
                 try:
                     self.Mailer.Send(Customer["email"], Subject, Html)
                 except Exception:  # noqa: BLE001
                     pass
+                if Staff:
+                    StaffSubject, StaffHtml = StaffQuoteEmail(Out)
+                    for Address in Staff:
+                        try:
+                            self.Mailer.Send(Address, StaffSubject, StaffHtml)
+                        except Exception:  # noqa: BLE001
+                            pass
             (SendMail or (lambda Fn: Fn()))(Send)
         return Out
 
@@ -434,10 +469,17 @@ class OrderService:
         if not L["has_model"]:
             raise HttpError(409, "no_model", f"{L['title']} ({L['ring_id']}) has no 3D model yet. Generate it on the session page first "
                                              "(a paid Hi3D call), then prepare the STL here.")
+        # The STL is prepared from the option the customer ordered — never from another option's model
+        if not self.Ctx.Db.One("SELECT 1 AS x FROM meshes WHERE candidate_id = ? AND status = 'ready'", (L["candidate_id"],)):
+            raise HttpError(409, "model_of_other_option",
+                            f"The 3D model of this design is of option {L['model_ring_id'] or '—'}; this line was ordered as "
+                            f"{L['ring_id']}. Generate a model for the ordered option on the session page (a paid Hi3D call), "
+                            "then prepare the STL here.")
         if self.Production is None:
             raise HttpError(503, "production_unavailable", "3D production is not available.")
         Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
-        T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"], RequestedBy=By, Customer=Customer)
+        T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"],
+                                    CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer)
         self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                             (O["id"], "3d_prepared", Dumps({"line_id": LineId, "session_3d_id": T["id"], "ring_size": L["ring_size"],
                                                             "charm_size": L.get("charm_size"), "product_type": L.get("product_type"),
@@ -507,12 +549,27 @@ class OrderService:
         Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                    (OrderId, "status", Dumps({"from": Old, "to": Status, "note": Note[:300]}), By, T))
 
-    def SetStatus(self, OrderId: str, Status: str, By: str, Note: str = "") -> dict:
+    def SetStatus(self, OrderId: str, Status: str, By: str, Note: str = "", Force: bool = False) -> dict:
+        """Production and every later status need each line's 3D result for the ordered size and material to be
+        complete (measured and not flagged, or a flagged one accepted by the Admin). Force with a note records an
+        exception (a piece made outside the pipeline) instead of letting a flagged or missing result slip through."""
         O = self.AdminGet(OrderId)
         if Status not in StatusOrder + ["cancelled"]:
             raise HttpError(400, "invalid_status", "Unknown order status.")
         if O["status"] == "completed" and Status != "completed":
             raise HttpError(409, "order_completed", "A completed order cannot change status.")
+        if Status in ProductionStatuses:
+            Unresolved = [L for L in O["lines"] if not (L.get("three_d_match") and L.get("three_d_state") == "complete")]
+            if Unresolved and not Force:
+                Names = ", ".join(f"{L['title']} ({L['ring_id'] or '—'})" for L in Unresolved)
+                raise HttpError(409, "three_d_unresolved",
+                                f"Not ready for production: {Names} — the 3D result for the ordered size and material is missing, "
+                                "still processing or flagged for review. Prepare or accept it first (or set the status with a "
+                                "note that explains the exception).")
+            if Unresolved and not (Note or "").strip():
+                raise HttpError(400, "note_required", "Say why the status is set although the 3D results are not complete.")
+            if Unresolved:
+                Note = f"[3D results not complete — exception] {Note}"
         self._SetStatus(O["id"], Status, By, Note)
         return self.AdminGet(O["id"])
 

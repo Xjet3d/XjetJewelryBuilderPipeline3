@@ -107,7 +107,8 @@ def _ScriptJson(Value) -> str:
     return json.dumps(Value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "") -> str:
+def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
+                   Og: str = "") -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
     (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description."""
@@ -118,7 +119,7 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
     Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
-    Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;"))
+    Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;")).replace("{{OG}}", Og)
     return Html.replace("{{BASE}}", BasePath)
 
 
@@ -260,6 +261,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
         H = Resp.headers
+        if Rel in ("/admin", "/admin/", "/dev", "/showcase") or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
+            H.setdefault("X-Robots-Tag", "noindex, nofollow")       # the Admin, the tools and the API are never indexed
         H.setdefault("X-Content-Type-Options", "nosniff")
         H.setdefault("X-Frame-Options", "DENY")
         H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -288,8 +291,28 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # ── pages / static ───────────────────────────────────────────────────
     # What the customer page learns from the server (window.__p3): never a secret. Pages are indexable only in
     # production (development and staging copies stay out of search engines).
-    PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl}
+    # The support address the site shows: configured (P3_SUPPORT_EMAIL; required in production), else the address
+    # carried over from Pipeline 2 for development copies only — never invented for production
+    PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl,
+                  "support_email": S.SupportEmail or ("" if S.Production else "atelier@xjet3d.com")}
     PageRobots = "index,follow" if S.Production else "noindex"
+
+    def HomeOg(request: Request) -> str:
+        """The home page's Open Graph / Twitter tags and its canonical link: the site's name, the description of
+        the products on offer, the public origin and the first gallery design as the preview image."""
+        Origin = S.PublicBaseUrl or PublicOrigin(request)
+        Url = html.escape(f"{Origin}{Base}/", quote=True)
+        Description = html.escape(PageDescription(), quote=True)
+        Tiles = Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request))
+        Tags = ['<meta property="og:type" content="website">', '<meta property="og:site_name" content="XJet Atelier">',
+                '<meta property="og:title" content="XJET Atelier — Custom AI Jewelry, Designed by You">',
+                f'<meta property="og:description" content="{Description}">', f'<meta property="og:url" content="{Url}">',
+                '<meta name="twitter:card" content="summary_large_image">', f'<link rel="canonical" href="{Url}">']
+        if Tiles:
+            Image = html.escape(f"{Origin}{Media.ThumbUrl(Tiles[0]['image_url'], 800, 'jpg')}", quote=True)
+            Tags += [f'<meta property="og:image" content="{Image}">', f'<meta name="twitter:image" content="{Image}">',
+                     f'<meta property="og:image:alt" content="{html.escape(Tiles[0]["title"], quote=True)} — designed with XJet Atelier">']
+        return "\n    ".join(Tags)
 
     def PageDescription() -> str:
         """The page's meta description names only the products customers can design (Admin → Settings → Products)."""
@@ -299,8 +322,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "refine it, and preview it in a 360° movie.")
 
     @App_.get("/", include_in_schema=False)
-    async def Index():
-        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription()))
+    async def Index(request: Request):
+        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), HomeOg(request)))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
@@ -344,7 +367,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:
             return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
-        Origin = PublicOrigin(request)
+        Origin = S.PublicBaseUrl or PublicOrigin(request)        # the canonical public origin when configured
         Url = f"{Origin}{Base}/design/{Found['slug']}"
         Title = html.escape(Found["title"], quote=True)
         Image = html.escape(f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}", quote=True)
@@ -519,7 +542,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if Share is None:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
-                "url": f"{PublicOrigin(request)}{Base}/design/{Share['slug']}"}
+                "url": f"{S.PublicBaseUrl or PublicOrigin(request)}{Base}/design/{Share['slug']}"}
 
     # ── ♥ favorites: saved references to gallery masters, per account ──
     @App_.get("/api/favorites")

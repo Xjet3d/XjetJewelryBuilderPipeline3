@@ -195,7 +195,7 @@ function adminApp() {
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
-    oStatusForm: { status: '', note: '' }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
+    oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
@@ -420,7 +420,7 @@ function adminApp() {
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;
       this.odBusy = true; this.odError = '';
-      try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/status`, this.oStatusForm); this.oStatusForm.note = ''; }
+      try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/status`, this.oStatusForm); this.oStatusForm.note = ''; this.oStatusForm.force = false; }
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     async recordPayment() {

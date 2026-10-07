@@ -647,7 +647,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.post("/api/admin/orders/{OrderId}/status")
     async def AdminOrderStatus(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return Orders.SetStatus(OrderId, str(Body_.get("status") or ""), Who.Id, str(Body_.get("note") or ""))
+        return Orders.SetStatus(OrderId, str(Body_.get("status") or ""), Who.Id, str(Body_.get("note") or ""), Force=bool(Body_.get("force")))
 
     @App_.post("/api/admin/orders/{OrderId}/payment")
     async def AdminOrderPayment(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):

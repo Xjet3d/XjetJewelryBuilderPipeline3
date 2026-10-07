@@ -158,7 +158,40 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
           </tr>
         </table>
         <p style="margin:28px 0 0;font-size:12px;color:#8F8F8F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
-           Questions? Reply to this email and quote {_Esc(Order['ref'])}.</p>"""))
+           {ContactLine(Order['ref'])}</p>"""))
+
+
+def ContactLine(Ref: str) -> str:
+    """How a customer gets in touch about an order or a request: the configured address — never "reply to this
+    email" when the mail comes from a no-reply address, and never an invented address."""
+    Address = (os.environ.get("MAIL_REPLY_TO") or os.environ.get("P3_SUPPORT_EMAIL") or "").strip()
+    if Address:
+        return f"Questions? Email {_Esc(Address)} and quote {_Esc(Ref)}."
+    return f"Questions? Use the Contact page on the site and quote {_Esc(Ref)}."
+
+
+def StaffOrderEmail(Order: dict) -> tuple[str, str]:
+    """An internal note about a new order (what, for whom, how much) — no production cost, no 3D price."""
+    C = Order["customer"]
+    Lines = "".join(f"<li>{_Esc(L['title'])} ({_Esc(L['ring_id'] or '—')}) · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}"
+                    f" · {_Esc(_Money(L['line_total'], L['currency']))}</li>" for L in Order["lines"])
+    return (f"New order {Order['ref']} — {_Esc(Order['total'])} {Order['currency']} (payment {Order['payment_status']})",
+            _Layout(f"New order {_Esc(Order['ref'])}", f"""        <p style="margin:0 0 12px;">{_Esc((C.get('first_name') or '') + ' ' + (C.get('last_name') or ''))} &lt;{_Esc(C.get('email') or '')}&gt;
+           {('· ' + _Esc(C.get('phone'))) if C.get('phone') else ''}</p>
+        <ul style="margin:0 0 12px;padding-left:18px;">{Lines}</ul>
+        <p style="margin:0 0 12px;">Total {_Esc(_Money(Order['total'], Order['currency']))} · {_Esc(Order['payment_label'])} ·
+           {_Esc(Order.get('shipping_label') or '')}</p>
+        <p style="margin:0;font-size:12px;color:#8F8F8F;">Open the Admin → Orders → {_Esc(Order['ref'])} to review the design for production and record the payment.</p>"""))
+
+
+def StaffQuoteEmail(Request: dict) -> tuple[str, str]:
+    C = Request["customer"]
+    return (f"New quote request {Request['ref']} — {Request['title']}",
+            _Layout(f"New quote request {_Esc(Request['ref'])}", f"""        <p style="margin:0 0 12px;">{_Esc((C.get('first_name') or '') + ' ' + (C.get('last_name') or ''))} &lt;{_Esc(C.get('email') or '')}&gt;
+           asks for a price: <strong>{_Esc(Request['title'])}</strong> ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')})
+           in {_Esc(Request['material_label'])}, {_Esc(_Size(Request))}, ×{_Esc(Request['quantity'])}.</p>
+        {('<p style="margin:0 0 12px;">Note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
+        <p style="margin:0;font-size:12px;color:#8F8F8F;">The customer was promised an answer within one business day. Open the Admin → Orders → Quote requests.</p>"""))
 
 
 def _Reserved(Order: dict) -> str:
@@ -181,7 +214,7 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
         <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will come back to you within one business day
            with a price and the next steps. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
         {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
-        <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">Questions? Reply to this email and quote {_Esc(Request['ref'])}.</p>"""))
+        <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
 
 
 class OutboxMailer:
@@ -228,6 +261,9 @@ class SmtpMailer:
         self.PreferIpv4 = os.environ.get("SMTP_PREFER_IPV4", "true").lower() in ("1", "true", "yes")
         self.From = os.environ.get("MAIL_FROM", "no-reply@xjet3d.com")
         self.FromName = os.environ.get("MAIL_FROM_NAME", "XJet Atelier")
+        # Replies go to a read mailbox when one is configured (MAIL_REPLY_TO); else the no-reply address, and the mail
+        # itself says how to get in touch (ContactLine) — it never asks for a reply to a no-reply address
+        self.ReplyTo = os.environ.get("MAIL_REPLY_TO", "").strip() or f"no-reply@{self.From.split('@', 1)[1]}"
 
     def Send(self, To: str, Subject: str, HtmlBody: str) -> str:
         Msg = EmailMessage()
@@ -235,7 +271,7 @@ class SmtpMailer:
         Msg["From"] = formataddr((self.FromName, self.From))
         Msg["To"] = To
         Msg["Message-ID"] = make_msgid(domain=self.From.split("@")[-1])
-        Msg["Reply-To"] = f"no-reply@{self.From.split('@', 1)[1]}"     # P2 no_reply=True
+        Msg["Reply-To"] = self.ReplyTo
         Msg["Auto-Submitted"] = "auto-generated"
         Msg.set_content("This email requires an HTML-capable mail client.")
         Msg.add_alternative(HtmlBody, subtype="html")

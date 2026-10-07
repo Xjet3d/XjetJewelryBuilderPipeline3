@@ -63,7 +63,8 @@ async def test_needs_attention_lists_what_needs_a_human(HX, monkeypatch):
     A = (await H.Client.get("/api/admin/attention", headers=Admin)).json()
     assert "payment_failed" in A["by_kind"] and "payment_pending" not in A["by_kind"]
     for S in ("payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"):
-        await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": S}, headers=Admin)
+        # production and later need complete 3D results; this test has none, so each step is a noted exception
+        await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": S, "note": "test", "force": True}, headers=Admin)
     A = (await H.Client.get("/api/admin/attention", headers=Admin)).json()
     assert not {K for K in A["by_kind"] if K.startswith("payment") or K.startswith("order")}
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()

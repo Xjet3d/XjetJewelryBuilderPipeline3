@@ -1370,6 +1370,8 @@
               <button class="btn !py-1.5 whitespace-nowrap" :disabled="odBusy || oStatusForm.status === od.status" @click="setOrderStatus()">Update</button>
             </div>
             <input class="inp !py-1.5 !text-[12px]" x-model="oStatusForm.note" placeholder="Note for the log (optional)">
+            <label class="flex items-start gap-2 text-[12px] text-zinc-600 mt-1.5 cursor-pointer"><input type="checkbox" class="mt-0.5" x-model="oStatusForm.force">
+              <span>Set the status although a line's 3D result is missing, processing or flagged (an exception — say why in the note). Production and later statuses otherwise need every line's 3D result complete.</span></label>
             <p class="text-[12px] text-zinc-500">New → Payment confirmed → 3D ready → Production → QC → Shipped → Completed. Completed is final.</p>
           </div>
           <div class="space-y-2">

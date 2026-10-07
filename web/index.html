@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XJET Atelier — Custom AI Jewelry, Designed by You</title>
     <meta name="description" content="{{DESCRIPTION}}">
+    {{OG}}
     <meta name="robots" content="{{ROBOTS}}">
     <meta name="theme-color" content="#111111">
     <!-- Server-side page configuration (p3/app.py _VersionedPage): environment, whether developer tools exist on this
@@ -849,7 +850,8 @@
                         <p>Our design team answers within one business day.</p>
                         <div class="rounded-xl p-6" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                             <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
-                            <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'))" class="text-lg font-semibold text-zinc-900 underline underline-offset-4 hover:text-black" x-text="SUPPORT_EMAIL"></a>
+                            <a x-show="SUPPORT_EMAIL" :href="mailto('XJet Atelier — ' + (supportContext || 'a question'))" class="text-lg font-semibold text-zinc-900 underline underline-offset-4 hover:text-black" x-text="SUPPORT_EMAIL"></a>
+                            <p x-show="!SUPPORT_EMAIL" class="text-[14px] text-zinc-700">The support address will be published here shortly.</p>
                             <p class="text-[13px] text-zinc-500 mt-2">Include the name of your design or your Order ID so we can find it quickly. Never send your sign-in code by email.</p>
                             <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'), supportContext ? 'About: ' + supportContext + '\n\n' : '')" class="btn-gold inline-flex px-6 py-3 mt-4">Contact us</a>
                         </div>
@@ -1702,7 +1704,7 @@
 
                     <!-- Step 3 · review & pay -->
                     <section x-show="co.step === 'review'" class="space-y-6" aria-labelledby="co-h-review">
-                        <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; pay</h2><p class="text-[13px] text-zinc-500 mt-1" x-text="'Check everything, then place your order. ' + bagReserved + ' and our team confirms the design for production before anything is made.'"></p></div>
+                        <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; place order</h2><p class="text-[13px] text-zinc-500 mt-1" x-text="'Check everything, then place your order. ' + bagReserved + ' and our team confirms the design for production before anything is made.'"></p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
                             <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.customer.first_name + ' ' + co.customer.last_name"></p><p class="text-zinc-600" x-text="co.customer.email"></p><p class="text-zinc-600" x-text="co.customer.phone"></p></div>
@@ -1792,7 +1794,7 @@
                     <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                     <h2 class="text-3xl brand-font text-zinc-900 mb-2">Your order has been received</h2>
                     <p class="text-[15px] text-zinc-700">Order ID <span class="font-mono font-semibold text-zinc-900" x-text="order.ref"></span> · <span x-text="orderDate(order.created_at)"></span></p>
-                    <p class="text-[13px] text-zinc-500 mt-2">A confirmation has been sent to <span class="text-zinc-700" x-text="order.customer.email"></span>. Quote the Order ID in any question.</p>
+                    <p class="text-[13px] text-zinc-500 mt-2"><span x-text="emailText(order.confirmation_email, order.customer.email)"></span> Quote the Order ID in any question.</p>
                 </div>
                 <div class="space-y-4 mb-8">
                     <template x-for="l in order.lines" :key="l.id">
@@ -2150,7 +2152,7 @@
                     <div class="text-center py-4">
                         <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-6 h-6" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                         <h4 class="brand-font text-xl text-zinc-900 mb-2">Request <span class="font-mono" x-text="quoteReq.done.ref"></span> received</h4>
-                        <p class="text-[13px] text-zinc-600 leading-relaxed">We have emailed a confirmation to <span class="text-zinc-800" x-text="quoteReq.done.customer.email"></span>. A specialist will reply within one business day with a price and the next steps.</p>
+                        <p class="text-[13px] text-zinc-600 leading-relaxed"><span x-text="emailText(quoteReq.done.email_status, quoteReq.done.customer.email)"></span> A specialist will reply within one business day with a price and the next steps.</p>
                         <button @click="closeQuoteRequest()" class="btn-black mt-6 px-8 py-3">Done</button>
                     </div>
                 </template>

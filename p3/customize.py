@@ -179,6 +179,16 @@ class CustomizeService:
         Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
         CanAdd, Reason = self.Purchasability(Row, Quote, Product)
+        # The very same configuration again (a double click) adds no second line; a changed size, material or
+        # quantity is a new line, as before
+        Already = self.Ctx.Db.One("SELECT id FROM bag_lines WHERE owner_account_id = ? AND customization_id = ? AND material_id = ? "
+                                  "AND COALESCE(ring_size, -1) = COALESCE(?, -1) AND COALESCE(charm_size, -1) = COALESCE(?, -1) "
+                                  "AND quantity = ?",
+                                  (Who.AccountId, CustomizationId, Row["material_id"],
+                                   Row["ring_size"] if Product == Products.Ring else None,
+                                   Row.get("charm_size") if Product == Products.Charm else None, Row["quantity"]))
+        if Already:
+            return self.Bag(Who)
         if not CanAdd:
             Messages = {"luxury_preview_only": "Luxury materials are preview-only for now.",
                         "price_unavailable": "Price unavailable — this item cannot be added to the bag.",

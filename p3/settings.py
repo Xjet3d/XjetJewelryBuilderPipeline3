@@ -56,6 +56,9 @@ class Settings:
     DailyAiSpendCapUsd: float | None = None   # P3_DAILY_AI_SPEND_CAP_USD: paid submissions stop when the day's estimate reaches it
     RateLimits: bool = True          # P3_RATE_LIMITS: per-IP / per-account abuse protection (tests switch it off)
     NoDevTools: bool = False         # P3_NO_DEV_TOOLS: hide the developer tools outside production too (staging)
+    SupportEmail: str = ""           # P3_SUPPORT_EMAIL: the address the site and the emails name for questions (never invented)
+    StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated)
+    ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail; without it the mail says how to get in touch
 
     @property
     def Production(self) -> bool:
@@ -124,6 +127,9 @@ def LoadSettings(**Overrides) -> Settings:
         DailyAiSpendCapUsd=float(os.environ["P3_DAILY_AI_SPEND_CAP_USD"]) if os.environ.get("P3_DAILY_AI_SPEND_CAP_USD") else None,
         RateLimits=_Bool("P3_RATE_LIMITS", True),
         NoDevTools=_Bool("P3_NO_DEV_TOOLS"),
+        SupportEmail=os.environ.get("P3_SUPPORT_EMAIL", "").strip(),
+        StaffNotifyEmails=tuple(A.strip() for A in os.environ.get("P3_STAFF_NOTIFY_EMAILS", "").split(",") if A.strip()),
+        ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip(),
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
@@ -166,6 +172,8 @@ def ValidateProduction(S: Settings) -> list[str]:
         P.append("P3_MAIL_MODE must be smtp (the outbox mode sends nothing)")
     if S.DailyAiSpendCapUsd is None or S.DailyAiSpendCapUsd <= 0:
         P.append("P3_DAILY_AI_SPEND_CAP_USD must be set (the day's paid AI submissions stop at this estimate)")
+    if "@" not in S.SupportEmail:
+        P.append("P3_SUPPORT_EMAIL must be the confirmed support address the site and the emails name (none is invented)")
     try:
         if S.DataDir.is_relative_to(RepoRoot):
             P.append(f"P3_DATA_DIR must be outside the code checkout ({RepoRoot}); e.g. /srv/atelier/data")

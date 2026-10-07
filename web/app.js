@@ -104,7 +104,7 @@ class ApiError extends Error {
 
 function p3App() {
   return {
-    SUPPORT_EMAIL: 'atelier@xjet3d.com',   // carried over from P2 (marked "TODO confirm" there)
+    SUPPORT_EMAIL: (window.__p3 && window.__p3.support_email) || '',   // P3_SUPPORT_EMAIL (the server never invents one)
 
     // ── app / session ────────────────────────────────────────────────
     view: 'home',
@@ -781,6 +781,7 @@ function p3App() {
     // Support: one address everywhere, with the right context in the subject line
     mailto(subject, body = '') {
       const q = new URLSearchParams(); q.set('subject', subject); if (body) q.set('body', body);
+      if (!this.SUPPORT_EMAIL) return '#contact';                       // no address configured: the Contact page explains
       return 'mailto:' + this.SUPPORT_EMAIL + '?' + q.toString().replace(/\+/g, '%20');
     },
     get supportContext() {
@@ -1079,6 +1080,7 @@ function p3App() {
       const designId = this.design?.id;
       const tick = async () => {
         if (!this.design || this.design.id !== designId) { this.stopPolling(); return; }
+        if (document.hidden) return;                       // a background tab asks nothing; the next tick after it returns does
         const active = this.design.batches.filter(b => this.anyActive(b));
         if (!active.length) { this.stopPolling(); return; }
         for (const b of active) {
@@ -1494,7 +1496,16 @@ function p3App() {
     // The server is authoritative for prices, promo discounts, totals and validation; the browser
     // only mirrors the rules for instant feedback. Known profile details pre-fill the form but never
     // overwrite what the customer typed.
-    get checkoutSteps() { return [['details', 'Your details'], ['shipping', 'Shipping'], ['review', 'Review & pay']]; },
+    get checkoutSteps() { return [['details', 'Your details'], ['shipping', 'Shipping'], ['review', 'Review & place order']]; },
+    // The truth about a confirmation email: only "sent" / "pending" mean one is (or is about to be) on its way
+    emailOnItsWay(state) { const s = (state && state.status) || state; return s === 'sent' || s === 'pending'; },
+    emailText(state, to) {
+      const s = (state && state.status) || state;
+      if (s === 'sent') return `A confirmation email has been sent to ${to}.`;
+      if (s === 'pending') return `A confirmation email is on its way to ${to}.`;
+      if (s === 'failed') return `We could not send a confirmation email to ${to} — please keep your reference.`;
+      return 'Email confirmations are not active yet — please keep your reference.';
+    },
     get coStepIndex() { return this.checkoutSteps.findIndex(s => s[0] === this.co.step); },
     get coCountry() { return (this.checkout?.countries || []).find(c => c.code === this.co.address.country); },
     get coRegionRequired() { return (this.checkout?.region_required || []).includes(this.co.address.country); },
@@ -1589,7 +1600,7 @@ function p3App() {
         this.co.requestId = ''; this.co.promo_code = ''; this.co.promo_input = ''; this.co.terms = false; this.co.addrCheck = null;
         await this.refreshBag();
         this.navigateTo('confirmation');
-        this.showToast(`Order ${o.ref} received — a confirmation is on its way to ${o.customer.email}`, { ms: 7000 });
+        this.showToast(`Order ${o.ref} received` + (this.emailOnItsWay(o.confirmation_email) ? ` — a confirmation email is on its way to ${o.customer.email}` : ' — please keep your Order ID'), { ms: 7000 });
       } catch (e) {
         this.co.error = e.message;
         if (e.problems) {
