@@ -162,6 +162,7 @@ function adminApp() {
     key: '', keyInput: '', ok: false, busy: false, error: '', mode: '',
     users: [], search: '', showRemoved: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
+    credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
     created: null, createError: '', duplicateOf: null, copied: null,
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
@@ -352,6 +353,18 @@ function adminApp() {
     async loadProducts() {
       this.productsMsg = ''; this.productsErr = false;
       try { this.products = await this.api('GET', '/api/admin/products'); } catch (e) { this.productsErr = true; this.productsMsg = e.message; }
+      try { this.credits = await this.api('GET', '/api/admin/credits'); } catch (_) { this.credits = null; }
+    },
+    // The credits tariff: what one piece of work costs a customer (p3/credits.py)
+    editTariff() { this.tariffEdit = { ...(this.credits?.tariff || {}) }; this.tariffMsg = ''; },
+    async saveTariff() {
+      if (!this.tariffEdit) return;
+      this.productsBusy = true; this.tariffMsg = ''; this.tariffErr = false;
+      try {
+        this.credits = await this.api('PUT', '/api/admin/credits/tariff', { tariff: this.tariffEdit });
+        this.tariffEdit = null; this.tariffMsg = 'Tariff saved.'; this.notify(this.tariffMsg);
+        await this.loadProducts();
+      } catch (e) { this.tariffErr = true; this.tariffMsg = e.message; } finally { this.productsBusy = false; }
     },
     // Customer availability: one switch per product (Rings, Charms …), each change confirmed in a normal dialog
     async toggleProduct(p) {

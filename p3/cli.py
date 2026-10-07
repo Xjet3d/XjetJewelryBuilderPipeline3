@@ -42,12 +42,12 @@ def Main(Argv=None) -> int:
         Token, Who = Accounts.IssueToken(Args.label or (Args.name or ""), DisplayName=Args.name, Email=Args.email,
                                          MaxGenerations=Args.max_generations)
         print(Token)
-        print(f"# account: {Who.AccountId}, {Args.max_generations} generations  (the token is shown only once)")
+        print(f"# account: {Who.AccountId}, {Args.max_generations} credits  (the token is shown only once)")
     elif Args.cmd == "set-quota":
         Who = Accounts.Authenticate(Args.token)
         Accounts.SetQuota(Who.AccountId, Args.max_generations, Args.reset_usage)
         P = Accounts.Profile(Who)
-        print(f"{P['remaining']} of {P['max']} generations remaining ({Who.AccountId})")
+        print(f"{P['remaining']} of {P['max']} credits remaining ({Who.AccountId})")
     elif Args.cmd == "list-tokens":
         for R in Accounts.ListAccounts():
             State = "active" if R["active"] else "inactive"

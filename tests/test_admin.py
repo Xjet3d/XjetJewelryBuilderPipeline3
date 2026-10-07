@@ -174,18 +174,18 @@ async def test_user_detail_counts_only_recorded_activity(HA):
     assert T["movies"]["total"] == 2 and T["movies"]["by_status"] == {"ready": 1, "failed": 1}
     assert T["meshes"]["total"] == 0 and T["bag_lines"] == 0
     assert (T["jobs_succeeded"], T["jobs_failed"]) == (9, 1)
-    assert (T["generations_used"], T["generations_max"], T["sign_ins"]) == (1, 10, 1)
+    assert (T["generations_used"], T["generations_max"], T["sign_ins"]) == (9, 100, 1)   # 4 + 4 images, 1 finished movie
     assert T["images"]["by_provider"] == {"fal": 4}
     assert D["user"]["last_sign_in_at"] and D["user"]["last_activity_at"]
 
-    # Provider ledger: every submission carries provider + endpoint; cost stays empty (not configured).
+    # Provider ledger: every submission carries provider + endpoint and its estimated cost (mock requests: $0).
     Requests = {}
     for Row in D["usage_ledger"]:
         Requests[(Row["kind"], Row["provider"])] = Requests.get((Row["kind"], Row["provider"]), 0) + Row["requests"]
     assert Requests == {("image", "fal"): 8, ("movie", "fal"): 2}
     assert len([Row for Row in D["usage_ledger"] if Row["kind"] == "image"]) == 2     # design + refine endpoints
-    assert all(R["endpoint"] != "unknown" and R["cost_usd"] is None for R in D["usage_ledger"])
-    assert D["cost_reporting"] == "not_configured"
+    assert all(R["endpoint"] != "unknown" and R["cost_usd"] == 0 for R in D["usage_ledger"])
+    assert D["cost_reporting"] == "estimated"
 
     G = D["designs"][0]
     Chosen = [C for B in G["batches"] for C in B["candidates"] if C["selected"]]

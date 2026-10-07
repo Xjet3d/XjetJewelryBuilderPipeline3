@@ -2,8 +2,10 @@
 
 Behaviour mirrors Pipeline 2's token_store.py (revision 1e871734):
   * access tokens are 6 uppercase letters (profanity-filtered), entered case-insensitively;
-  * every account has a generation allowance (default 10); only a finished 360° movie uses
-    one generation, and at 0 remaining no new generation may start (P2 _EnforceTokenQuota);
+  * every account has a credit allowance (max_generations, default 10). Since 2026-10-07 the credits follow
+    p3/credits.py: reserved (tokens_reserved) when paid work is created, charged (generations_used) when a
+    result is delivered — an image, a finished movie — and released when it fails; at 0 remaining no paid
+    work may start (P2 _EnforceTokenQuota, extended to images);
   * self-service email registration, exactly as P2: registering mints the account's 6-letter
     token immediately but keeps it inactive (unusable, unrevealed) behind a 24 h verification
     link; verifying activates it and reveals it; re-registering a pending email re-issues the
@@ -32,7 +34,7 @@ from p3.db import Database, Now
 Issuer = "p3local"
 DefaultMaxGenerations = 10
 VerifyTtlHours = 24
-QuotaMessage = "You have used all the movie generations on this account. Contact us to extend your allowance."
+QuotaMessage = "You have used all the credits on this account. Contact us to extend your allowance."
 
 Schema = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -86,6 +88,7 @@ _AccountColumns = {
     "delivery_token":    "ALTER TABLE accounts ADD COLUMN delivery_token TEXT",   # retrievable token (shown/re-sent)
     "last_sign_in_at":   "ALTER TABLE accounts ADD COLUMN last_sign_in_at TEXT",
     "removed_at":        "ALTER TABLE accounts ADD COLUMN removed_at TEXT",       # soft remove (admin)
+    "tokens_reserved":   "ALTER TABLE accounts ADD COLUMN tokens_reserved INTEGER NOT NULL DEFAULT 0",   # credits held by work in flight
 }
 
 # Provider/cost dimensions on each usage event, so cost per user can be reported later. cost_usd
@@ -96,6 +99,7 @@ _UsageColumns = {
     "mode":        "ALTER TABLE usage_events ADD COLUMN mode TEXT",          # mock | live
     "cost_usd":    "ALTER TABLE usage_events ADD COLUMN cost_usd REAL",
     "cost_source": "ALTER TABLE usage_events ADD COLUMN cost_source TEXT",   # e.g. price table version / invoice
+    "internal":    "ALTER TABLE usage_events ADD COLUMN internal INTEGER NOT NULL DEFAULT 0",   # XJet's own work: never a credit
 }
 
 try:
@@ -179,22 +183,64 @@ class LocalAccountProvider:
 
     # ── quota / usage ────────────────────────────────────────────────────
     def _Quota(self, AccountId: str) -> dict:
-        Row = self.Db.One("SELECT display_name, email, generations_used, max_generations FROM accounts "
+        Row = self.Db.One("SELECT display_name, email, generations_used, max_generations, tokens_reserved FROM accounts "
                           "WHERE account_id = ?", (AccountId,))
-        Used, Max = Row["generations_used"], Row["max_generations"]
-        return {"used": Used, "max": Max, "remaining": max(0, Max - Used),
+        Used, Max, Reserved = Row["generations_used"], Row["max_generations"], Row["tokens_reserved"] or 0
+        return {"used": Used, "max": Max, "reserved": Reserved, "remaining": max(0, Max - Used - Reserved),
                 "name": Row["display_name"] or "", "email": Row["email"] or ""}
 
     def AuthorizeSpend(self, Who: Principal, Kind: str, Units: int) -> None:
-        # P2 rule: no new generation of any kind may start once the allowance is used up.
-        if self._Quota(Who.AccountId)["remaining"] <= 0:
+        """Reserve Units credits in one atomic step: used + reserved + Units must fit the allowance, so parallel
+        requests can never overspend it (P2's rule — nothing starts at 0 remaining — extended to every paid kind)."""
+        if Units <= 0:
+            return
+        with self.Db.Transaction() as Conn:
+            N = Conn.execute("UPDATE accounts SET tokens_reserved = tokens_reserved + ? WHERE account_id = ? "
+                             "AND generations_used + tokens_reserved + ? <= max_generations",
+                             (int(Units), Who.AccountId, int(Units))).rowcount
+        if not N:
             raise InsufficientCredits(QuotaMessage)
 
+    def Settle(self, AccountId: str, Kind: str, RefId: str, Charged: bool, Units: int = 1) -> bool:
+        """The reserved credits of one piece of work: charged (a delivered result, once per RefId — the 'generation'
+        usage event is the receipt) or released (a failure)."""
+        with self.Db.Transaction() as Conn:
+            if Charged:
+                if Conn.execute("SELECT 1 FROM usage_events WHERE kind = 'generation' AND ref_id = ?", (RefId,)).fetchone():
+                    return False
+                Conn.execute("UPDATE accounts SET generations_used = generations_used + ?, "
+                             "tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
+                             (int(Units), int(Units), AccountId))
+                Conn.execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) "
+                             "VALUES (?, 'generation', ?, ?, ?)", (AccountId, int(Units), RefId, Now()))
+            else:
+                Conn.execute("UPDATE accounts SET tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
+                             (int(Units), AccountId))
+            return True
+
+    def Release(self, AccountId: str, Units: int) -> None:
+        self.Db.Execute("UPDATE accounts SET tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
+                        (int(Units), AccountId))
+
+    def RebuildReservations(self, Reserved: dict) -> None:
+        with self.Db.Transaction() as Conn:
+            Conn.execute("UPDATE accounts SET tokens_reserved = 0")
+            for AccountId, Units in Reserved.items():
+                Conn.execute("UPDATE accounts SET tokens_reserved = ? WHERE account_id = ?", (int(Units), AccountId))
+
     def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str,
-                    Provider: str | None = None, Endpoint: str | None = None) -> None:
+                    Provider: str | None = None, Endpoint: str | None = None, CostUsd: float | None = None,
+                    CostSource: str | None = None, Internal: bool = False) -> None:
         Mode = None if Provider is None else ("mock" if Provider == "mock" else "live")
-        self.Db.Execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at, provider, endpoint, mode) "
-                        "VALUES (?,?,?,?,?,?,?,?)", (AccountId, Kind, int(Units), RefId, Now(), Provider, Endpoint, Mode))
+        self.Db.Execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at, provider, endpoint, mode, "
+                        "cost_usd, cost_source, internal) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (AccountId, Kind, int(Units), RefId, Now(), Provider, Endpoint, Mode,
+                         CostUsd, CostSource if CostUsd is not None else None, 1 if Internal else 0))
+
+    def SpendSince(self, DayIso: str) -> float:
+        R = self.Db.One("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM usage_events WHERE mode = 'live' AND created_at >= ?",
+                        (DayIso,))
+        return float(R["s"] or 0.0)
 
     def UnannotatedUsageRefs(self) -> set[str]:
         """Usage events recorded before provider/endpoint were captured (for the one-time backfill)."""
@@ -216,23 +262,14 @@ class LocalAccountProvider:
                         (AccountId, Kind, Detail, At or Now()))
 
     def CommitCharge(self, AccountId: str, Kind: str, RefId: str) -> bool:
-        """Charge one generation for a FINISHED 360° movie (P2 IncrementUsage). Once per RefId."""
-        if Kind != UsageMovie:
-            return False
-        with self.Db.Transaction() as Conn:
-            if Conn.execute("SELECT 1 FROM usage_events WHERE kind = 'generation' AND ref_id = ?", (RefId,)).fetchone():
-                return False
-            N = Conn.execute("UPDATE accounts SET generations_used = generations_used + 1 "
-                             "WHERE account_id = ? AND generations_used < max_generations", (AccountId,)).rowcount
-            if N:
-                Conn.execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) "
-                             "VALUES (?, 'generation', 1, ?, ?)", (AccountId, RefId, Now()))
-            return bool(N)
+        """The older name (P2 IncrementUsage): charge one reserved credit for a finished result, once per RefId."""
+        return self.Settle(AccountId, Kind, RefId, True, 1)
 
     def UsageSummary(self, AccountId: str) -> dict:
+        """{kind: units} of the customer's own requests (XJet's internal work for the account is left out)."""
         return {R["kind"]: R["units"] for R in self.Db.All(
             "SELECT kind, SUM(units) AS units FROM usage_events WHERE account_id = ? AND kind != 'generation' "
-            "GROUP BY kind", (AccountId,))}
+            "AND internal = 0 GROUP BY kind", (AccountId,))}
 
     def Profile(self, Who: Principal) -> dict:
         """P2 /api/token-status shape (used, max, remaining, name, email) plus P3 fields."""
@@ -447,6 +484,7 @@ class LocalAccountProvider:
     @staticmethod
     def _AdminRow(R: dict) -> dict:
         Used, Max = R["generations_used"], R["max_generations"]
+        Reserved = (dict(R).get("tokens_reserved") or 0) if hasattr(R, "keys") else 0
         if R["removed_at"]:
             Status = "removed"
         elif R["source"] == "self" and not R["verified_at"]:
@@ -463,7 +501,8 @@ class LocalAccountProvider:
             "account_id": R["account_id"], "name": R["display_name"] or "", "email": R["email"] or "",
             "token": R["delivery_token"] or ((R["token_hint"] + "…") if R["token_hint"] else ""),
             "token_complete": bool(R["delivery_token"]),
-            "used": Used, "max": Max, "remaining": max(0, Max - Used), "status": Status, "source": R["source"],
+            "used": Used, "max": Max, "reserved": Reserved, "remaining": max(0, Max - Used - Reserved), "status": Status,
+            "source": R["source"],
             "created_at": R["created_at"], "verified_at": R["verified_at"], "first_activity_at": R["activated_at"],
             "last_activity_at": R["last_activity_at"], "last_sign_in_at": R["last_sign_in_at"],
             "removed_at": R["removed_at"],

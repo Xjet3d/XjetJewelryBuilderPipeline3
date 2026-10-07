@@ -17,6 +17,7 @@ import secrets
 from p3 import assets
 from p3 import products as Products
 from p3.accounts import Principal, UsageImage
+from p3 import credits as Credits
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import NameForPrompt, NameForVariation
@@ -48,6 +49,7 @@ CustomerFailureText = {
     "billing": "The design service is temporarily unavailable. Please try again later.",
     "reference_unavailable": "The reference image could not be loaded.",
     "duplicate_output": "This option came out identical to another one.",
+    "spend_cap_reached": "AI generation is paused for today. Please try again tomorrow.",
 }
 GenericFailureText = "This option couldn't be generated."
 
@@ -89,21 +91,25 @@ class ImageService:
                               (Who.AccountId, ClientRequestId))
             if Existing:
                 return self._FirstBatch(Existing["id"])
-        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
-        DesignId = NewId("dsg")
-        BatchId = NewId("bat")
-        RefPath = None
-        if ReferencePng is not None:
-            RefPath = f"designs/{DesignId}/references/{BatchId}.png"
-            assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
-        Title = NameForPrompt(Db, Prompt, Product)              # "Fil Twist": local rules, never another design's name
-        with Db.Transaction() as Conn:
-            T = Now()
-            Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
-                         "ai_mode, product_type) VALUES (?,?,?,?,?,?,?,?,?)",
-                         (DesignId, Who.AccountId, Title, Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name, Product))
-            self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
-        self._StartBatch(BatchId)
+        Units = Credits.Reserve(self.Ctx, Who, Credits.Image, self.Ctx.Gen.Images.CandidatesPerBatch)
+        try:
+            DesignId = NewId("dsg")
+            BatchId = NewId("bat")
+            RefPath = None
+            if ReferencePng is not None:
+                RefPath = f"designs/{DesignId}/references/{BatchId}.png"
+                assets.WriteAtomic(self.Ctx.Settings.AssetsDir, RefPath, ReferencePng)
+            Title = NameForPrompt(Db, Prompt, Product)              # "Fil Twist": local rules, never another design's name
+            with Db.Transaction() as Conn:
+                T = Now()
+                Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, updated_at, "
+                             "ai_mode, product_type) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (DesignId, Who.AccountId, Title, Prompt, ClientRequestId, T, T, self.Ctx.Provider.Name, Product))
+                self._InsertBatch(Conn, BatchId, DesignId, "initial", None, Prompt, RefPath, None)
+            self._StartBatch(BatchId)
+        except Exception:
+            Credits.Release(self.Ctx, Who.AccountId, Units)
+            raise
         return self.GetBatch(BatchId)
 
     def CreateRefinement(self, Who: Principal, DesignId: str, ParentCandidateId: str, Instruction: str,
@@ -137,36 +143,40 @@ class ImageService:
             raise HttpError(409, "reference_unavailable",
                             "The selected image could not be loaded for refinement. "
                             "Please pick another image or try again.")
-        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, self.Ctx.Gen.Images.CandidatesPerBatch)
-        BatchId = NewId("bat")
-        Target = NewId("dsg") if Fork else DesignId
-        # The fork keeps its lineage in its name ("Fil Twist" -> "Fil Lattice"), never the master's own name
-        ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"], D.get("product_type") or Products.Ring) if Fork else None
-        with Db.Transaction() as Conn:
-            T = Now()
+        Units = Credits.Reserve(self.Ctx, Who, Credits.RefinementImage, self.Ctx.Gen.Images.CandidatesPerBatch)
+        try:
+            BatchId = NewId("bat")
+            Target = NewId("dsg") if Fork else DesignId
+            # The fork keeps its lineage in its name ("Fil Twist" -> "Fil Lattice"), never the master's own name
+            ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"], D.get("product_type") or Products.Ring) if Fork else None
+            with Db.Transaction() as Conn:
+                T = Now()
+                if Fork:
+                    # A fork is always the same product as the design it was refined from
+                    Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, "
+                                 "updated_at, ai_mode, source_design_id, source_candidate_id, product_type) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                 (Target, Who.AccountId, ForkTitle, D["prompt"], ClientRequestId, T, T,
+                                  self.Ctx.Provider.Name, DesignId, ParentCandidateId, D.get("product_type") or Products.Ring))
+                self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
+                                  Parent["asset_path"], None if Fork else ClientRequestId)
+                Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, Target))
+                if Fork:
+                    Conn.execute("UPDATE gallery_uses SET last_active_at = ? WHERE design_id = ? AND owner_account_id = ?",
+                                 (T, DesignId, Who.AccountId))
             if Fork:
-                # A fork is always the same product as the design it was refined from
-                Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, client_request_id, created_at, "
-                             "updated_at, ai_mode, source_design_id, source_candidate_id, product_type) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                             (Target, Who.AccountId, ForkTitle, D["prompt"], ClientRequestId, T, T,
-                              self.Ctx.Provider.Name, DesignId, ParentCandidateId, D.get("product_type") or Products.Ring))
-            self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
-                              Parent["asset_path"], None if Fork else ClientRequestId)
-            Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, Target))
-            if Fork:
-                Conn.execute("UPDATE gallery_uses SET last_active_at = ? WHERE design_id = ? AND owner_account_id = ?",
-                             (T, DesignId, Who.AccountId))
-        if Fork:
-            from p3 import ringids as RingIds
-            from p3 import sessions as Sessions
-            if Shared:
-                Sessions.Record(self.Ctx, Who.AccountId, "gallery_refined", Target, source_design_id=DesignId,
-                                source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId)
-            else:
-                Sessions.Record(self.Ctx, Who.AccountId, "design_forked", Target, source_design_id=DesignId,
-                                source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId,
-                                reason=Committed)
-        self._StartBatch(BatchId)
+                from p3 import ringids as RingIds
+                from p3 import sessions as Sessions
+                if Shared:
+                    Sessions.Record(self.Ctx, Who.AccountId, "gallery_refined", Target, source_design_id=DesignId,
+                                    source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId)
+                else:
+                    Sessions.Record(self.Ctx, Who.AccountId, "design_forked", Target, source_design_id=DesignId,
+                                    source_ring_id=RingIds.CandidateRef(Db, ParentCandidateId), parent_candidate_id=ParentCandidateId,
+                                    reason=Committed)
+            self._StartBatch(BatchId)
+        except Exception:
+            Credits.Release(self.Ctx, Who.AccountId, Units)
+            raise
         return self.GetBatch(BatchId)
 
     def RequireConfigured(self, Product: str) -> None:
@@ -223,7 +233,7 @@ class ImageService:
         Cand, Batch = self._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "failed":
             raise HttpError(409, "not_failed", "Only a failed image can be retried.")
-        self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, 1)
+        Credits.Reserve(self.Ctx, Who, Credits.KindOfBatch(Batch["kind"]), 1)         # "Generate another option": a new credit
         self._ResetForRetry(CandidateId)
         self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId))
         return self.GetBatch(Batch["id"])
@@ -232,7 +242,7 @@ class ImageService:
         Batch = self._OwnedBatch(Who, BatchId)
         Failed = self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
         if Failed:
-            self.Ctx.Accounts.AuthorizeSpend(Who, UsageImage, len(Failed))
+            Credits.Reserve(self.Ctx, Who, Credits.KindOfBatch(Batch["kind"]), len(Failed))
         for C in Failed:
             self._ResetForRetry(C["id"])
             self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
@@ -246,47 +256,50 @@ class ImageService:
     async def _Drive(self, CandidateId: str) -> None:
         """One slot: submit once, wait up to images.request_timeout_s (90 s) from the submission, store the image.
         A slot that fails or runs out of time is shown as unavailable; it is never re-requested on its own (the
-        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen."""
+        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen. Its
+        credit, reserved when the batch was created, is charged when the image is stored and released otherwise."""
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
         async with Ctx.Semaphore():
-            while True:
-                Cand = Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
-                if Cand is None or Cand["status"] in ("ready", "failed"):
-                    return
-                Batch = Db.One("SELECT * FROM batches WHERE id = ?", (Cand["batch_id"],))
-                try:
-                    RequestId = Cand["provider_request_id"]
-                    if not RequestId:
-                        Arguments = await self._Arguments(Batch, Cand)
+            Cand = Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
+            if Cand is None or Cand["status"] in ("ready", "failed"):
+                return
+            Batch = Db.One("SELECT * FROM batches WHERE id = ?", (Cand["batch_id"],))
+            Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Batch["design_id"],))["owner_account_id"]
+            Kind = Credits.KindOfBatch(Batch["kind"])
+            try:
+                RequestId = Cand["provider_request_id"]
+                if not RequestId:
+                    Arguments = await self._Arguments(Batch, Cand)
+                    Est = Credits.CheckSpendCap(Ctx, Batch["endpoint"], None)       # the day's cap, before anything is paid
+                    try:
                         RequestId = await Ctx.Provider.Submit(Batch["endpoint"], Arguments)
                         Db.Update("candidates", CandidateId, status="generating",
                                   provider_request_id=RequestId, attempts=Cand["attempts"] + 1)
-                        Owner = Db.One("SELECT d.owner_account_id FROM batches b JOIN designs d ON d.id = b.design_id "
-                                       "WHERE b.id = ?", (Batch["id"],))
-                        Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageImage, 1, CandidateId,
-                                                 Provider=Ctx.Provider.Name, Endpoint=Batch["endpoint"])
-                    Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
-                                                 Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
-                                                 S.MaxTransientPollErrors)
-                    Images = Result.get("images") or []
-                    if not Images or not Images[0].get("url"):
-                        raise assets.AssetError("Provider returned no image")
-                    Data = await DownloadWithRetry(Ctx.Provider, Images[0]["url"],
-                                                   S.MaxTransientPollErrors, S.PollIntervalS)
-                    Ext = assets.ValidateImage(Data)
-                    if await self._StoreUnlessDuplicate(Batch, Cand, Data, Ext):
-                        return
-                    # Duplicate that was reset for another attempt: loop and resubmit.
-                except Exception as E:
-                    # The provider's own words stay here (the Admin's session page and the log); the customer gets
-                    # CustomerError(Code). A timed-out slot keeps its request id: its outcome is unknown, so it is
-                    # never resubmitted by the app.
-                    Message, Code = FailureFor(E)
-                    Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
-                    Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
-                    return
+                        Credits.RecordUsage(Ctx, Owner, UsageImage, CandidateId, Batch["endpoint"])
+                    finally:
+                        Credits.SubmitDone(Ctx, Est)
+                Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
+                                             Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
+                                             S.MaxTransientPollErrors)
+                Images = Result.get("images") or []
+                if not Images or not Images[0].get("url"):
+                    raise assets.AssetError("Provider returned no image")
+                Data = await DownloadWithRetry(Ctx.Provider, Images[0]["url"],
+                                               S.MaxTransientPollErrors, S.PollIntervalS)
+                Ext = assets.ValidateImage(Data)
+                await self._StoreUnlessDuplicate(Batch, Cand, Data, Ext)
+                Final = Db.One("SELECT status FROM candidates WHERE id = ?", (CandidateId,))["status"]
+                Credits.Settle(Ctx, Owner, Kind, CandidateId, Final == "ready")        # charged only for a delivered image
+            except Exception as E:
+                # The provider's own words stay here (the Admin's session page and the log); the customer gets
+                # CustomerError(Code). A timed-out slot keeps its request id: its outcome is unknown, so it is
+                # never resubmitted by the app.
+                Message, Code = FailureFor(E)
+                Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
+                Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
+                Credits.Settle(Ctx, Owner, Kind, CandidateId, False)
 
     async def _Arguments(self, Batch: dict, Cand: dict) -> dict:
         """Provider arguments from the configuration version recorded on the batch (the prompt was
@@ -321,17 +334,15 @@ class ImageService:
             return Url
 
     async def _StoreUnlessDuplicate(self, Batch: dict, Cand: dict, Data: bytes, Ext: str) -> bool:
-        """Store a ready image. Returns False when the output was a duplicate and was re-queued."""
+        """Store a ready image. An output identical to another option of the batch is a failed option
+        (duplicate_output, retryable): it is never re-requested by the app — that would be another paid image
+        nobody asked for — the customer's "Generate another option" is the only second request."""
         Db = self.Ctx.Db
         Digest = assets.Sha256(Data)
         async with self.Ctx.Lock(f"batch:{Batch['id']}"):
             Dup = Db.One("SELECT id FROM candidates WHERE batch_id = ? AND id != ? AND status = 'ready' "
                          "AND content_sha256 = ?", (Batch["id"], Cand["id"], Digest))
             if Dup:
-                if Cand["duplicate_retries"] < self.Ctx.Gen.Images.MaxDuplicateRetriesPerSlot:
-                    Db.Update("candidates", Cand["id"], status="pending", provider_request_id=None,
-                              duplicate_retries=Cand["duplicate_retries"] + 1, seed=_NewSeed())
-                    return False
                 Db.Update("candidates", Cand["id"], status="failed", error_code="duplicate_output",
                           error="This image came back identical to another option. You can retry it.")
                 return True

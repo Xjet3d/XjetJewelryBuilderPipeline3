@@ -23,6 +23,10 @@ from p3 import assets
 from p3 import media as Media
 from p3 import products as Products
 from p3 import showcase as Showcase
+from p3 import credits as Credits
+from p3.ratelimit import RateLimiter
+from p3 import credits as Credits
+from p3.ratelimit import RateLimiter
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
@@ -163,6 +167,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
     Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
+    Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
+    Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
+    Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
+    Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
     Mailer = BuildMailer(S.DataDir)
     Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
@@ -179,6 +187,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def Lifespan(_App):
         Summary = Svc.Reconcile()
         Logger.info("Startup reconciliation: %s (provider=%s)", Summary, Ctx.Provider.Name)
+        Reserved = Credits.Rebuild(Ctx)           # the credits held by the work still in flight, from the job tables
+        if Reserved:
+            Logger.info("Credit reservations rebuilt: %s", Reserved)
+        Reserved = Credits.Rebuild(Ctx)           # the credits held by the work still in flight, from the job tables
+        if Reserved:
+            Logger.info("Credit reservations rebuilt: %s", Reserved)
         Logger.warning("AI mode: %s (%s); base path: %s", Modes.Mode.upper(), Modes.Source, Base or "/")
         _App.state.Reconciliation = Summary
         if Migrated:
@@ -257,7 +271,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Err = {"code": E.Code, "message": E.Message}
         if getattr(E, "Problems", None):              # field-level problems (checkout forms)
             Err["problems"] = E.Problems
-        return JSONResponse(status_code=E.Status, content={"error": Err})
+        Headers = {"Retry-After": str(E.RetryAfter)} if getattr(E, "RetryAfter", None) else None
+        return JSONResponse(status_code=E.Status, content={"error": Err}, headers=Headers)
 
     @App_.exception_handler(InsufficientCredits)
     async def _NoCredits(_Req: Request, E: InsufficientCredits):
@@ -367,6 +382,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     def HealthDetails() -> dict:
         """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""
         return {"ok": True, "env": S.Env, "provider": Ctx.Provider.Name, "mode": Modes.Mode, "mode_source": Modes.Source,
+                "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
+                "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
                 "mode_locked": S.LockMode, "base_path": Base or "/", "admin_host": S.AdminHost or None,
                 "public_base_url": S.PublicBaseUrl or None, "mail_mode": S.MailMode,
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
@@ -378,7 +395,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",
                                                                                 "minimax-camera-charm", "hi3d-charm")}}
 
-    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
+    RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, Ctx.AiPrices, Svc.Gallery,
                   Svc.Orders, Svc.Promos, HealthDetails=HealthDetails)
 
     # ── derived media: thumbnails and movie posters, made on first request and cached (p3/media.py) ──
@@ -426,20 +443,22 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
-        return Ctx.Accounts.Profile(Tok(x_access_token))
+        return {**Ctx.Accounts.Profile(Tok(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
     @App_.post("/api/register")
     async def Register(Req: Request, Background: BackgroundTasks, Body_: dict = Body(...)):
+        Ctx.RateLimiter.Register(Req, str(Body_.get("Email") or ""))
         return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""), Background.add_task)
 
     @App_.post("/api/register-token")
-    async def RegisterToken(Body_: dict = Body(...)):
+    async def RegisterToken(Req: Request, Body_: dict = Body(...)):
+        Ctx.RateLimiter.Auth(Req)
         return Registration.SignInWithToken(Body_.get("Token", ""), Body_.get("Via", "token"))
 
     @App_.get("/api/token-status")
     async def TokenStatus(x_access_token: str | None = Header(None)):
-        return Ctx.Accounts.Profile(Tok(x_access_token))
+        return {**Ctx.Accounts.Profile(Tok(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     @App_.get("/verify", include_in_schema=False)
     async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
@@ -486,6 +505,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.post("/api/gallery/{ItemId}/start")
     async def GalleryStart(ItemId: str, request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
         return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None, Seen(request)[0]))
 
     @App_.get("/api/gallery/{ItemId}/share")
@@ -559,6 +579,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                            rights_confirmed: bool = Form(False), reference: UploadFile | None = File(None),
                            product: str | None = Form(None), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
         # The product is fixed here, once, for the design and everything refined from it. A ring needs nothing
         # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
         Visible = Products.VisibleProducts(Ctx, request)
@@ -589,7 +610,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/designs/{DesignId}/batches")
     async def Refine(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Images.CreateRefinement(Tok(x_access_token), DesignId, Body_.get("parent_candidate_id"),
+        Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
+        return Svc.Images.CreateRefinement(Who, DesignId, Body_.get("parent_candidate_id"),
                                            Body_.get("instruction", ""), Body_.get("client_request_id"),
                                            Products.VisibleProducts(Ctx, request))
 
@@ -599,12 +622,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Svc.Images.GetBatch(B["id"])
 
     @App_.post("/api/batches/{BatchId}/retry-failed")
-    async def RetryFailed(BatchId: str, x_access_token: str | None = Header(None)):
-        return Svc.Images.RetryFailed(Tok(x_access_token), BatchId)
+    async def RetryFailed(BatchId: str, request: Request, x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
+        return Svc.Images.RetryFailed(Who, BatchId)
 
     @App_.post("/api/candidates/{CandidateId}/retry")
-    async def RetryCandidate(CandidateId: str, x_access_token: str | None = Header(None)):
-        return Svc.Images.RetryCandidate(Tok(x_access_token), CandidateId)
+    async def RetryCandidate(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
+        return Svc.Images.RetryCandidate(Who, CandidateId)
 
     @App_.put("/api/designs/{DesignId}/selection")
     async def Select(DesignId: str, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
@@ -625,8 +652,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Svc.Customize.Update(Tok(x_access_token), CustomizationId, Body_)
 
     @App_.post("/api/candidates/{CandidateId}/movie")
-    async def EnsureMovie(CandidateId: str, x_access_token: str | None = Header(None)):
+    async def EnsureMovie(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
+        Ctx.RateLimiter.Start(request, Who)
         Cand, _Batch = Svc.Images._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")

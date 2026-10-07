@@ -153,17 +153,15 @@ async def test_entire_batch_failure_is_reported_and_retryable(H):
     assert (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["status"] == "complete"
 
 
-async def test_exact_duplicate_output_is_retried_then_bounded(H):
+async def test_exact_duplicate_output_is_a_failed_option_never_re_requested(H):
     H.Provider.Script(endpoints.ImageGenerate, "duplicate", "duplicate")
     Batch = await H.NewDesign("Band")
-    assert Batch["status"] == "complete"
-    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Batch["candidates"]}) == N
-    assert len(H.Provider.Submissions) == N + 1      # one bounded re-request for the duplicate
-
-    H.Provider.Script(endpoints.ImageGenerate, "duplicate", "duplicate", "duplicate")
-    Batch = await H.NewDesign("Band two")
     Codes = sorted(C["error_code"] or "" for C in Batch["candidates"])
     assert Codes.count("duplicate_output") == 1 and Batch["status"] == "partial"
+    assert len({assets.Sha256(H.AssetBytes(C["image_url"])) for C in Batch["candidates"] if C["image_url"]}) == N - 1
+    assert len(H.Provider.Submissions) == N          # no automatic (paid) re-request: "Generate another option" is the customer's
+    Dup = next(C for C in Batch["candidates"] if C["error_code"] == "duplicate_output")
+    assert Dup["retryable"] and Dup["error"] == "This option came out identical to another one."
 
 
 Generic = "This option couldn't be generated."

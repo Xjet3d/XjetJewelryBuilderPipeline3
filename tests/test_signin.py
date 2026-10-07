@@ -120,23 +120,23 @@ async def test_expired_verification_link(HS):
     assert "Link expired" in Page and 'class="card bad"' in Page
 
 
-async def test_only_a_finished_movie_uses_a_generation_and_quota_blocks_at_zero(tmp_path):
+async def test_credits_pay_for_images_and_movies_and_block_at_zero(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
-        H.Ctx.Accounts.SetQuota(H.Who.AccountId, MaxGenerations=1)
+        H.Ctx.Accounts.SetQuota(H.Who.AccountId, MaxGenerations=5)
         Batch = await H.NewDesign("Band with a leaf")
-        assert (await H.Client.get("/api/token-status")).json()["remaining"] == 1     # designs don't count
+        assert (await H.Client.get("/api/token-status")).json()["remaining"] == 1     # four images: four credits
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
         await H.Idle()
         S = (await H.Client.get("/api/token-status")).json()
-        assert (S["used"], S["remaining"]) == (1, 0)
+        assert (S["used"], S["remaining"]) == (5, 0)                                    # the finished movie: one more
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])            # reused movie: no charge
-        assert (await H.Client.get("/api/token-status")).json()["used"] == 1
+        assert (await H.Client.get("/api/token-status")).json()["used"] == 5
         Subs = len(H.Provider.Submissions)
         R = await H.Client.post("/api/designs", data={"prompt": "Another band"})
         assert R.status_code == 402 and R.json()["error"] == {
             "code": "quota_exhausted",
-            "message": "You have used all the movie generations on this account. Contact us to extend your allowance."}
+            "message": "You have used all the credits on this account. Contact us to extend your allowance."}
         assert len(H.Provider.Submissions) == Subs                                    # nothing paid was started
     finally:
         await H.Close()
@@ -149,7 +149,7 @@ async def test_failed_movie_is_not_charged(tmp_path):
         H.Provider.Script(endpoints.Movie, "fail")
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
         await H.Idle()
-        assert (await H.Client.get("/api/token-status")).json()["used"] == 0
+        assert (await H.Client.get("/api/token-status")).json()["used"] == 4          # the four images; not the failed movie
     finally:
         await H.Close()
 

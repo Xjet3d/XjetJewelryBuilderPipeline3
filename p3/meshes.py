@@ -14,6 +14,7 @@ import logging
 from p3 import assets
 from p3 import stages as Stages
 from p3.accounts import UsageMesh
+from p3 import credits as Credits
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.providers import endpoints
@@ -62,8 +63,9 @@ class MeshService:
         except ConfigError as E:
             raise HttpError(400, "invalid_mesh_setting", str(E)) from E
         SettingsJson = Dumps(Settings_)
-        Live = Db.One("SELECT * FROM meshes WHERE candidate_id = ? AND settings_json = ? "
-                      "AND status IN ('queued','running')", (CandidateId, SettingsJson))
+        # One Hi3D request at a time per image, whatever the settings: a second request joins the one in flight
+        Live = Db.One("SELECT * FROM meshes WHERE candidate_id = ? AND status IN ('queued','running') "
+                      "ORDER BY created_at DESC", (CandidateId,))
         if Live:
             return self.ToJson(Live)
         MeshId = NewId("mesh")
@@ -97,13 +99,17 @@ class MeshService:
                 Cand = Db.One("SELECT asset_path FROM candidates WHERE id = ?", (Mesh["candidate_id"],))
                 ImagePath = assets.Resolve(S.AssetsDir, Cand["asset_path"])
                 ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
-                RequestId = await Ctx.Provider.Submit(Mesh["endpoint"], {"image_url": ImageUrl, **Settings_})
-                Db.Update("meshes", MeshId, status="running", provider_request_id=RequestId)
-                Owner = Db.One("SELECT d.owner_account_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
-                               "JOIN designs d ON d.id = b.design_id WHERE c.id = ?", (Mesh["candidate_id"],))
-                if Owner:
-                    Ctx.Accounts.RecordUsage(Owner["owner_account_id"], UsageMesh, 1, MeshId,
-                                             Provider=Ctx.Provider.Name, Endpoint=Mesh["endpoint"])
+                Est = Credits.CheckSpendCap(Ctx, Mesh["endpoint"], Settings_)
+                try:
+                    RequestId = await Ctx.Provider.Submit(Mesh["endpoint"], {"image_url": ImageUrl, **Settings_})
+                    Db.Update("meshes", MeshId, status="running", provider_request_id=RequestId)
+                    Owner = Db.One("SELECT d.owner_account_id FROM candidates c JOIN batches b ON b.id = c.batch_id "
+                                   "JOIN designs d ON d.id = b.design_id WHERE c.id = ?", (Mesh["candidate_id"],))
+                    # Hi3D is XJet's production cost: recorded for the design's account as internal usage, never a credit
+                    Credits.RecordUsage(Ctx, Owner["owner_account_id"] if Owner else None, UsageMesh, MeshId,
+                                        Mesh["endpoint"], Settings_, Internal=True)
+                finally:
+                    Credits.SubmitDone(Ctx, Est)
             def OnStatus(St):
                 if St.State == "queued":
                     Stages.Begin(Db, MeshId, "waiting_hi3d", **({"position": St.Position} if St.Position is not None else {}))

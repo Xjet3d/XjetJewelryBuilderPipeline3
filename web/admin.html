@@ -146,7 +146,7 @@
           <input class="inp" x-model="form.Name" required placeholder="Full name"></div>
         <div><label class="lbl block mb-1.5">Email <span class="text-red-500">*</span></label>
           <input class="inp" type="email" x-model="form.Email" required placeholder="name@example.com"></div>
-        <div><label class="lbl block mb-1.5">Max Generations</label>
+        <div><label class="lbl block mb-1.5">Credits allowance</label>
           <input class="inp" type="number" min="1" max="9999" x-model.number="form.MaxGenerations" required></div>
         <button class="btn" :disabled="busy">Create &amp; generate code</button>
       </form>
@@ -199,7 +199,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_140px_auto_auto] gap-3 items-end">
                   <div><label class="lbl block mb-1">Name *</label><input class="inp" x-model="edit.Name"></div>
                   <div><label class="lbl block mb-1">Email *</label><input class="inp" type="email" x-model="edit.Email"></div>
-                  <div><label class="lbl block mb-1">Max Generations</label><input class="inp" type="number" min="1" max="9999" x-model.number="edit.MaxGenerations"></div>
+                  <div><label class="lbl block mb-1">Credits allowance</label><input class="inp" type="number" min="1" max="9999" x-model.number="edit.MaxGenerations"></div>
                   <label class="text-xs text-zinc-600 flex items-center gap-1.5 pb-2"><input type="checkbox" x-model="edit.ResetUsage">
                     Reset usage (currently <span x-text="u.used"></span> used)</label>
                   <div class="flex gap-2"><button class="btn" @click="saveEdit(u)" :disabled="busy">Save</button>
@@ -260,12 +260,10 @@
       <!-- Usage totals -->
       <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="card p-4 md:col-span-2">
-          <div class="flex justify-between items-baseline"><p class="lbl">Generations used (charged)</p>
+          <div class="flex justify-between items-baseline"><p class="lbl">Credits used (charged)</p>
             <p class="text-sm"><strong x-text="d.totals.generations_used"></strong> / <span x-text="d.totals.generations_max"></span></p></div>
           <div class="h-2 bg-zinc-100 mt-3"><div class="h-2" :class="barClass()" :style="'width:' + Math.min(100, 100 * d.totals.generations_used / Math.max(1, d.totals.generations_max)) + '%'"></div></div>
-          <p class="text-[12px] text-zinc-500 mt-2">One generation per finished 360° movie (B2C2 rule). Designs and refinements are not charged.</p>
-          <p x-show="(d.totals.movies.by_status.ready || 0) > d.totals.generations_used" class="text-[12px] text-amber-700 mt-1"
-             x-text="((d.totals.movies.by_status.ready || 0) - d.totals.generations_used) + ' finished movie(s) were not charged: they were made before the generation allowance was tracked, or the allowance was reset by an admin.'"></p>
+          <p class="text-[12px] text-zinc-500 mt-2">One credit per delivered design image, refinement image and finished 360° movie (Settings → Products → Credits). Failed options are not charged; the Admin's own movies and 3D models never are. Before 2026-10-07 only finished movies were charged.</p>
         </div>
         <div class="card p-4"><p class="lbl mb-1">Jobs succeeded / failed</p>
           <p class="text-2xl font-semibold"><span class="text-emerald-700" x-text="d.totals.jobs_succeeded"></span> <span class="text-zinc-300">/</span> <span :class="d.totals.jobs_failed ? 'text-red-600' : 'text-zinc-500'" x-text="d.totals.jobs_failed"></span></p>
@@ -857,7 +855,7 @@
               <a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(sd.session.account_id)" x-text="sd.session.customer_name || 'Unknown customer'"></a>
               <span class="text-zinc-500" x-text="sd.session.customer_email"></span>
               <span class="badge" :class="statusClass(sd.user?.status)" x-text="'User: ' + statusLabel(sd.user?.status)"></span>
-              <span class="text-[12px] text-zinc-500" x-show="sd.user" x-text="sd.user ? sd.user.used + ' / ' + sd.user.max + ' generations used' : ''"></span>
+              <span class="text-[12px] text-zinc-500" x-show="sd.user" x-text="sd.user ? sd.user.used + ' / ' + sd.user.max + ' credits used' : ''"></span>
             </p>
             <p class="text-sm text-zinc-500 italic" x-text="'“' + sd.session.prompt + '”'"></p>
             <!-- Lineage: refined from … / variations made from this design -->
@@ -1620,12 +1618,34 @@
         <p x-show="sizesMsg" class="text-sm" :class="sizesErr ? 'text-red-600' : 'text-emerald-700'" x-text="sizesMsg"></p>
       </div>
       </template>
+      <template x-if="credits">
+      <div class="border border-zinc-200 p-4 space-y-3" aria-label="Credits">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="font-semibold">Credits</p>
+          <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="tariffEdit ? (tariffEdit = null) : editTariff()" x-text="tariffEdit ? 'Cancel edit' : 'Edit'"></button>
+        </div>
+        <p class="text-[12px] text-zinc-600">What a customer's credit buys. A credit is reserved when the work starts (so parallel requests cannot overspend an allowance) and charged when the result is delivered; a failed option is not charged. The Admin's own movies and 3D models are never charged.</p>
+        <div class="flex flex-wrap gap-2" x-show="!tariffEdit">
+          <template x-for="k in (credits.kinds || [])" :key="'tk' + k.id"><span class="badge bg-zinc-100 text-zinc-700" x-text="(credits.tariff[k.id] ?? 0) + ' per ' + k.label"></span></template>
+        </div>
+        <template x-if="tariffEdit">
+          <div class="flex flex-wrap items-end gap-3">
+            <template x-for="k in (credits.kinds || [])" :key="'te' + k.id">
+              <div><label class="lbl block mb-1" x-text="k.label"></label><input class="inp w-24" type="number" min="0" max="100" x-model.number="tariffEdit[k.id]"></div>
+            </template>
+            <button class="btn" :disabled="productsBusy" @click="saveTariff()">Save tariff</button>
+          </div>
+        </template>
+        <p class="text-[12px] text-zinc-600">AI spend today (estimate at list prices, live requests): <strong x-text="'$' + (credits.spend_today_usd || 0).toFixed(2)"></strong><span x-text="credits.daily_cap_usd ? ' of the $' + credits.daily_cap_usd.toFixed(2) + ' daily cap — paid submissions stop at the cap' : ' — no daily cap is configured (P3_DAILY_AI_SPEND_CAP_USD)'"></span></p>
+        <p x-show="tariffMsg" class="text-sm" :class="tariffErr ? 'text-red-600' : 'text-emerald-700'" x-text="tariffMsg"></p>
+      </div>
+      </template>
       <div x-show="products && products.log && products.log.length">
         <p class="lbl mb-2">Recent changes</p>
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : l.key)))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : l.key))))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>

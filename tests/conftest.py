@@ -31,7 +31,8 @@ class Harness:
         self.App = CreateApp(self.Settings, None if Factories else self.Provider, ProviderFactories=Factories)
         self.Ctx = self.App.state.Ctx
         self.Svc = self.App.state.Services
-        self.Token, self.Who = self.Ctx.Accounts.IssueToken("test")
+        # A generous allowance: the credits (4 per design) must not get in the way of tests that make several designs
+        self.Token, self.Who = self.Ctx.Accounts.IssueToken("test", MaxGenerations=100)
         # With a base path every test request goes to http://p3.test/<Base>/..., exactly like production.
         self.Client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.App), base_url="http://p3.test" + self.Base,
                                         headers={"X-Access-Token": self.Token})

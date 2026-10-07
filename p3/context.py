@@ -35,6 +35,12 @@ class Context:
     MaterialPrices: "MaterialPriceBook" = None    # versioned density / price $/g / cost $/g / fixed price
     Products: "ProductSettings" = None            # rings and charms: customer availability of charms, charm sizes
     CharmPrices: "CharmPriceBook" = None          # charm pricing: its own versioned table, never the ring prices
+    AiPrices: "PriceBook" = None                  # fal.ai list prices: the estimated cost recorded with every submission
+    RateLimiter: "RateLimiter" = None             # per-IP / per-account request limits (p3/ratelimit.py)
+    SpendInFlight: float = 0.0                    # estimated cost of the paid submissions between cap check and record
+    AiPrices: "PriceBook" = None                  # fal.ai list prices: the estimated cost recorded with every submission
+    RateLimiter: "RateLimiter" = None             # per-IP / per-account request limits (p3/ratelimit.py)
+    SpendInFlight: float = 0.0                    # estimated cost of the paid submissions between cap check and record
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

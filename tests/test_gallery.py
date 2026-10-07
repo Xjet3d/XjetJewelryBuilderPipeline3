@@ -122,7 +122,7 @@ async def test_make_it_yours_links_the_customer_to_the_shared_master_design(HG):
     Cus3 = (await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": Sib["id"]}, headers=Cust)).json()
     await H.Idle()
     assert (await H.Client.get(f"/api/customizations/{Cus3['id']}", headers=Cust)).json()["movie"]["status"] == "ready"
-    assert (await H.Client.get("/api/session", headers=Cust)).json()["used"] == 1
+    assert (await H.Client.get("/api/session", headers=Cust)).json()["used"] == 5     # their own design (4) and this movie (1)
     assert (await H.Client.get("/api/session")).json()["used"] == XjetUsed
     # A refinement forks into a design of the customer's own; the master is never changed
     Fork = (await H.Client.post(f"/api/designs/{Did}/batches", json={"parent_candidate_id": Cand["id"], "instruction": "thinner band",

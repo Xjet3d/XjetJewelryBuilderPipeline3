@@ -1047,8 +1047,8 @@ function p3App() {
       const n = this.design.batches.filter(x => x.kind === 'refine').indexOf(b) + 1;
       return `Variation ${n}`;
     },
-    // Movie generations: one per finished 360° movie (designs and refinements are not counted).
-    get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} movie generations remaining`; },
+    // Credits: 1 per design image, 1 per refinement image, 1 per finished 360° movie (the server's tariff, /api/token-status)
+    get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} credits remaining`; },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
     // Muted autoplay can still be limited by the browser (e.g. Edge "Limit media autoplay", power
     // saving): set the muted property, call play(), and if it is refused retry on the first interaction.

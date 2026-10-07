@@ -14,6 +14,7 @@ import sqlite3
 
 from p3 import assets
 from p3.accounts import Principal, UsageMovie
+from p3 import credits as Credits
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.providers import endpoints
@@ -96,7 +97,7 @@ class MovieService:
         Version = self.Ctx.Models.Active(self._Model(CandidateId)).Id
         if self._Live(CandidateId):         # the candidate already has a movie (any configuration) → reuse, no new charge
             return self.ToJson(self.Latest(CandidateId))
-        self.Ctx.Accounts.AuthorizeSpend(Who, UsageMovie, 1)
+        Units = Credits.Reserve(self.Ctx, Who, Credits.Movie, 1)      # given back if a concurrent request won the race
         MovieId = NewId("mov")
         T = Now()
         try:
@@ -105,6 +106,7 @@ class MovieService:
                        (MovieId, CandidateId, Version, endpoints.Movie, "queued", T, T, Who.AccountId))
         except sqlite3.IntegrityError:
             # Lost a race with a concurrent Proceed: reuse the winner.
+            Credits.Release(self.Ctx, Who.AccountId, Units)
             return self.ToJson(self._Live(CandidateId))
         self.Ctx.Runner.Spawn(f"movie:{MovieId}", self._Drive(MovieId))
         return self.ToJson(Db.One("SELECT * FROM movies WHERE id = ?", (MovieId,)))
@@ -128,10 +130,14 @@ class MovieService:
                 ImageUrl = await Ctx.Provider.Upload(ImagePath.read_bytes(), assets.ImageContentType(Cand["asset_path"]))
                 Version = Ctx.Models.Resolve(Movie["config_version"], Movie["endpoint"])
                 Arguments = BuildRequest(Version.Model, Version.Params, {"image_url": ImageUrl})
-                RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
-                Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
-                Ctx.Accounts.RecordUsage(self._Payer(Movie, Cand), UsageMovie, 1, MovieId,
-                                         Provider=Ctx.Provider.Name, Endpoint=Movie["endpoint"])
+                Est = Credits.CheckSpendCap(Ctx, Movie["endpoint"], Version.Params)
+                try:
+                    RequestId = await Ctx.Provider.Submit(Movie["endpoint"], Arguments)
+                    Db.Update("movies", MovieId, status="running", provider_request_id=RequestId)
+                    Credits.RecordUsage(Ctx, self._Payer(Movie, Cand), UsageMovie, MovieId, Movie["endpoint"], Version.Params,
+                                        Internal=bool(Movie["made_by_admin"]))
+                finally:
+                    Credits.SubmitDone(Ctx, Est)
             Result = await PollUntilDone(Ctx.Provider, Movie["endpoint"], RequestId,
                                          Ctx.Gen.Movie.RequestTimeoutS, S.PollIntervalS, S.MaxTransientPollErrors)
             Url = (Result.get("video") or {}).get("url")
@@ -142,14 +148,16 @@ class MovieService:
             RelPath = f"designs/{Cand['design_id']}/movies/{MovieId}.mp4"
             assets.WriteAtomic(S.AssetsDir, RelPath, Data)
             Db.Update("movies", MovieId, status="ready", asset_path=RelPath, error=None, error_code=None)
-            # P2 rule: a finished 360° movie uses one generation (charged once, on success only) — the customer's,
-            # never for a movie the Admin asked for.
+            # A finished 360° movie is charged its credit (reserved when it was requested; once per movie) — the
+            # customer's, never for a movie the Admin asked for.
             if not Movie["made_by_admin"]:
-                Ctx.Accounts.CommitCharge(self._Payer(Movie, Cand), UsageMovie, MovieId)
+                Credits.Settle(Ctx, self._Payer(Movie, Cand), Credits.Movie, MovieId, True)
         except Exception as E:
             Message, Code = FailureFor(E)
             Logger.warning("Movie %s failed (%s): %s", MovieId, Code, E)
             Db.Update("movies", MovieId, status="failed", error=Message, error_code=Code)
+            if not Movie["made_by_admin"]:
+                Credits.Settle(Ctx, self._Payer(Movie, Cand), Credits.Movie, MovieId, False)     # a failed movie is free
 
     def Reconcile(self) -> dict:
         Db = self.Ctx.Db

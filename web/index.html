@@ -299,7 +299,7 @@
                  Phones: the icon and the coin; the Design screen shows the name from 1024 px. -->
             <button type="button" x-show="userSession" data-account-button @click="toggleAccountPanel()"
                     class="relative items-center gap-1.5 select-none group rounded-md px-1.5 py-1 transition hover:bg-black/[0.04]" :class="inStudio ? 'hidden md:flex' : 'flex'"
-                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and generations">
+                    :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and credits">
                 <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
                 <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
                 <span x-show="displayName" class="text-[13px] text-zinc-400 px-0.5" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'" aria-hidden="true">·</span>
@@ -1123,7 +1123,7 @@
                                 <div x-show="userSession" class="hidden sm:flex w-full items-center justify-end px-1 -mt-1">
                                     <button type="button" @click="toggleAccountPanel()"
                                             class="tap-lg flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-zinc-100 max-w-full"
-                                            :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and generations">
+                                            :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and credits">
                                         <svg width="13" height="13" viewBox="0 0 17 17" fill="none" aria-hidden="true" class="shrink-0">
                                             <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                                             <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
@@ -1920,10 +1920,10 @@
                 </div>
 
                 <div class="px-5 py-4 flex flex-col gap-4">
-                    <!-- Movie generations (one per finished 360° movie) -->
+                    <!-- Credits: 1 per design image, 1 per refinement image, 1 per finished 360° movie -->
                     <div>
                         <div class="flex items-center justify-between mb-1.5">
-                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold whitespace-nowrap" style="color:#8A6420;">Movie generations</span>
+                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold whitespace-nowrap" style="color:#8A6420;">Credits</span>
                             <span class="inline-flex items-center gap-1.5 text-[12px]" style="color:#6F6F6F;">
                                 <svg width="14" height="14" viewBox="0 0 17 17" fill="none" aria-hidden="true" class="shrink-0">
                                     <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
@@ -1939,8 +1939,8 @@
                                  :style="{ width: (quotaMax ? Math.round(100 * quotaRemaining / quotaMax) : 0) + '%', background: quotaRemaining === 0 ? '#B4443A' : 'linear-gradient(90deg,#C1995A,#8A561B)' }"></div>
                         </div>
                         <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">
-                            <span x-show="quotaRemaining > 0">Each 360° movie you create uses one. Designs and refinements don't count.</span>
-                            <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your movie generations. Contact us to extend your allowance.</span>
+                            <span x-show="quotaRemaining > 0">One credit per generated image (a design or a refinement makes four) and one per 360° movie. Nothing is charged for an option that fails.</span>
+                            <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. Contact us to extend your allowance.</span>
                         </div>
                     </div>
 

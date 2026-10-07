@@ -26,7 +26,7 @@ class AuthError(Exception):
 class InsufficientCredits(Exception):
     """The account may not spend the requested units (quota / balance policy)."""
 
-    def __init__(self, Message: str = "You have used all the movie generations on this account. Contact us to extend your allowance."):
+    def __init__(self, Message: str = "You have used all the credits on this account. Contact us to extend your allowance."):
         super().__init__(Message)
         self.Message = Message
 
@@ -72,12 +72,26 @@ class AccountProvider(Protocol):
         """Resolve an access token to a Principal or raise AuthError."""
 
     def AuthorizeSpend(self, Who: Principal, Kind: str, Units: int) -> None:
-        """Raise InsufficientCredits if the account may not start this paid work."""
+        """Reserve Units credits for paid work about to start, atomically against the allowance (what is used plus
+        what is reserved plus Units must fit), or raise InsufficientCredits. p3/credits.py decides the units."""
+
+    def Settle(self, AccountId: str, Kind: str, RefId: str, Charged: bool, Units: int = 1) -> bool:
+        """The reserved credits of one piece of work: charged (a delivered result; once per RefId) or released."""
+
+    def Release(self, AccountId: str, Units: int) -> None:
+        """Give reserved credits back (the work was never created)."""
+
+    def RebuildReservations(self, Reserved: dict) -> None:
+        """Set every account's reservation from {account_id: units} (the job tables at startup); others to 0."""
 
     def RecordUsage(self, AccountId: str, Kind: str, Units: int, RefId: str,
-                    Provider: str | None = None, Endpoint: str | None = None) -> None:
-        """Record units actually submitted to a provider (called once per submission), with the
-        provider and endpoint so cost per user can be reported later."""
+                    Provider: str | None = None, Endpoint: str | None = None, CostUsd: float | None = None,
+                    CostSource: str | None = None, Internal: bool = False) -> None:
+        """Record units actually submitted to a provider (called once per submission), with the provider, endpoint
+        and estimated cost so cost per user can be reported; Internal = XJet's own work, never charged."""
+
+    def SpendSince(self, DayIso: str) -> float:
+        """The estimated cost of the live submissions recorded since this UTC day (YYYY-MM-DD)."""
 
     def RecordSignIn(self, AccountId: str, Method: str) -> None:
         """Record a customer sign-in (token entry or verification link)."""

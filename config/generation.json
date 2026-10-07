@@ -1,10 +1,10 @@
 {
-  "_comment": "Operational settings (timeouts, concurrency, retries, candidates per batch) are read from here. The model parameters (\"params\") and the prompt files below are ONLY the initial seed: on first start they become version 1 of each model in Admin → AI Prompts & Params, which is from then on the single source of truth (p3/modelconfig.py). Editing them here has no effect once seeded.",
+  "_comment": "Operational settings (timeouts, concurrency, retries, candidates per batch) are read from here. The model parameters (\"params\") and the prompt files below are ONLY the initial seed: on first start they become version 1 of each model in Admin → AI Prompts & Params, which is from then on the single source of truth (p3/modelconfig.py). Editing them here has no effect once seeded. max_duplicate_retries_per_slot is kept at 0 since 2026-10-07: an image identical to another option is shown as a failed option; the app never re-requests (and pays for) one on its own.",
   "images": {
     "candidates_per_batch": 4,
     "max_concurrent_requests": 8,
     "request_timeout_s": 90,
-    "max_duplicate_retries_per_slot": 1,
+    "max_duplicate_retries_per_slot": 0,
     "params": {
       "aspect_ratio": "1:1",
       "resolution": "1K",

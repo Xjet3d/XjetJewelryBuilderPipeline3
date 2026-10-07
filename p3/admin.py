@@ -39,6 +39,7 @@ from p3.aipricing import PriceError
 from p3.materialprices import MaterialPriceError
 from p3.db import Now
 from p3.usage import AccountActivity
+from p3 import credits as Credits
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 
@@ -106,7 +107,7 @@ def _Detail(Ctx: Context, AccountId: str) -> dict:
             "sign_ins": sum(1 for E in Identity["events"] if E["kind"] == "sign_in"),
         },
         "usage_ledger": sorted(Ledger.values(), key=lambda R: (R["kind"], R["provider"], R["endpoint"])),
-        "cost_reporting": "not_configured",       # cost_usd stays null until a provider price table exists
+        "cost_reporting": "estimated",            # every submission since 2026-10-07 carries its list-price estimate (p3/credits.py)
         "designs": App["designs"],
         "timeline": Timeline[:300],
         "daily": [Daily[K] for K in sorted(Daily)],
@@ -929,6 +930,21 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         InBags = [{"size": S, "bag_lines": Ctx.Db.One("SELECT COUNT(*) AS n FROM bag_lines WHERE product_type = 'charm' AND charm_size = ?",
                                                      (S,))["n"]} for S in sorted(set(Old) - set(New))]
         return {**_ProductsState(), "removed_in_bags": [X for X in InBags if X["bag_lines"]]}
+
+    # ── Credits: what a customer's credit buys (the tariff) and the day's AI spend against the cap ──
+    @App_.get("/api/admin/credits")
+    async def AdminCredits(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Credits.Status(Ctx)
+
+    @App_.put("/api/admin/credits/tariff")
+    async def SetTariff(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"tariff": {"image": 1, "refinement_image": 1, "movie": 1, "mesh": 0}} — credits per piece of work."""
+        Who = Admin(authorization)
+        New = Credits.ValidateTariff(Body_.get("tariff"))
+        if New != Credits.Tariff(Ctx):
+            Ctx.Products.Set(Credits.TariffKey, New, Who.Id, str(Body_.get("note") or "")[:300])
+        return Credits.Status(Ctx)
 
     # ── Charm pricing: its own versioned table (a fixed price per material and size; price and cost per gram) ──
     @App_.get("/api/admin/charm-prices")

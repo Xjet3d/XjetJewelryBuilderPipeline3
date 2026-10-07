@@ -58,7 +58,7 @@ async def test_usage_is_reported_to_the_provider(HDevPricing):
     Profile = (await H.Client.get("/api/session")).json()
     assert Profile["usage"] == {"image_requests": 4, "movie_requests": 1}
     assert Profile["account_id"] == H.Who.AccountId
-    assert (Profile["used"], Profile["max"], Profile["remaining"]) == (1, 10, 9)   # one finished movie = one generation
+    assert (Profile["used"], Profile["max"], Profile["remaining"]) == (5, 100, 95)   # four images and one finished movie
 
 
 async def test_deactivated_token_is_rejected(H):

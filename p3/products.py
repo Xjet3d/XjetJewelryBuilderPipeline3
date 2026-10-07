@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 );
 """
 
-Defaults = {"rings_available": True, "charms_available": False, "charm_sizes": list(DefaultCharmSizes),
+Defaults = {"credit_tariff": {"image": 1, "refinement_image": 1, "movie": 1, "mesh": 0},     # p3/credits.py decides
+            "rings_available": True, "charms_available": False, "charm_sizes": list(DefaultCharmSizes),
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize}
 
 
