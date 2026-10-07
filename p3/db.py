@@ -415,6 +415,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     error                TEXT,
     error_code           TEXT,
     movie_id             TEXT,                     -- the movie the Admin chose to show for this image (else its newest)
+    credit_ref           TEXT,                     -- the credit action this slot belongs to: its batch, or a retry action (p3/credits.py)
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL,
     UNIQUE (batch_id, slot)
@@ -592,6 +593,14 @@ class Database:
                 CandCols = {R[1] for R in Conn.execute("PRAGMA table_info(candidates)")}
                 if CandCols and "movie_id" not in CandCols:
                     Conn.execute("ALTER TABLE candidates ADD COLUMN movie_id TEXT")   # the movie the Admin chose to show for an image
+                if CandCols and "credit_ref" not in CandCols:
+                    # Credits per action (2026-10-07): every slot belongs to its batch's request unless retried later
+                    Conn.execute("ALTER TABLE candidates ADD COLUMN credit_ref TEXT")
+                    Conn.execute("UPDATE candidates SET credit_ref = batch_id WHERE credit_ref IS NULL")
+                if CandCols and "credit_ref" not in CandCols:
+                    # Credits per action (2026-10-07): every slot belongs to its batch's request unless retried later
+                    Conn.execute("ALTER TABLE candidates ADD COLUMN credit_ref TEXT")
+                    Conn.execute("UPDATE candidates SET credit_ref = batch_id WHERE credit_ref IS NULL")
                 if MCols and "made_by_admin" not in MCols:
                     # A movie the Admin asked for ("Make a new movie"): outside the one-live-movie rule, no allowance charge
                     Conn.execute("ALTER TABLE movies ADD COLUMN made_by_admin TEXT")

@@ -3,9 +3,10 @@
 Behaviour mirrors Pipeline 2's token_store.py (revision 1e871734):
   * access tokens are 6 uppercase letters (profanity-filtered), entered case-insensitively;
   * every account has a credit allowance (max_generations, default 10). Since 2026-10-07 the credits follow
-    p3/credits.py: reserved (tokens_reserved) when paid work is created, charged (generations_used) when a
-    result is delivered — an image, a finished movie — and released when it fails; at 0 remaining no paid
-    work may start (P2 _EnforceTokenQuota, extended to images);
+    p3/credits.py: one credit per customer-triggered action (a design request, a refinement request, an
+    additional option, a movie), reserved (tokens_reserved) when the action is created, charged
+    (generations_used) when it delivers and released when it fails; at 0 remaining no paid work may start
+    (P2 _EnforceTokenQuota, extended to design and refinement requests);
   * self-service email registration, exactly as P2: registering mints the account's 6-letter
     token immediately but keeps it inactive (unusable, unrevealed) behind a 24 h verification
     link; verifying activates it and reveals it; re-registering a pending email re-issues the
@@ -205,17 +206,17 @@ class LocalAccountProvider:
         """The reserved credits of one piece of work: charged (a delivered result, once per RefId — the 'generation'
         usage event is the receipt) or released (a failure)."""
         with self.Db.Transaction() as Conn:
+            if Conn.execute("SELECT 1 FROM usage_events WHERE kind = 'generation' AND ref_id = ?", (RefId,)).fetchone():
+                return False                                   # settled already (charged, or released with a 0-unit receipt)
             if Charged:
-                if Conn.execute("SELECT 1 FROM usage_events WHERE kind = 'generation' AND ref_id = ?", (RefId,)).fetchone():
-                    return False
                 Conn.execute("UPDATE accounts SET generations_used = generations_used + ?, "
                              "tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
                              (int(Units), int(Units), AccountId))
-                Conn.execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) "
-                             "VALUES (?, 'generation', ?, ?, ?)", (AccountId, int(Units), RefId, Now()))
             else:
                 Conn.execute("UPDATE accounts SET tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
                              (int(Units), AccountId))
+            Conn.execute("INSERT INTO usage_events (account_id, kind, units, ref_id, created_at) "
+                         "VALUES (?, 'generation', ?, ?, ?)", (AccountId, int(Units) if Charged else 0, RefId, Now()))
             return True
 
     def Release(self, AccountId: str, Units: int) -> None:
@@ -519,10 +520,11 @@ class LocalAccountProvider:
         return self._AdminRow(Row)
 
     def AdminActivity(self, AccountId: str) -> dict:
-        """Identity-side activity for the admin detail view: usage events and account events."""
+        """Identity-side activity for the admin detail view: provider usage events and account events (the credit
+        receipts — kind 'generation', one per settled action — are not usage; they are summed in generations_used)."""
         self._Account(AccountId)
         Usage = self.Db.All("SELECT kind, units, ref_id, provider, endpoint, mode, cost_usd, cost_source, created_at "
-                            "FROM usage_events WHERE account_id = ? ORDER BY created_at", (AccountId,))
+                            "FROM usage_events WHERE account_id = ? AND kind != 'generation' ORDER BY created_at", (AccountId,))
         Events = self.Db.All("SELECT kind, detail, created_at FROM account_events WHERE account_id = ? "
                              "ORDER BY created_at", (AccountId,))
         return {"usage": Usage, "events": Events}

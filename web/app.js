@@ -1050,7 +1050,7 @@ function p3App() {
       const n = this.design.batches.filter(x => x.kind === 'refine').indexOf(b) + 1;
       return `Variation ${n}`;
     },
-    // Credits: 1 per design image, 1 per refinement image, 1 per finished 360° movie (the server's tariff, /api/token-status)
+    // Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per finished 360° movie (the server's tariff)
     get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} credits remaining`; },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
     // Muted autoplay can still be limited by the browser (e.g. Edge "Limit media autoplay", power

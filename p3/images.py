@@ -91,7 +91,7 @@ class ImageService:
                               (Who.AccountId, ClientRequestId))
             if Existing:
                 return self._FirstBatch(Existing["id"])
-        Units = Credits.Reserve(self.Ctx, Who, Credits.Image, self.Ctx.Gen.Images.CandidatesPerBatch)
+        Units = Credits.Reserve(self.Ctx, Who, Credits.Design, 1)              # one credit for the request, whatever it generates
         try:
             DesignId = NewId("dsg")
             BatchId = NewId("bat")
@@ -143,7 +143,7 @@ class ImageService:
             raise HttpError(409, "reference_unavailable",
                             "The selected image could not be loaded for refinement. "
                             "Please pick another image or try again.")
-        Units = Credits.Reserve(self.Ctx, Who, Credits.RefinementImage, self.Ctx.Gen.Images.CandidatesPerBatch)
+        Units = Credits.Reserve(self.Ctx, Who, Credits.Refinement, 1)          # one credit for the refinement request
         try:
             BatchId = NewId("bat")
             Target = NewId("dsg") if Fork else DesignId
@@ -221,8 +221,8 @@ class ImageService:
         while len(Seeds) < Img.CandidatesPerBatch:
             Seeds.add(_NewSeed())
         for Slot, Seed in enumerate(sorted(Seeds)):
-            Conn.execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?)", (NewId("cand"), BatchId, Slot, "pending", Seed, T, T))
+            Conn.execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at, credit_ref) "
+                         "VALUES (?,?,?,?,?,?,?,?)", (NewId("cand"), BatchId, Slot, "pending", Seed, T, T, BatchId))
 
     def _StartBatch(self, BatchId: str) -> None:
         for C in self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'pending'", (BatchId,)):
@@ -233,8 +233,8 @@ class ImageService:
         Cand, Batch = self._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "failed":
             raise HttpError(409, "not_failed", "Only a failed image can be retried.")
-        Credits.Reserve(self.Ctx, Who, Credits.KindOfBatch(Batch["kind"]), 1)         # "Generate another option": a new credit
-        self._ResetForRetry(CandidateId)
+        Credits.Reserve(self.Ctx, Who, Credits.Option, 1)                      # "Generate another option": one credit per click
+        self._ResetForRetry(CandidateId, Credits.ActionId())
         self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId))
         return self.GetBatch(Batch["id"])
 
@@ -242,22 +242,24 @@ class ImageService:
         Batch = self._OwnedBatch(Who, BatchId)
         Failed = self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
         if Failed:
-            Credits.Reserve(self.Ctx, Who, Credits.KindOfBatch(Batch["kind"]), len(Failed))
+            Credits.Reserve(self.Ctx, Who, Credits.Option, 1)                   # one click, one credit, however many slots
+        Action = Credits.ActionId()
         for C in Failed:
-            self._ResetForRetry(C["id"])
+            self._ResetForRetry(C["id"], Action)
             self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
         return self.GetBatch(Batch["id"])
 
-    def _ResetForRetry(self, CandidateId: str) -> None:
+    def _ResetForRetry(self, CandidateId: str, CreditRef: str) -> None:
         self.Ctx.Db.Update("candidates", CandidateId, status="pending", provider_request_id=None,
-                           error=None, error_code=None, duplicate_retries=0, seed=_NewSeed())
+                           error=None, error_code=None, duplicate_retries=0, seed=_NewSeed(), credit_ref=CreditRef)
 
     # ── background driver ────────────────────────────────────────────────
     async def _Drive(self, CandidateId: str) -> None:
         """One slot: submit once, wait up to images.request_timeout_s (90 s) from the submission, store the image.
         A slot that fails or runs out of time is shown as unavailable; it is never re-requested on its own (the
-        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen. Its
-        credit, reserved when the batch was created, is charged when the image is stored and released otherwise."""
+        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen. The
+        request's one credit, reserved when it was created, is charged once any of its images is stored and released
+        when every one of them failed."""
         Ctx = self.Ctx
         Db = Ctx.Db
         S = Ctx.Settings
@@ -267,7 +269,7 @@ class ImageService:
                 return
             Batch = Db.One("SELECT * FROM batches WHERE id = ?", (Cand["batch_id"],))
             Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Batch["design_id"],))["owner_account_id"]
-            Kind = Credits.KindOfBatch(Batch["kind"])
+            Kind, Ref = Credits.KindOfCandidate(Cand, Batch), Cand.get("credit_ref") or Batch["id"]
             try:
                 RequestId = Cand["provider_request_id"]
                 if not RequestId:
@@ -290,8 +292,7 @@ class ImageService:
                                                S.MaxTransientPollErrors, S.PollIntervalS)
                 Ext = assets.ValidateImage(Data)
                 await self._StoreUnlessDuplicate(Batch, Cand, Data, Ext)
-                Final = Db.One("SELECT status FROM candidates WHERE id = ?", (CandidateId,))["status"]
-                Credits.Settle(Ctx, Owner, Kind, CandidateId, Final == "ready")        # charged only for a delivered image
+                Credits.SettleAction(Ctx, Owner, Kind, Ref)       # the request is charged once it has delivered an image
             except Exception as E:
                 # The provider's own words stay here (the Admin's session page and the log); the customer gets
                 # CustomerError(Code). A timed-out slot keeps its request id: its outcome is unknown, so it is
@@ -299,7 +300,7 @@ class ImageService:
                 Message, Code = FailureFor(E)
                 Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
                 Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
-                Credits.Settle(Ctx, Owner, Kind, CandidateId, False)
+                Credits.SettleAction(Ctx, Owner, Kind, Ref)       # released only when every slot of the request failed
 
     async def _Arguments(self, Batch: dict, Cand: dict) -> dict:
         """Provider arguments from the configuration version recorded on the batch (the prompt was

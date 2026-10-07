@@ -1,14 +1,17 @@
 """Credits — what a paid action costs the customer, decided in one place (docs/PRODUCTION-READINESS-HANDOFF.md).
 
-The tariff (Admin → Settings → Products → Credits; DefaultTariff below): 1 credit per generated image, 1 per
-refinement image, 1 per 360° movie, 0 for a 3D model (Hi3D is XJet's production cost, never the customer's). Ten
-credits are, for example, four design images, two refinement images and four movies.
+A credit is a customer-triggered generation ACTION, not an output file (Admin → Settings → Products → Credits;
+DefaultTariff below): 1 credit per design request (whatever it generates — normally four images), 1 per refinement
+request (its four images), 1 per explicitly requested additional option ("Generate another option"), 1 per 360°
+movie, 0 for a 3D model (Hi3D is XJet's production cost, never the customer's). Selecting an option, changing the
+material or the size and reusing an existing movie cost nothing. Ten credits are, for example, four design requests,
+two refinements and four movies.
 
 A credit is RESERVED before the work is created — atomically against the allowance, so parallel requests can never
-overspend it — and CHARGED when the result is delivered (a ready image, a finished movie). A failed, timed-out or
-duplicate result releases its reservation: the customer pays for what they get, and "Generate another option" is a
-new reservation. Reservations are rebuilt from the job tables at every start, so a crash cannot strand them. Work
-the Admin asks for ("Make a new movie", 3D models) is recorded as internal usage and never charged to a customer.
+overspend it — and CHARGED when the action delivers (its first ready image; a finished movie). An action whose every
+image fails, times out or comes out a duplicate releases its reservation: the customer pays for what they get.
+Reservations are rebuilt from the job tables at every start, so a crash cannot strand them. Work the Admin asks for
+("Make a new movie", 3D models) is recorded as internal usage and never charged to a customer.
 
 Every provider submission is recorded as usage with its estimated list-price cost (p3/aipricing.py); the day's
 estimated live spend — the recorded events plus the submissions in flight — is checked against
@@ -20,12 +23,14 @@ from datetime import datetime, timezone
 
 from p3.accounts import Principal
 from p3.context import Context, HttpError
+from p3.db import NewId
 from p3.providers.base import ProviderError
 
-Image, RefinementImage, Movie, Mesh = "image", "refinement_image", "movie", "mesh"
-Kinds = (Image, RefinementImage, Movie, Mesh)
-Labels = {Image: "design image", RefinementImage: "refinement image", Movie: "360° movie", Mesh: "3D model"}
-DefaultTariff = {Image: 1, RefinementImage: 1, Movie: 1, Mesh: 0}
+Design, Refinement, Option, Movie, Mesh = "design", "refinement", "option", "movie", "mesh"
+Kinds = (Design, Refinement, Option, Movie, Mesh)
+Labels = {Design: "design request (four images)", Refinement: "refinement request (four images)",
+          Option: "additional option requested", Movie: "360° movie", Mesh: "3D model"}
+DefaultTariff = {Design: 1, Refinement: 1, Option: 1, Movie: 1, Mesh: 0}
 TariffKey = "credit_tariff"              # stored with the product settings (Admin-edited, logged)
 TariffMax = 100
 SpendCapCode = "spend_cap_reached"
@@ -54,8 +59,30 @@ def ValidateTariff(Raw) -> dict:
 
 
 def KindOfBatch(BatchKind: str | None) -> str:
-    """A refinement batch's images are refinement images; every other batch makes design images."""
-    return RefinementImage if BatchKind == "refine" else Image
+    """A refinement batch is a refinement request; every other batch is a design request."""
+    return Refinement if BatchKind == "refine" else Design
+
+
+def ActionId() -> str:
+    """The credit reference of an explicitly requested additional option (a retry click): its own action."""
+    return NewId("act")
+
+
+def KindOfCandidate(Cand: dict, Batch: dict) -> str:
+    """What the slot's credit was reserved for: the batch's request, or an additional option asked for later."""
+    Ref = Cand.get("credit_ref") or Batch["id"]
+    return Option if Ref != Batch["id"] else KindOfBatch(Batch["kind"])
+
+
+def SettleAction(Ctx: Context, AccountId: str | None, Kind: str, CreditRef: str) -> None:
+    """A slot of the action finished: the action is charged once it has delivered an image (whatever the other
+    slots do later) and released once every slot has finished without one. Settle() is idempotent per reference."""
+    Rows = Ctx.Db.All("SELECT status FROM candidates WHERE credit_ref = ?", (CreditRef,))
+    Statuses = [R["status"] for R in Rows]
+    if "ready" in Statuses:
+        Settle(Ctx, AccountId, Kind, CreditRef, True)
+    elif Statuses and all(St in ("ready", "failed") for St in Statuses):
+        Settle(Ctx, AccountId, Kind, CreditRef, False)
 
 
 def Cost(Ctx: Context, Kind: str, Count: int = 1) -> int:
@@ -89,9 +116,10 @@ def Rebuild(Ctx: Context) -> dict:
     image and every queued or running customer movie holds its credits; nothing else does."""
     Reserved: dict[str, int] = defaultdict(int)
     Db = Ctx.Db
-    for R in Db.All("SELECT d.owner_account_id AS acct, b.kind FROM candidates c JOIN batches b ON b.id = c.batch_id "
-                    "JOIN designs d ON d.id = b.design_id WHERE c.status IN ('pending', 'generating')"):
-        Reserved[R["acct"]] += Cost(Ctx, KindOfBatch(R["kind"]))
+    for R in Db.All("SELECT DISTINCT COALESCE(c.credit_ref, b.id) AS ref, b.id AS batch_id, b.kind, d.owner_account_id AS acct "
+                    "FROM candidates c JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id "
+                    "WHERE c.status IN ('pending', 'generating')"):
+        Reserved[R["acct"]] += Cost(Ctx, Option if R["ref"] != R["batch_id"] else KindOfBatch(R["kind"]))
     for R in Db.All("SELECT COALESCE(m.requested_by, d.owner_account_id) AS acct FROM movies m "
                     "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                     "JOIN designs d ON d.id = b.design_id "

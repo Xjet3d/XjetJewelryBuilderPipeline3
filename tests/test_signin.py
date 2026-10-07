@@ -117,15 +117,15 @@ async def test_expired_verification_link(HS):
 async def test_credits_pay_for_images_and_movies_and_block_at_zero(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
-        H.Ctx.Accounts.SetQuota(H.Who.AccountId, MaxGenerations=5)
+        H.Ctx.Accounts.SetQuota(H.Who.AccountId, MaxGenerations=2)
         Batch = await H.NewDesign("Band with a leaf")
-        assert (await H.Client.get("/api/token-status")).json()["remaining"] == 1     # four images: four credits
+        assert (await H.Client.get("/api/token-status")).json()["remaining"] == 1     # one design request: one credit
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
         await H.Idle()
         S = (await H.Client.get("/api/token-status")).json()
-        assert (S["used"], S["remaining"]) == (5, 0)                                    # the finished movie: one more
+        assert (S["used"], S["remaining"]) == (2, 0)                                    # the finished movie: one more
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])            # reused movie: no charge
-        assert (await H.Client.get("/api/token-status")).json()["used"] == 5
+        assert (await H.Client.get("/api/token-status")).json()["used"] == 2
         Subs = len(H.Provider.Submissions)
         R = await H.Client.post("/api/designs", data={"prompt": "Another band"})
         assert R.status_code == 402 and R.json()["error"] == {
@@ -143,7 +143,7 @@ async def test_failed_movie_is_not_charged(tmp_path):
         H.Provider.Script(endpoints.Movie, "fail")
         await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
         await H.Idle()
-        assert (await H.Client.get("/api/token-status")).json()["used"] == 4          # the four images; not the failed movie
+        assert (await H.Client.get("/api/token-status")).json()["used"] == 1          # the design request; not the failed movie
     finally:
         await H.Close()
 

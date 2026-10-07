@@ -270,7 +270,7 @@
           <div class="flex justify-between items-baseline"><p class="lbl">Credits used (charged)</p>
             <p class="text-sm"><strong x-text="d.totals.generations_used"></strong> / <span x-text="d.totals.generations_max"></span></p></div>
           <div class="h-2 bg-zinc-100 mt-3"><div class="h-2" :class="barClass()" :style="'width:' + Math.min(100, 100 * d.totals.generations_used / Math.max(1, d.totals.generations_max)) + '%'"></div></div>
-          <p class="text-[12px] text-zinc-500 mt-2">One credit per delivered design image, refinement image and finished 360° movie (Settings → Products → Credits). Failed options are not charged; the Admin's own movies and 3D models never are. Before 2026-10-07 only finished movies were charged.</p>
+          <p class="text-[12px] text-zinc-500 mt-2">One credit per customer action: a design request (its four images), a refinement request, an extra option requested, a finished 360° movie (Settings → Products → Credits). A request whose every image fails is not charged; selecting, materials, sizes and reused movies are free; the Admin's own movies and 3D models never count. Before 2026-10-07 only finished movies were charged.</p>
         </div>
         <div class="card p-4"><p class="lbl mb-1">Jobs succeeded / failed</p>
           <p class="text-2xl font-semibold"><span class="text-emerald-700" x-text="d.totals.jobs_succeeded"></span> <span class="text-zinc-300">/</span> <span :class="d.totals.jobs_failed ? 'text-red-600' : 'text-zinc-500'" x-text="d.totals.jobs_failed"></span></p>
@@ -1633,7 +1633,7 @@
           <p class="font-semibold">Credits</p>
           <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="tariffEdit ? (tariffEdit = null) : editTariff()" x-text="tariffEdit ? 'Cancel edit' : 'Edit'"></button>
         </div>
-        <p class="text-[12px] text-zinc-600">What a customer's credit buys. A credit is reserved when the work starts (so parallel requests cannot overspend an allowance) and charged when the result is delivered; a failed option is not charged. The Admin's own movies and 3D models are never charged.</p>
+        <p class="text-[12px] text-zinc-600">What a customer's credit buys: one customer-triggered action, not one output file. A credit is reserved when the action starts (so parallel requests cannot overspend an allowance) and charged once it delivers; an action whose every image fails is not charged. The Admin's own movies and 3D models are never charged.</p>
         <div class="flex flex-wrap gap-2" x-show="!tariffEdit">
           <template x-for="k in (credits.kinds || [])" :key="'tk' + k.id"><span class="badge bg-zinc-100 text-zinc-700" x-text="(credits.tariff[k.id] ?? 0) + ' per ' + k.label"></span></template>
         </div>

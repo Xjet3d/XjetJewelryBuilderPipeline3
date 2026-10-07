@@ -16,7 +16,7 @@ approval** or **Blocks production**, with who does what. No real secret appears 
 | Production posture (configuration validation, locked live provider, no mock fallback, no dev tools / API docs / showcase in production, Admin on its own host) | **Implemented** (`p3/settings.py: ValidateProduction`, `p3/modes.py`, `p3/app.py: _Separation`) |
 | Security headers, safe public health, log scrubbing, media cache fix, robots / sitemap / canonical / social tags | **Implemented** |
 | Customer availability per product (Rings ON/OFF, Charms ON/OFF, future products), product-aware wording | **Implemented** (`p3/products.py`, Admin → Settings → Products) |
-| Credits: 1 per image, 1 per refinement image, 1 per movie, 0 per 3D; reserved before paid work, charged on delivery; no silent paid retries; internal usage never charged; cost per submission; daily AI spend cap; request limits | **Implemented** (`p3/credits.py`, `p3/ratelimit.py`) |
+| Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per movie, 0 per 3D; reserved before paid work, charged on delivery; no silent paid retries; internal usage never charged; cost per submission; daily AI spend cap; request limits | **Implemented** (`p3/credits.py`, `p3/ratelimit.py`) |
 | Privacy and sharing (masters show images + name only; consent recorded at publication; share GET side-effect free; sign-out forgets the profile; alike registration answers; single-use verify links; EXIF) | **Implemented** |
 | Commerce truths (email state on orders and quote requests, no "reply to no-reply", configurable support address, staff notifications, no duplicate bag line, 3D results before production, STL from the ordered option) | **Implemented** |
 | Payment provider | **Not implemented by design — business decision pending** (section F) |
@@ -62,9 +62,11 @@ payment decision (reservation model is truthful today — see F).
   generated. API: `PUT /api/admin/products/availability {"product", "available"}`.
 
 ### 3. Credits — commit `1a65c58`
-- **Model** (section D): 1 credit per generated image, 1 per refinement image, 1 per 360° movie, 0 per 3D model.
-  Reserved atomically against the allowance when the work is created (parallel requests cannot overspend), charged
-  when the result is delivered, released on failure / timeout / duplicate; rebuilt from the job tables at every start.
+- **Model** (section D): a credit is a customer-triggered action — 1 per design request (its four images), 1 per
+  refinement request, 1 per explicitly requested additional option, 1 per 360° movie, 0 per 3D model. Reserved
+  atomically against the allowance when the action is created (parallel requests cannot overspend), charged once it
+  delivers, released when every image of it fails; rebuilt from the job tables at every start. (Corrected on
+  2026-10-07 after the Maison Dusk / C-1016 case, which had been charged per image; the counters were recounted.)
 - **No silent paid retries:** a duplicate image is a failed, retryable option (never re-requested by the app;
   `max_duplicate_retries_per_slot = 0`); "Generate another option" is the customer's explicit new credit; a failed or
   timed-out slot is shown, never resubmitted. The fal.ai client library's own HTTP retries remain for idempotent
@@ -152,13 +154,18 @@ payment decision (reservation model is truthful today — see F).
 ## D. Credits model
 
 - Allowance per account (`max_generations`, default **10 credits**; Admin → Users "Credits allowance").
-- **1 credit per generated image** (a design makes 4), **1 per refinement image** (a refinement makes 4), **1 per
-  finished 360° movie**, **0 per 3D model** (XJet's production cost). Example: 10 credits = 4 design images + 2
-  refinement images + 4 movies. Tariff editable in Admin → Settings → Products → Credits (`p3/credits.py`).
-- Reserved before the work is created (atomic; parallel requests cannot overspend), charged when delivered (once per
-  result), released when it fails / times out / duplicates. A reused movie is free. The Admin's movies and all Hi3D
-  requests are internal, never charged. Reservations are rebuilt at startup from the job tables.
-- Historic usage before 2026-10-07 was charged per finished movie only; the counters were preserved as they were.
+- A credit is a **customer-triggered action, not an output file**: **1 per design request** (its four images),
+  **1 per refinement request** (its four images), **1 per explicitly requested additional option** (one click,
+  however many slots it retries), **1 per finished 360° movie**, **0 per 3D model** (XJet's production cost).
+  Selecting an option, changing the material or the size and reusing an existing movie cost nothing. Example:
+  10 credits = 4 design requests + 2 refinements + 4 movies. Tariff editable in Admin → Settings → Products →
+  Credits (`p3/credits.py`).
+- Reserved before the action is created (atomic; parallel requests cannot overspend), charged once it delivers (its
+  first ready image; a finished movie), released when every image of it fails / times out / duplicates. The
+  Admin's movies and all Hi3D requests are internal, never charged. Reservations are rebuilt at startup.
+- Historic usage before 2026-10-07 was charged per finished movie only. The counters of every account on proto were
+  recounted on 2026-10-07 under this rule (charged movies + requests that delivered since the credits deploy) after
+  the Maison Dusk / C-1016 case, which had been charged per image.
 - Every submission records its estimated list-price cost; the daily spend cap is enforced before each paid submission.
 - **Open decision (business):** the default allowance for self-registered customers (10 today), whether credits can
   be bought, and the message shown at zero ("Contact us to extend your allowance").

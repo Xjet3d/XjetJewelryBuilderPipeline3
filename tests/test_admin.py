@@ -174,7 +174,7 @@ async def test_user_detail_counts_only_recorded_activity(HA):
     assert T["movies"]["total"] == 2 and T["movies"]["by_status"] == {"ready": 1, "failed": 1}
     assert T["meshes"]["total"] == 0 and T["bag_lines"] == 0
     assert (T["jobs_succeeded"], T["jobs_failed"]) == (9, 1)
-    assert (T["generations_used"], T["generations_max"], T["sign_ins"]) == (9, 100, 1)   # 4 + 4 images, 1 finished movie
+    assert (T["generations_used"], T["generations_max"], T["sign_ins"]) == (3, 100, 1)   # a design, a refinement, a finished movie
     assert T["images"]["by_provider"] == {"fal": 4}
     assert D["user"]["last_sign_in_at"] and D["user"]["last_activity_at"]
 

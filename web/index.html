@@ -1922,7 +1922,7 @@
                 </div>
 
                 <div class="px-5 py-4 flex flex-col gap-4">
-                    <!-- Credits: 1 per design image, 1 per refinement image, 1 per finished 360° movie -->
+                    <!-- Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per finished 360° movie -->
                     <div>
                         <div class="flex items-center justify-between mb-1.5">
                             <span class="text-[12px] uppercase tracking-[0.2em] font-semibold whitespace-nowrap" style="color:#8A6420;">Credits</span>
@@ -1941,7 +1941,7 @@
                                  :style="{ width: (quotaMax ? Math.round(100 * quotaRemaining / quotaMax) : 0) + '%', background: quotaRemaining === 0 ? '#B4443A' : 'linear-gradient(90deg,#C1995A,#8A561B)' }"></div>
                         </div>
                         <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">
-                            <span x-show="quotaRemaining > 0">One credit per generated image (a design or a refinement makes four) and one per 360° movie. Nothing is charged for an option that fails.</span>
+                            <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for (whatever it generates), one per extra option you request and one per 360° movie. Selecting, materials, sizes and a reused movie are free; nothing is charged for a request that fails.</span>
                             <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. Contact us to extend your allowance.</span>
                         </div>
                     </div>

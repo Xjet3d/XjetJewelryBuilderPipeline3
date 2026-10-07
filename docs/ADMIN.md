@@ -405,10 +405,12 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 
 **Code:** `p3/credits.py`. **API:** `GET /api/admin/credits`, `PUT /api/admin/credits/tariff`.
 
-- **The tariff** — credits per design image, refinement image, 360° movie and 3D model (defaults 1 / 1 / 1 / 0) — is
-  edited here and logged with the other product settings. A credit is reserved when the work starts and charged when
-  the result is delivered; a failed option is released; the Admin's own movies and 3D models are never charged. The
-  Users page shows each customer's used / reserved / remaining credits ("Credits allowance" when creating or editing).
+- **The tariff** — credits per design request, refinement request, additional option, 360° movie and 3D model
+  (defaults 1 / 1 / 1 / 1 / 0; a credit is a customer action, never an output file) — is edited here and logged with
+  the other product settings. A credit is reserved when the action starts and charged once it delivers; an action
+  whose every image fails is released; selecting, materials, sizes and reused movies are free; the Admin's own movies
+  and 3D models are never charged. The Users page shows each customer's used / reserved / remaining credits
+  ("Credits allowance" when creating or editing).
 - **AI spend today** — the estimated list-price cost of the day's live submissions (every submission is recorded with
   its estimate) against the daily cap `P3_DAILY_AI_SPEND_CAP_USD`; at the cap, paid submissions stop with
   `spend_cap_reached` (the customer reads "AI generation is paused for today") until the next UTC day.
