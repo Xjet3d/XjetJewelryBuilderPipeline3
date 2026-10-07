@@ -217,3 +217,17 @@ def test_earlier_usage_is_backfilled_with_provider_and_endpoint(tmp_path):
         assert BackfillUsageAnnotations(H.Ctx) == 0
     finally:
         asyncio.run(H.Close())
+
+
+async def test_a_second_admin_session_cookie_from_another_app_on_the_host_does_not_sign_the_admin_out(HA):
+    """Another app on the same host may set a cookie of the same name with a wider path; the browser then sends both.
+    Every presented value is tried, in either order, so the remembered sign-in keeps working — and sign-out revokes the
+    one that was ours."""
+    H = HA
+    R = await H.Client.post("/api/admin/login", json={"key": AdminKey})
+    Mine = R.headers["set-cookie"].split(";")[0].split("=", 1)[1]
+    for Cookie in (f"p3_admin_session=stranger; p3_admin_session={Mine}", f"p3_admin_session={Mine}; p3_admin_session=stranger"):
+        assert (await H.Client.get("/api/admin/session", headers={"Cookie": Cookie})).status_code == 200, Cookie
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "p3_admin_session=stranger; p3_admin_session=other"})).status_code == 403
+    assert (await H.Client.post("/api/admin/logout", headers={"Cookie": f"p3_admin_session=stranger; p3_admin_session={Mine}"})).status_code == 200
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"p3_admin_session={Mine}"})).status_code == 403

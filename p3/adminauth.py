@@ -106,6 +106,19 @@ def SetCookie(Resp: JSONResponse, Req: Request, BasePath: str, Token: str | None
         Resp.delete_cookie(key=CookieName, path=Kw["path"], httponly=True, samesite="lax", secure=Kw["secure"])
 
 
+def Tokens(Req: Request) -> list[str]:
+    """Every p3_admin_session value the browser sent. Another app on the same host may set a cookie of the same name
+    with a wider path; the browser then sends both, and the request's cookie dict keeps only one of them."""
+    Out = []
+    for Raw in Req.headers.getlist("cookie"):
+        for Part in Raw.split(";"):
+            K, _, V = Part.strip().partition("=")
+            V = V.strip().strip('"')
+            if K.strip() == CookieName and V and V not in Out:
+                Out.append(V)
+    return Out
+
+
 def InstallMiddleware(App_, Ctx: Context) -> None:
     """A valid session cookie on /api/admin/* (and /api/dev/*) becomes the Bearer admin key for that
     request, so RequireAdmin() / RequireDeveloper() need not know about cookies."""
@@ -116,8 +129,7 @@ def InstallMiddleware(App_, Ctx: Context) -> None:
         Rel = Path[len(Ctx.Settings.BasePath):] if Ctx.Settings.BasePath and Path.startswith(Ctx.Settings.BasePath) else Path
         if (Rel.startswith("/api/admin/") or Rel.startswith("/api/dev/")) and not Rel.endswith("/login"):
             Auth = (Req.headers.get("authorization") or "").removeprefix("Bearer ").strip()
-            Token = Req.cookies.get(CookieName)
-            if not Auth and Token and Ctx.Settings.AdminKey and Validate(Ctx, Token):
+            if not Auth and Ctx.Settings.AdminKey and any(Validate(Ctx, T) for T in Tokens(Req)):
                 Headers = [(K, V) for K, V in Req.scope["headers"] if K != b"authorization"]
                 Headers.append((b"authorization", ("Bearer " + Ctx.Settings.AdminKey).encode("latin-1")))
                 Req.scope["headers"] = Headers

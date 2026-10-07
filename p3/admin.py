@@ -494,7 +494,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.post("/api/admin/logout")
     async def AdminLogout(Req: Request):
-        AdminAuth.Revoke(Ctx, Req.cookies.get(AdminAuth.CookieName))     # this browser's session only
+        for T in AdminAuth.Tokens(Req):                                 # this browser's session only (every value it sent)
+            AdminAuth.Revoke(Ctx, T)
         Resp = JSONResponse({"ok": True})
         AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, None)
         return Resp

@@ -114,7 +114,10 @@
                     background: #1A1A1A; color: #fff; font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
                     white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 300; }
         .icon-tip::before { content: ''; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; background: #1A1A1A; transform: translateX(-50%) rotate(45deg); }
-        @media (hover: hover) { .h-icon:hover .icon-tip, .h-icon:focus-visible .icon-tip { opacity: 1; } }
+        /* .is-left: the label sits to the left of the icon (buttons at a panel's right edge) */
+        .icon-tip.is-left { top: 50%; left: auto; right: 100%; transform: translate(-7px, -50%); }
+        .icon-tip.is-left::before { top: 50%; left: auto; right: -4px; transform: translateY(-50%) rotate(45deg); }
+        @media (hover: hover) { .h-icon:hover .icon-tip, .h-icon:focus-visible .icon-tip, .tip-host:hover .icon-tip, .tip-host:focus-visible .icon-tip { opacity: 1; } }
         html, body { overflow-x: clip; }
 
         /* ── Pipeline 3 additions ── */
@@ -1152,8 +1155,10 @@
                                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg><span>Favorites</span>
                                 </button>
                             </div>
-                            <button @click="sidebarOpen = false" class="tap-lg transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#555]" title="Close" aria-label="Close My Designs and Favorites">
+                            <!-- Panel icons reveal their name on hover (.tip-host / .icon-tip), like the header's -->
+                            <button @click="sidebarOpen = false" class="tap-lg tip-host transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#1A1A1A] hover:bg-black/[0.04]" aria-label="Close My Designs and Favorites">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <span class="icon-tip is-left" aria-hidden="true">Close</span>
                             </button>
                         </div>
                         <div class="px-3 py-2.5 shrink-0" style="border-bottom:1px solid #DCDCDC;">
@@ -1180,8 +1185,9 @@
                                             <p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="f.title"></p>
                                             <p class="text-[12px] mt-0.5" style="color:#6F6F6F;">Inspiration Gallery</p>
                                         </div>
-                                        <button type="button" @click.stop="toggleFav(f)" :disabled="favBusy === f.design_id" class="tap-lg shrink-0 p-1.5 rounded-lg transition hover:bg-[#FBF7EF]" style="color:#B8873A;" title="Remove from Favorites" :aria-label="'Remove ' + f.title + ' from Favorites'">
+                                        <button type="button" @click.stop="toggleFav(f)" :disabled="favBusy === f.design_id" class="tap-lg tip-host shrink-0 p-1.5 rounded-lg transition hover:bg-[#FBF7EF]" style="color:#B8873A;" :aria-label="'Remove ' + f.title + ' from Favorites'">
                                             <svg class="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg>
+                                            <span class="icon-tip is-left" aria-hidden="true">Remove favorite</span>
                                         </button>
                                     </div>
                                 </template>
@@ -1212,8 +1218,9 @@
                                             <span x-show="productsOn && isCharm(p)" x-cloak class="shrink-0 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#FBF7EF; color:#8A6420;"><span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>Charm</span></div>
                                         <p class="text-[12px] mt-0.5" style="color:#6F6F6F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
                                     </div>
-                                    <button @click.stop="removeDesign(p)" class="tap-lg shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" title="Remove from My Designs" :aria-label="'Remove ' + p.title + ' from My Designs'">
+                                    <button @click.stop="removeDesign(p)" class="tap-lg tip-host shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" :aria-label="'Remove ' + p.title + ' from My Designs'">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12"/></svg>
+                                        <span class="icon-tip is-left" aria-hidden="true">Remove</span>
                                     </button>
                                 </div>
                             </template>
