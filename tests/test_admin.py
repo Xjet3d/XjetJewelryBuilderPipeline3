@@ -47,12 +47,12 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     R = await H.Client.post("/api/admin/login", json={"key": AdminKey})
     assert R.status_code == 200 and R.json()["remembered"] and R.json()["mode"] == "mock"
     C = R.headers["set-cookie"]
-    assert "p3_admin_session=" in C and "HttpOnly" in C and "Path=/JewelryB2C3/" in C and "Max-Age=" in C and "SameSite=lax" in C.lower().replace("samesite=lax", "SameSite=lax")
+    assert "atelier_admin_session=" in C and "HttpOnly" in C and "Path=/JewelryB2C3/api/" in C and "Max-Age=" in C and "samesite=strict" in C.lower()
     assert AdminKey not in C
     # The cookie alone (no Authorization header) authenticates every admin route — the client keeps the jar
     assert (await H.Client.get("/api/admin/session")).status_code == 200
     assert (await H.Client.get("/api/admin/users")).status_code == 200
-    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "p3_admin_session=forged"})).status_code == 403
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "atelier_admin_session=forged"})).status_code == 403
     # Revoked on the server (e.g. a lost laptop) → that browser must sign in again
     H.Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = '2026-01-01T00:00:00+00:00'")
     assert (await H.Client.get("/api/admin/session")).status_code == 403
@@ -226,11 +226,11 @@ async def test_a_second_admin_session_cookie_from_another_app_on_the_host_does_n
     H = HA
     R = await H.Client.post("/api/admin/login", json={"key": AdminKey})
     Mine = R.headers["set-cookie"].split(";")[0].split("=", 1)[1]
-    for Cookie in (f"p3_admin_session=stranger; p3_admin_session={Mine}", f"p3_admin_session={Mine}; p3_admin_session=stranger"):
+    for Cookie in (f"atelier_admin_session=stranger; atelier_admin_session={Mine}", f"atelier_admin_session={Mine}; atelier_admin_session=stranger"):
         assert (await H.Client.get("/api/admin/session", headers={"Cookie": Cookie})).status_code == 200, Cookie
-    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "p3_admin_session=stranger; p3_admin_session=other"})).status_code == 403
-    assert (await H.Client.post("/api/admin/logout", headers={"Cookie": f"p3_admin_session=stranger; p3_admin_session={Mine}"})).status_code == 200
-    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"p3_admin_session={Mine}"})).status_code == 403
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": "atelier_admin_session=stranger; atelier_admin_session=other"})).status_code == 403
+    assert (await H.Client.post("/api/admin/logout", headers={"Cookie": f"atelier_admin_session=stranger; atelier_admin_session={Mine}"})).status_code == 200
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"atelier_admin_session={Mine}"})).status_code == 403
 
 
 async def test_a_basic_auth_header_from_another_app_on_the_host_does_not_hide_the_admin_session(HA):
@@ -242,4 +242,30 @@ async def test_a_basic_auth_header_from_another_app_on_the_host_does_not_hide_th
     Basic = {"Authorization": "Basic eGpldDpzZWNyZXQ="}
     assert (await H.Client.get("/api/admin/session", headers=Basic)).status_code == 200          # cookie + Basic
     assert (await H.Client.get("/api/admin/users", headers=Basic)).status_code == 200
-    assert (await H.Client.get("/api/admin/session", headers={**Basic, "Cookie": "p3_admin_session=forged"})).status_code == 403
+    assert (await H.Client.get("/api/admin/session", headers={**Basic, "Cookie": "atelier_admin_session=forged"})).status_code == 403
+
+
+async def test_the_admin_cookie_is_isolated_from_other_apps_on_the_host(HA):
+    """Production hardening: a cookie name of our own, scoped to this app's API path, SameSite=Strict; the generic name
+    of before is cleared and never read; only our cookie or a Bearer key signs the admin in — other Authorization
+    schemes and other apps' cookies do nothing, with or without our cookie beside them."""
+    H = HA
+    R = await H.Client.post("/api/admin/login", json={"key": AdminKey})
+    Set = R.headers.get_list("set-cookie")
+    Mine = next(C for C in Set if C.startswith("atelier_admin_session="))
+    assert "Path=/JewelryB2C3/api/" in Mine and "samesite=strict" in Mine.lower() and "HttpOnly" in Mine
+    assert any(C.startswith("p3_admin_session=") and "Max-Age=0" in C for C in Set)              # the old name is cleared
+    Token = Mine.split(";")[0].split("=", 1)[1]
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"p3_admin_session={Token}"})).status_code == 403
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"xjet_user=someone; atelier_admin_session={Token}"})).status_code == 200
+    for Auth in ("Basic eGpldDpzZWNyZXQ=", "Digest username=xjet", "Negotiate abc", "Token " + AdminKey):
+        assert (await H.Client.get("/api/admin/session", headers={"Authorization": Auth, "Cookie": f"atelier_admin_session={Token}"})).status_code == 200, Auth
+        assert (await H.Client.get("/api/admin/session", headers={"Authorization": Auth, "Cookie": "xjet_user=someone"})).status_code == 403, Auth
+    assert (await H.Client.get("/api/admin/session", headers={"Authorization": "Bearer " + AdminKey, "Cookie": "xjet_user=someone"})).status_code == 200
+    # The Admin's preview of hidden products on the customer site uses the same cookie — and nothing else
+    assert "products" in (await H.Client.get("/api/catalog", headers={"Cookie": f"atelier_admin_session={Token}"})).json()
+    assert "products" not in (await H.Client.get("/api/catalog", headers={"Cookie": f"p3_admin_session={Token}", "Authorization": "Basic eGpldDpzZWNyZXQ="})).json()
+    # Sign-out clears it (and the old name) and revokes the session
+    Out = await H.Client.post("/api/admin/logout", headers={"Cookie": f"atelier_admin_session={Token}"})
+    assert Out.status_code == 200 and any(C.startswith("atelier_admin_session=") and "Max-Age=0" in C for C in Out.headers.get_list("set-cookie"))
+    assert (await H.Client.get("/api/admin/session", headers={"Cookie": f"atelier_admin_session={Token}"})).status_code == 403

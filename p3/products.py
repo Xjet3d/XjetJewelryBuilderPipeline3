@@ -268,9 +268,9 @@ def AdminPreview(Ctx: Context, Request) -> bool:
     if Request is None:
         return False
     from p3 import adminauth
-    Token = Request.cookies.get(adminauth.CookieName) if hasattr(Request, "cookies") else None
     try:
-        return bool(Token and Ctx.Settings.AdminKey and adminauth.Validate(Ctx, Token))
+        return bool(hasattr(Request, "headers") and Ctx.Settings.AdminKey
+                    and any(adminauth.Validate(Ctx, T) for T in adminauth.Tokens(Request)))
     except Exception:  # noqa: BLE001 — never let a preview check break the customer site
         return False
 

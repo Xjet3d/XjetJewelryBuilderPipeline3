@@ -103,13 +103,24 @@
         .tap::after { content: ''; position: absolute; inset: -6px; }
         .tap-lg::after { content: ''; position: absolute; inset: -12px; }
         @media (pointer: fine) { .tap::after, .tap-lg::after { inset: 0; } }
-        /* ── Header icon buttons (My Designs, ♥ Favorites, Bag): hovering looks exactly like the selected state and
-           reveals the name in a small label below (.icon-tip); the same look stays while that panel or page is open
-           (.is-on). The heart fills, like a saved favorite. */
-        .h-icon { border-radius: .5rem; transition: color .15s, background-color .15s; }
-        .h-icon:hover, .h-icon:focus-visible, .h-icon.is-on { color: #1A1A1A; background: rgba(0, 0, 0, .04); }
-        .h-icon.is-gold:hover, .h-icon.is-gold:focus-visible, .h-icon.is-gold.is-on { color: #8A6420; background: #FBF7EF; }
-        .h-icon.is-gold:hover .heart, .h-icon.is-gold:focus-visible .heart, .h-icon.is-gold.is-on .heart { fill: #C9A96E; }
+        /* ── Icon-first navigation (.nav-icon: My Designs, ♥ Favorites and the Bag in the header; the studio's panel
+           buttons; the panel's tabs): an icon alone. Hovering or focusing it reveals the name beside the icon, inside
+           the same pill, with the selected treatment — gold on cream for ♥ (the heart fills, like a saved favorite),
+           black on a soft pill otherwise. While that panel or page is open (.is-on) the icon keeps the selected look,
+           without the text. Count badges sit on the icon's corner (.ico / .nav-badge). */
+        .nav-icon { position: relative; display: inline-flex; align-items: center; padding: .45rem .55rem; border-radius: .5rem; color: #52525B;
+                    transition: color .15s, background-color .15s; }
+        .nav-icon:hover, .nav-icon:focus-visible, .nav-icon.is-on { color: #1A1A1A; background: rgba(0, 0, 0, .05); }
+        .nav-icon:focus-visible { outline: 2px solid rgba(201, 169, 110, .65); outline-offset: 1px; }
+        .nav-icon.is-gold:hover, .nav-icon.is-gold:focus-visible, .nav-icon.is-gold.is-on { color: #8A6420; background: #FBF7EF; }
+        .nav-icon.is-gold:hover .heart, .nav-icon.is-gold:focus-visible .heart, .nav-icon.is-gold.is-on .heart { fill: #C9A96E; }
+        .nav-icon .ico { position: relative; display: inline-flex; flex-shrink: 0; }
+        .nav-label { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; margin-left: 0; font-size: 11px; font-weight: 600;
+                     letter-spacing: .14em; text-transform: uppercase; transition: max-width .22s ease, opacity .15s ease, margin-left .22s ease; }
+        .nav-icon:hover .nav-label, .nav-icon:focus-visible .nav-label { max-width: 9rem; opacity: 1; margin-left: .45rem; }
+        .nav-badge { position: absolute; top: -7px; right: -8px; min-width: 17px; height: 17px; border-radius: 9999px; color: #fff; font-size: 11px;
+                     font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+        @media (prefers-reduced-motion: reduce) { .nav-icon, .nav-label { transition: none; } }
         .icon-tip { position: absolute; top: 100%; left: 50%; transform: translate(-50%, 7px); padding: .3rem .6rem; border-radius: .25rem;
                     background: #1A1A1A; color: #fff; font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
                     white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 300; }
@@ -254,32 +265,31 @@
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span>
             <!-- My Designs (signed in) and ♥ Favorites open the Design screen's side panel on that tab (in the studio its toolbar has them) -->
-            <!-- Each icon button: hovering looks like its selected state and reveals the name below (.h-icon / .icon-tip) -->
-            <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')"
-                    class="tap h-icon inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 transition"
+            <!-- Icon-first: an icon alone; hovering or focusing it reveals the name beside the icon (.nav-icon / .nav-label).
+                 The open panel or page keeps the selected look (.is-on), still without text. -->
+            <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')" class="tap nav-icon"
                     :class="{ 'is-on': sidebarOpen && sidebarTab === 'designs' && view === 'ai-studio' }" aria-label="My Designs">
-                <svg class="w-5 h-5 md:w-[18px] md:h-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
-                <span class="hidden md:inline">My Designs</span>
-                <span class="icon-tip md:hidden" aria-hidden="true">My Designs</span>
+                <span class="ico"><svg class="w-5 h-5 md:w-[18px] md:h-[18px]" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></span>
+                <span class="nav-label" aria-hidden="true">My Designs</span>
             </button>
-            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap h-icon is-gold relative p-2 md:p-1.5 text-zinc-600 transition"
+            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap nav-icon is-gold"
                     :class="{ 'is-on': sidebarOpen && sidebarTab === 'favorites' && view === 'ai-studio' }"
                     :aria-label="favorites.length ? 'My favorites, ' + favorites.length : 'My favorites'">
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
-                <span x-show="favorites.length" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full text-white text-[12px] font-bold flex items-center justify-center px-0.5" style="background:#B8873A;" x-text="favorites.length"></span>
-                <span class="icon-tip" aria-hidden="true">Favorites</span>
+                <span class="ico"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
+                    <span x-show="favorites.length" x-cloak class="nav-badge" style="background:#B8873A;" x-text="favorites.length"></span></span>
+                <span class="nav-label" aria-hidden="true">Favorites</span>
             </button>
             <!-- Bag: always on the site's pages (signed out it asks for sign-in first); in the studio when it has something -->
-            <button type="button" x-show="!inStudio || bagCount > 0" @click="openBag()"
-                    :aria-label="bagCount ? 'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items') : 'My bag'" class="tap h-icon relative p-2 md:p-1.5 text-zinc-600 transition"
+            <button type="button" x-show="!inStudio || bagCount > 0" @click="openBag()" class="tap nav-icon"
+                    :aria-label="bagCount ? 'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items') : 'My bag'"
                     :class="{ 'is-on': view === 'bag' || view === 'checkout' }">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-                    <line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/>
-                </svg>
-                <span x-show="bagCount > 0" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
-                <span class="icon-tip" aria-hidden="true">Bag</span>
+                <span class="ico"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                        <line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/>
+                    </svg>
+                    <span x-show="bagCount > 0" x-cloak class="nav-badge bg-black" x-text="bagCount"></span></span>
+                <span class="nav-label" aria-hidden="true">Bag</span>
             </button>
             <span x-show="!inStudio" class="hidden md:block w-px h-5 mx-1.5" style="background:#E3DCCF;" aria-hidden="true"></span>
             <!-- Account: person icon · name · generations left (the coin) · ˅ — opens the account menu, where Sign out is.
@@ -890,14 +900,15 @@
                         </div>
                         <span x-show="!design"></span>
                         <div x-show="!sidebarOpen" class="shrink-0 flex items-center gap-1 sm:gap-2" data-testid="studio-panel-buttons">
-                        <!-- The open tab looks like the hover state (gold on cream) -->
-                        <button @click="openPanel('designs')" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420] hover:bg-[#FBF7EF]" :class="sidebarOpen && sidebarTab === 'designs' ? 'text-[#8A6420] bg-[#FBF7EF]' : ''" aria-label="My Designs">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
-                            <span class="hidden sm:inline">My Designs</span>
+                        <!-- Icon-first, like the header: the name appears beside the icon on hover / focus -->
+                        <button @click="openPanel('designs')" class="tap nav-icon shrink-0" aria-label="My Designs">
+                            <span class="ico"><svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></span>
+                            <span class="nav-label" aria-hidden="true">My Designs</span>
                         </button>
-                        <button @click="openPanel('favorites')" class="tap shrink-0 relative flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420] hover:bg-[#FBF7EF]" :class="sidebarOpen && sidebarTab === 'favorites' ? 'text-[#8A6420] bg-[#FBF7EF]' : ''" aria-label="Favorites">
-                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
-                            <span class="hidden sm:inline">Favorites</span>
+                        <button @click="openPanel('favorites')" class="tap nav-icon is-gold shrink-0" :aria-label="favorites.length ? 'Favorites, ' + favorites.length : 'Favorites'">
+                            <span class="ico"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
+                                <span x-show="favorites.length" x-cloak class="nav-badge" style="background:#B8873A;" x-text="favorites.length"></span></span>
+                            <span class="nav-label" aria-hidden="true">Favorites</span>
                         </button>
                         </div>
                     </div>
@@ -1149,10 +1160,16 @@
                        x-init="$watch('sidebarOpen', v => v && loadDesigns()); sidebarOpen && loadDesigns()">
                     <div class="w-[308px] flex flex-col h-full overflow-hidden bg-white">
                         <div class="px-4 py-3.5 flex items-center justify-between shrink-0" style="border-bottom:1px solid #DCDCDC;">
-                            <div class="flex items-center gap-3.5 min-w-0" role="tablist" aria-label="My Designs and Favorites">
-                                <button type="button" role="tab" @click="sidebarTab = 'designs'" :aria-selected="sidebarTab === 'designs'" class="text-[13px] uppercase tracking-[0.14em] font-semibold whitespace-nowrap pb-0.5 border-b-2 transition" :class="sidebarTab === 'designs' ? 'border-[#C9A96E] text-[#1A1A1A]' : 'border-transparent text-[#6F6F6F] hover:text-[#1A1A1A]'">My Designs</button>
-                                <button type="button" role="tab" @click="sidebarTab = 'favorites'; loadFavorites()" :aria-selected="sidebarTab === 'favorites'" class="text-[13px] uppercase tracking-[0.14em] font-semibold whitespace-nowrap pb-0.5 border-b-2 transition inline-flex items-center gap-1.5" :class="sidebarTab === 'favorites' ? 'border-[#C9A96E] text-[#1A1A1A]' : 'border-transparent text-[#6F6F6F] hover:text-[#1A1A1A]'">
-                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg><span>Favorites</span>
+                            <!-- Icon-first tabs: the open one keeps the selected look (black pill / gold on cream); the name appears
+                                 beside the icon on hover or focus -->
+                            <div class="flex items-center gap-1 min-w-0" role="tablist" aria-label="My Designs and Favorites">
+                                <button type="button" role="tab" @click="sidebarTab = 'designs'" :aria-selected="sidebarTab === 'designs'" class="tap nav-icon" :class="{ 'is-on': sidebarTab === 'designs' }" aria-label="My Designs">
+                                    <span class="ico"><svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></span>
+                                    <span class="nav-label" aria-hidden="true">My Designs</span>
+                                </button>
+                                <button type="button" role="tab" @click="sidebarTab = 'favorites'; loadFavorites()" :aria-selected="sidebarTab === 'favorites'" class="tap nav-icon is-gold" :class="{ 'is-on': sidebarTab === 'favorites' }" aria-label="Favorites">
+                                    <span class="ico"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg></span>
+                                    <span class="nav-label" aria-hidden="true">Favorites</span>
                                 </button>
                             </div>
                             <!-- Panel icons reveal their name on hover (.tip-host / .icon-tip), like the header's -->

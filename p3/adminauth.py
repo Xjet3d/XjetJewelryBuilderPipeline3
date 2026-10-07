@@ -8,6 +8,13 @@ the server (revoked_at). Requests still accept the key as a Bearer header (tests
 
 The cookie is turned into the Bearer header by a small middleware, so RequireAdmin() stays the one
 authorization seam and no admin route changes.
+
+Isolation from other applications on the same host (production hardening, 2026-10-07): the cookie has a name of
+its own (CookieName), is scoped to this app's API path only (never sent for pages or assets, never to another
+app's path), and is SameSite=Strict. Exactly two things sign an admin in: this cookie and "Authorization:
+Bearer <P3_ADMIN_KEY>". Any other Authorization scheme (a Basic challenge answered for another app and replayed
+by the browser, Digest, …) is ignored and dropped; any other cookie is ignored; the generic cookie name of before
+is cleared and never read.
 """
 
 import hashlib
@@ -21,9 +28,16 @@ from fastapi.responses import JSONResponse
 from p3.context import Context
 from p3.db import NewId, Now
 
-CookieName = "p3_admin_session"
+CookieName = "atelier_admin_session"          # unique to the Atelier Admin: no other app on the host sets or reads it
+LegacyCookieNames = ("p3_admin_session",)     # the generic name of before 2026-10-07: cleared on sign-in/out, never read
 SessionDays = 180                 # sliding: refreshed while the admin keeps visiting
 TouchMinutes = 60                 # last_seen_at is written at most this often
+
+
+def CookiePath(BasePath: str | None) -> str:
+    """Only this app's API ever receives the cookie: /<base>/api/ (the Admin API, and the customer API for the
+    Admin's preview of hidden products) — not the pages, not the assets, not another app on the host."""
+    return (BasePath or "") + "/api/"
 
 Schema = """
 CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -98,12 +112,15 @@ def Secure(Req: Request) -> bool:
 
 
 def SetCookie(Resp: JSONResponse, Req: Request, BasePath: str, Token: str | None) -> None:
-    """Set (or clear, Token=None) the session cookie: HttpOnly, SameSite=Lax, scoped to the app's path."""
-    Kw = dict(key=CookieName, path=(BasePath or "") + "/", httponly=True, samesite="lax", secure=Secure(Req))
+    """Set (or clear, Token=None) the session cookie: HttpOnly, SameSite=Strict, scoped to this app's API path
+    (CookiePath). The generic cookie name of before is cleared at the same time, so a browser carries one cookie."""
+    Kw = dict(httponly=True, samesite="strict", secure=Secure(Req))
     if Token:
-        Resp.set_cookie(value=Token, max_age=SessionDays * 86400, **Kw)
+        Resp.set_cookie(key=CookieName, value=Token, max_age=SessionDays * 86400, path=CookiePath(BasePath), **Kw)
     else:
-        Resp.delete_cookie(key=CookieName, path=Kw["path"], httponly=True, samesite="lax", secure=Kw["secure"])
+        Resp.delete_cookie(key=CookieName, path=CookiePath(BasePath), **Kw)
+    for Old in LegacyCookieNames:                       # set on the app's root path until 2026-10-07
+        Resp.delete_cookie(key=Old, path=(BasePath or "") + "/", httponly=True, samesite="lax", secure=Kw["secure"])
 
 
 def Tokens(Req: Request) -> list[str]:

@@ -575,3 +575,13 @@ The fal client's queue URLs for the three nested endpoints were also resolved of
 **Not exercised:** no live fal.ai call of any kind was made. Live compatibility, output quality, latency, and cost remain unverified. Live validation needs a Pipeline 3 test key with a spending limit and an explicit test budget.
 
 **Pipeline 2 integrity:** checked at the end of implementation (see the final section of the session report). HEAD `1e871734`, status still shows only the two untracked items, and their SHA-1 fingerprints are unchanged.
+
+**Admin sign-in isolated from other apps on the host (2026-10-07).** The session cookie is `atelier_admin_session`
+(`adminauth.CookieName`), set only for this app's API path (`adminauth.CookiePath`: `/<base>/api/` — the Admin API and,
+for the Admin's preview of hidden products, the customer API; never pages or assets), `HttpOnly`, `SameSite=Strict`,
+`Secure` over https. `adminauth.Tokens` reads every value of that name the browser sent (the request's cookie dict keeps
+one), and the middleware accepts the first that validates. Exactly two methods sign an admin in: that cookie and
+`Authorization: Bearer <P3_ADMIN_KEY>`; any other Authorization scheme (a Basic challenge answered for another app on
+the host and replayed by the browser, Digest, …) is dropped before the routes, and other cookies are never read. The
+generic `p3_admin_session` of before is cleared on sign-in and sign-out and never read (`LegacyCookieNames`). Test:
+`test_the_admin_cookie_is_isolated_from_other_apps_on_the_host`.
