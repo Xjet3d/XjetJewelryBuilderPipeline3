@@ -1277,7 +1277,7 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
                 </div>
-                <div class="flex items-center justify-center gap-2 pb-2 shrink-0">
+                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff">
                     <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition"
                             :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
                     <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
@@ -1289,19 +1289,19 @@
 
                 <div class="flex-1 relative overflow-hidden" style="min-height:320px;">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
-                        <template x-if="mediaTab === 'movie' && movieStatus === 'ready'">
+                        <img x-show="movieOff || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
+                        <template x-if="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'">
                             <video :src="cust?.movie.movie_url" :poster="poster(cust?.movie.movie_url)" preload="auto" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="{ filter: tint }"></video>
                         </template>
                     </div>
                     <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
-                    <div x-show="mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
+                    <div x-show="!movieOff && mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
                         <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
                             <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
                             <span class="text-[12px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
                         </div>
                     </div>
-                    <div x-show="mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
+                    <div x-show="!movieOff && mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
                             <span class="text-[12px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
                             <span class="text-[12px]" style="color:#777;" x-text="cust?.movie?.error"></span>
@@ -1309,7 +1309,7 @@
                         </div>
                     </div>
                     <button
-                            @click="mediaTab === 'movie' && movieStatus === 'ready' ? openPreview('video', cust?.movie.movie_url) : openPreview('image', cust?.image_url)"
+                            @click="!movieOff && mediaTab === 'movie' && movieStatus === 'ready' ? openPreview('video', cust?.movie.movie_url) : openPreview('image', cust?.image_url)"
                             class="tap absolute top-3 right-3 z-10 p-2 rounded-lg bg-white/80 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
                             style="border-color:#DCDCDC;" title="Enlarge preview" aria-label="Enlarge preview">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>

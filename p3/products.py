@@ -33,6 +33,7 @@ Labels = {Ring: "Ring", Charm: "Charm"}
 Plurals = {Ring: "Rings", Charm: "Charms"}
 Prefixes = {Ring: "R", Charm: "C"}          # customer-facing IDs: R-1001 … and C-1001 … (separate sequences)
 AvailabilityKeys = {P: f"{Plurals[P].lower()}_available" for P in All}   # rings_available, charms_available (product_settings)
+MovieKeys = {P: f"{Plurals[P].lower()}_movie" for P in All}               # rings_movie, charms_movie: the 360° movie switch per product
 
 
 def DefaultProduct(Visible) -> str:
@@ -151,7 +152,8 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 """
 
 Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie": 1, "mesh": 0},   # p3/credits.py decides
-            "rings_available": True, "charms_available": False, "charm_sizes": list(DefaultCharmSizes),
+            "rings_available": True, "charms_available": False, "rings_movie": True, "charms_movie": True,
+            "charm_sizes": list(DefaultCharmSizes),
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize}
 
 
@@ -242,6 +244,14 @@ class ProductSettings:
     def SetAvailable(self, Product: str, On: bool, By: str, Note: str = "") -> None:
         self.Set(AvailabilityKeys[Product], bool(On), By, Note)
 
+    def MovieOn(self, Product: str) -> bool:
+        """The 360° movie switch of a product (Admin → Settings → Products): OFF = no movie is made or shown in that
+        product's flow; existing movies stay (hidden) and are shown again once the switch is ON."""
+        return self.Get(MovieKeys[Product]) is not False
+
+    def SetMovieOn(self, Product: str, On: bool, By: str, Note: str = "") -> None:
+        self.Set(MovieKeys[Product], bool(On), By, Note)
+
     def ChangedAt(self, Key: str) -> dict | None:
         R = self.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Key,))
         return {"updated_at": R["updated_at"], "updated_by": R["updated_by"]} if R else None
@@ -279,6 +289,8 @@ class ProductSettings:
         Log = self.Db.All("SELECT key, value_json, note, at, by FROM product_settings_log ORDER BY id DESC LIMIT 30")
         return {"availability": {P: self.Available(P) for P in All},
                 "availability_changed": {P: self.ChangedAt(AvailabilityKeys[P]) for P in All},
+                "movies": {P: self.MovieOn(P) for P in All},
+                "movies_changed": {P: self.ChangedAt(MovieKeys[P]) for P in All},
                 "charms_available": self.CharmsAvailable,                       # the older names, still answered
                 "charms_available_changed": self.ChangedAt(AvailabilityKeys[Charm]),
                 "charm_sizes": self.CharmSizes, "charm_size_names": self.CharmSizeNames,
@@ -324,6 +336,12 @@ def PreviewedProducts(Ctx: Context, Request=None) -> tuple:
 def CharmsVisible(Ctx: Context, Request=None) -> bool:
     """Charms on the customer site: switched on for customers, or previewed by a signed-in admin."""
     return Charm in VisibleProducts(Ctx, Request)
+
+
+def MovieAvailable(Ctx: Context, Product: str) -> bool:
+    """Whether a 360° movie is made and shown for this product (its Admin switch; ON when nothing is configured)."""
+    Settings = getattr(Ctx, "Products", None)
+    return Settings.MovieOn(Product) if Settings is not None else True
 
 
 def RequireVisible(Ctx: Context, Product: str, Request=None) -> str:

@@ -1336,6 +1336,7 @@ function p3App() {
       } catch (e) { this.custError = e.message; }
     },
 
+    get movieOff() { return !!this.cust && this.cust.movie_available === false; },   // the product's movie switch is OFF: the still image only
     get movieStatus() { return this.cust?.movie?.status || null; },
     get movieBusy() { return this.movieStatus === 'queued' || this.movieStatus === 'running'; },
     get movieFailed() { return this.movieStatus === 'failed' || this.movieStatus === 'interrupted'; },
@@ -1393,7 +1394,7 @@ function p3App() {
         // Ignore responses for a material the user has already moved away from.
         if (patch.material_id && this.cust.material_id !== patch.material_id) return;
         const movie = this.cust.movie;
-        this.cust = { ...fresh, movie: fresh.movie || movie };
+        this.cust = { ...fresh, movie: fresh.movie_available === false ? null : (fresh.movie || movie) };
       } catch (e) {
         this.custError = e.message;
       } finally {

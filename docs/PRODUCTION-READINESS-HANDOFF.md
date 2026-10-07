@@ -57,6 +57,8 @@ payment decision (reservation model is truthful today — see F).
   `charms_available` value was preserved (proto: both ON).
 - OFF = not on the Design screen, not in the gallery or its filters, not in the sitemap, not in the wording; a start
   request is refused (400 `unknown_product`). The Admin configures everything regardless and previews hidden products.
+- A **360° movie switch per product** (default ON): OFF makes and shows no movie in that product's flow — Customize
+  shows the still image, existing movies stay hidden — and ON shows and reuses them again.
 - The site's wording (hero, how-it-works, FAQ, Materials & Pricing, Terms, shipping/returns, Design Studio, checkout,
   order page, meta description) follows the products on offer ("ring" / "charm" / "piece"); gallery filters are
   generated. API: `PUT /api/admin/products/availability {"product", "available"}`.

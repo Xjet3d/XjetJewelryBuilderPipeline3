@@ -66,7 +66,8 @@ class CustomizeService:
                        "ring_size, quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
                        (NewId("cus"), Who.AccountId, DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId,
                         None if Charm else DefaultRingSize, 1, T, T))
-        self.Movies.Ensure(Who, CandidateId)
+        if Products.MovieAvailable(self.Ctx, D.get("product_type") or Products.Ring):
+            self.Movies.Ensure(Who, CandidateId)                # the product's movie switch is ON: start or reuse its movie
         Row = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
                      (Who.AccountId, DesignId, CandidateId))
         Size = {"product_type": Products.Charm, "charm_size": Row["charm_size"]} if Charm else {"ring_size": Row["ring_size"]}
@@ -144,6 +145,7 @@ class CustomizeService:
         Product = Products.Of(self.Ctx.Db, Row["design_id"])
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
         CanAdd, Reason = self.Purchasability(Row, Quote, Product)
+        MovieOn = Products.MovieAvailable(self.Ctx, Product)       # OFF: the still image only, whatever movies exist
         Out = {
             "id": Row["id"], "design_id": Row["design_id"], "candidate_id": Row["candidate_id"],
             "image_url": self.Ctx.AssetUrl(Cand["asset_path"]),
@@ -151,7 +153,8 @@ class CustomizeService:
             "quote": Quote.ToJson(),
             "line_total": round(Quote.unit_price * Row["quantity"], 2) if Quote.IsAvailable else None,
             "can_add_to_bag": CanAdd, "add_to_bag_blocked_reason": Reason,
-            "movie": self.Movies.ToJson(self.Movies.Latest(Row["candidate_id"])),
+            "movie": self.Movies.ToJson(self.Movies.Latest(Row["candidate_id"])) if MovieOn else None,
+            "movie_available": MovieOn,
         }
         if Product == Products.Charm:
             Out.update(self._CharmJson(Row))

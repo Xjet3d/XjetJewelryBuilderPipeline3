@@ -1583,6 +1583,19 @@
             <p class="text-[12px] text-zinc-600" x-show="p.available" x-text="'Customers can design and order ' + p.plural.toLowerCase() + '; they appear in the Inspiration Gallery and in the site’s wording.'"></p>
             <p class="text-[12px] text-zinc-500" x-show="p.changed" x-text="'Last changed ' + dateTime(p.changed?.updated_at) + ' by ' + (p.changed?.updated_by || '—')"></p>
             <p x-show="!p.configuration_ready" class="text-[12px] text-amber-700" x-text="'The ' + p.label + ' AI configuration is not ready yet.'"></p>
+            <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-200">
+              <span :id="p.id + '-movie-label'" class="text-sm" x-text="'360° movie for ' + p.plural.toLowerCase() + ':'"></span>
+              <button type="button" role="switch" :aria-labelledby="p.id + '-movie-label'" :aria-checked="p.movie ? 'true' : 'false'"
+                      @click="toggleMovie(p)" :disabled="productsBusy"
+                      class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+                      :class="p.movie ? 'bg-emerald-600' : 'bg-zinc-300'">
+                <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="p.movie ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+              </button>
+              <span class="badge" :class="p.movie ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="p.movie ? 'ON' : 'OFF'"></span>
+            </div>
+            <p class="text-[12px] text-zinc-600" x-show="!p.movie" x-text="'No 360° movie is made or shown for ' + p.plural.toLowerCase() + ': Customize shows the still image, and the movies that exist stay hidden until the switch is on again (no credit is used for a movie meanwhile).'"></p>
+            <p class="text-[12px] text-zinc-600" x-show="p.movie" x-text="'Customize makes (or reuses) a 360° movie for every ' + p.label.toLowerCase() + ' a customer takes to Customize.'"></p>
+            <p class="text-[12px] text-zinc-500" x-show="p.movie_changed" x-text="'Movie switch last changed ' + dateTime(p.movie_changed?.updated_at) + ' by ' + (p.movie_changed?.updated_by || '—')"></p>
           </div>
           </template>
         </div>
@@ -1654,7 +1667,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : l.key))))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : l.key)))))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>

@@ -367,6 +367,10 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
   sitemap, and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a
   design of it is refused as if the product did not exist. Switching every product off leaves customers nothing to
   design — the site says so. The meta description names the products on offer.
+- **360° movie per product: ON / OFF** (default ON for every product; `PUT /api/admin/products/movie
+  {"product", "on"}`; log keys `rings_movie` / `charms_movie`). OFF: Customize makes no movie and shows the still image
+  only; an explicit movie request answers 409 `movie_off`; the movies that already exist (a gallery master's included)
+  stay hidden until the switch is ON again, when they are shown and reused without a new credit.
 - **Charms available to customers: ON / OFF.** It is OFF by default.
   - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
     share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the

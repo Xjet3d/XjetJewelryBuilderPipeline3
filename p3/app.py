@@ -684,6 +684,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Cand, _Batch = Svc.Images._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")
+        if not Products.MovieAvailable(Ctx, Products.OfCandidate(Ctx.Db, CandidateId)):
+            raise HttpError(409, "movie_off", "360° movies are not available for this product right now.")
         return Svc.Movies.Ensure(Who, CandidateId)
 
     # ── bag ──────────────────────────────────────────────────────────────

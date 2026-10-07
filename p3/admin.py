@@ -886,6 +886,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return {**St, "charm_configuration_ready": Ctx.Models.Supports(Products.Charm),
                 "products": [{"id": P, "label": Products.Labels[P], "plural": Products.Plurals[P],
                               "available": St["availability"][P], "changed": St["availability_changed"][P],
+                              "movie": St["movies"][P], "movie_changed": St["movies_changed"][P],
                               "configuration_ready": Ctx.Models.Supports(P)} for P in Products.All]}
 
     @App_.get("/api/admin/products")
@@ -908,6 +909,19 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             raise HttpError(409, f"{Product}_configuration_missing", f"The {Products.Labels[Product]} AI configuration is not ready.")
         if On != Ctx.Products.Available(Product):
             Ctx.Products.SetAvailable(Product, On, Who.Id, str(Body_.get("note") or "")[:300])
+        return _ProductsState()
+
+    @App_.put("/api/admin/products/movie")
+    async def SetProductMovie(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The 360° movie switch of one product: {"product": "ring" | "charm", "on": true | false}. OFF: no movie is
+        made or shown in that product's flow (Customize shows the still image); existing movies are kept and shown
+        again once the switch is ON."""
+        Who = Admin(authorization)
+        Product, On = Products.Normalize(Body_.get("product")), Body_.get("on")
+        if not isinstance(On, bool):
+            raise HttpError(400, "invalid_value", "on must be true or false.")
+        if On != Ctx.Products.MovieOn(Product):
+            Ctx.Products.SetMovieOn(Product, On, Who.Id, str(Body_.get("note") or "")[:300])
         return _ProductsState()
 
     @App_.put("/api/admin/products/charm-sizes")

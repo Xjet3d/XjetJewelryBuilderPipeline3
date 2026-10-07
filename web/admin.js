@@ -389,6 +389,21 @@ function adminApp() {
       } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
     },
     toggleCharms() { const p = (this.products?.products || []).find(x => x.id === 'charm'); if (p) return this.toggleProduct(p); },
+    // The 360° movie switch per product: OFF = no movie made or shown in that product's flow (the still image instead)
+    async toggleMovie(p) {
+      if (!this.products || this.productsBusy) return;
+      const on = !p.movie, lower = p.plural.toLowerCase();
+      const ok = await this.ask(on
+        ? { title: `Turn the 360° movie on for ${lower}?`, text: `Customize will make (or reuse) a 360° movie for every ${p.label.toLowerCase()} a customer takes to Customize — one credit per movie. Movies made before the switch was off are shown again.`, confirmLabel: 'Turn movie on', cancelLabel: 'Cancel' }
+        : { title: `Turn the 360° movie off for ${lower}?`, text: `No 360° movie will be made or shown for ${lower}: Customize shows the still image, and the movies that exist stay hidden (not deleted) until the switch is on again. Customers use no credit for a movie meanwhile.`, confirmLabel: 'Turn movie off', cancelLabel: 'Cancel' });
+      if (!ok) return;
+      this.productsBusy = true; this.productsMsg = ''; this.productsErr = false;
+      try {
+        this.products = await this.api('PUT', '/api/admin/products/movie', { product: p.id, on });
+        this.productsMsg = `360° movie for ${lower}: ${on ? 'on' : 'off'}.`;
+        this.notify(this.productsMsg);
+      } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
+    },
 
     // ── rings and charms: one icon set (web/products.js), the size as people read it ──
     pIcon(p, cls) { return window.P3Products ? window.P3Products.icon(p || 'ring', cls) : ''; },
