@@ -351,7 +351,14 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 
 **Code:** `p3/products.py`. **API:** `GET /api/admin/products` and `PUT /api/admin/products/availability`.
 
-- **Rings** are always available.
+- **One switch per product, independent of the others:** *Rings available to customers* (ON by default) and *Charms
+  available to customers* (OFF by default). A future product joins the same list (`products.All`; its availability
+  key is `<plural>_available`). The API takes `{"product": "ring" | "charm", "available": true | false}`; the older
+  `{"charms_available": …}` body still works. The log records `rings_available` / `charms_available` changes.
+- **A product that is OFF** is not on the Design screen, not in the Inspiration Gallery or its filters, not in the
+  sitemap, and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a
+  design of it is refused as if the product did not exist. Switching every product off leaves customers nothing to
+  design — the site says so. The meta description names the products on offer.
 - **Charms available to customers: ON / OFF.** It is OFF by default.
   - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
     share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the

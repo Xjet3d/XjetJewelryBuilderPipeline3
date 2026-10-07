@@ -5,7 +5,7 @@
     <meta name="p3-base" content="{{BASE}}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XJET Atelier — Custom AI Jewelry, Designed by You</title>
-    <meta name="description" content="Design custom rings with AI at XJET Atelier. Describe your vision, choose from four designs, refine it, and preview it in a 360° movie.">
+    <meta name="description" content="{{DESCRIPTION}}">
     <meta name="robots" content="{{ROBOTS}}">
     <meta name="theme-color" content="#111111">
     <!-- Server-side page configuration (p3/app.py _VersionedPage): environment, whether developer tools exist on this
@@ -368,7 +368,7 @@
                     <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
                         Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
                     </h1>
-                    <p class="text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]">Your idea. Your style. A ring that’s uniquely yours.</p>
+                    <p class="text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
                     <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[12px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
                         <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 transition">How It Works</button>
@@ -452,7 +452,7 @@
                     <template x-for="(s, i) in [
                         {num:'01', title:'Share Your Idea',    desc:'Describe what you want or upload a photo. No design skills needed.'},
                         {num:'02', title:'Choose From Four',   desc:'Our AI creates four different designs from your idea. Pick one and refine it until it feels right.'},
-                        {num:'03', title:'Choose Your Details', desc:'Select your metal and ring size, and watch your ring in a 360° movie.'},
+                        {num:'03', title:'Choose Your Details', desc:'Select your metal and ' + wording.sizeWord + ', and watch your ' + wording.noun + ' in a 360° movie.'},
                         {num:'04', title:'Add to Your Bag',    desc:'Save your finished configuration to your bag.'}
                     ]" :key="i">
                         <div class="bg-white rounded-xl p-8 border border-zinc-100 hover:border-zinc-200 transition shadow-sm flex flex-col">
@@ -487,7 +487,7 @@
                     <template x-for="t in [
                         {icon:'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', label:'Real Metal Production', sub:'Crafted in actual metal, never plastic.'},
                         {icon:'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z', label:'Four Designs Per Idea', sub:'Every idea becomes four options to choose from.'},
-                        {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ring from every angle.'},
+                        {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ' + wording.noun + ' from every angle.'},
                         {icon:'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', label:'Made by XJet', sub:'Produced with XJet industrial NanoJetting™ printers.'}
                     ]" :key="t.label">
                         <div>
@@ -549,11 +549,11 @@
             <div class="max-w-4xl mx-auto text-center mb-16">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Gallery</span>
                 <h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>
-                <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="productsOn ? 'Rings and charms — real XJet designs. Open one to see it large; make it yours to start from its four options.' : 'Bands, signets, statement and stackable rings — real XJet designs. Open one to see it large; make it yours to start from its four options.'"></p>
+                <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="galleryIntro"></p>
             </div>
             <div x-show="productsOn" x-cloak class="flex justify-center mb-8" role="group" aria-label="Show designs">
                     <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
-                        <template x-for="f in [['', 'All'], ['ring', 'Rings'], ['charm', 'Charms']]" :key="'gf' + f[0]">
+                        <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
                                     class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
                                     :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
@@ -598,13 +598,13 @@
                 </div>
                 <div class="space-y-6" x-data="{ open: null }">
                     <template x-for="(q, i) in [
-                        {q:'What jewelry can I create?',         a: productsOn ? 'Rings and charms: choose one when you start a design. Additional jewelry categories will be introduced in future updates.' : 'Currently, XJet Atelier supports Rings only. Additional jewelry categories will be introduced in future updates.'},
+                        {q:'What jewelry can I create?',         a: faqWhat},
                         {q:'What metals are available?',         a: metalsFaqAnswer},
                         {q:'Do I need design experience?',       a:'None at all. Just describe what you want in plain language or upload a reference photo. Our AI creates four designs for you to choose from.'},
-                        {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ring in a 360° movie before adding it to your bag.'},
-                        {q:'How is the price calculated?',       a: productsOn ? 'Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the price. A charm is priced by material and size.' : 'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.'},
+                        {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ' + wording.noun + ' in a 360° movie before adding it to your bag.'},
+                        {q:'How is the price calculated?',       a: faqPrice},
                         {q:'How long does production take?',     a:'Design happens the same day. Production takes 7–10 business days. Shipping adds about 5 business days with Express or up to 14 with free Standard delivery.'},
-                        {q:'Are prices in USD?',                 a: productsOn ? 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen); a charm size is its total height in millimetres, including the loop at the top.' : 'Yes — all prices are in US dollars. Ring sizes are US sizes (see the size guide on the Customize screen).'},
+                        {q:'Are prices in USD?',                 a: faqUsd},
                         {q:'What is NanoParticle Jetting™?',     a:'It is XJet\'s proprietary metal printing technology. It jets ultra-fine metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than traditional casting.'},
                         {q:'Can I make changes?',                a:'Yes. Select any of your four designs and describe what should change — you get four new variations of that design each time.'},
                         {q:'Who can I contact for help?',        a:'If you need assistance at any stage, reach out and a specialist will respond within one business day.'}
@@ -697,7 +697,7 @@
                     <img src="{{BASE}}/static/images/PrintHead.png" alt="An XJet NanoParticle Jetting print head" class="rounded-sm shadow-2xl" onerror="this.src='{{BASE}}/static/images/Ink.JPG'">
                     <figure class="flex items-center gap-5 bg-white rounded-xl border border-zinc-100 p-4">
                         <img src="{{BASE}}/static/images/Angel.JPG" alt="A figurine printed in metal with NanoParticle Jetting" class="w-24 h-24 object-contain" style="mix-blend-mode:multiply;" onerror="this.parentElement.style.display='none'">
-                        <figcaption class="text-[13px] text-zinc-600 leading-relaxed">Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ring.</figcaption>
+                        <figcaption class="text-[13px] text-zinc-600 leading-relaxed" x-text="'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'"></figcaption>
                     </figure>
                 </div>
             </div>
@@ -709,8 +709,8 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <section class="px-6 md:px-20 pt-14 md:pt-20 pb-10 text-center">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Materials &amp; Pricing</span>
-                <h2 class="text-4xl brand-font mb-4">Real metal, one fixed price per ring</h2>
-                <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed">Every ring is printed to order in the metal you choose. Fashion metals have a fixed price per ring — any size, any design. Gold is quoted individually.</p>
+                <h2 class="text-4xl brand-font mb-4" x-text="materialsTitle"></h2>
+                <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed" x-text="materialsIntro"></p>
             </section>
 
             <!-- Fashion metals: available to order at a fixed price -->
@@ -732,6 +732,7 @@
                                     <p class="text-[13px] text-zinc-500" x-text="copy(m.id).sub"></p>
                                 </div>
                                 <p class="text-[20px] brand-font text-zinc-900" x-text="materialPriceText(m.id)"></p>
+                                <p class="text-[13px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="charmPriceText(m.id)"></p>
                                 <dl class="text-[13px] text-zinc-700 space-y-2 leading-snug">
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
@@ -746,7 +747,7 @@
                         </article>
                     </template>
                 </div>
-                <p class="text-[12px] text-zinc-500 mt-6 leading-relaxed">Prices in US dollars, per ring, fixed for the material — the ring size does not change the price. Each ring is made to order; the final weight is measured at production. Vermeil is sterling silver with a thick 14K gold plating.</p>
+                <p class="text-[12px] text-zinc-500 mt-6 leading-relaxed" x-text="materialsNote"></p>
             </section>
 
             <!-- Gold: by request until gold pricing is enabled -->
@@ -756,7 +757,7 @@
                         <h3 class="brand-font text-2xl text-zinc-900">Gold — available by request</h3>
                         <span class="text-[12px] uppercase tracking-widest font-semibold" style="color:#8A561B;">Quoted individually</span>
                     </div>
-                    <p class="text-[14px] text-zinc-600 max-w-2xl mb-8 leading-relaxed">Solid gold rings are priced per piece. Design your ring, choose a gold option in Customize and send a quote request — a specialist replies within one business day with a price and the next steps. Nothing is ordered or charged until you confirm.</p>
+                    <p class="text-[14px] text-zinc-600 max-w-2xl mb-8 leading-relaxed" x-text="goldIntro"></p>
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         <template x-for="m in materialsOf('luxury')" :key="m.id">
                             <div class="rounded-xl border border-zinc-100 bg-white p-4 flex flex-col gap-2">
@@ -790,13 +791,13 @@
                         <h3 class="text-lg font-semibold text-zinc-900">Timeline</h3>
                         <ul class="list-disc pl-5 space-y-1">
                             <li><strong>Design:</strong> same day. You choose and refine your design before anything is made.</li>
-                            <li><strong>Production:</strong> 7–10 business days. Each ring is printed to order in real metal.</li>
+                            <li><strong>Production:</strong> 7–10 business days. <span x-text="'Each ' + wording.noun + ' is printed to order in real metal.'"></span></li>
                             <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery. Express delivery is $45, about 5 business days, priority handling and fully insured.</li>
                         </ul>
                         <h3 class="text-lg font-semibold text-zinc-900">Prices, tax and duties</h3>
                         <p>All prices are in US dollars. If your country charges import duties or VAT on delivery, those are paid by the recipient.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Returns</h3>
-                        <p>Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. If your ring arrives damaged, or does not match the design or the size you selected, contact us within 14 days of delivery and we will remake it or refund you.</p>
+                        <p x-text="'Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. If your ' + wording.noun + ' arrives damaged, or does not match the design or the size you selected, contact us within 14 days of delivery and we will remake it or refund you.'"></p>
                         <h3 class="text-lg font-semibold text-zinc-900">Warranty</h3>
                         <p>Two years against manufacturing defects. Normal wear, resizing by third parties and accidental damage are not covered.</p>
                     </div>
@@ -807,14 +808,13 @@
                         <h2 class="text-4xl brand-font text-zinc-900">Terms of Service</h2>
                         <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
-                        <p x-show="!productsOn">XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings only.</p>
-                        <p x-show="productsOn" x-cloak>XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for a ring or a charm, generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports rings and charms.</p>
+                        <p x-text="termsService"></p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your access</h3>
                         <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your content</h3>
                         <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the licence needed to generate, store, display and produce your design and to improve the service.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Orders</h3>
-                        <p>Prices are in US dollars and are fixed per ring and material. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. Each ring is made to order (design and size) and is not returnable for change of mind; your design is not exclusive. Gold rings are quoted individually.</p>
+                        <p x-text="termsOrders"></p>
                         <h3 class="text-lg font-semibold text-zinc-900">Preview accuracy</h3>
                         <p>The images and movie are AI renderings. Metal colour is a visual preview; reflections and fine surface detail on a finished piece may differ.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Liability</h3>
@@ -857,7 +857,7 @@
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[14px]">
                             <a :href="mailto('Sizing help')" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
                                 <p class="font-semibold text-zinc-900 mb-1">Sizing</p>
-                                <p class="text-[13px] text-zinc-600 leading-snug">Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.</p></a>
+                                <p class="text-[13px] text-zinc-600 leading-snug" x-text="sizingHelp"></p></a>
                             <a :href="mailto('My order ' + (order?.ref || ''))" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
                                 <p class="font-semibold text-zinc-900 mb-1">My order</p>
                                 <p class="text-[13px] text-zinc-600 leading-snug">Questions about an order, its payment or delivery? Quote your Order ID (ORD-…) and we take it from there.</p></a>
@@ -923,7 +923,7 @@
                             <div x-show="!design" class="flex flex-col items-center text-center gap-3">
                                 <span class="text-[12px] uppercase tracking-[0.3em] font-semibold" style="color:#8A6420;">Design Studio</span>
                                 <h1 class="brand-font text-5xl sm:text-6xl leading-[1.05]" style="color:#1A1A1A;">Hello, Designer.</h1>
-                                <p class="text-[15px] text-zinc-600 max-w-md">Describe your ring and we'll create four different designs for you to choose from.</p>
+                                <p class="text-[15px] text-zinc-600 max-w-md" x-text="'Describe your ' + newNoun + ' and we’ll create four different designs for you to choose from.'"></p>
                             </div>
 
                             <!-- Design results -->
@@ -1041,12 +1041,12 @@
                                                 <span class="text-[#8A6420]" x-html="productIcon(p)"></span><span x-text="productLabel(p)"></span></button>
                                         </template>
                                     </div>
-                                    <span x-show="charmPreview" class="sm:hidden w-full text-center text-[11px]" style="color:#8A6420;">Admin preview — charms are still hidden from customers.</span>
+                                    <span x-show="charmPreview" class="sm:hidden w-full text-center text-[11px]" style="color:#8A6420;" x-text="'Admin preview — ' + previewText + '.'"></span>
                                 </div>
                                 <div x-show="!design && !productsOn" class="w-full flex items-start gap-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug justify-center text-center"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" role="note">
                                     <svg class="w-3.5 h-3.5 shrink-0 mt-[2px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#B08040;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg>
-                                    <span>XJet Atelier makes <span class="font-semibold">rings</span> — describe the ring you have in mind.</span>
+                                    <span x-text="composerNote"></span>
                                 </div>
                                 <!-- What the prompt box does right now — never a silent switch between a new design and a refinement -->
                                 <div x-show="design" class="w-full flex flex-wrap items-center justify-between gap-2">
@@ -1141,7 +1141,7 @@
                                     </button>
                                     <button @click="proceed()" :disabled="!canActOnSelection" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight" :title="canActOnSelection ? '' : 'Select one of the four options first'">
                                         <span class="sm:hidden" x-text="canActOnSelection ? 'Customize option ' + ((selectedCandidate?.slot ?? 0) + 1) : 'Select an option to continue'"></span>
-                                        <span class="hidden sm:inline">Customize Your Ring</span>
+                                        <span class="hidden sm:inline" x-text="'Customize Your ' + designLabel"></span>
                                         <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                                     </button>
                                 </div>
@@ -1702,7 +1702,7 @@
 
                     <!-- Step 3 · review & pay -->
                     <section x-show="co.step === 'review'" class="space-y-6" aria-labelledby="co-h-review">
-                        <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; pay</h2><p class="text-[13px] text-zinc-500 mt-1">Check everything, then place your order. Your ring is reserved and our team confirms the design for production before anything is made.</p></div>
+                        <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; pay</h2><p class="text-[13px] text-zinc-500 mt-1" x-text="'Check everything, then place your order. ' + bagReserved + ' and our team confirms the design for production before anything is made.'"></p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
                             <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.customer.first_name + ' ' + co.customer.last_name"></p><p class="text-zinc-600" x-text="co.customer.email"></p><p class="text-zinc-600" x-text="co.customer.phone"></p></div>
@@ -1727,7 +1727,7 @@
                             <template x-if="!checkout?.payment?.available">
                                 <div class="text-[13px] text-zinc-700 leading-relaxed">
                                     <p class="font-semibold text-zinc-900 mb-1">Payment is arranged after you place the order</p>
-                                    <p>Online payment is not available yet. When you place the order, your ring is reserved and we contact you to arrange payment before production starts.</p>
+                                    <p x-text="'Online payment is not available yet. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + ' and we contact you to arrange payment before production starts.'"></p>
                                     <p class="text-[12px] text-zinc-500 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
                                 </div>
                             </template>
@@ -1735,7 +1735,7 @@
                         </div>
                         <label class="flex items-start gap-3 text-[13px] text-zinc-700 cursor-pointer" :class="coProblem('terms_accepted') ? 'text-red-700' : ''">
                             <input type="checkbox" x-model="co.terms" class="mt-0.5 w-4 h-4 shrink-0" style="accent-color:#8A561B;">
-                            <span>I accept the <a href="#terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and understand that each ring is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.</span>
+                            <span>I accept the <a href="#terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> <span x-text="'and understand that each ' + bagKind + ' is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.'"></span></span>
                         </label>
                         <p class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
                         <p class="text-[12px] text-zinc-500">Questions before you order? <a :href="mailto('Question before ordering' + (coQuote?.lines?.[0]?.ring_id ? ' — ' + coQuote.lines[0].ring_id : ''))" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
@@ -1823,7 +1823,7 @@
                     <p class="flbl">What happens next</p>
                     <ol class="space-y-3 text-[13px] text-zinc-700">
                         <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">1.</span><span><strong class="text-zinc-900">Design review.</strong> Our team checks the design for production feasibility and confirms the order to you (about 2 business days). Until then your order is a reservation.</span></li>
-                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">2.</span><span><strong class="text-zinc-900">Production.</strong> Your ring is printed to order in real metal — 7–10 business days.</span></li>
+                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">2.</span><span><strong class="text-zinc-900">Production.</strong> <span x-text="orderMade(order)"></span></span></li>
                         <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">3.</span><span><strong class="text-zinc-900">Shipping.</strong> <span x-text="(order.shipping_label || 'Delivery') + ', ' + (order.shipping_eta || '')"></span>, tracked.</span></li>
                     </ol>
                 </div>
@@ -2107,9 +2107,9 @@
         <div x-show="charmPreview" x-cloak role="status"
              class="hidden sm:flex fixed left-3 bottom-3 z-[590] items-center gap-2 px-3 py-1.5 rounded-full shadow-lg text-[12px]"
              style="background:#2A2418; color:#F3E7CC; max-width:min(92vw, 440px);"
-             title="Charms are hidden from customers (Admin → Settings → Products). This browser sees them because it is signed in to the Admin.">
-            <span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>
-            <span><strong class="font-semibold">Admin preview</strong> · charms are hidden from customers</span>
+             :title="previewText.replace(/^./, c => c.toUpperCase()) + ' (Admin → Settings → Products). This browser sees them because it is signed in to the Admin.'">
+            <span x-html="productIcon(previewedProducts[0] || 'charm', 'w-3.5 h-3.5')"></span>
+            <span><strong class="font-semibold">Admin preview</strong> · <span x-text="previewText"></span></span>
         </div>
     </template>
 
@@ -2173,7 +2173,7 @@
                 </div>
                 <div x-show="productsOn" x-cloak class="flex justify-center mb-6" role="group" aria-label="Show designs">
                     <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
-                        <template x-for="f in [['', 'All'], ['ring', 'Rings'], ['charm', 'Charms']]" :key="'gf' + f[0]">
+                        <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
                                     class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
                                     :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
@@ -2202,7 +2202,7 @@
                     </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery.</div>
-                    <div x-show="galleryState === 'loaded' && gallery.length && !galleryShown.length" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500" x-text="'No ' + (galleryProduct === 'charm' ? 'charms' : 'rings') + ' in the gallery yet.'"></div>
+                    <div x-show="galleryState === 'loaded' && gallery.length && !galleryShown.length" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500" x-text="'No ' + (galleryProduct ? productPlural(galleryProduct).toLowerCase() : wording.nouns) + ' in the gallery yet.'"></div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
                 </div>
             </div>

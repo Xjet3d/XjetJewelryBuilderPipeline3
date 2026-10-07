@@ -348,26 +348,28 @@ function adminApp() {
                            refunded: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-zinc-100 text-zinc-500' }[s] || 'bg-zinc-100 text-zinc-600'; },
     addrClass(s) { return { verified: 'bg-emerald-100 text-emerald-800', corrected: 'bg-sky-100 text-sky-800', failed: 'bg-red-100 text-red-700',
                             unverified: 'bg-zinc-100 text-zinc-600' }[s] || 'bg-zinc-100 text-zinc-600'; },
-    // ── Settings → Products: customer availability of charms ──
+    // ── Settings → Products: customer availability per product ──
     async loadProducts() {
       this.productsMsg = ''; this.productsErr = false;
       try { this.products = await this.api('GET', '/api/admin/products'); } catch (e) { this.productsErr = true; this.productsMsg = e.message; }
     },
-    // Charms available to customers: one switch, each change confirmed in a normal dialog
-    async toggleCharms() {
+    // Customer availability: one switch per product (Rings, Charms …), each change confirmed in a normal dialog
+    async toggleProduct(p) {
       if (!this.products || this.productsBusy) return;
-      const on = !this.products.charms_available;
+      const on = !p.available, plural = p.plural, lower = plural.toLowerCase();
+      const others = (this.products.products || []).filter(x => x.id !== p.id && x.available).map(x => x.plural.toLowerCase());
       const ok = await this.ask(on
-        ? { title: 'Enable Charms for customers?', text: 'Customers will be able to choose a ring or a charm when they start a design, and charms will appear in the Inspiration Gallery.', confirmLabel: 'Enable Charms', cancelLabel: 'Cancel' }
-        : { title: 'Hide Charms from customers?', text: 'Customers will see the ring-only site again: no product choice, no charm text, no charm tiles. Charm designs, orders and settings are kept, and a browser signed in to the Admin still previews them.', confirmLabel: 'Hide Charms', cancelLabel: 'Cancel' });
+        ? { title: 'Enable ' + plural + ' for customers?', text: 'Customers will be able to design and order ' + lower + (others.length ? ' alongside ' + others.join(' and ') : '') + '; ' + lower + ' will appear in the Inspiration Gallery and in the site’s wording.', confirmLabel: 'Enable ' + plural, cancelLabel: 'Cancel' }
+        : { title: 'Hide ' + plural + ' from customers?', text: 'Customers will no longer be able to start a ' + p.label.toLowerCase() + ' design; ' + lower + ' leave the Design screen, the Inspiration Gallery and the site’s wording. Existing designs, orders and settings are kept, and a browser signed in to the Admin still previews them.' + (others.length ? '' : ' No other product is on: customers will have nothing to design.'), confirmLabel: 'Hide ' + plural, cancelLabel: 'Cancel' });
       if (!ok) return;
       this.productsBusy = true; this.productsMsg = ''; this.productsErr = false;
       try {
-        this.products = await this.api('PUT', '/api/admin/products/availability', { charms_available: on });
-        this.productsMsg = on ? 'Charms are now available to customers.' : 'Charms are hidden from customers.';
+        this.products = await this.api('PUT', '/api/admin/products/availability', { product: p.id, available: on });
+        this.productsMsg = on ? plural + ' are now available to customers.' : plural + ' are hidden from customers.';
         this.notify(this.productsMsg);
       } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
     },
+    toggleCharms() { const p = (this.products?.products || []).find(x => x.id === 'charm'); if (p) return this.toggleProduct(p); },
 
     // ── rings and charms: one icon set (web/products.js), the size as people read it ──
     pIcon(p, cls) { return window.P3Products ? window.P3Products.icon(p || 'ring', cls) : ''; },

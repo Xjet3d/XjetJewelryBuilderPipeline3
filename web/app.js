@@ -200,7 +200,8 @@ function p3App() {
       }
       try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
-      if (this.productsOn && this.productsList.includes(st.newProduct)) this.newProduct = st.newProduct;   // chosen before sign-in
+      // The product a new design will be: the one chosen before sign-in while it is still on offer, else the default on offer
+      this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : (this.catalog?.products?.default || this.productsList[0] || 'ring');
       this.loadGallery().then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
       if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
@@ -764,9 +765,16 @@ function p3App() {
       } catch (_) { this.materialQuotesState = 'failed'; }
     },
     materialPriceText(id) {
+      if (this.soleProduct === 'charm') return this.charmPriceText(id, '');            // charms only: the fixed price per size
       const q = this.materialQuotes[id];
       if (this.materialQuotesState !== 'loaded' || !q) return this.materialQuotesState === 'failed' ? 'Price unavailable' : '…';
       return q.pricing_status === 'available' ? this.money(q.unit_price, q.currency) + ' per ring, any size' : 'Price on request';
+    },
+    charmMaterial(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id); },
+    charmPriceText(id, prefix = 'Charm: ') {
+      const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
+      const text = prices.length ? 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency) + ' per charm, by size' : 'price on request';
+      return prefix ? prefix + text : text[0].toUpperCase() + text.slice(1);
     },
     // Support: one address everywhere, with the right context in the subject line
     mailto(subject, body = '') {
@@ -820,17 +828,101 @@ function p3App() {
     clearUpload() { this.uploadedFile = null; this.uploadedPreview = null; this.rightsConfirmed = false; },
     handleEnterKey(ev) { if (!ev.shiftKey) { ev.preventDefault(); this.sendComposer(); } },
 
-    // ── rings and charms (the catalog's products block exists only while charms are visible) ──
-    get productsOn() { return !!this.catalog?.products; },
+    // ── the products on offer (Admin → Settings → Products). The catalog's products block is absent while rings are
+    //    the only product on offer (the ring-only site); otherwise it lists what this browser may design. ──
     get productsList() { return this.catalog?.products?.available || ['ring']; },
-    get charmPreview() { return !!this.catalog?.products?.preview; },          // an Admin previewing hidden charms
-    productLabel(p) { return p === 'charm' ? 'Charm' : 'Ring'; },
+    get productsOn() { return this.productsList.length > 1; },                 // a choice to make: selector, filters, badges
+    get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
+    get nothingOnOffer() { return !!this.catalog && this.productsList.length === 0; },
+    get previewedProducts() { return this.catalog?.products?.previewed || []; },  // hidden products an Admin's browser sees
+    get charmPreview() { return this.previewedProducts.length > 0; },
+    get previewText() { return this.previewedProducts.map(p => this.productPlural(p).toLowerCase()).join(' and ') + ' are hidden from customers'; },
+    productLabel(p) { return window.P3Products ? window.P3Products.label(p) : (p === 'charm' ? 'Charm' : 'Ring'); },
+    productPlural(p) { return window.P3Products ? window.P3Products.plural(p) : (p === 'charm' ? 'Charms' : 'Rings'); },
     productIcon(p, cls = 'w-4 h-4') { return window.P3Products ? window.P3Products.icon(p, cls) : ''; },
+    // Wording that follows the products on offer: "ring" / "charm" for a single product, "piece" for a choice
+    get wording() {
+      const sole = this.soleProduct, list = this.productsList;
+      const noun = sole ? this.productLabel(sole).toLowerCase() : 'piece', nouns = sole ? this.productPlural(sole).toLowerCase() : 'pieces';
+      return { noun, nouns, Noun: noun[0].toUpperCase() + noun.slice(1), Nouns: nouns[0].toUpperCase() + nouns.slice(1),
+               list: list.map(p => this.productPlural(p)).join(' and '), ring: list.includes('ring'), charm: list.includes('charm'),
+               sizeWord: sole === 'ring' ? 'ring size' : 'size' };
+    },
     chooseProduct(p) {
-      if (!this.productsOn || !this.productsList.includes(p)) return;
+      if (!this.productsList.includes(p)) return;
       this.newProduct = p; this.persist({ newProduct: p });
     },
-    get newNoun() { return this.productsOn && this.newProduct === 'charm' ? 'charm' : 'ring'; },
+    get newNoun() { return this.productLabel(this.productsList.includes(this.newProduct) ? this.newProduct : (this.productsList[0] || 'ring')).toLowerCase(); },
+    get designLabel() { return this.isCharm(this.design) ? 'Charm' : 'Ring'; },
+    get galleryFilters() { return [['', 'All'], ...this.productsList.map(p => [p, this.productPlural(p)])]; },
+    get galleryIntro() {
+      const tail = ' — real XJet designs. Open one to see it large; make it yours to start from its four options.';
+      if (this.nothingOnOffer) return 'Real XJet designs. Open one to see it large.';
+      return (this.productsOn ? this.wording.list : this.soleProduct === 'charm' ? 'Charms' : 'Bands, signets, statement and stackable rings') + tail;
+    },
+    get composerNote() {
+      if (this.nothingOnOffer) return 'Nothing is available to design right now. Please check back soon.';
+      return 'XJet Atelier makes ' + this.wording.nouns + ' — describe the ' + this.wording.noun + ' you have in mind.';
+    },
+    // The marketing, FAQ and terms sentences that name the product
+    get faqWhat() {
+      if (this.nothingOnOffer) return 'No product is available at the moment. Additional jewelry categories will be introduced in future updates.';
+      if (this.productsOn) return this.wording.list + ': choose one when you start a design. Additional jewelry categories will be introduced in future updates.';
+      return 'Currently, XJet Atelier supports ' + this.wording.Nouns + ' only. Additional jewelry categories will be introduced in future updates.';
+    },
+    get faqPrice() {
+      const r = this.wording.ring, c = this.wording.charm;
+      if (r && c) return 'Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the price. A charm is priced by material and size.';
+      if (c) return 'Fashion jewelry pieces are priced per piece by material and size.';
+      return 'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.';
+    },
+    get faqUsd() {
+      const r = this.wording.ring, c = this.wording.charm;
+      const ring = 'Ring sizes are US sizes (see the size guide on the Customize screen)', charm = 'charm size is its total height in millimetres, including the loop at the top';
+      return 'Yes — all prices are in US dollars.' + (r && c ? ' ' + ring + '; a ' + charm + '.' : r ? ' ' + ring + '.' : c ? ' A ' + charm + '.' : '');
+    },
+    get materialsTitle() { return 'Real metal, one fixed price per ' + this.wording.noun; },
+    get materialsIntro() {
+      const r = this.wording.ring, c = this.wording.charm;
+      const how = r && c ? 'Fashion metals have a fixed price per piece — a ring’s price does not depend on its size; a charm is priced by material and size.'
+                : c ? 'Fashion metals have a fixed price per charm, set by material and size — any design.'
+                : 'Fashion metals have a fixed price per ring — any size, any design.';
+      return 'Every ' + this.wording.noun + ' is printed to order in the metal you choose. ' + how + ' Gold is quoted individually.';
+    },
+    get materialsNote() {
+      const r = this.wording.ring, c = this.wording.charm;
+      const fixed = r && c ? 'Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size.'
+                  : c ? 'Prices in US dollars, per charm, fixed for the material and size.'
+                  : 'Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.';
+      return fixed + ' Each ' + this.wording.noun + ' is made to order; the final weight is measured at production. Vermeil is sterling silver with a thick 14K gold plating.';
+    },
+    get goldIntro() { return 'Solid gold ' + this.wording.nouns + ' are priced per piece. Design your ' + this.wording.noun + ', choose a gold option in Customize and send a quote request — a specialist replies within one business day with a price and the next steps. Nothing is ordered or charged until you confirm.'; },
+    get termsService() {
+      const list = this.productsList, names = list.map(p => this.productLabel(p).toLowerCase()), plurals = list.map(p => this.productPlural(p).toLowerCase());
+      const idea = names.length ? names.map(n => 'a ' + n).join(' or ') : 'a piece of jewelry';
+      const supports = plurals.length > 1 ? plurals.join(' and ') : plurals.length === 1 ? plurals[0] + ' only' : 'no products at the moment';
+      return 'XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for ' + idea + ', generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
+    },
+    get termsOrders() {
+      const r = this.wording.ring, c = this.wording.charm;
+      const fixed = r && c ? 'fixed per piece and material (a charm’s price also depends on its size)' : c ? 'fixed per charm, material and size' : 'fixed per ring and material';
+      return 'Prices are in US dollars and are ' + fixed + '. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. Each ' + this.wording.noun + ' is made to order (design and size) and is not returnable for change of mind; your design is not exclusive. Gold ' + this.wording.nouns + ' are quoted individually.';
+    },
+    get sizingHelp() {
+      const r = this.wording.ring, c = this.wording.charm;
+      const ring = 'Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.';
+      const charm = 'A charm size is its total height in millimetres, including the loop — ask us if you are unsure which size suits you.';
+      return [r ? ring : '', c ? charm : ''].filter(Boolean).join(' ') || 'Ask us anything about sizes and a specialist will help.';
+    },
+    // The bag's and an order's wording: "ring" when every line is a ring, "charm" — or "piece(s)" for a mix
+    kindOf(types, count = 1) {
+      const set = [...new Set((types || []).filter(Boolean))];
+      if (count === 1) return set.length === 1 ? this.productLabel(set[0]).toLowerCase() : 'piece';
+      return set.length === 1 ? this.productPlural(set[0]).toLowerCase() : 'pieces';
+    },
+    get bagKind() { return this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), 1); },
+    get bagReserved() { const n = this.bagLines.length || 1; return 'Your ' + this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), n) + (n > 1 ? ' are' : ' is') + ' reserved'; },
+    orderMade(o) { const n = o?.count || 1; return 'Your ' + this.kindOf(o?.product_types || ['ring'], n) + (n > 1 ? ' are' : ' is') + ' printed to order in real metal — 7–10 business days.'; },
     isCharm(x) { return (x?.product_type || 'ring') === 'charm'; },
     get custIsCharm() { return this.isCharm(this.cust); },
     charmMaterialLabel(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id)?.label; },
@@ -839,7 +931,10 @@ function p3App() {
       return this.custIsCharm ? (this.charmMaterialLabel(this.cust?.material_id) || this.cust?.material_label || this.currentMaterial?.label)
                               : this.currentMaterial?.label;
     },
-    get galleryShown() { return this.galleryProduct ? this.gallery.filter(g => (g.product_type || 'ring') === this.galleryProduct) : this.gallery; },
+    get galleryShown() {
+      const f = this.productsOn && this.productsList.includes(this.galleryProduct) ? this.galleryProduct : '';
+      return f ? this.gallery.filter(g => (g.product_type || 'ring') === f) : this.gallery;
+    },
     // Lines of the bag, checkout and orders: "US 7" for a ring (as before), "20 mm" for a charm
     lineSize(l) { return this.isCharm(l) ? (l.size_label || 'size to be confirmed') : 'US ' + l.ring_size; },
     lineIdLabel(l) { return this.isCharm(l) ? 'Charm ID' : 'Ring ID'; },
@@ -870,11 +965,12 @@ function p3App() {
       const text = this.userInput.trim() || (this.uploadedFile ? 'Process this image' : '');
       if (text.length < 3) { this.composeError = 'Please describe your ' + this.newNoun + ' in a few words.'; return; }
       if (this.uploadedFile && !this.rightsConfirmed) { this.composeError = 'Please confirm you have the rights to use the uploaded image.'; return; }
+      if (this.nothingOnOffer) { this.composeError = 'Nothing is available to design right now.'; return; }
       const fd = new FormData();
       fd.append('prompt', text);
       fd.append('client_request_id', newRequestId());
       if (this.uploadedFile) { fd.append('reference', this.uploadedFile); fd.append('rights_confirmed', 'true'); }
-      if (this.productsOn) fd.append('product', this.newProduct);       // only offered while charms are visible
+      if (this.catalog?.products) fd.append('product', this.newProduct);   // named whenever the catalog lists products (not the ring-only site)
       this.submitting = true;
       try {
         const batch = await this.api('POST', '/api/designs', fd);

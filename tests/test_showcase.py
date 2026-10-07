@@ -161,7 +161,7 @@ async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
     H = HG
     Index = (await H.Client.get("/")).text
     Hero = Index[Index.index('<template x-if="view === \'home\'">'):Index.index('Inspiration Gallery</span>')]
-    assert "Your idea. Your style. A ring that’s uniquely yours." in Hero
+    assert "x-text=\"'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'\"" in Hero   # product-aware since 2026-10-07
     assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
     assert "Bespoke Jewellery" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero
     assert 'resetAIFlow()' in Hero and 'scrollToHowItWorks()' in Hero and "made to order in real metal" in Hero

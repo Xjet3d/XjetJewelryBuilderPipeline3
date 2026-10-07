@@ -1553,33 +1553,33 @@
     <section class="card p-6 space-y-5" x-show="sub === 'products'">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
         <p class="lbl">Rings and charms</p>
-        <p class="text-[12px] text-zinc-500">Which products customers can design and order. The Ring | Charm selector in AI models &amp; prompts only chooses which configuration you edit.</p>
+        <p class="text-[12px] text-zinc-500">Which products customers can design and order — one switch per product, independent of the others. The Ring | Charm selector in AI models &amp; prompts only chooses which configuration you edit.</p>
       </div>
       <p x-show="productsMsg" class="text-sm" :class="productsErr ? 'text-red-600' : 'text-emerald-700'" x-text="productsMsg"></p>
       <template x-if="products">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="border border-zinc-200 p-4 space-y-2">
-          <p class="flex items-center gap-2 font-semibold"><span class="text-zinc-600" x-html="pIcon('ring', 'w-5 h-5')"></span>Rings</p>
-          <p class="text-sm"><span class="badge bg-emerald-100 text-emerald-800">Available to customers</span></p>
-          <p class="text-[12px] text-zinc-500">Always on: the original product.</p>
-        </div>
-        <div class="border p-4 space-y-3" :class="products.charms_available ? 'border-[#E8D9B8] bg-[#FBF7EF]' : 'border-zinc-200'">
-          <p class="flex items-center gap-2 font-semibold"><span class="text-[#8A6420]" x-html="pIcon('charm', 'w-5 h-5')"></span>Charms</p>
-          <div class="flex flex-wrap items-center gap-3">
-            <span id="charms-switch-label" class="text-sm">Charms available to customers:</span>
-            <button type="button" role="switch" aria-labelledby="charms-switch-label" :aria-checked="products.charms_available ? 'true' : 'false'"
-                    @click="toggleCharms()" :disabled="productsBusy || (!products.charms_available && !products.charm_configuration_ready)"
-                    class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
-                    :class="products.charms_available ? 'bg-emerald-600' : 'bg-zinc-300'">
-              <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="products.charms_available ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
-            </button>
-            <span class="badge" :class="products.charms_available ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="products.charms_available ? 'ON' : 'OFF'"></span>
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <template x-for="p in (products.products || [])" :key="'pa' + p.id">
+          <div class="border p-4 space-y-3" :class="p.available ? 'border-[#E8D9B8] bg-[#FBF7EF]' : 'border-zinc-200'">
+            <p class="flex items-center gap-2 font-semibold"><span class="text-[#8A6420]" x-html="pIcon(p.id, 'w-5 h-5')"></span><span x-text="p.plural"></span></p>
+            <div class="flex flex-wrap items-center gap-3">
+              <span :id="p.id + '-switch-label'" class="text-sm" x-text="p.plural + ' available to customers:'"></span>
+              <button type="button" role="switch" :aria-labelledby="p.id + '-switch-label'" :aria-checked="p.available ? 'true' : 'false'"
+                      @click="toggleProduct(p)" :disabled="productsBusy || (!p.available && !p.configuration_ready)"
+                      class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+                      :class="p.available ? 'bg-emerald-600' : 'bg-zinc-300'">
+                <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="p.available ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+              </button>
+              <span class="badge" :class="p.available ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="p.available ? 'ON' : 'OFF'"></span>
+            </div>
+            <p class="text-[12px] text-zinc-600" x-show="!p.available" x-text="p.plural + ' are hidden from customers: not on the Design screen, not in the Inspiration Gallery or its filters, no ' + p.label.toLowerCase() + ' wording on the site, and a request to start one is refused. A browser signed in to the Admin previews them on the site, so they can be tested first.'"></p>
+            <p class="text-[12px] text-zinc-600" x-show="p.available" x-text="'Customers can design and order ' + p.plural.toLowerCase() + '; they appear in the Inspiration Gallery and in the site’s wording.'"></p>
+            <p class="text-[12px] text-zinc-500" x-show="p.changed" x-text="'Last changed ' + dateTime(p.changed?.updated_at) + ' by ' + (p.changed?.updated_by || '—')"></p>
+            <p x-show="!p.configuration_ready" class="text-[12px] text-amber-700" x-text="'The ' + p.label + ' AI configuration is not ready yet.'"></p>
           </div>
-          <p class="text-[12px] text-zinc-600" x-show="!products.charms_available">Customers see the ring-only site: no product choice, no charm text, no charm tiles. A browser signed in to the Admin previews charms on the site, so the whole charm system can be tested first.</p>
-          <p class="text-[12px] text-zinc-600" x-show="products.charms_available">Customers can choose a ring or a charm when they start a design, and charms appear in the Inspiration Gallery.</p>
-          <p class="text-[12px] text-zinc-500" x-show="products.charms_available_changed" x-text="'Last changed ' + dateTime(products.charms_available_changed?.updated_at) + ' by ' + (products.charms_available_changed?.updated_by || '—')"></p>
-          <p x-show="!products.charm_configuration_ready" class="text-[12px] text-amber-700">The charm AI configuration is not ready yet.</p>
+          </template>
         </div>
+        <p class="text-[12px] text-amber-700" x-show="products.products && !products.products.some(p => p.available)">No product is available to customers: the site has nothing to design until one is switched on.</p>
       </div>
       </template>
       <template x-if="products">
@@ -1625,7 +1625,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key === 'charms_available' ? ('Charms ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : l.key)))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : l.key)))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>

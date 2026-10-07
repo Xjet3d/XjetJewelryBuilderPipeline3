@@ -14,7 +14,7 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "c9f9d0e4d7e9192b01bfbd1da6538ac5561c316e3fa9d03684aca36995e9b63e"      # the homepage showcase since f7723c2
+HeroSha256 = "aa2231e2657e5f7028cdcfc87c22605f2db9cd9cd95cece705b466ccaea2915d"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
@@ -105,10 +105,11 @@ async def test_ring_and_charm_gallery_items_both_open_as_their_product(HG):
     Page = (await H.Client.get("/")).text
     for Gap in ("mb-8", "mb-6"):
         assert f'<div x-show="productsOn" x-cloak class="flex justify-center {Gap}" role="group" aria-label="Show designs">' in Page
-    assert Page.count("""x-for="f in [['', 'All'], ['ring', 'Rings'], ['charm', 'Charms']]\"""") == 2
+    assert Page.count('x-for="f in galleryFilters"') == 2                       # All + one entry per product on offer
     App = (await H.Client.get("/static/app.js")).text
-    assert "get productsOn() { return !!this.catalog?.products; }" in App
-    assert "get galleryShown() { return this.galleryProduct ? this.gallery.filter(g => (g.product_type || 'ring') === this.galleryProduct) : this.gallery; }" in App
+    assert "get productsOn() { return this.productsList.length > 1; }" in App
+    assert "get galleryFilters() { return [['', 'All'], ...this.productsList.map(p => [p, this.productPlural(p)])]; }" in App
+    assert "const f = this.productsOn && this.productsList.includes(this.galleryProduct) ? this.galleryProduct : '';" in App
     assert "products" not in (await H.Client.get("/api/catalog", headers=Customer)).json()
 
 

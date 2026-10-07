@@ -879,9 +879,13 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         except ConfigError as E:
             return _Invalid(E)
 
-    # ── Products: rings and charms (customer availability of charms, charm sizes) ──
+    # ── Products: rings and charms (customer availability per product, charm sizes) ──
     def _ProductsState() -> dict:
-        return {**Ctx.Products.State(), "charm_configuration_ready": Ctx.Models.Supports(Products.Charm)}
+        St = Ctx.Products.State()
+        return {**St, "charm_configuration_ready": Ctx.Models.Supports(Products.Charm),
+                "products": [{"id": P, "label": Products.Labels[P], "plural": Products.Plurals[P],
+                              "available": St["availability"][P], "changed": St["availability_changed"][P],
+                              "configuration_ready": Ctx.Models.Supports(P)} for P in Products.All]}
 
     @App_.get("/api/admin/products")
     async def AdminProducts(authorization: str | None = Header(None)):
@@ -889,16 +893,20 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return _ProductsState()
 
     @App_.put("/api/admin/products/availability")
-    async def SetCharmsAvailable(Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """Charms available to customers: ON / OFF (the Admin confirms the change in a normal dialog)."""
+    async def SetAvailability(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """Customer availability of one product, ON / OFF: {"product": "ring" | "charm", "available": true | false}
+        (the Admin confirms the change in a normal dialog). The older {"charms_available": bool} body still works."""
         Who = Admin(authorization)
-        On = Body_.get("charms_available")
+        if "product" in Body_:
+            Product, On = Products.Normalize(Body_.get("product")), Body_.get("available")
+        else:
+            Product, On = Products.Charm, Body_.get("charms_available")
         if not isinstance(On, bool):
-            raise HttpError(400, "invalid_value", "charms_available must be true or false.")
-        if On and not Ctx.Models.Supports(Products.Charm):
-            raise HttpError(409, "charm_configuration_missing", "The charm AI configuration is not ready.")
-        if On != Ctx.Products.CharmsAvailable:
-            Ctx.Products.Set("charms_available", On, Who.Id, str(Body_.get("note") or "")[:300])
+            raise HttpError(400, "invalid_value", "available must be true or false.")
+        if On and not Ctx.Models.Supports(Product):
+            raise HttpError(409, f"{Product}_configuration_missing", f"The {Products.Labels[Product]} AI configuration is not ready.")
+        if On != Ctx.Products.Available(Product):
+            Ctx.Products.SetAvailable(Product, On, Who.Id, str(Body_.get("note") or "")[:300])
         return _ProductsState()
 
     @App_.put("/api/admin/products/charm-sizes")

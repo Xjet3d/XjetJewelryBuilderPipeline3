@@ -103,10 +103,10 @@ def _ScriptJson(Value) -> str:
     return json.dumps(Value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex") -> str:
+def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "") -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
-    (window.__p3) and "{{ROBOTS}}" the robots meta content."""
+    (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     for Asset in ("app.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
@@ -114,6 +114,7 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
     Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
+    Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;"))
     return Html.replace("{{BASE}}", BasePath)
 
 
@@ -210,7 +211,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Host.rsplit(":", 1)[0] if Host.count(":") == 1 else Host
 
     AdminPaths = ("/admin", "/admin/", "/static/admin.html", "/static/admin.js")
-    DevPaths = ("/dev", "/showcase", "/static/dev.html", "/static/showcase.html")
+    DevPaths = ("/dev", "/showcase", "/api/showcase", "/static/dev.html", "/static/showcase.html")
 
     @App_.middleware("http")
     async def _Separation(Req: Request, CallNext):
@@ -272,9 +273,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl}
     PageRobots = "index,follow" if S.Production else "noindex"
 
+    def PageDescription() -> str:
+        """The page's meta description names only the products customers can design (Admin → Settings → Products)."""
+        Names = [Products.Plurals[P].lower() for P in Ctx.Products.AvailableProducts()]
+        What = " and ".join(Names) if len(Names) <= 2 else ", ".join(Names[:-1]) + " and " + Names[-1]
+        return (f"Design custom {What or 'jewelry'} with AI at XJET Atelier. Describe your vision, choose from four designs, "
+                "refine it, and preview it in a 360° movie.")
+
     @App_.get("/", include_in_schema=False)
     async def Index():
-        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots))
+        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription()))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
@@ -313,7 +321,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
         the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
         that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots)
+        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription())
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:
@@ -442,14 +450,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Sessions.RecordClientEvent(Ctx, Tok(x_access_token).AccountId, str(Body_.get("kind", "")),
                                           Body_.get("design_id") or None)
 
-    # ── while charms are hidden, a ring-only customer gets exactly the answers of before: no product fields ──
+    # ── while rings are the only product on offer, a customer gets exactly the answers of before: no product fields ──
     ProductKeys = ("product_type", "product_types", "charm_size", "size_label")
 
-    def _HasCharm(X) -> bool:
+    def _HasOther(X) -> bool:
+        """Anything in the answer that is not a ring (a charm this customer holds from when charms were shown)."""
         if isinstance(X, dict):
-            return (X.get("product_type") == Products.Charm or Products.Charm in (X.get("product_types") or ())
-                    or any(_HasCharm(V) for V in X.values()))
-        return isinstance(X, list) and any(_HasCharm(V) for V in X)
+            return ((X.get("product_type") or Products.Ring) != Products.Ring
+                    or any(P != Products.Ring for P in (X.get("product_types") or ()))
+                    or any(_HasOther(V) for V in X.values()))
+        return isinstance(X, list) and any(_HasOther(V) for V in X)
 
     def _Strip(X):
         if isinstance(X, dict):
@@ -457,17 +467,17 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return [_Strip(V) for V in X] if isinstance(X, list) else X
 
     def RingOnly(Data, request: Request):
-        """Charms hidden from this browser and nothing about charms in the answer → the ring-only answer of before.
-        A customer whose bag or orders hold charms (made while charms were shown) still gets them as they are."""
-        if Products.CharmsVisible(Ctx, request) or _HasCharm(Data):
+        """Rings the only product this browser sees and nothing else in the answer → the ring-only answer of before
+        (no product fields). A customer whose bag or orders hold charms (made while charms were shown) keeps them."""
+        if Products.VisibleProducts(Ctx, request) != (Products.Ring,) or _HasOther(Data):
             return Data
         return _Strip(Data)
 
     # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
     def Seen(request: Request) -> tuple[tuple, bool]:
-        """The products this browser may see, and whether to label tiles with their product (only beside charms)."""
+        """The products this browser may see, and whether to label tiles with their product (only with a choice)."""
         Visible = Products.VisibleProducts(Ctx, request)
-        return Visible, Products.Charm in Visible
+        return Visible, len(Visible) > 1
 
     @App_.get("/api/gallery")
     async def GalleryTiles(request: Request):
@@ -504,16 +514,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/catalog")
     async def CatalogRoute(request: Request):
         Out = Ctx.Catalog.ToJson()
-        if Products.CharmsVisible(Ctx, request):
-            # Rings and charms: what the Design screen offers. Absent while charms are hidden — the ring-only site.
-            Out["products"] = {"available": list(Products.All), "default": Products.Default,
-                               "preview": not Ctx.Products.CharmsAvailable,      # an admin previewing hidden charms
-                               "charm": {"sizes": Ctx.Products.CharmSizes, "size_options": Ctx.Products.CharmSizeOptions(),
-                                         "recommended_size": Ctx.Products.CharmDefaultSize,
-                                         "size_definition": Products.CharmSizeDefinition,
-                                         "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": M.Group,
-                                                        "purchasable": Ctx.Catalog.IsPurchasableGroup(M.Group)}
-                                                       for M in CharmPrices.Offered(Ctx.Catalog)]}}
+        Visible = Products.VisibleProducts(Ctx, request)
+        if Visible != (Products.Ring,):
+            # What the Design screen offers (Admin → Settings → Products). Absent while rings are the only product on
+            # offer — the ring-only site of before. "previewed": hidden products an Admin's browser sees anyway.
+            Previewed = Products.PreviewedProducts(Ctx, request)
+            Out["products"] = {"available": list(Visible), "default": Products.DefaultProduct(Visible),
+                               "preview": bool(Previewed), "previewed": list(Previewed),
+                               "names": {P: {"label": Products.Labels[P], "plural": Products.Plurals[P]} for P in Products.All}}
+            if Products.Charm in Visible:
+                Sizes = Ctx.Products.CharmSizeOptions()
+                Out["products"]["charm"] = {
+                    "sizes": Ctx.Products.CharmSizes, "size_options": Sizes, "recommended_size": Ctx.Products.CharmDefaultSize,
+                    "size_definition": Products.CharmSizeDefinition,
+                    "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": M.Group,
+                                   "purchasable": Ctx.Catalog.IsPurchasableGroup(M.Group),
+                                   # the fixed price per size (the Materials page); None while no price is set
+                                   "prices": [{"size": O["size"], "label": O["label"], "price": Q.unit_price, "currency": Q.currency}
+                                              for O in Sizes for Q in (Ctx.CharmPrices.QuoteFor(M.Id, O["size"]),)]}
+                                  for M in CharmPrices.Offered(Ctx.Catalog)]}
         return JSONResponse(Out, headers={"Cache-Control": "no-store"})
 
     @App_.get("/api/quote")
@@ -542,7 +561,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         # The product is fixed here, once, for the design and everything refined from it. A ring needs nothing
         # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
-        Product = Products.RequireVisible(Ctx, Products.Normalize(product), request)
+        Visible = Products.VisibleProducts(Ctx, request)
+        Product = Products.RequireVisible(Ctx, Products.Normalize(product, Products.DefaultProduct(Visible)), request)
         ReferencePng = None
         if reference is not None and reference.filename:
             if not rights_confirmed:

@@ -6,11 +6,14 @@ defaults to 'ring', so existing designs, sessions and orders are rings without b
 Refinements, variations, gallery journeys and split refinements inherit the product of the design
 they come from.
 
-Customer visibility is a separate switch (Admin → Settings → Products): "Charms available to
-customers", OFF by default. While it is off the customer site is the ring-only site of before — no
-product choice, no charm text, no charm tiles — and the server refuses charm requests from
-customers. A browser signed in to the Admin sees charms anyway (a preview), so the whole charm system
-can be built and tested internally before customers see it.
+Customer availability is a separate, independent switch per product (Admin → Settings → Products:
+"Rings available to customers", "Charms available to customers" — rings ON and charms OFF by default;
+a future product joins the same list). A product that is OFF is not offered on the Design screen, not
+in the gallery or its filters, not in the showcase or the sitemap, the site's wording does not mention
+it, and the server refuses to start a design of it. While rings are the only product on, the customer
+site is the ring-only site of before. The Admin configures every product regardless, and a browser
+signed in to the Admin sees the hidden products on the customer site (a preview), so a product can be
+built and tested internally before customers see it.
 
 The charm size definition lives here, in one place (CharmSizeDefinition, Charm3DHeight): for now the
 selected size is the charm's TOTAL height in millimetres, the attachment loop included — a 20 mm charm is
@@ -29,6 +32,13 @@ Default = Ring
 Labels = {Ring: "Ring", Charm: "Charm"}
 Plurals = {Ring: "Rings", Charm: "Charms"}
 Prefixes = {Ring: "R", Charm: "C"}          # customer-facing IDs: R-1001 … and C-1001 … (separate sequences)
+AvailabilityKeys = {P: f"{Plurals[P].lower()}_available" for P in All}   # rings_available, charms_available (product_settings)
+
+
+def DefaultProduct(Visible) -> str:
+    """The product a design is when the request names none: a ring while rings are on offer, else the first product
+    on offer (a ring when there is none — the request is then refused, the product being invisible)."""
+    return Ring if Ring in Visible else (Visible[0] if Visible else Ring)
 
 # ── the charm size: one central definition (the only place to change it) ──────
 # Decision of 2026-10-05: a charm's size is its total height, the loop included. Customize, the bag, checkout,
@@ -140,7 +150,7 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 );
 """
 
-Defaults = {"charms_available": False, "charm_sizes": list(DefaultCharmSizes),
+Defaults = {"rings_available": True, "charms_available": False, "charm_sizes": list(DefaultCharmSizes),
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize}
 
 
@@ -220,9 +230,24 @@ class ProductSettings:
             Conn.execute("INSERT INTO product_settings_log (key, value_json, note, at, by) VALUES (?,?,?,?,?)",
                          (Key, Dumps(Value), (Note or "")[:300], T, By))
 
+    def Available(self, Product: str) -> bool:
+        """Customer availability of one product (Admin → Settings → Products)."""
+        return self.Get(AvailabilityKeys[Product]) is True
+
+    def AvailableProducts(self) -> tuple:
+        """The products customers may design and order, in the canonical order (rings, then charms)."""
+        return tuple(P for P in All if self.Available(P))
+
+    def SetAvailable(self, Product: str, On: bool, By: str, Note: str = "") -> None:
+        self.Set(AvailabilityKeys[Product], bool(On), By, Note)
+
+    def ChangedAt(self, Key: str) -> dict | None:
+        R = self.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Key,))
+        return {"updated_at": R["updated_at"], "updated_by": R["updated_by"]} if R else None
+
     @property
     def CharmsAvailable(self) -> bool:
-        return self.Get("charms_available") is True
+        return self.Available(Charm)
 
     @property
     def CharmSizes(self) -> list[float]:
@@ -250,11 +275,11 @@ class ProductSettings:
         return CharmSizeOptions(self.CharmSizes, self.CharmSizeNames, self.CharmDefaultSize)
 
     def State(self) -> dict:
-        Rows = {R["key"]: R for R in self.Db.All("SELECT * FROM product_settings")}
         Log = self.Db.All("SELECT key, value_json, note, at, by FROM product_settings_log ORDER BY id DESC LIMIT 30")
-        return {"charms_available": self.CharmsAvailable,
-                "charms_available_changed": {K: Rows["charms_available"][K] for K in ("updated_at", "updated_by")}
-                if "charms_available" in Rows else None,
+        return {"availability": {P: self.Available(P) for P in All},
+                "availability_changed": {P: self.ChangedAt(AvailabilityKeys[P]) for P in All},
+                "charms_available": self.CharmsAvailable,                       # the older names, still answered
+                "charms_available_changed": self.ChangedAt(AvailabilityKeys[Charm]),
                 "charm_sizes": self.CharmSizes, "charm_size_names": self.CharmSizeNames,
                 "charm_default_size": self.CharmDefaultSize, "charm_size_options": self.CharmSizeOptions(),
                 "charm_size_definition": CharmSizeDefinition,
@@ -275,20 +300,33 @@ def AdminPreview(Ctx: Context, Request) -> bool:
         return False
 
 
-def CharmsVisible(Ctx: Context, Request=None) -> bool:
-    """Charms on the customer site: switched on for customers, or previewed by a signed-in admin."""
+def _Available(Ctx: Context) -> tuple:
     Settings = getattr(Ctx, "Products", None)
-    if Settings is not None and Settings.CharmsAvailable:
-        return True
-    return AdminPreview(Ctx, Request)
+    return Settings.AvailableProducts() if Settings is not None else (Ring,)
 
 
 def VisibleProducts(Ctx: Context, Request=None) -> tuple:
-    return All if CharmsVisible(Ctx, Request) else (Ring,)
+    """The products this browser may see: the ones available to customers — every product for a browser signed in
+    to the Admin (a preview of what is hidden)."""
+    Available = _Available(Ctx)
+    if Available == All:
+        return All
+    return All if AdminPreview(Ctx, Request) else Available
+
+
+def PreviewedProducts(Ctx: Context, Request=None) -> tuple:
+    """The products this browser sees only because it is signed in to the Admin (hidden from customers)."""
+    Available = _Available(Ctx)
+    return tuple(P for P in VisibleProducts(Ctx, Request) if P not in Available)
+
+
+def CharmsVisible(Ctx: Context, Request=None) -> bool:
+    """Charms on the customer site: switched on for customers, or previewed by a signed-in admin."""
+    return Charm in VisibleProducts(Ctx, Request)
 
 
 def RequireVisible(Ctx: Context, Product: str, Request=None) -> str:
     """A customer request for a product they cannot see is refused as if the product did not exist."""
-    if Product == Charm and not CharmsVisible(Ctx, Request):
+    if Product not in VisibleProducts(Ctx, Request):
         raise HttpError(400, "unknown_product", "Unknown product.")
     return Product

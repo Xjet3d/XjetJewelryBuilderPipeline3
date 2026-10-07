@@ -97,13 +97,13 @@ async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):
     Page = (await H.Client.get("/")).text
     # Products are offered only while the catalog lists them (productsOn); the ring-only note stays for the ring-only site
     assert 'x-show="!design && productsOn"' in Page and "What would you like to design?" in Page
-    assert 'x-show="!design && !productsOn"' in Page and "XJet Atelier makes <span class=\"font-semibold\">rings</span>" in Page
+    assert 'x-show="!design && !productsOn"' in Page and 'x-text="composerNote"' in Page
     assert 'id="charm-size-heading" x-show="custIsCharm"' in Page and 'id="ring-size-heading" x-show="!custIsCharm"' in Page
     assert Page.count('x-for="g in galleryShown"') == 2 and 'x-for="g in homeGallery"' in Page        # the home strip is as it was
     assert 'x-show="charmPreview"' in Page and "Admin preview" in Page
     assert re.search(r'/static/products\.js\?v=\d+', Page)
     App = (await H.Client.get("/static/app.js")).text
-    assert "if (this.productsOn) fd.append('product', this.newProduct);" in App
+    assert "if (this.catalog?.products) fd.append('product', this.newProduct);" in App
     # The catalog's charm block, for an Admin previewing: charm materials with their customer names
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test") as Browser:
         assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
