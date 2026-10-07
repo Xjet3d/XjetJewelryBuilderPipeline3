@@ -370,7 +370,9 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 - **360° movie per product: ON / OFF** (default ON for every product; `PUT /api/admin/products/movie
   {"product", "on"}`; log keys `rings_movie` / `charms_movie`). OFF: Customize makes no movie and shows the still image
   only; an explicit movie request answers 409 `movie_off`; the movies that already exist (a gallery master's included)
-  stay hidden until the switch is ON again, when they are shown and reused without a new credit.
+  stay hidden until the switch is ON again, when they are shown and reused without a new credit. The homepage hero
+  plays only the story of an XJet design of a product on offer whose movie is ON; otherwise it shows a gallery
+  design's still image.
 - **Charms available to customers: ON / OFF.** It is OFF by default.
   - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
     share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the

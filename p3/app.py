@@ -229,7 +229,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Host.rsplit(":", 1)[0] if Host.count(":") == 1 else Host
 
     AdminPaths = ("/admin", "/admin/", "/static/admin.html", "/static/admin.js")
-    DevPaths = ("/dev", "/showcase", "/api/showcase", "/static/dev.html", "/static/showcase.html")
+    # /showcase (the reference page) is a developer tool; /api/showcase is the homepage hero's public data
+    DevPaths = ("/dev", "/showcase", "/static/dev.html", "/static/showcase.html")
 
     @App_.middleware("http")
     async def _Separation(Req: Request, CallNext):
@@ -401,9 +402,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return HTMLResponse(_VersionedPage("showcase.html", Base), headers={"X-Robots-Tag": "noindex, nofollow"})
 
     @App_.get("/api/showcase")
-    async def ShowcaseRoute(design: str | None = None):
-        """The story of one real gallery design for the showcase (read-only; nothing is generated or charged)."""
-        return Showcase.Story(Ctx, design)
+    async def ShowcaseRoute(request: Request, design: str | None = None):
+        """The homepage hero: the story of one XJet gallery design of a product on offer to this visitor whose 360° movie
+        is ON — or, when none may be told, a gallery design's still image (read-only; nothing is generated or charged)."""
+        return Showcase.Story(Ctx, design, Products.VisibleProducts(Ctx, request))
 
     def HealthDetails() -> dict:
         """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""

@@ -28,13 +28,14 @@ if [[ "$PUBLIC" == https://* ]]; then
     check "health is minimal in production"   "$(! grep -q '"mode"' <<<"$Health"; echo $?)"
     check "robots.txt allows the site"        "$(curl -s "$PUBLIC/robots.txt" | grep -q "^Allow: /"; echo $?)"
     check "sitemap answers 200"               "$([[ "$(code "$PUBLIC/sitemap.xml")" == 200 ]]; echo $?)"
-    for P in /admin/ /api/admin/session /dev /api/dev/mode /docs /openapi.json /redoc /showcase /api/showcase; do
+    for P in /admin/ /api/admin/session /dev /api/dev/mode /docs /openapi.json /redoc /showcase; do
         check "public host has no $P (404)"   "$([[ "$(code "$PUBLIC$P")" == 404 ]]; echo $?)"
     done
 else
     check "robots.txt disallows a staging copy" "$(curl -s "$PUBLIC/robots.txt" | grep -q "^Disallow: /$"; echo $?)"
 fi
 check "catalog answers 200"                   "$([[ "$(code "$PUBLIC/api/catalog")" == 200 ]]; echo $?)"
+check "homepage hero data answers 200"        "$([[ "$(code "$PUBLIC/api/showcase")" == 200 ]]; echo $?)"
 check "gallery answers 200"                   "$([[ "$(code "$PUBLIC/api/gallery")" == 200 ]]; echo $?)"
 check "a missing thumbnail is not cached"     "$(head_ "$PUBLIC/thumb/designs/nope/candidates/nope.png?w=320" | grep -qi "cache-control: no-store"; echo $?)"
 

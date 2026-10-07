@@ -13,6 +13,12 @@ movie of its own, the story shows the chosen option and its movie instead (no re
 from a session run in mock mode is used only where nothing real exists; a design started from an uploaded image
 scores lower, because its prompt alone does not explain the result. A gallery design that is its owner's own
 variation tells the story from the design it came from. ?design=<link name> picks another one for review.
+
+What may be told (2026-10-07): only XJet's own gallery designs (a customer's design keeps its prompt and its
+refinement words private), of a product on offer to the visitor (Admin → Settings → Products; an Admin's browser
+previews every product), whose product's 360° movie switch is ON (a movie that may not be shown is never played).
+When no story may be told, the answer carries a still — the first such gallery design's image and name, a customer's
+included (the gallery shows it anyway) — and the hero shows it instead of the animation.
 """
 
 import re
@@ -22,6 +28,7 @@ from pathlib import Path
 from PIL import Image
 
 from p3 import assets
+from p3 import products as Products
 from p3.context import Context
 from p3.gallery import ShareSlug
 
@@ -95,12 +102,16 @@ def _Movies(Db, DesignIds: list[str]) -> dict[str, tuple[str, bool]]:
     return Out
 
 
-def _Stories(Ctx: Context) -> list[dict]:
+def _Stories(Ctx: Context, Visible: tuple = Products.All) -> list[dict]:
     Db = Ctx.Db
     Out = []
-    for R in Db.All("SELECT g.id AS item_id, g.design_id, g.candidate_id, g.position, d.title, d.prompt, d.share_slug, "
-                    "d.source_design_id, d.owner_account_id FROM gallery_items g JOIN designs d ON d.id = g.design_id "
-                    "ORDER BY g.position, g.created_at"):
+    for R in Db.All("SELECT g.id AS item_id, g.design_id, g.candidate_id, g.position, g.owner_kind, d.title, d.prompt, "
+                    "d.share_slug, d.source_design_id, d.owner_account_id, d.product_type FROM gallery_items g "
+                    "JOIN designs d ON d.id = g.design_id ORDER BY g.position, g.created_at"):
+        Product = R["product_type"] or Products.Ring
+        if (Product not in Visible or not Products.MovieAvailable(Ctx, Product)
+                or (R["owner_kind"] or "xjet") != "xjet"):
+            continue                    # not on offer, its movie switched off, or a customer's design (private words)
         Prompt, Designs = R["prompt"], [R["design_id"]]
         Initial = Db.One("SELECT * FROM batches WHERE design_id = ? AND kind = 'initial' ORDER BY created_at LIMIT 1", (R["design_id"],))
         if Initial is None and R["source_design_id"]:
@@ -145,12 +156,26 @@ def _Stories(Ctx: Context) -> list[dict]:
     return Out
 
 
-def Story(Ctx: Context, Design: str | None = None) -> dict:
-    Stories = _Stories(Ctx)
+def _Still(Ctx: Context, Visible: tuple) -> dict | None:
+    """The hero without a story: the first gallery design of a product on offer — its image and its name."""
+    for R in Ctx.Db.All("SELECT d.title, d.product_type, c.asset_path FROM gallery_items g JOIN designs d ON d.id = g.design_id "
+                        "JOIN candidates c ON c.id = g.candidate_id WHERE c.status = 'ready' AND c.asset_path IS NOT NULL "
+                        "ORDER BY g.position, g.created_at"):
+        if (R["product_type"] or Products.Ring) in Visible:
+            return {"title": R["title"], "image_url": Ctx.AssetUrl(R["asset_path"])}
+    return None
+
+
+def Story(Ctx: Context, Design: str | None = None, Visible: tuple = Products.All) -> dict:
+    Stories = _Stories(Ctx, Visible)
     Ranked = sorted(Stories, key=lambda S: (-S["score"], S["row"]["position"]))
     Choices = [{"slug": S["slug"], "title": S["row"]["title"]} for S in Ranked]
     if not Ranked:
-        return {"story": None, "choices": []}
+        Out = {"story": None, "choices": []}
+        Still = _Still(Ctx, Visible)
+        if Still:
+            Out["still"] = Still                       # the hero shows the still instead of an empty stage
+        return Out
     Want = ShareSlug(Design or "")
     Best = next((S for S in Ranked if Want and Want in (S["slug"], ShareSlug(S["row"]["title"]))), Ranked[0])
     Url, Base = Ctx.AssetUrl, Ctx.Settings.BasePath

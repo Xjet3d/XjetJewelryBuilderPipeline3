@@ -322,6 +322,19 @@
             if (stage._sc === ctl) stage._sc = null;
         }
 
+        // No story may be told (no XJet design of a product on offer with its movie on): a gallery design's still and name
+        function showStill(St) {
+            const img = document.createElement('img');
+            img.className = 'sc-still'; img.alt = St.title + ' — designed with XJet Atelier'; img.decoding = 'async';
+            img.src = thumb(St.image_url, stage.clientWidth < 480 ? 480 : 960);
+            const cap = document.createElement('div');
+            cap.className = 'sc-still-name';
+            cap.innerHTML = '<span class="sc-title"></span><span class="sc-by">Designed with XJet Atelier</span>';
+            cap.querySelector('.sc-title').textContent = St.title;
+            stage.append(img, cap);
+            X.loading.classList.add('sc-gone');
+        }
+
         const ctl = {
             captions: CAPTIONS, labels: LABELS, onFrame: opts.onFrame || null, choices: [],
             get story() { return S; }, get plan() { return D; },
@@ -338,7 +351,11 @@
         fetchStory(opts.design).then(async A => {
             if (destroyed) return;
             ctl.choices = A.choices || [];
-            if (!A.story) { X.loading.textContent = opts.emptyText || ''; return; }
+            if (!A.story) {
+                if (A.still && A.still.image_url) showStill(A.still);         // no story may be told: the design's still
+                else X.loading.textContent = opts.emptyText || '';
+                return;
+            }
             S = A.story; D = planFor(S);
             build(); await preload();
             if (destroyed) return;

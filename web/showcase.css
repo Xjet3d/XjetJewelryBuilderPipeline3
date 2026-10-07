@@ -10,6 +10,11 @@
     user-select: none; -webkit-user-select: none; font-family: 'Inter', system-ui, sans-serif; color: var(--sc-ink);
 }
 @media (max-width: 640px) { .sc-stage { aspect-ratio: 4 / 5; border-radius: 20px; } }
+/* no story may be told: a gallery design's still and its name (showcase.js showStill) */
+.sc-stage > .sc-still { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 72%; height: 72%; object-fit: contain; }
+.sc-stage > .sc-still-name { position: absolute; left: 0; right: 0; bottom: 6%; text-align: center; padding: 0 16px; }
+.sc-still-name .sc-title { display: block; font-family: 'Cinzel', serif; font-weight: 400; font-size: 26px; line-height: 1.15; color: var(--sc-ink); }
+.sc-still-name .sc-by { display: block; margin-top: 6px; font-size: 12px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; color: var(--sc-gold-text); }
 .sc-stage.sc-phone { aspect-ratio: 4 / 5; border-radius: 20px; }      /* /showcase: the Phone preview */
 .sc-stage > .sc-el { position: absolute; left: 0; top: 0; transform-origin: 0 0; opacity: 0; visibility: hidden; will-change: transform, opacity; }
 

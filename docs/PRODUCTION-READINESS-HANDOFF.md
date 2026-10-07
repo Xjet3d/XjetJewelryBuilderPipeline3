@@ -41,9 +41,12 @@ payment decision (reservation model is truthful today — see F).
   `P3_MAIL_MODE=smtp`, `P3_DAILY_AI_SPEND_CAP_USD`, `P3_SUPPORT_EMAIL`, `P3_DATA_DIR` outside the checkout.
 - The AI mode is **locked to the configuration** in production (`P3_LOCK_MODE` implied): the developer switch answers
   409, `var/runtime.json` is ignored, there is no silent fallback to mock. Mock artefacts cannot be produced in live.
-- **Route separation:** `/dev`, `/api/dev/*`, `/showcase`, `/api/showcase`, `/docs`, `/redoc`, `/openapi.json` exist only
-  where developer tools are on (never in production); with `P3_ADMIN_HOST`, `/admin`, `/api/admin/*` answer only on
-  that host (404 elsewhere). The `#developer` panel opens only where the server says tools exist (`window.__p3`).
+- **Route separation:** `/dev`, `/api/dev/*`, `/showcase` (the reference page), `/docs`, `/redoc`, `/openapi.json` exist
+  only where developer tools are on (never in production); with `P3_ADMIN_HOST`, `/admin`, `/api/admin/*` answer only
+  on that host (404 elsewhere). The `#developer` panel opens only where the server says tools exist (`window.__p3`).
+  `/api/showcase` is the homepage hero's public data: it tells the story only of an XJet-owned gallery design of a
+  product on offer whose 360° movie is ON, and otherwise returns that design's still image (corrected 2026-10-07: it
+  had been made a developer route, which would have left the production hero empty).
 - **Security headers** on every answer (nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, CSP,
   HSTS over https); `X-Robots-Tag: noindex` on the Admin, the tools and the API. Media errors are never cached.
 - **Public `/api/health`** says only `ok` (plus the AI mode outside production); the full picture is

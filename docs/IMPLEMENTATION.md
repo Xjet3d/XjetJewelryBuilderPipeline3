@@ -176,7 +176,7 @@ config/                      generation params, prompts, catalog, pricing profil
 | `GET /api/gallery`, `GET /api/gallery/{item}/share`, `POST /api/gallery/{item}/start` | Gallery tiles (public), the share link by design name, Make it yours |
 | `GET /api/favorites`, `PUT/DELETE /api/favorites/{design_id}` | ♥ Favorites of the signed-in account (references to gallery masters) |
 | `GET /thumb/{asset}?w=&f=`, `GET /poster/{movie}` | Cached thumbnails and movie posters (see 8b) |
-| `GET /api/showcase?design=` | Homepage hero showcase data (read-only) |
+| `GET /api/showcase?design=` | Homepage hero showcase data (read-only, public): an XJet design of a product on offer with its movie ON, else a gallery design's still |
 | `GET /clip/{movie}?tail=2&w=720` | A movie's last seconds as a small web clip (cached) |
 | `/api/dev/*` (Bearer `P3_ADMIN_KEY`) | `status`, `candidates`, `candidates/{id}/meshes`, `meshes`, `meshes/{id}`, `meshes/{id}/convert-stl`, `meshes/{id}/download?kind=stl\|original` |
 

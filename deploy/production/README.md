@@ -80,4 +80,4 @@ https origin; `P3_ADMIN_HOST` is set and differs from the public host; `P3_BASE_
 `P3_SIGNING_SECRET` are two different random secrets of 24+ characters; `P3_ALLOW_UNAPPROVED_PRICING` is off;
 `P3_MAIL_MODE=smtp`; `P3_DAILY_AI_SPEND_CAP_USD` is set; `P3_SUPPORT_EMAIL` is set; `P3_DATA_DIR` is outside the checkout.
 Production also locks the AI mode to the configuration (no developer switch, no mock fallback), hides the developer
-tools, the API docs and the showcase, and indexes the site (`robots.txt`, the robots meta, the sitemap).
+tools, the API docs and the `/showcase` reference page (the homepage hero's data stays public), and indexes the site (`robots.txt`, the robots meta, the sitemap).

@@ -41,6 +41,7 @@ async def test_the_admin_and_the_dev_tools_answer_only_on_the_admin_host_and_out
         for P in ("/admin", "/admin/", "/static/admin.html", "/static/admin.js", "/api/admin/session", "/api/admin/health",
                   "/dev", "/api/dev/mode", "/docs", "/openapi.json", "/redoc", "/showcase", "/static/dev.html"):
             assert (await C.get(P, headers=Admin)).status_code == 404, P             # the public customer host has none of it
+        assert (await C.get("/api/showcase")).status_code == 200                     # the homepage hero's data stays public
         OnAdminHost = {**Admin, "Host": "admin.p3.test"}
         assert (await C.get("/admin/", headers=OnAdminHost)).status_code == 200
         assert (await C.get("/api/admin/session", headers=OnAdminHost)).status_code == 200

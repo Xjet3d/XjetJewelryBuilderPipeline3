@@ -1,6 +1,7 @@
 """Hero showcase prototype (/showcase): built from one real gallery design's own history — prompt, the first four
 options, a refinement and its 360° movie — read-only, not linked from the site, not indexed, no Ring IDs."""
 
+import json
 import re
 
 from p3.showcase import ShortInstruction, ShortPrompt
@@ -172,3 +173,32 @@ async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
     assert "Designed with XJet Atelier" in Engine and "'Your idea', 'Four possibilities', 'Make it yours'" in Engine
     for Gone in ("From your words", "NanoParticle", "Design preview", "Design yours", "gold_18k_rose"):
         assert Gone not in Engine, Gone
+
+
+async def test_the_hero_tells_a_story_only_where_its_movie_may_be_shown(HG):
+    """An XJet design of a product on offer whose 360° movie switch is ON: the story with its movie. Otherwise the
+    gallery design's still image — never a hidden movie, never an empty hero; a customer's design is never told."""
+    H = HG
+    Did, _Cands, _Ref = await _Story(H)
+    Title = (await H.Design(Did))["title"]
+    assert (await H.Client.get("/api/showcase")).json()["story"]["movie_url"]
+    # Rings' movie OFF: no ring story (its movie may not be shown) — the design's still instead; ON again: the story
+    assert (await H.Client.put("/api/admin/products/movie", json={"product": "ring", "on": False}, headers=Admin)).status_code == 200
+    S = (await H.Client.get("/api/showcase")).json()
+    assert S["story"] is None and S["still"]["title"] == Title and "/assets/" in S["still"]["image_url"]
+    assert "movie" not in json.dumps(S)
+    await H.Client.put("/api/admin/products/movie", json={"product": "ring", "on": True}, headers=Admin)
+    assert (await H.Client.get("/api/showcase")).json()["story"]["movie_url"]
+    # A customer's design (published with consent) is shown as a still, never told: its words are theirs
+    R = await H.Client.post("/api/admin/gallery", json={"design_id": Did, "owner_kind": "customer", "consent_note": "Agreed by email"},
+                            headers=Admin)
+    assert R.status_code == 200, R.text
+    S = (await H.Client.get("/api/showcase")).json()
+    assert S["story"] is None and S["still"]["title"] == Title
+    # Rings not on offer: nothing of them in the hero
+    await H.Client.post("/api/admin/gallery", json={"design_id": Did, "owner_kind": "xjet"}, headers=Admin)
+    await H.Client.put("/api/admin/products/availability", json={"product": "ring", "available": False}, headers=Admin)
+    assert (await H.Client.get("/api/showcase")).json() == {"story": None, "choices": []}
+    # The engine shows the still when there is no story
+    Js = (await H.Client.get("/static/showcase.js")).text
+    assert "if (A.still && A.still.image_url) showStill(A.still);" in Js
