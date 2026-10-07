@@ -95,6 +95,15 @@ See docs/IMPLEMENTATION.md §4 before running live.
 
 All provider calls in the tests are mocked; no test uses the network.
 
+## Production
+
+`P3_ENV=production` makes the service refuse to start with development defaults and locks the live provider, hides the
+developer tools, the API docs and the showcase, and serves the Admin only on `P3_ADMIN_HOST`. The complete variable
+list is `.env.production.example`; the installation is `deploy/production/README.md`; the status of everything that is
+still a decision or a credential is `docs/PRODUCTION-READINESS-HANDOFF.md`. Credits (1 per image, 1 per refinement
+image, 1 per movie), the daily AI spend cap and the request limits are described in `docs/ACCOUNTS.md` and
+`docs/ADMIN.md`.
+
 ## Runtime data
 
 The SQLite databases and generated assets live in `var/` (gitignored), or wherever `P3_DATA_DIR` points. Identity is kept apart from application data: `var/accounts.db` holds accounts, hashed tokens and usage, and `var/pipeline3.db` holds designs, batches, movies and the bag. Customer assets are in `var/assets/`. Developer meshes are in `var/dev/` and are never served statically.

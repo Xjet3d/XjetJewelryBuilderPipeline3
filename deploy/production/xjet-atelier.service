@@ -1,0 +1,39 @@
+# XJet Atelier (Pipeline 3) in production — install to /etc/systemd/system/xjet-atelier.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now xjet-atelier.service
+# Listens on 127.0.0.1 only; nginx publishes it on atelier.xjet3d.com and admin.atelier.xjet3d.com.
+# Configuration and secrets come from /etc/xjet-atelier/env (see .env.production.example); P3_ENV=production makes
+# the app refuse to start with development defaults.
+
+[Unit]
+Description=XJet Atelier (Pipeline 3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atelier
+Group=atelier
+WorkingDirectory=/srv/atelier/app
+EnvironmentFile=/etc/xjet-atelier/env
+# One worker on purpose: generation jobs run in-process and the state is in SQLite (P3_DATA_DIR).
+ExecStart=/srv/atelier/app/.venv/bin/uvicorn p3.app:App --host 127.0.0.1 --port 8340 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# Keep the journal readable: the app logs one line per request (query values such as token= are redacted by the app).
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=2000
+
+# Hardening: the process writes only its data directory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/atelier/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

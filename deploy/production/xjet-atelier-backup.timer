@@ -1,0 +1,11 @@
+# Runs scripts/backup.sh every night at 03:30 (server time); a missed run catches up at the next boot.
+[Unit]
+Description=XJet Atelier nightly backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,10 @@
 # Deploying Pipeline 3
 
+> **Production** (`atelier.xjet3d.com` + `admin.atelier.xjet3d.com`, no `/JewelryB2C3/` prefix): see
+> `deploy/production/README.md`, `.env.production.example` and `docs/PRODUCTION-READINESS-HANDOFF.md`. Nothing below
+> changes for proto, which stays the staging copy; `scripts/deploy-proto.sh` is its deploy procedure (in-flight
+> check, backup, fast-forward to pushed `main`, restart, health, `scripts/verify-production.sh`).
+
 ```
 browser ── http://proto/JewelryB2C3/ ──► proto nginx ──► http://tron/JewelryB2C3/ ──► tron nginx ──► 127.0.0.1:8340 (systemd)
 ```
@@ -22,12 +27,13 @@ P3 is operationally separate from Pipeline 2: its own host (tron), process, port
 ### Update to the latest `main`
 
 ```bash
-cd ~/git/XjetJewelryBuilderPipeline3
-git pull --ff-only
-.venv/bin/pip install -r requirements.txt
-sudo systemctl restart xjet-jewelry-b2c3.service
-curl -s http://127.0.0.1:8340/JewelryB2C3/api/health
+ssh tron 'bash -s' < scripts/deploy-proto.sh        # or, on tron: bash scripts/deploy-proto.sh
 ```
+
+It refuses while generation jobs are in flight, backs up `var/` (`~/p3-backups/<timestamp>/`, `scripts/backup.sh`),
+fast-forwards to `origin/main` (never a local commit), restarts the service, waits for the health answer and runs
+the read-only checks. By hand, the same steps are `git pull --ff-only`, `uv pip install --python .venv/bin/python -r
+requirements.txt`, `sudo systemctl restart xjet-jewelry-b2c3.service`, `curl -s http://127.0.0.1:8340/JewelryB2C3/api/health`.
 
 ### Access tokens
 
