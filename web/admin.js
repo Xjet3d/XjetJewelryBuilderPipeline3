@@ -317,7 +317,7 @@ function adminApp() {
         if (this.sub === 'products') await this.loadProducts();
         if (this.sub === 'system') {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
-          this.health = await fetch(BASE + '/api/health').then(r => r.json()).catch(() => null);
+          this.health = await this.api('GET', '/api/admin/health').catch(() => null);   // the full picture is admin-only
         }
       }
     },

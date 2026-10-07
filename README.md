@@ -57,7 +57,7 @@ The Home screen always shows the mode as a **Mock Mode** or **Live AI** pill. Ev
 - **Mock** (default): an amber "Mock mode" banner plus a **Mock** chip in the nav. Images, movies and meshes are simulated placeholders, nothing is sent to any AI provider, and nothing is charged.
 - **Live**: a green **Live AI** chip in the nav. Requests go to fal.ai and are billed.
 
-`GET /api/health` reports `"mode"` and `"mode_source"`.
+`GET /api/health` reports `"mode"` and `"mode_source"` outside production (in production it says only `ok`; the details are at `GET /api/admin/health` with the admin key).
 
 **Developer switch (internal).** Click **Developer** in the Home footer and enter `P3_ADMIN_KEY`; a panel then shows **AI Mode: Mock** or **AI Mode: Live → Switch to Mock**.
 - Switching to Mock is one click.

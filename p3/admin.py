@@ -461,8 +461,10 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
         "gallery_usage": Gallery.Usage(DesignId) if Gallery else [],
     }
 
-def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None, Orders=None, Promos=None) -> None:
-    """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page."""
+def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None, Orders=None, Promos=None,
+                  HealthDetails=None) -> None:
+    """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page; `HealthDetails()` is the
+    server's full health picture (admin-only; the public /api/health says only that the service is up)."""
 
     def Admin(Authorization: str | None) -> AdminPrincipal:
         return RequireAdmin(Ctx, Authorization)
@@ -479,6 +481,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def AdminSession(authorization: str | None = Header(None)):
         Who = Admin(authorization)
         return {"ok": True, "admin": Who.Id, "method": Who.Method, "mode": Ctx.Provider.Name}
+
+    @App_.get("/api/admin/health")
+    async def AdminHealth(authorization: str | None = Header(None)):
+        """The server's full health picture (provider, mode, pricing posture, configuration versions) — admin only."""
+        Admin(authorization)
+        return HealthDetails() if HealthDetails else {"ok": True}
 
     # ── persistent sign-in: the key once per browser, then a server-side session cookie ──
     @App_.post("/api/admin/login")
@@ -710,8 +718,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     # Large files (a 5M-face STL is ~250 MB) are downloaded natively by the browser — streamed to disk
     # with its progress bar — through a short-lived signed link, instead of being loaded into the page.
     def _DownloadSig(Sid: str, Stage: str, Exp: int) -> str:
-        return hmac.new((Ctx.Settings.AdminKey or "").encode(), f"3d-download:{Sid}:{Stage}:{Exp}".encode(),
-                        hashlib.sha256).hexdigest()
+        # Its own secret in production (P3_SIGNING_SECRET); the admin key only where none is configured (development)
+        Secret = Ctx.Settings.SigningSecret or Ctx.Settings.AdminKey or ""
+        return hmac.new(Secret.encode(), f"3d-download:{Sid}:{Stage}:{Exp}".encode(), hashlib.sha256).hexdigest()
 
     def _Stage(Stage: str) -> str:
         if Stage in ("raw", "production", "preview", "thumbnail") or Stage.startswith("export-"):

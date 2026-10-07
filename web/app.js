@@ -202,7 +202,8 @@ function p3App() {
       this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
       if (this.productsOn && this.productsList.includes(st.newProduct)) this.newProduct = st.newProduct;   // chosen before sign-in
       this.loadGallery().then(() => { this._openSharedGallery(); this.startHeroRotation(); });
-      if ((location.hash || '') === '#developer') { this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }   // internal, not linked
+      // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
+      if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
       const lux = this.materialsOf('luxury');
       this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
       try {

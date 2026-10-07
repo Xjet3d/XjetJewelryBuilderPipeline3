@@ -302,7 +302,7 @@ own charm instructions (`config/prompts/charm_anyllm_system.txt`, the same JSON 
   Ring model's active 3D settings, unchanged.
 - *Preview request* for a Charm model uses a charm sample text. *Export all {Ring | Charm} models* exports only the
   product being edited; the API is `GET /api/admin/models/export?product=charm`, and rings remain the default.
-- `/api/health` lists `config_versions` (Ring, unchanged) and `charm_config_versions`.
+- `/api/admin/health` (admin key) lists `config_versions` (Ring, unchanged) and `charm_config_versions`; the public `/api/health` says only that the service is up (plus the AI mode outside production).
 - This selector is not the customer switch. Whether customers can see charms is set in **Settings → Products**.
 - Known inconsistencies in the Ring prompts are documented, not fixed, in `docs/RING-PROMPT-NOTES-2026-10-05.md`.
 

@@ -14,7 +14,7 @@ import re
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
@@ -103,16 +103,36 @@ def _ScriptJson(Value) -> str:
     return json.dumps(Value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _VersionedPage(Name: str, BasePath: str) -> str:
-    """Render a page: every "{{BASE}}" becomes the base path, and local scripts/styles get
-    ?v=<mtime> so a browser can never pair a new page with a cached older app.js."""
+def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex") -> str:
+    """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
+    never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
+    (window.__p3) and "{{ROBOTS}}" the robots meta content."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     for Asset in ("app.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
+    Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
     return Html.replace("{{BASE}}", BasePath)
+
+
+class _RedactQuery(logging.Filter):
+    """Access-log lines never carry secrets from query strings (/verify?token=…, signed download links ?sig=…)."""
+    Pattern = re.compile(r"((?:token|sig|key)=)[^&\s\"']+")
+
+    def filter(self, Record: logging.LogRecord) -> bool:
+        if isinstance(Record.msg, str):
+            Record.msg = self.Pattern.sub(r"\1[redacted]", Record.msg)
+        if Record.args:
+            Record.args = tuple(self.Pattern.sub(r"\1[redacted]", A) if isinstance(A, str) else A for A in Record.args)
+        return True
+
+
+# Only same-origin resources; Alpine evaluates expressions (unsafe-eval) and the pages carry inline styles/scripts.
+ContentSecurityPolicy = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+                         "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; "
+                         "worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
 
 
 def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFactories: dict | None = None) -> FastAPI:
@@ -167,8 +187,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # With a base path the routes live on an inner app mounted at Base; Starlette does not run a
     # mounted app's lifespan, so the outer app owns it.
+    # The API docs exist only where developer tools do (never in production: nothing lists the Admin routes publicly)
     App_ = FastAPI(title="XJet Jewelry Builder — Pipeline 3", lifespan=None if Base else Lifespan,
-                   docs_url="/docs", openapi_url="/openapi.json")
+                   docs_url="/docs" if S.DevTools else None, openapi_url="/openapi.json" if S.DevTools else None,
+                   redoc_url="/redoc" if S.DevTools else None)
     App_.state.Ctx = Ctx
     App_.state.Services = Svc
     App_.state.Modes = Modes
@@ -180,19 +202,53 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     App_.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     App_.add_middleware(_NoGzipForMedia)
 
+    def _Rel(Req: Request) -> str:
+        return Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
+
+    def _RequestHost(Req: Request) -> str:
+        Host = (Req.headers.get("x-forwarded-host") or Req.headers.get("host") or "").split(",")[0].strip().lower()
+        return Host.rsplit(":", 1)[0] if Host.count(":") == 1 else Host
+
+    AdminPaths = ("/admin", "/admin/", "/static/admin.html", "/static/admin.js")
+    DevPaths = ("/dev", "/showcase", "/static/dev.html", "/static/showcase.html")
+
     @App_.middleware("http")
-    async def _NoStaleUi(Req: Request, CallNext):
-        # The page and its scripts change with every release; make browsers revalidate
-        # (cheap 304s via ETag) instead of running a cached, outdated app.js.
+    async def _Separation(Req: Request, CallNext):
+        """Route separation (docs/PRODUCTION-READINESS-HANDOFF.md): developer tools exist only outside production, and
+        with P3_ADMIN_HOST the Admin page, its API and the dev API answer on that host alone — the public customer
+        host does not have them."""
+        Rel = _Rel(Req)
+        IsAdmin = Rel in AdminPaths or Rel.startswith(("/api/admin/", "/api/dev/"))
+        IsDev = Rel in DevPaths or Rel.startswith("/api/dev/")
+        if IsDev and not S.DevTools:
+            return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
+        if IsAdmin and S.AdminHost and _RequestHost(Req) != S.AdminHost:
+            return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
+        return await CallNext(Req)
+
+    @App_.middleware("http")
+    async def _Headers(Req: Request, CallNext):
+        # Caching: the page and its scripts change with every release, so browsers revalidate (cheap 304s via ETag)
+        # instead of running a cached, outdated app.js; generated media never changes under its URL — but only a
+        # successful answer is cacheable (a 404 for a missing clip must not be remembered for a year).
         Resp = await CallNext(Req)
-        Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
+        Rel = _Rel(Req)
+        Ok = Resp.status_code in (200, 206)
         if Rel.startswith(("/assets/", "/thumb/", "/poster/", "/clip/")):
-            # generated files never change under their URL (unique ids); derived media follows its source
-            Resp.headers.setdefault("Cache-Control", Immutable)
+            Resp.headers["Cache-Control"] = Immutable if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
-            Resp.headers.setdefault("Cache-Control", "public, max-age=2592000")
+            Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
         elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")):
-            Resp.headers["Cache-Control"] = Immutable if Req.query_params.get("v") else "no-cache"
+            Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
+        # Security headers on every answer (also set by nginx in production; the app never relies on it)
+        H = Resp.headers
+        H.setdefault("X-Content-Type-Options", "nosniff")
+        H.setdefault("X-Frame-Options", "DENY")
+        H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        H.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        H.setdefault("Content-Security-Policy", ContentSecurityPolicy)
+        if Req.url.scheme == "https" or (Req.headers.get("x-forwarded-proto") or "").lower() == "https":
+            H.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return Resp
 
     @App_.exception_handler(HttpError)
@@ -211,20 +267,53 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return RequirePrincipal(Ctx, XAccessToken)
 
     # ── pages / static ───────────────────────────────────────────────────
+    # What the customer page learns from the server (window.__p3): never a secret. Pages are indexable only in
+    # production (development and staging copies stay out of search engines).
+    PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl}
+    PageRobots = "index,follow" if S.Production else "noindex"
+
     @App_.get("/", include_in_schema=False)
     async def Index():
-        return HTMLResponse(_VersionedPage("index.html", Base))
+        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
+
+    @App_.get("/robots.txt", include_in_schema=False)
+    async def Robots():
+        Lines = ["User-agent: *"]
+        if S.Production:
+            Lines += ["Disallow: /admin", "Disallow: /api/", "Disallow: /verify", "Disallow: /dev", "Allow: /"]
+            if S.PublicBaseUrl:
+                Lines.append(f"Sitemap: {S.PublicBaseUrl}{Base}/sitemap.xml")
+        else:
+            Lines.append("Disallow: /")                     # a development or staging copy is never indexed
+        return PlainTextResponse("\n".join(Lines) + "\n")
+
+    @App_.get("/sitemap.xml", include_in_schema=False)
+    async def Sitemap(request: Request):
+        Origin = S.PublicBaseUrl or PublicOrigin(request)
+        Urls = [f"{Origin}{Base}/"]
+        for Tile in Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True):
+            Row = Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Tile["design_id"],))
+            if Row and Row["share_slug"]:
+                Urls.append(f"{Origin}{Base}/design/{Row['share_slug']}")
+        Body_ = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
+            "".join(f"  <url><loc>{html.escape(U)}</loc></url>\n" for U in Urls) + "</urlset>\n"
+        return PlainTextResponse(Body_, media_type="application/xml")
+
+    @App_.get("/favicon.ico", include_in_schema=False)
+    async def Favicon():
+        return FileResponse(WebDir / "images" / "favicon.ico", media_type="image/x-icon",
+                            headers={"Cache-Control": "public, max-age=604800"})
 
     @App_.get("/design/{Slug}", include_in_schema=False)
     async def SharedDesignPage(Slug: str, request: Request):
         """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
         the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
         that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Html = _VersionedPage("index.html", Base)
+        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots)
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:
@@ -267,8 +356,22 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """The story of one real gallery design for the showcase (read-only; nothing is generated or charged)."""
         return Showcase.Story(Ctx, design)
 
+    def HealthDetails() -> dict:
+        """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""
+        return {"ok": True, "env": S.Env, "provider": Ctx.Provider.Name, "mode": Modes.Mode, "mode_source": Modes.Source,
+                "mode_locked": S.LockMode, "base_path": Base or "/", "admin_host": S.AdminHost or None,
+                "public_base_url": S.PublicBaseUrl or None, "mail_mode": S.MailMode,
+                "pricing_profile": Ctx.Pricing.ProfileVersion,
+                "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
+                "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
+                "daily_ai_spend_cap_usd": S.DailyAiSpendCapUsd,
+                "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
+                                                                          "minimax-camera", "hi3d")},
+                "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",
+                                                                                "minimax-camera-charm", "hi3d-charm")}}
+
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, PriceBook(Ctx.Db), Svc.Gallery,
-                  Svc.Orders, Svc.Promos)
+                  Svc.Orders, Svc.Promos, HealthDetails=HealthDetails)
 
     # ── derived media: thumbnails and movie posters, made on first request and cached (p3/media.py) ──
     @App_.get("/thumb/{Rel:path}", include_in_schema=False)
@@ -306,15 +409,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # ── session / catalog / quote ────────────────────────────────────────
     @App_.get("/api/health")
     async def Health():
-        return {"ok": True, "provider": Ctx.Provider.Name,
-                "mode": Modes.Mode, "mode_source": Modes.Source, "base_path": Base or "/",
-                "pricing_profile": Ctx.Pricing.ProfileVersion,
-                "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
-                "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
-                "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
-                                                                          "minimax-camera", "hi3d")},
-                "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",
-                                                                                "minimax-camera-charm", "hi3d-charm")}}
+        """Public liveness only. Outside production it also says the AI mode, which the customer page turns into the
+        mock banner; the full picture (provider, pricing posture, versions) is /api/admin/health."""
+        Out = {"ok": True}
+        if S.DevTools:
+            Out.update({"env": S.Env, "mode": Modes.Mode, "mode_source": Modes.Source, "provider": Ctx.Provider.Name, "base_path": Base or "/"})
+        return Out
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
@@ -652,6 +752,7 @@ def __getattr__(Name):
     # Lazy module-level `App` for uvicorn (`p3.app:App`) so importing this module in tests has no side effects.
     if Name == "App":
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        logging.getLogger("uvicorn.access").addFilter(_RedactQuery())       # no secrets in access-log lines
         globals()["App"] = CreateApp()
         return globals()["App"]
     raise AttributeError(Name)

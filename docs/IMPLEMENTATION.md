@@ -158,7 +158,8 @@ config/                      generation params, prompts, catalog, pricing profil
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/health` | Provider mode, pricing profile version/approval, config versions |
+| `GET /api/health` | Liveness only (`ok`); outside production also the AI mode for the mock banner |
+| `GET /api/admin/health` | Provider mode, pricing profile version/approval, config versions (admin key) |
 | `GET /api/session` | Token label and usage counts |
 | `GET /api/catalog` | Groups → materials, default, ring sizes |
 | `GET /api/quote?material_id&ring_size` | Fixed-volume quote (size ignored) |

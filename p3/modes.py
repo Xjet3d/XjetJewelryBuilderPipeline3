@@ -41,7 +41,10 @@ def DefaultFactories(S) -> dict:
 
 
 def ResolveStartupMode(S) -> tuple[str, str]:
-    """(mode, source) for a fresh start."""
+    """(mode, source) for a fresh start. With P3_LOCK_MODE (always in production) the configuration decides alone:
+    the developer switch's saved choice is ignored and there is no fallback."""
+    if S.LockMode:
+        return (Live if S.Provider == "fal" else Mock), "configuration (locked: P3_PROVIDER)"
     Saved = _ReadState(S.RuntimeStatePath).get("ai_mode")
     if Saved in (Mock, Live):
         if Saved == Live and not S.FalKey:
@@ -76,6 +79,9 @@ class ModeManager:
     def Switch(self, Target: str, Confirmation: str | None) -> dict:
         if Target not in (Mock, Live):
             raise HttpError(400, "invalid_mode", "Mode must be 'mock' or 'live'.")
+        if self.Ctx.Settings.LockMode:
+            raise HttpError(409, "mode_locked", "The AI mode is fixed by the server configuration (P3_LOCK_MODE); "
+                                                "it cannot be switched at runtime.")
         if Target == self.Mode:
             return self.Status()
         if Target == Live:

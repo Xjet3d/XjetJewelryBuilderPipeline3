@@ -187,5 +187,5 @@ async def test_export_and_protection(HM):
     assert "sync_mode=not sent" in T.text and "null" not in T.text.split("Set by the pipeline:")[-1]
     for Body in (J.text, T.text):
         assert "fal-SECRET" not in Body and "FAL_KEY" not in Body and AdminKey not in Body
-    Health = (await H.Client.get("/api/health")).json()
+    Health = (await H.Client.get("/api/admin/health", headers=Admin)).json()
     assert Health["config_versions"]["nano-banana-pro"].startswith("nano-banana-pro@v1-")

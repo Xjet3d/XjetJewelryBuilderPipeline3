@@ -44,7 +44,7 @@ async def test_charm_models_start_from_the_ring_settings_with_their_own_prompts(
     Movie, RingMovie = (await _Model(H, "minimax-camera-charm"))["active"]["params"], (await _Model(H, "minimax-camera"))["active"]["params"]
     assert "The charm in the reference is rigid" in Movie["prompt"] and Movie["camera_trajectory"] == RingMovie["camera_trajectory"]
     assert (await _Model(H, "hi3d-charm"))["active"]["params"] == (await _Model(H, "hi3d"))["active"]["params"]
-    Health = (await H.Client.get("/api/health")).json()
+    Health = (await H.Client.get("/api/admin/health", headers=Admin)).json()     # the versions are Admin information
     assert set(Health["config_versions"]) == set(RingModels) and set(Health["charm_config_versions"]) == set(CharmModels)
 
 
