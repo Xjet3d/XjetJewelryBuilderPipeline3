@@ -103,6 +103,18 @@
         .tap::after { content: ''; position: absolute; inset: -6px; }
         .tap-lg::after { content: ''; position: absolute; inset: -12px; }
         @media (pointer: fine) { .tap::after, .tap-lg::after { inset: 0; } }
+        /* ── Header icon buttons (My Designs, ♥ Favorites, Bag): hovering looks exactly like the selected state and
+           reveals the name in a small label below (.icon-tip); the same look stays while that panel or page is open
+           (.is-on). The heart fills, like a saved favorite. */
+        .h-icon { border-radius: .5rem; transition: color .15s, background-color .15s; }
+        .h-icon:hover, .h-icon:focus-visible, .h-icon.is-on { color: #1A1A1A; background: rgba(0, 0, 0, .04); }
+        .h-icon.is-gold:hover, .h-icon.is-gold:focus-visible, .h-icon.is-gold.is-on { color: #8A6420; background: #FBF7EF; }
+        .h-icon.is-gold:hover .heart, .h-icon.is-gold:focus-visible .heart, .h-icon.is-gold.is-on .heart { fill: #C9A96E; }
+        .icon-tip { position: absolute; top: 100%; left: 50%; transform: translate(-50%, 7px); padding: .3rem .6rem; border-radius: .25rem;
+                    background: #1A1A1A; color: #fff; font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+                    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 300; }
+        .icon-tip::before { content: ''; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; background: #1A1A1A; transform: translateX(-50%) rotate(45deg); }
+        @media (hover: hover) { .h-icon:hover .icon-tip, .h-icon:focus-visible .icon-tip { opacity: 1; } }
         html, body { overflow-x: clip; }
 
         /* ── Pipeline 3 additions ── */
@@ -239,26 +251,32 @@
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span>
             <!-- My Designs (signed in) and ♥ Favorites open the Design screen's side panel on that tab (in the studio its toolbar has them) -->
+            <!-- Each icon button: hovering looks like its selected state and reveals the name below (.h-icon / .icon-tip) -->
             <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')"
-                    class="tap inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition"
-                    aria-label="My Designs" title="My Designs">
+                    class="tap h-icon inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 transition"
+                    :class="{ 'is-on': sidebarOpen && sidebarTab === 'designs' && view === 'ai-studio' }" aria-label="My Designs">
                 <svg class="w-5 h-5 md:w-[18px] md:h-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
                 <span class="hidden md:inline">My Designs</span>
+                <span class="icon-tip md:hidden" aria-hidden="true">My Designs</span>
             </button>
-            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap relative p-2 md:p-1.5 text-zinc-600 hover:text-[#8A6420] transition"
-                    :aria-label="favorites.length ? 'My favorites, ' + favorites.length : 'My favorites'" title="Favorites">
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
+            <button type="button" x-show="!inStudio" @click="openPanel('favorites')" class="tap h-icon is-gold relative p-2 md:p-1.5 text-zinc-600 transition"
+                    :class="{ 'is-on': sidebarOpen && sidebarTab === 'favorites' && view === 'ai-studio' }"
+                    :aria-label="favorites.length ? 'My favorites, ' + favorites.length : 'My favorites'">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
                 <span x-show="favorites.length" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full text-white text-[12px] font-bold flex items-center justify-center px-0.5" style="background:#B8873A;" x-text="favorites.length"></span>
+                <span class="icon-tip" aria-hidden="true">Favorites</span>
             </button>
             <!-- Bag: always on the site's pages (signed out it asks for sign-in first); in the studio when it has something -->
-            <button type="button" x-show="!inStudio || bagCount > 0" @click="openBag()" title="Bag"
-                    :aria-label="bagCount ? 'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items') : 'My bag'" class="tap relative p-2 md:p-1.5 text-zinc-600 hover:text-black transition">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <button type="button" x-show="!inStudio || bagCount > 0" @click="openBag()"
+                    :aria-label="bagCount ? 'My bag, ' + bagCount + (bagCount === 1 ? ' item' : ' items') : 'My bag'" class="tap h-icon relative p-2 md:p-1.5 text-zinc-600 transition"
+                    :class="{ 'is-on': view === 'bag' || view === 'checkout' }">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
                     <line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/>
                 </svg>
                 <span x-show="bagCount > 0" x-cloak class="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] rounded-full bg-black text-white text-[12px] font-bold flex items-center justify-center px-0.5" x-text="bagCount"></span>
+                <span class="icon-tip" aria-hidden="true">Bag</span>
             </button>
             <span x-show="!inStudio" class="hidden md:block w-px h-5 mx-1.5" style="background:#E3DCCF;" aria-hidden="true"></span>
             <!-- Account: person icon · name · generations left (the coin) · ˅ — opens the account menu, where Sign out is.
@@ -869,11 +887,12 @@
                         </div>
                         <span x-show="!design"></span>
                         <div x-show="!sidebarOpen" class="shrink-0 flex items-center gap-1 sm:gap-2" data-testid="studio-panel-buttons">
-                        <button @click="openPanel('designs')" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="My Designs">
+                        <!-- The open tab looks like the hover state (gold on cream) -->
+                        <button @click="openPanel('designs')" class="tap shrink-0 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420] hover:bg-[#FBF7EF]" :class="sidebarOpen && sidebarTab === 'designs' ? 'text-[#8A6420] bg-[#FBF7EF]' : ''" aria-label="My Designs">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
                             <span class="hidden sm:inline">My Designs</span>
                         </button>
-                        <button @click="openPanel('favorites')" class="tap shrink-0 relative flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420]" aria-label="Favorites">
+                        <button @click="openPanel('favorites')" class="tap shrink-0 relative flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] transition px-2 py-1 rounded-lg text-[#6F6F6F] hover:text-[#8A6420] hover:bg-[#FBF7EF]" :class="sidebarOpen && sidebarTab === 'favorites' ? 'text-[#8A6420] bg-[#FBF7EF]' : ''" aria-label="Favorites">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>
                             <span class="hidden sm:inline">Favorites</span>
                         </button>
