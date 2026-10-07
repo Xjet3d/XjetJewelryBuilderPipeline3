@@ -64,9 +64,18 @@ class GalleryService:
                             "WHERE g.id = ?", (ItemId,))
         if R is None or R["candidate_status"] != "ready" or not R["asset_path"] or (R["product_type"] or "ring") not in Visible:
             return None
-        Slug = R["share_slug"] or self._AssignSlug(R["design_id"], R["title"])
+        Slug = R["share_slug"] or ShareSlug(R["title"]) or "design"         # read-only: assigned at publication
         return {"item_id": R["id"], "design_id": R["design_id"], "slug": Slug, "title": R["title"],
                 "image_url": self.Ctx.AssetUrl(R["asset_path"]), "product_type": R["product_type"] or "ring"}
+
+    def BackfillSlugs(self) -> int:
+        """Gallery designs published before link names were assigned at publication get theirs at startup."""
+        N = 0
+        for R in self.Ctx.Db.All("SELECT d.id, d.title FROM gallery_items g JOIN designs d ON d.id = g.design_id "
+                                 "WHERE d.share_slug IS NULL"):
+            self._AssignSlug(R["id"], R["title"])
+            N += 1
+        return N
 
     def _AssignSlug(self, DesignId: str, Title: str) -> str:
         Db = self.Ctx.Db
@@ -164,6 +173,8 @@ class GalleryService:
                 "duplicate_name": Names.get(R["title"].strip().lower(), 0) > 1,
                 "ready": R["candidate_status"] == "ready" and bool(R["asset_path"]), "in_gallery": True,
                 "position": R["position"], "created_at": R["created_at"], "created_by": R["created_by"],
+                "owner_kind": R["owner_kind"] or "xjet", "consent_note": R["consent_note"],
+                "consent_at": R["consent_at"], "consent_by": R["consent_by"],
                 **Stats[R["design_id"]]} for R in Rows]
         for F in Former:
             Sel = self.Ctx.Db.One("SELECT selected_candidate_id FROM designs WHERE id = ?", (F["design_id"],))
@@ -195,12 +206,22 @@ class GalleryService:
                                (DesignId, Who.AccountId))
 
     # ── curation (admin) ─────────────────────────────────────────────────
-    def Add(self, DesignId: str, CandidateId: str | None, By: str) -> dict:
-        """Add a design (its selected image, or the given option) to the gallery, or change its image."""
+    def Add(self, DesignId: str, CandidateId: str | None, By: str, OwnerKind: str = "xjet", ConsentNote: str = "") -> dict:
+        """Add a design (its selected image, or the given option) to the gallery, or change its image. Publication
+        records whose design it is: XJet's own ("xjet", the default) or a customer's ("customer"), which needs the
+        customer's consent on record — who agreed, when and how. The share link name is assigned here, once."""
         Db = self.Ctx.Db
         D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
         if D is None:
             raise HttpError(404, "design_not_found", "Design not found.")
+        OwnerKind = (OwnerKind or "xjet").strip().lower()
+        if OwnerKind not in ("xjet", "customer"):
+            raise HttpError(400, "invalid_owner_kind", "A gallery design is XJet's own ('xjet') or a customer's ('customer').")
+        ConsentNote = (ConsentNote or "").strip()[:500]
+        if OwnerKind == "customer" and not ConsentNote:
+            raise HttpError(400, "consent_required",
+                            "A customer's design can be shown only with the customer's consent: note who agreed, when and how.")
+        Consent = (ConsentNote, Now(), By) if OwnerKind == "customer" else (None, None, None)
         Cid = CandidateId or D["selected_candidate_id"]
         if not Cid:
             raise HttpError(409, "no_selected_image", "This design has no selected image. Choose an option to show first.")
@@ -209,15 +230,19 @@ class GalleryService:
         if C is None or C["status"] != "ready" or not C["asset_path"]:
             raise HttpError(409, "image_not_ready", "Only a ready image can be shown in the gallery.")
         T = Now()
+        if not D.get("share_slug"):
+            self._AssignSlug(DesignId, D["title"])              # the link name exists from publication; a GET never writes
         Existing = Db.One("SELECT id FROM gallery_items WHERE design_id = ?", (DesignId,))
         if Existing:
-            Db.Execute("UPDATE gallery_items SET candidate_id = ?, created_at = ?, created_by = ? WHERE id = ?",
-                       (Cid, T, By, Existing["id"]))
+            Db.Execute("UPDATE gallery_items SET candidate_id = ?, created_at = ?, created_by = ?, owner_kind = ?, "
+                       "consent_note = ?, consent_at = ?, consent_by = ? WHERE id = ?",
+                       (Cid, T, By, OwnerKind, *Consent, Existing["id"]))
             return self._Item(Existing["id"])
         Position = int(Db.One("SELECT COALESCE(MAX(position), 0) AS p FROM gallery_items")["p"]) + 1
         Id = NewId("gal")
-        Db.Execute("INSERT INTO gallery_items (id, design_id, candidate_id, position, created_at, created_by) "
-                   "VALUES (?,?,?,?,?,?)", (Id, DesignId, Cid, Position, T, By))
+        Db.Execute("INSERT INTO gallery_items (id, design_id, candidate_id, position, created_at, created_by, owner_kind, "
+                   "consent_note, consent_at, consent_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   (Id, DesignId, Cid, Position, T, By, OwnerKind, *Consent))
         return self._Item(Id)
 
     def _Item(self, ItemId: str) -> dict:

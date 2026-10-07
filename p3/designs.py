@@ -81,7 +81,15 @@ class DesignService:
         # fork of a master); the owner's own refinement of their own master is a design of their own
         Source = self.Ctx.Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (D["source_design_id"],)) if D.get("source_design_id") else None
         FromGallery = bool(Use) or bool(D.get("source_design_id") and (Source is None or Source["owner_account_id"] != D["owner_account_id"]))
-        return {"id": D["id"], "title": D["title"], "prompt": D["prompt"], "product_type": D.get("product_type") or "ring",
+        # Privacy: a shared master design shows its images and its name only — never its prompt, its reference image
+        # or the words of its refinements; a design forked from someone else's master keeps the master's prompt out of
+        # sight too (the customer's own refinement words are theirs to see).
+        if Use:
+            for B in Batches:
+                B["user_text"] = None
+                B["reference_url"] = None
+        return {"id": D["id"], "title": D["title"], "prompt": None if FromGallery else D["prompt"],
+                "product_type": D.get("product_type") or "ring",
                 "selected_candidate_id": Selected, "created_at": Use["started_at"] if Use else D["created_at"],
                 "updated_at": Use["last_active_at"] if Use else D["updated_at"], "batches": Batches,
                 "customization": Customization, "shared": bool(Use),

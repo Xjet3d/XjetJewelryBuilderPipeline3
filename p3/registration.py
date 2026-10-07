@@ -37,9 +37,9 @@ class RegistrationService:
         logged, never shown to the customer — exactly as in P2."""
         try:
             Id = self.Mailer.Send(To, Subject, Body)
-            Log.info("Registration email sent via %s to %s: %s (%s)", self.Mailer.Mode, To, Subject, Id)
+            Log.info("Registration email sent via %s to %s: %s (%s)", self.Mailer.Mode, MaskEmail(To), Subject, Id)
         except Exception:
-            Log.exception("Registration email to %s FAILED (%s)", To, Subject)
+            Log.exception("Registration email to %s FAILED (%s)", MaskEmail(To), Subject)
 
     def _Queue(self, Defer, To: str, Mail: tuple[str, str]) -> None:
         (Defer or (lambda F, *A: F(*A)))(self._Send, To, *Mail)
@@ -55,17 +55,11 @@ class RegistrationService:
         R = self.Ctx.Accounts.StartEmailRegistration(Name, Email)
         if R["status"] == "already_registered":
             self._Queue(Defer, Email, TokenEmail(R["name"], R["token"], f"{self._StudioUrl(Request_)}#token={R['token']}"))
-            return {"status": "already_registered",
-                    "message": "You're already registered — we've re-sent your sign-in code to your email."}
-        Link = f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/verify?token={R['verify_secret']}"
-        self._Queue(Defer, Email, VerificationEmail(R["name"], Link))
-        if R["status"] == "verification_resent":
-            return {"status": "verification_sent",
-                    "message": "We've re-sent your verification email. Please verify your email to "
-                               "save your designs and continue creating your jewelry."}
-        return {"status": "verification_sent",
-                "message": "We've sent a verification email to your inbox. Please verify your "
-                           "email to save your designs and continue creating your jewelry."}
+        else:
+            Link = f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/verify?token={R['verify_secret']}"
+            self._Queue(Defer, Email, VerificationEmail(R["name"], Link))
+        # The same answer whether the address is new, pending or registered: the site never tells who is registered
+        return {"status": "verification_sent", "message": RegisterMessage(Email)}
 
     # POST /api/register-token  {Token, Name, Email}  — "Already have a token? Enter it here"
     def SignInWithToken(self, Token: str, Via: str = "token") -> dict:
@@ -85,7 +79,20 @@ class RegistrationService:
         Studio = self._StudioUrl(Request_)
         if R["status"] == "verified":
             self._Queue(Defer, R["email"], TokenEmail(R["name"], R["token"], f"{Studio}#token={R['token']}"))
-        return RenderVerifyPage(R["status"], R.get("token"), R["name"], Studio, self.Ctx.Settings.BasePath)
+        # A link is used once: opened again it confirms the verification and reveals nothing (the code was emailed)
+        return RenderVerifyPage(R["status"], R.get("token") if R["status"] == "verified" else None, R["name"], Studio,
+                                self.Ctx.Settings.BasePath)
+
+
+def MaskEmail(Email: str) -> str:
+    """dana@example.com → d***@example.com: the log never carries a whole address."""
+    Local, _, Domain = (Email or "").partition("@")
+    return f"{Local[:1]}***@{Domain}" if Domain else "***"
+
+
+def RegisterMessage(Email: str) -> str:
+    return (f"We've sent an email to {Email}. Open it to continue: its link verifies your email and signs you in — "
+            "or, if you're already registered, it carries your sign-in code.")
 
 
 def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str) -> str:
@@ -124,11 +131,11 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
         location.replace({Js(f"{StudioUrl}#token={Token}")});
       </script>"""
     elif Ok:
-        # Only for an account verified before tokens were kept for re-sending: nothing to reveal.
+        # The link was used already: it confirms the verification and reveals nothing (the code was emailed)
         Body = f"""
       <h1>Already verified</h1>
-      <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Register again with the
-        same email to receive your sign-in code.</p>
+      <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Sign in with the code we emailed
+        you — or register again with the same email to have it sent once more.</p>
       <a class="btn" href="{E(StudioUrl)}">Start designing →</a>"""
     elif Status == "expired":
         Body = f"""

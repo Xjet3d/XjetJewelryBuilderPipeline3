@@ -10,7 +10,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 MaxReferenceBytes = 10 * 1024 * 1024
 
@@ -75,6 +75,7 @@ def NormalizeReferenceImage(Data: bytes) -> bytes:
         raise AssetError("Reference image is larger than 10 MB")
     ValidateImage(Data)
     with Image.open(io.BytesIO(Data)) as Img:
+        Img = ImageOps.exif_transpose(Img) or Img            # a phone photo: the EXIF orientation applied, then dropped
         Img = Img.convert("RGBA") if Img.mode in ("RGBA", "LA", "P") else Img.convert("RGB")
         Buf = io.BytesIO()
         Img.save(Buf, format="PNG")

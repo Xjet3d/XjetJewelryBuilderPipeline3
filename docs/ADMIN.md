@@ -80,6 +80,14 @@ A **session is one design journey**:
 
 ## Inspiration Gallery
 
+**Publication and privacy (since 2026-10-07).** *Show in gallery* asks whose design it is: an **XJet design** (made by
+XJet staff — the default) or a **customer's design**, which is published only with the customer's consent on record
+(a note of who agreed, when and how; kept with the item, shown as a badge in the gallery list and on the API as
+`owner_kind`, `consent_note`, `consent_at`, `consent_by`). The wording of the consent request to customers is a
+pending legal decision. A shared master never exposes its prompt, its reference image or its refinement words to
+other customers: they see its images and its name; a refinement forked from it keeps the master's prompt private too.
+The share link name is assigned at publication (a share GET never writes).
+
 The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 
 - **One shared master design per tile.** A customer who taps **Make it yours** is *linked* to the XJet design (`gallery_uses`); the design, its images, its 360° movies and its Hi3D raw model are never copied. The customer's own selection lives on the link, their Customize choices in `customizations` (one row per customer, design and option), their bag lines in `bag_lines`.

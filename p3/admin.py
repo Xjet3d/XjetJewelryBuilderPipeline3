@@ -1003,7 +1003,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.post("/api/admin/gallery")
     async def AdminGalleryAdd(Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return Gallery.Add(str(Body_.get("design_id") or ""), Body_.get("candidate_id") or None, Who.Id)
+        return Gallery.Add(str(Body_.get("design_id") or ""), Body_.get("candidate_id") or None, Who.Id,
+                           str(Body_.get("owner_kind") or "xjet"), str(Body_.get("consent_note") or ""))
 
     @App_.delete("/api/admin/gallery/{ItemId}")
     async def AdminGalleryRemove(ItemId: str, authorization: str | None = Header(None)):

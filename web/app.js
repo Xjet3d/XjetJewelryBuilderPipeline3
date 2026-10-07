@@ -678,8 +678,10 @@ function p3App() {
     },
     logout() {
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+      try { localStorage.removeItem(PROFILE_KEY); } catch (_) {}        // nothing of the person stays in the browser
       this.stopPolling();
       this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10;
+      this.userProfile = { name: '', email: '' };
       this.favorites = []; this.sidebarTab = 'designs'; this._setPendingFav('');
       this.signInNotice = null;
       this.design = null; this.cust = null; this.bag = null; this.designs = []; this.designsError = '';

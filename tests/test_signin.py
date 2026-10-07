@@ -7,6 +7,7 @@ import pytest
 
 from p3.accounts.local import _HashSecret
 from p3.providers import endpoints
+from p3.registration import RegisterMessage
 from tests.conftest import Harness
 
 AdminKey = "signin-admin-key"
@@ -34,10 +35,7 @@ async def test_email_registration_verify_and_sign_in(HS):
     H = HS
     Anon = {"X-Access-Token": ""}
     R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)
-    assert R.status_code == 200 and R.json() == {
-        "status": "verification_sent",
-        "message": "We've sent a verification email to your inbox. Please verify your email to save your "
-                   "designs and continue creating your jewelry."}
+    assert R.status_code == 200 and R.json() == {"status": "verification_sent", "message": RegisterMessage("dana@example.com")}
     Mail = _Outbox(H)
     assert len(Mail) == 1 and Mail[0]["to"] == "dana@example.com"
     assert Mail[0]["subject"] == "Verify your email to continue designing — XJet Atelier"
@@ -57,10 +55,9 @@ async def test_email_registration_verify_and_sign_in(HS):
     S = (await H.Client.get("/api/token-status", headers={"X-Access-Token": Token})).json()
     assert (S["used"], S["max"], S["remaining"], S["name"], S["email"]) == (0, 10, 10, "Dana", "dana@example.com")
 
-    # Clicking the link again: "Already verified" shows the same token again (P2).
+    # Clicking the link again: "Already verified", and the code is not shown again (it was emailed; a used link reveals nothing)
     Again = await H.Client.get(f"/verify?token={Secret}", headers=Anon)
-    assert "Already verified" in Again.text and f'<div class="token">{Token}</div>' in Again.text
-    assert "a copy is on its way" not in Again.text
+    assert "Already verified" in Again.text and Token not in Again.text and 'class="token"' not in Again.text
     # The verify page stores the session under P3's key so returning signs the user in (P2 xjet_session).
     assert 'localStorage.setItem("p3_session"' in Page.text and f'token: "{Token}"' in Page.text
 
@@ -78,9 +75,7 @@ async def test_register_rules_match_pipeline2(HS):
     R = await H.Client.post("/api/register-token", json={"Token": Pending}, headers=Anon)
     assert R.status_code == 403                                              # unusable until verified (P2 is_active=0)
     R = await H.Client.post("/api/register", json={"Name": "", "Email": "LEE@example.com"}, headers=Anon)   # pending → re-send
-    assert R.json() == {"status": "verification_sent",
-                        "message": "We've re-sent your verification email. Please verify your email to "
-                                   "save your designs and continue creating your jewelry."}
+    assert R.json() == {"status": "verification_sent", "message": RegisterMessage("LEE@example.com")}   # the same answer, the address as typed
     Second = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
     assert Second != First and "Hi Lee," in _Outbox(H)[0]["html"]           # name kept from first registration
     assert "Invalid link" in (await H.Client.get(f"/verify?token={First}", headers=Anon)).text   # superseded link
@@ -89,8 +84,7 @@ async def test_register_rules_match_pipeline2(HS):
     OldToken = _Link(Page, r'<div class="token">([A-Z]{6})</div>')
     assert OldToken == Pending
     R = await H.Client.post("/api/register", json={"Name": "", "Email": "lee@example.com"}, headers=Anon)   # verified
-    assert R.json() == {"status": "already_registered",
-                        "message": "You're already registered — we've re-sent your sign-in code to your email."}
+    assert R.json() == {"status": "verification_sent", "message": RegisterMessage("lee@example.com")}   # nothing says "registered"
     Resent = _Link(_Outbox(H)[0]["html"], r">([A-Z]{6})</span>")
     assert Resent == OldToken                                                # register-once: the SAME token (P2)
     assert (await H.Client.post("/api/register-token", json={"Token": Resent})).json()["ok"]

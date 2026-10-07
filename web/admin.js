@@ -223,11 +223,17 @@ function adminApp() {
     ask(opts) {
       return new Promise(resolve => {
         this.dialog = { title: opts.title || 'Are you sure?', text: opts.text || '', confirmLabel: opts.confirmLabel || 'Confirm',
-                        cancelLabel: opts.cancelLabel || 'Cancel', danger: !!opts.danger, copy: opts.copy || '', resolve };
+                        cancelLabel: opts.cancelLabel || 'Cancel', danger: !!opts.danger, copy: opts.copy || '', resolve,
+                        // a dialog may also ask for a choice (radio buttons) and a note (textarea); then it resolves {ok, choice, value}
+                        choices: opts.choices || null, choice: opts.choice || (opts.choices ? opts.choices[0].value : null),
+                        input: opts.input || null, value: (opts.input && opts.input.value) || '' };
         setTimeout(() => document.getElementById('admin-dialog')?.querySelector('button, input')?.focus(), 30);
       });
     },
-    answer(ok) { const d = this.dialog; this.dialog = null; d?.resolve?.(ok); },
+    answer(ok) {
+      const d = this.dialog; this.dialog = null;
+      d?.resolve?.(ok ? ((d.input || d.choices) ? { ok: true, choice: d.choice, value: d.value } : true) : false);
+    },
     notify(text, kind = 'ok') {
       const id = Date.now() + Math.random();
       this.toasts.push({ id, text, kind });
@@ -1206,8 +1212,17 @@ function adminApp() {
       catch (e) { this.fail(e); }
     },
     async galleryAdd(candidateId) {
+      // Publication needs the right to show the design: XJet's own always, a customer's only with their consent on record
+      const r = await this.ask({ title: 'Show this design in the Inspiration Gallery?',
+        text: 'Whose design is it? A customer’s design is published only with the customer’s consent — note who agreed, when and how; the note stays with the gallery item. (The wording of the consent request to customers is a pending legal decision.)',
+        choices: [{ value: 'xjet', label: 'An XJet design (made by XJet staff)' },
+                  { value: 'customer', label: 'A customer’s design — the customer agreed to publication' }],
+        choice: 'xjet',
+        input: { label: 'Consent note (required for a customer’s design)', placeholder: 'e.g. Agreed by email on 7 Oct 2026 (name, address)' },
+        confirmLabel: 'Show in gallery' });
+      if (!r) return;
       try {
-        await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId });
+        await this.api('POST', '/api/admin/gallery', { design_id: this.sessionId, candidate_id: candidateId, owner_kind: r.choice, consent_note: r.value });
         await this.loadSession();
       } catch (e) { this.notify('Could not add this design to the gallery: ' + e.message, 'error'); }
     },

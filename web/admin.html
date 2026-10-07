@@ -65,6 +65,13 @@
         <p id="admin-dialog-title" class="text-base font-semibold" :class="dialog.danger ? 'text-red-700' : 'text-zinc-900'" x-text="dialog.title"></p>
         <p x-show="dialog.text" class="text-sm text-zinc-700 leading-relaxed" x-text="dialog.text"></p>
         <input x-show="dialog.copy" class="inp font-mono text-xs" :value="dialog.copy" readonly @focus="$event.target.select()" aria-label="Link">
+        <template x-if="dialog.choices"><div class="space-y-1.5" role="radiogroup">
+          <template x-for="c in dialog.choices" :key="c.value">
+            <label class="flex items-start gap-2 text-sm text-zinc-800 cursor-pointer"><input type="radio" class="mt-1" name="admin-dialog-choice" :value="c.value" x-model="dialog.choice"><span x-text="c.label"></span></label>
+          </template>
+        </div></template>
+        <template x-if="dialog.input"><div><label class="lbl block mb-1" for="admin-dialog-input" x-text="dialog.input.label"></label>
+          <textarea id="admin-dialog-input" class="inp" rows="2" x-model="dialog.value" :placeholder="dialog.input.placeholder || ''"></textarea></div></template>
         <div class="flex gap-3 justify-end pt-1">
           <button x-show="dialog.cancelLabel" class="btn2" @click="answer(false)" x-text="dialog.cancelLabel"></button>
           <button class="btn" :class="dialog.danger ? '!bg-red-700 hover:!bg-red-800' : ''" @click="answer(true)" x-text="dialog.confirmLabel"></button>
@@ -435,7 +442,7 @@
             <tr class="hover:bg-zinc-50 cursor-pointer" @click="galleryToggle(g)">
               <td class="tabular-nums text-zinc-500" x-text="g.in_gallery ? g.position : '—'"></td>
               <td class="w-14"><div class="w-10 h-10 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="g.image_url" :src="small(g.image_url)" :data-full="g.image_url" class="w-full h-full object-cover" alt=""></div></td>
-              <td><p class="font-medium" x-text="g.title"></p><p class="text-[12px] text-zinc-500 flex flex-wrap items-center gap-1"><span class="prod-chip" :class="isCharm(g) ? 'is-charm' : ''" :title="pLabel((g || {}).product_type)"><span x-html="pIcon((g || {}).product_type, 'w-3.5 h-3.5')"></span><span x-text="pLabel((g || {}).product_type)"></span></span><span class="font-mono" x-text="g.ring_id || g.design_ring_id"></span><span x-show="!g.in_gallery" class="badge bg-zinc-100 text-zinc-500 ml-1">removed from gallery</span><span x-show="g.in_gallery && !g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span><span x-show="g.duplicate_name" class="badge bg-amber-100 text-amber-800 ml-1" title="Another master design has the same name — give each a distinctive one (open the design → Rename)">same name as another</span></p></td>
+              <td><p class="font-medium" x-text="g.title"></p><p class="text-[12px] text-zinc-500 flex flex-wrap items-center gap-1"><span class="prod-chip" :class="isCharm(g) ? 'is-charm' : ''" :title="pLabel((g || {}).product_type)"><span x-html="pIcon((g || {}).product_type, 'w-3.5 h-3.5')"></span><span x-text="pLabel((g || {}).product_type)"></span></span><span class="font-mono" x-text="g.ring_id || g.design_ring_id"></span><span x-show="!g.in_gallery" class="badge bg-zinc-100 text-zinc-500 ml-1">removed from gallery</span><span x-show="g.in_gallery && !g.ready" class="badge bg-red-100 text-red-700 ml-1">image missing</span><span x-show="g.duplicate_name" class="badge bg-amber-100 text-amber-800 ml-1" title="Another master design has the same name — give each a distinctive one (open the design → Rename)">same name as another</span><span x-show="g.owner_kind === 'customer'" class="badge bg-sky-100 text-sky-800 ml-1" :title="'A customer’s design, published with consent: ' + (g.consent_note || '') + (g.consent_at ? ' (recorded ' + dateTime(g.consent_at) + ' by ' + (g.consent_by || '—') + ')' : '')">customer · consent on record</span></p></td>
               <td class="text-right tabular-nums font-semibold" x-text="g.sessions"></td>
               <td class="text-right tabular-nums" x-text="g.users"></td>
               <td class="text-right tabular-nums" x-text="g.customize"></td>

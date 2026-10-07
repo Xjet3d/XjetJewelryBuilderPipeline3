@@ -174,6 +174,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Mailer = BuildMailer(S.DataDir)
     Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
+    Slugs = Svc.Gallery.BackfillSlugs()           # gallery designs get their share link name at publication; older ones here
+    if Slugs:
+        Logger.info("Assigned share link names to %d gallery designs", Slugs)
     Ctx.CharmPrices.OnSave.append(Svc.Production3D.RepriceMissing)      # a charm result waiting for charm $/g
     Sessions.BackfillBagEvents(Ctx)               # bag lines can be removed later; keep their bag_added
     Sessions.BackfillDesignModes(Ctx)             # mark older sessions mock / live from their requests

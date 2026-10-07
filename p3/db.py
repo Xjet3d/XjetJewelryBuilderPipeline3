@@ -149,7 +149,11 @@ CREATE TABLE IF NOT EXISTS gallery_items (
     candidate_id  TEXT NOT NULL REFERENCES candidates(id),
     position      INTEGER NOT NULL,
     created_at    TEXT NOT NULL,
-    created_by    TEXT NOT NULL
+    created_by    TEXT NOT NULL,
+    owner_kind    TEXT NOT NULL DEFAULT 'xjet',   -- xjet | customer: whose design is shown (publication needs the right to show it)
+    consent_note  TEXT,                           -- a customer's consent to publication: who agreed, when, how
+    consent_at    TEXT,
+    consent_by    TEXT
 );
 
 -- A customer on a shared XJet master design (from the gallery): one row per customer and design.
@@ -606,6 +610,11 @@ class Database:
                 if "owner_account_id" in Cols and "share_slug" not in Cols:
                     # Customer share link by design name (/design/aurora-twist): assigned once, stable through renames
                     Conn.execute("ALTER TABLE designs ADD COLUMN share_slug TEXT")
+                GCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_items)")}
+                if GCols and "owner_kind" not in GCols:
+                    # Publication provenance: whose design a gallery item shows and the customer's consent (privacy)
+                    for Col in ("owner_kind TEXT NOT NULL DEFAULT 'xjet'", "consent_note TEXT", "consent_at TEXT", "consent_by TEXT"):
+                        Conn.execute(f"ALTER TABLE gallery_items ADD COLUMN {Col}")
                 if "owner_account_id" in Cols:
                     _InstallProducts(Conn)                 # product type on designs (rings by default), charm sizes
                     from p3 import ringids
