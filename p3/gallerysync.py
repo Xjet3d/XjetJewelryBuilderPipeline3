@@ -770,6 +770,7 @@ async def Push(BundleDir: Path, Base: str, Key: str, Client=None, Out=sys.stdout
     import httpx
 
     BundleDir = Path(BundleDir)
+    Key = CleanKey(Key)                                     # a pasted key's terminal characters never reach a header
     M, _ = Load(BundleDir)                                  # nothing leaves before the bundle checks out here
     Own = Client is None
     if Own:
@@ -797,7 +798,10 @@ async def Push(BundleDir: Path, Base: str, Key: str, Client=None, Out=sys.stdout
                 Msg = R.json()["error"]["message"]
             except Exception:  # noqa: BLE001 — a proxy's page is not JSON
                 Msg = R.text[:200]
-            raise SyncError(f"{What}: HTTP {R.status_code} — {Msg}")
+            if not (Msg or "").strip():
+                Msg = ("an empty answer from the proxy in front of the site (Cloudflare or nginx): the request was refused "
+                       "before it reached the site")
+            raise SyncError(f"{What}: HTTP {R.status_code}: {Msg}")
         return R.json()
 
     try:
@@ -853,7 +857,7 @@ def Verify(Base: str, Expect: int | None = None, Out=sys.stdout) -> bool:
     def Check(Label: str, Good: bool, Detail: str = "") -> None:
         nonlocal Ok
         Ok &= Good
-        print(f"  {'ok  ' if Good else 'FAIL'} {Label}{(' — ' + Detail) if Detail else ''}", file=Out)
+        print(f"  {'ok  ' if Good else 'FAIL'} {Label}{(': ' + Detail) if Detail else ''}", file=Out)
 
     def Media(Label: str, Path_: str | None, Kind: str) -> None:
         if not Path_:
@@ -896,17 +900,34 @@ def Verify(Base: str, Expect: int | None = None, Out=sys.stdout) -> bool:
 
 
 # ── command line ───────────────────────────────────────────────────────────
+PasteMarks = ("\x1b[200~", "\x1b[201~")          # what a terminal puts around pasted text (bracketed paste)
+
+
+def CleanKey(Raw: str | None) -> str:
+    """A key as typed or pasted at a terminal: the bracketed-paste markers around pasted text, other control characters
+    (an Escape, a Ctrl-V, a carriage return) and surrounding spaces are not part of it. What remains must be a valid
+    HTTP header value — printable ASCII without spaces — or it is refused here with a clear message; sent as it was, the
+    proxy in front of the site (Cloudflare) answers an empty HTTP 400 before the site ever sees it (2026-10-08)."""
+    Key = Raw or ""
+    for Mark in PasteMarks:
+        Key = Key.replace(Mark, "")
+    Key = "".join(Ch for Ch in Key if Ch.isprintable()).strip()
+    if not Key:
+        raise SyncError("No Admin key for the target site")
+    if any(not 0x21 <= ord(Ch) <= 0x7E for Ch in Key):
+        raise SyncError("The Admin key has a space or a character outside plain ASCII: check what was typed or pasted")
+    return Key
+
+
 def _TargetKey(Base: str) -> str:
     """The target site's Admin key: from the file P3_TARGET_ADMIN_KEY_FILE names, else asked for (never shown or kept)."""
     Name = os.environ.get("P3_TARGET_ADMIN_KEY_FILE", "").strip()
     if Name:
-        Key = Path(Name).expanduser().read_text(encoding="utf-8").strip()
+        Raw = Path(Name).expanduser().read_text(encoding="utf-8")
     else:
         import getpass
-        Key = getpass.getpass(f"Admin key of {Base} (not shown): ").strip()
-    if not Key:
-        raise SyncError("No Admin key for the target site")
-    return Key
+        Raw = getpass.getpass(f"Admin key of {Base} (not shown): ")
+    return CleanKey(Raw)
 
 
 def _DataDir(Arg: str | None) -> Path:
@@ -922,15 +943,15 @@ def _Print(Report: dict, Out=sys.stdout) -> None:
           f"{C['gallery_items']} gallery items, {C['designs']} designs, {C['batches']} batches, {C['candidates']} images, "
           f"{C['movies']} movies, {C['files']} files ({_Mb(C['bytes'])})", file=Out)
     for T in Order:
-        print(f"  {T:<14} new {Report['insert'][T]:>3} · changed {Report['update'][T]:>3} · unchanged {Report['same'][T]:>3}", file=Out)
-    print(f"  files          to write {Report['files_write']} ({_Mb(Report['bytes_write'])}) · unchanged {Report['files_same']}", file=Out)
+        print(f"  {T:<14} new {Report['insert'][T]:>3} | changed {Report['update'][T]:>3} | unchanged {Report['same'][T]:>3}", file=Out)
+    print(f"  files          to write {Report['files_write']} ({_Mb(Report['bytes_write'])}) | unchanged {Report['files_same']}", file=Out)
     if Report["unpublish"]:
         print(f"  taken off the gallery here (no longer published on {S['name']}): {', '.join(Report['unpublish'])}", file=Out)
     for X in Report.get("skipped_on_source") or []:
-        print(f"  left behind on {S['name']}: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')} — {X['why']}", file=Out)
+        print(f"  left behind on {S['name']}: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')}: {X['why']}", file=Out)
     for I in Report.get("items") or []:
         Moved = "" if I.get("ring_id_here") == I.get("ring_id") else f" (was {I.get('ring_id')} on {S['name']})"
-        print(f"  {I.get('ring_id_here') or '—':<8} {I['title']}{Moved} · /design/{I.get('slug_here') or ''}", file=Out)
+        print(f"  {I.get('ring_id_here') or '-':<8} {I['title']}{Moved} | /design/{I.get('slug_here') or ''}", file=Out)
     print("Imported." if Report["applied"] else "Plan only: nothing written yet (--apply imports it).", file=Out)
 
 
@@ -959,7 +980,7 @@ def Main(Argv=None) -> int:
                   f"images, {M['counts']['movies']} movies, {M['counts']['files']} files, {_Mb(M['counts']['bytes'])}) to {A.out}; "
                   f"content {M['content_id'][:12]}")
             for X in M["skipped"]:
-                print(f"  left behind: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')} — {X['why']}")
+                print(f"  left behind: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')}: {X['why']}")
         elif A.cmd == "check":
             M, _ = Load(Path(A.bundle))
             print(f"Valid bundle from {M['source']['name']}: {M['counts']['gallery_items']} gallery items, {M['counts']['files']} files "

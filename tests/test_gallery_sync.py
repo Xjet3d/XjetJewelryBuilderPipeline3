@@ -188,7 +188,8 @@ async def test_a_bundle_pushed_to_the_sites_admin_api_lands_once_and_only_with_i
             await Sync.Push(Bundle, "", "not-the-key", Client=T.Client, Out=io.StringIO())
         assert (await T.Client.get("/api/gallery", headers=Anon)).json()["items"] == []
         Out = io.StringIO()
-        R = await Sync.Push(Bundle, "", AdminKey, Client=T.Client, Out=Out, ChunkBytes=64 << 10)   # several pieces a file
+        Pasted = "\x1b[200~" + AdminKey + "\x1b[201~\r\n"     # pasted at a terminal: bracketed-paste markers, Enter
+        R = await Sync.Push(Bundle, "", Pasted, Client=T.Client, Out=Out, ChunkBytes=64 << 10)     # several pieces a file
         assert R["applied"] and R["insert"]["gallery_items"] == 2 and R["snapshot"].startswith("pipeline3-")
         Tiles = (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]
         assert {I["design_id"] for I in Tiles} == {X["master"], X["var"]}
@@ -226,6 +227,17 @@ async def test_a_bundle_pushed_to_the_sites_admin_api_lands_once_and_only_with_i
         await H.Close()
         await T.Close()
         await U.Close()
+
+
+def test_a_pasted_key_loses_its_terminal_characters_and_an_impossible_one_is_refused_before_sending():
+    """A key pasted at a terminal arrives wrapped in bracketed-paste markers; sent as is, Cloudflare answered atelier's
+    first push with an empty HTTP 400 (2026-10-08). The markers, control characters and spaces around it go; a key that
+    still cannot be a header value is refused before anything is sent."""
+    assert Sync.CleanKey("\x1b[200~Abc123-def_456\x1b[201~\r\n") == "Abc123-def_456"
+    assert Sync.CleanKey("  \x16Abc123def456\x1b ") == "Abc123def456"
+    for Bad in ("", "\x1b[200~\x1b[201~", "two words here", "café-key-123"):
+        with pytest.raises(Sync.SyncError):
+            Sync.CleanKey(Bad)
 
 
 async def test_a_row_the_target_made_itself_stops_the_import_and_nothing_is_written(tmp_path):
