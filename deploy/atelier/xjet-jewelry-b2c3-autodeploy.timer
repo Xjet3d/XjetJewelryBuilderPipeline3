@@ -1,4 +1,5 @@
-# Checks GitHub every 2 minutes; a deploy happens only when main moved (see scripts/auto-deploy-atelier.sh).
+# Checks GitHub every 2 minutes; a deploy happens only when atelier-production moved, which needs the owner's
+# approval (main never reaches atelier; see scripts/auto-deploy-atelier.sh and deploy/README.md).
 [Unit]
 Description=XJet Atelier Pipeline 3 auto-deploy check
 

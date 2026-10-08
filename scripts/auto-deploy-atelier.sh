@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# auto-deploy-atelier.sh — keep atelier's Pipeline 3 (a user systemd service, staging under /JewelryB2C3/) on GitHub main.
-# Run every few minutes by xjet-jewelry-b2c3-autodeploy.timer (deploy/atelier/). Nothing happens unless origin/main moved:
-#   1. fetch; stop if the checkout already is origin/main (the usual case: no output, no restart);
+# auto-deploy-atelier.sh — keep atelier's Pipeline 3 (a user systemd service under /JewelryB2C3/, production) on the
+# GitHub branch atelier-production. Since 2026-10-08: main is development and goes to proto only (scripts/deploy-proto.sh);
+# atelier-production moves only with the owner's explicit approval of a version reviewed on proto (deploy/README.md,
+# atelier), so a push to main — anyone's — never reaches atelier.
+# Run every few minutes by xjet-jewelry-b2c3-autodeploy.timer (deploy/atelier/). Nothing happens unless the branch moved:
+#   1. fetch; stop if the checkout already is origin/atelier-production (the usual case: no output, no restart);
 #   2. skip (retry at the next tick) while paid generation jobs are in flight, so a restart never strands them;
-#   3. back up the databases and assets (scripts/backup.sh), fast-forward to origin/main (never a local commit),
+#   3. back up the databases and assets (scripts/backup.sh), fast-forward to the branch (never a local commit),
 #      install requirements when they changed, restart the user service;
 #   4. wait for the health answer; if there is none, go back to the previous commit and restart it (the failure is
-#      logged and the same broken commit is not retried until main moves again);
+#      logged and the same broken commit is not retried until the branch moves again);
 #   5. run the read-only checks of scripts/verify-production.sh (their result is logged, never a reason to roll back).
-# Gallery content is not part of this automatic update. After an update, when proto's approved Inspiration Gallery
-# changed, push it explicitly (only gallery content moves; deploy/README.md, atelier):
+# Gallery content is not part of this automatic update. After an approved update, when proto's approved Inspiration
+# Gallery changed and the owner approved it, push it explicitly (only gallery content moves; deploy/README.md, atelier):
 #   bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
 # Manual run: bash scripts/auto-deploy-atelier.sh   ·   Pause: systemctl --user stop xjet-jewelry-b2c3-autodeploy.timer
-# Environment: P3_CHECKOUT (default ~/git/XjetJewelryBuilderPipeline3), P3_SERVICE (xjet-jewelry-b2c3),
-# P3_LOCAL_URL (http://127.0.0.1:8340/JewelryB2C3), P3_BACKUP_DIR (~/p3-backups).
+# Environment: P3_DEPLOY_BRANCH (atelier-production), P3_CHECKOUT (default ~/git/XjetJewelryBuilderPipeline3),
+# P3_SERVICE (xjet-jewelry-b2c3), P3_LOCAL_URL (http://127.0.0.1:8340/JewelryB2C3), P3_BACKUP_DIR (~/p3-backups).
 set -euo pipefail
 
+BRANCH="${P3_DEPLOY_BRANCH:-atelier-production}"
 CHECKOUT="${P3_CHECKOUT:-$HOME/git/XjetJewelryBuilderPipeline3}"
 SERVICE="${P3_SERVICE:-xjet-jewelry-b2c3}"
 LOCAL="${P3_LOCAL_URL:-http://127.0.0.1:8340/JewelryB2C3}"
@@ -25,11 +29,13 @@ cd "$CHECKOUT"
 exec 9>"$CHECKOUT/.auto-deploy.lock"
 flock -n 9 || { echo "another deploy is running"; exit 0; }
 
-git fetch -q origin main
-Old="$(git rev-parse HEAD)"; New="$(git rev-parse origin/main)"
+# The branch's own ref, whatever refspec the clone was made with
+git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" \
+    || { echo "cannot fetch $BRANCH from origin: not deploying" >&2; exit 1; }
+Old="$(git rev-parse HEAD)"; New="$(git rev-parse "origin/$BRANCH")"
 [[ "$Old" == "$New" ]] && exit 0
-git merge-base --is-ancestor "$Old" "$New" || { echo "checkout has commits that are not on origin/main ($Old): not deploying" >&2; exit 1; }
-[[ -f .auto-deploy.bad && "$(cat .auto-deploy.bad)" == "$New" ]] && { echo "$New failed to start before; waiting for a newer main"; exit 0; }
+git merge-base --is-ancestor "$Old" "$New" || { echo "checkout has commits that are not on origin/$BRANCH ($Old): not deploying" >&2; exit 1; }
+[[ -f .auto-deploy.bad && "$(cat .auto-deploy.bad)" == "$New" ]] && { echo "$New failed to start before; waiting for a newer $BRANCH"; exit 0; }
 
 echo "deploying ${Old:0:7} -> ${New:0:7}: $(git log -1 --format=%s "$New")"
 Busy="$(.venv/bin/python - <<'PY'

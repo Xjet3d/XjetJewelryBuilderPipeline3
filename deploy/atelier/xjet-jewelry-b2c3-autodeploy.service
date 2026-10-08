@@ -2,7 +2,7 @@
 # Install: cp deploy/atelier/xjet-jewelry-b2c3-autodeploy.{service,timer} ~/.config/systemd/user/
 #          systemctl --user daemon-reload && systemctl --user enable --now xjet-jewelry-b2c3-autodeploy.timer
 [Unit]
-Description=XJet Atelier Pipeline 3: deploy GitHub main when it moved
+Description=XJet Atelier Pipeline 3: deploy GitHub atelier-production when it moved
 
 [Service]
 Type=oneshot

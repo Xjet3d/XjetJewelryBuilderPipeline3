@@ -4,6 +4,10 @@
 > `deploy/production/README.md`, `.env.production.example` and `docs/PRODUCTION-READINESS-HANDOFF.md`. Nothing below
 > changes for proto, which stays the staging copy; `scripts/deploy-proto.sh` is its deploy procedure (in-flight
 > check, backup, fast-forward to pushed `main`, restart, health, `scripts/verify-production.sh`).
+>
+> **Branches (since 2026-10-08):** `main` is development and goes to **proto** only. `atelier-production` is what
+> **atelier** runs, and it moves only with the owner's explicit approval of a version reviewed on proto. A push to
+> `main`, by anyone, never reaches atelier.
 
 ```
 browser ── http://proto/JewelryB2C3/ ──► proto nginx ──► http://tron/JewelryB2C3/ ──► tron nginx ──► 127.0.0.1:8340 (systemd)
@@ -62,12 +66,22 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
 
 ### Update procedure
 
-1. **Code: automatic.** `xjet-jewelry-b2c3-autodeploy.timer` (`deploy/atelier/`) runs `scripts/auto-deploy-atelier.sh`
-   every 2 minutes. When GitHub `main` moved, it backs up, fast-forwards, restarts, waits for the health answer and rolls
-   back if there is none. Whatever is pushed to `main` is live on atelier within minutes. Backups (`scripts/backup.sh`)
-   hard-link every unchanged asset file to the previous backup, so a backup at every deploy costs only what changed.
-2. **Gallery content: an explicit step after an update, whenever proto's approved Inspiration Gallery changed.** From a
-   machine with ssh to tron and HTTPS to atelier:
+1. **Code: only with the owner's approval.** atelier follows the GitHub branch `atelier-production`, never `main`.
+   Development goes to `main` and to proto; the owner reviews it on proto. When the owner approves a version for
+   atelier, and only then, that reviewed commit is put on the production branch:
+
+   ```bash
+   git push origin <approved commit>:refs/heads/atelier-production
+   ```
+
+   This is a fast-forward of what atelier runs: never force it. To undo a version, approve a revert commit instead of
+   moving the branch back; the auto-deploy does not go backwards. `xjet-jewelry-b2c3-autodeploy.timer`
+   (`deploy/atelier/`) runs `scripts/auto-deploy-atelier.sh` every 2 minutes. When `atelier-production` moved, it backs
+   up, fast-forwards, restarts, waits for the health answer and rolls back if there is none; a push to `main` changes
+   nothing there. Backups (`scripts/backup.sh`) hard-link every unchanged asset file to the previous backup, so a backup
+   at every deploy costs only what changed.
+2. **Gallery content: an explicit step, only with the owner's approval, whenever proto's approved Inspiration Gallery
+   changed.** From a machine with ssh to tron and HTTPS to atelier:
 
    ```bash
    bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
