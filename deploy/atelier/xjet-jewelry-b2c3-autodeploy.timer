@@ -1,0 +1,11 @@
+# Checks GitHub every 2 minutes; a deploy happens only when main moved (see scripts/auto-deploy-atelier.sh).
+[Unit]
+Description=XJet Atelier Pipeline 3 auto-deploy check
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

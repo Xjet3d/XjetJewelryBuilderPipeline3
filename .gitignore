@@ -18,3 +18,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# atelier auto-deploy state (scripts/auto-deploy-atelier.sh)
+.auto-deploy.lock
+.auto-deploy.bad
