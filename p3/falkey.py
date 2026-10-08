@@ -28,7 +28,18 @@ def ReadSaved(DataDir: Path) -> str | None:
 
 
 def WriteSaved(DataDir: Path, Key: str) -> None:
-    Path_ = SecretPath(DataDir)
+    WriteSecretFile(SecretPath(DataDir), Key)
+
+
+def ReadSecretFile(Path_: Path) -> str | None:
+    try:
+        return Path_.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def WriteSecretFile(Path_: Path, Key: str) -> None:
+    """Atomically, mode 0600."""
     Path_.parent.mkdir(parents=True, exist_ok=True)
     Tmp = Path_.with_name(Path_.name + ".tmp")
     Fd = os.open(Tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

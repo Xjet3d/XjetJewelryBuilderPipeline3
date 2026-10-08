@@ -388,7 +388,21 @@ below) and is refused while generations are running. The choice survives restart
 like the `/dev` page's switch. Where the configuration fixes the mode (`P3_LOCK_MODE`, always in production) the switch is
 disabled. API: `GET|PUT /api/admin/ai-mode` (`PUT {"mode": "mock"|"live", "confirmation"}`).
 
-## fal.ai API key (Settings → System)
+## Keys (Settings → Keys)
+
+Two different secrets, two cards; changing one never changes the other.
+
+### Admin key
+The key that signs people in to this Admin (`P3_ADMIN_KEY`). The card shows where it comes from (`changed here` or
+`from the server configuration`) and its length — never the key. **Change Admin key** needs the **current key typed
+again** and a new one of 12+ characters; it is saved in `<data dir>/admin_key.secret` (mode 0600), replaces
+`P3_ADMIN_KEY` from the environment, survives restarts, signs **every other browser out** (this one stays signed in) and
+invalidates download links signed with the old key. **Go back to the server configuration's key** (current key typed)
+removes the saved key. **In production** the key belongs to the server configuration (24+ random characters): the card is
+read-only and a saved file is ignored. API: `GET|PUT|DELETE /api/admin/admin-key` (`PUT {"current","new"}`,
+`DELETE {"current"}`).
+
+### fal.ai API key
 
 The card shows whether a key is configured, where it comes from (`set here` or `from the server configuration`) and
 its last four characters — the key is never returned by any API. **Check and save** first makes a free test upload to

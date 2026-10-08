@@ -1587,7 +1587,7 @@
   <!-- ══════════════════════════ Settings: pricing & materials · promo codes · AI models & prompts · system ══════════════════════════ -->
   <main x-show="ok && tab === 'settings'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <nav class="card flex flex-wrap" aria-label="Settings sections">
-      <template x-for="s in [['pricing','Pricing & Materials','Website fixed prices, densities, 3D cost / price, AI list prices'],['promos','Promo codes','Discounts: percent or fixed, dates, limits, materials'],['models','AI models & prompts','Versioned prompts and parameters per model and product'],['products','Products','Rings and charms: what customers can see'],['system','System health','Mode, storage, versions']]" :key="s[0]">
+      <template x-for="s in [['pricing','Pricing & Materials','Website fixed prices, densities, 3D cost / price, AI list prices'],['promos','Promo codes','Discounts: percent or fixed, dates, limits, materials'],['models','AI models & prompts','Versioned prompts and parameters per model and product'],['products','Products','Rings and charms: what customers can see'],['keys','Keys','Admin key and fal.ai API key'],['system','System health','Mode, storage, versions']]" :key="s[0]">
         <a :href="'#/settings/' + s[0]" class="px-4 py-3 text-left border-r border-zinc-100 last:border-r-0 flex-1 min-w-[170px] transition block" :class="sub === s[0] ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'">
           <span class="block text-[13px] font-semibold" x-text="s[1]"></span>
           <span class="block text-[12px] mt-0.5" :class="sub === s[0] ? 'text-zinc-300' : 'text-zinc-500'" x-text="s[2]"></span>
@@ -1653,6 +1653,73 @@
     </section>
 
     <!-- System health -->
+    <!-- Keys: two different secrets, two cards -->
+    <section class="space-y-4" x-show="sub === 'keys'">
+      <p class="text-[12px] text-zinc-500">Two different keys: the <strong>Admin key</strong> lets people into this Admin; the <strong>fal.ai API key</strong> lets the website call the AI provider. Changing one never changes the other.</p>
+      <section class="card p-5 space-y-3" x-show="adminKey" aria-label="Admin key">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <div><p class="lbl">Admin key</p><p class="text-[12px] text-zinc-500">The key that signs people in to this Admin (<span class="font-mono">/admin</span>). Anyone who knows it can change prices, orders and settings. Not a fal.ai key.</p></div>
+          <span class="badge" :class="adminKey?.source === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'"
+                x-text="adminKey?.source === 'admin' ? 'changed here' : 'from the server configuration'"></span>
+        </div>
+        <p class="text-sm text-zinc-600">Current key: <span class="font-mono" x-text="'•'.repeat(Math.min(adminKey?.length || 0, 24))"></span> <span class="text-[12px] text-zinc-500" x-text="'(' + (adminKey?.length || 0) + ' characters; never shown)'"></span></p>
+        <p class="text-[12px] text-zinc-500" x-show="adminKey && !adminKey.editable" x-text="adminKey?.note"></p>
+        <form x-show="adminKey?.editable" @submit.prevent="saveAdminKey()" class="grid gap-3 md:grid-cols-2" autocomplete="off">
+          <div x-data="{ show: false }" style="position:relative">
+            <input id="admin-key-current" aria-label="Current Admin key" :type="show ? 'text' : 'password'" class="inp" style="padding-right:2.5rem" autocomplete="current-password" spellcheck="false" placeholder="Current Admin key" x-model="adminKeyCurrent">
+            <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+          </div>
+          <div x-data="{ show: false }" style="position:relative">
+            <input id="admin-key-new" aria-label="New Admin key" :type="show ? 'text' : 'password'" class="inp" style="padding-right:2.5rem" autocomplete="new-password" spellcheck="false" :placeholder="'New Admin key (at least ' + (adminKey?.min_chars || 12) + ' characters)'" x-model="adminKeyNew">
+            <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-4 md:col-span-2">
+            <button class="btn" type="submit" :disabled="adminKeyBusy || !adminKeyCurrent.trim() || !adminKeyNew.trim()">Change Admin key</button>
+            <button class="underline text-xs uppercase tracking-widest text-zinc-500" type="button" x-show="adminKey?.source === 'admin'"
+                    @click="removeAdminKey()" :disabled="adminKeyBusy || !adminKeyCurrent.trim()">Go back to the server configuration's key</button>
+          </div>
+        </form>
+        <p class="text-[12px] text-zinc-500" x-show="adminKey?.editable">Changing the key needs the current key again, and signs every other browser out (this one stays signed in). A key set here replaces <span class="font-mono">P3_ADMIN_KEY</span> from the server configuration and survives restarts; &ldquo;go back&rdquo; (with the current key typed above) restores it. Download links signed with the old key stop working.</p>
+        <p x-show="adminKeyMsg" class="text-sm" role="status" :class="adminKeyErr ? 'text-red-600' : 'text-emerald-700'" x-text="adminKeyMsg"></p>
+      </section>
+      <section class="card p-5 space-y-3" x-show="falKey" aria-label="fal.ai API key">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <div><p class="lbl">fal.ai API key</p><p class="text-[12px] text-zinc-500">The secret the website uses to call the AI provider (images, movies, 3D). Billed by fal.ai. Not a sign-in.</p></div>
+          <span class="badge" :class="falKey?.configured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+                x-text="!falKey?.configured ? 'not set' : (falKey.source === 'admin' ? 'set here' : 'from the server configuration')"></span>
+        </div>
+        <p class="text-sm text-zinc-600" x-show="falKey?.configured">Key in use: <span class="font-mono" x-text="'••••••••' + (falKey?.last4 || '')"></span>. It is never shown in full and never leaves the server.</p>
+        <div x-show="falKey?.configured"><button class="btn" type="button" @click="checkFalKey()" :disabled="falKeyBusy">Check key now</button>
+          <span class="text-[12px] text-zinc-500 ml-2">Free test upload to fal.ai; no model runs.</span></div>
+        <p class="text-sm text-zinc-600" x-show="!falKey?.configured">No key: live AI mode is unavailable and the mock provider is used.</p>
+        <p class="text-[12px] text-zinc-500" x-show="falKey && !falKey.editable" x-text="falKey?.note"></p>
+        <form x-show="falKey?.editable" @submit.prevent="saveFalKey()" class="flex flex-wrap items-center gap-3" autocomplete="off">
+          <div x-data="{ show: false }" class="flex-1 min-w-[260px]" style="position:relative">
+            <input id="fal-key-input" aria-label="New fal.ai API key" :type="show ? 'text' : 'password'" class="inp font-mono" style="padding-right:2.5rem" autocomplete="off" spellcheck="false"
+                   placeholder="Paste a new fal.ai key" x-model="falKeyInput">
+            <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+          </div>
+          <button class="btn" type="submit" :disabled="falKeyBusy || !falKeyInput.trim()">Check and save</button>
+          <button class="underline text-xs uppercase tracking-widest text-zinc-500" type="button" x-show="falKey?.source === 'admin'"
+                  @click="removeFalKey()" :disabled="falKeyBusy">Remove saved key</button>
+        </form>
+        <p class="text-[12px] text-zinc-500" x-show="falKey?.editable">Saving first tests the key with a free upload to fal.ai (no model runs, no cost); a key that fails is not saved. A key saved here replaces <span class="font-mono">FAL_KEY</span> from the server configuration. The AI mode stays as it is (switch to live on the <a class="underline" :href="BASE + '/dev'">/dev</a> page). Use a key with a provider spending limit.</p>
+        <p x-show="falKeyMsg" class="text-sm" role="status" :class="falKeyErr ? 'text-red-600' : 'text-emerald-700'" x-text="falKeyMsg"></p>
+      </section>
+    </section>
+
     <section class="space-y-4" x-show="sub === 'system'">
       <div class="card p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div><p class="lbl mb-1">AI mode</p><p class="text-xl font-semibold" x-text="health?.mode || mode || '—'"></p><p class="text-[12px] text-zinc-500" x-text="health?.mode_source ? 'set by ' + health.mode_source : ''"></p></div>
@@ -1680,38 +1747,10 @@
           <span class="badge" :class="aiMode?.mode === 'mock' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-200 text-zinc-700'" x-text="aiMode?.mode === 'mock' ? 'ON' : 'OFF'"></span>
         </div>
         <p class="text-[12px] text-zinc-500" x-show="aiMode?.locked">The AI mode is fixed by the server configuration (<span class="font-mono">P3_PROVIDER</span> / production); it cannot be switched here.</p>
-        <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked && !aiMode?.live_available">Live mode needs a fal.ai key: set one below.</p>
+        <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked && !aiMode?.live_available">Live mode needs a fal.ai key: set one in Settings → Keys.</p>
         <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked && aiMode?.active_jobs" x-text="aiMode?.active_jobs + ' generation(s) are running: the mode can be switched when they finish.'"></p>
         <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked">Turning mock mode off makes every generation, movie and 3D request a paid fal.ai call (you are asked to confirm). The choice survives restarts.</p>
         <p x-show="aiModeMsg" class="text-sm" role="status" :class="aiModeErr ? 'text-red-600' : 'text-emerald-700'" x-text="aiModeMsg"></p>
-      </section>
-      <section class="card p-5 space-y-3" x-show="falKey" aria-label="fal.ai key">
-        <div class="flex flex-wrap items-baseline justify-between gap-3">
-          <p class="lbl">fal.ai API key</p>
-          <span class="badge" :class="falKey?.configured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
-                x-text="!falKey?.configured ? 'not set' : (falKey.source === 'admin' ? 'set here' : 'from the server configuration')"></span>
-        </div>
-        <p class="text-sm text-zinc-600" x-show="falKey?.configured">Key in use: <span class="font-mono" x-text="'••••••••' + (falKey?.last4 || '')"></span>. It is never shown in full and never leaves the server.</p>
-        <div x-show="falKey?.configured"><button class="btn" type="button" @click="checkFalKey()" :disabled="falKeyBusy">Check key now</button>
-          <span class="text-[12px] text-zinc-500 ml-2">Free test upload to fal.ai; no model runs.</span></div>
-        <p class="text-sm text-zinc-600" x-show="!falKey?.configured">No key: live AI mode is unavailable and the mock provider is used.</p>
-        <p class="text-[12px] text-zinc-500" x-show="falKey && !falKey.editable" x-text="falKey?.note"></p>
-        <form x-show="falKey?.editable" @submit.prevent="saveFalKey()" class="flex flex-wrap items-center gap-3" autocomplete="off">
-          <div x-data="{ show: false }" class="flex-1 min-w-[260px]" style="position:relative">
-            <input id="fal-key-input" aria-label="New fal.ai API key" :type="show ? 'text' : 'password'" class="inp font-mono" style="padding-right:2.5rem" autocomplete="off" spellcheck="false"
-                   placeholder="Paste a new fal.ai key" x-model="falKeyInput">
-            <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
-                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
-          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
-        </button>
-          </div>
-          <button class="btn" type="submit" :disabled="falKeyBusy || !falKeyInput.trim()">Check and save</button>
-          <button class="underline text-xs uppercase tracking-widest text-zinc-500" type="button" x-show="falKey?.source === 'admin'"
-                  @click="removeFalKey()" :disabled="falKeyBusy">Remove saved key</button>
-        </form>
-        <p class="text-[12px] text-zinc-500" x-show="falKey?.editable">Saving first tests the key with a free upload to fal.ai (no model runs, no cost); a key that fails is not saved. A key saved here replaces <span class="font-mono">FAL_KEY</span> from the server configuration. The AI mode stays as it is (switch to live on the <a class="underline" :href="BASE + '/dev'">/dev</a> page). Use a key with a provider spending limit.</p>
-        <p x-show="falKeyMsg" class="text-sm" role="status" :class="falKeyErr ? 'text-red-600' : 'text-emerald-700'" x-text="falKeyMsg"></p>
       </section>
       <section class="card p-6" x-show="storage">
         <p class="lbl mb-4">3D storage · this server</p>

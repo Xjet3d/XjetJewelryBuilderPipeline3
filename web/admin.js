@@ -199,6 +199,7 @@ function adminApp() {
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
+    adminKey: null, adminKeyCurrent: '', adminKeyNew: '', adminKeyBusy: false, adminKeyMsg: '', adminKeyErr: false,
     aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
@@ -298,7 +299,7 @@ function adminApp() {
       let id = m && m[2] ? decodeURIComponent(m[2]) : '';
       if (this.tab === 'settings') {
         const parts = id.split('/');
-        this.sub = ['pricing', 'promos', 'models', 'products', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
+        this.sub = ['pricing', 'promos', 'models', 'products', 'keys', 'system'].includes(parts[0]) ? parts[0] : 'pricing';
         id = parts.slice(1).join('/');
       }
       const wasList = this.tab === 'sessions' && !this.sessionId;
@@ -327,10 +328,13 @@ function adminApp() {
         if (this.sub === 'pricing') await this.loadCharmPrices();
         if (this.sub === 'promos') await this.loadPromos();
         if (this.sub === 'products') await this.loadProducts();
+        if (this.sub === 'keys') {
+          this.falKey = await this.api('GET', '/api/admin/fal-key').catch(() => null);
+          this.adminKey = await this.api('GET', '/api/admin/admin-key').catch(() => null);
+        }
         if (this.sub === 'system') {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
           this.health = await this.api('GET', '/api/admin/health').catch(() => null);   // the full picture is admin-only
-          this.falKey = await this.api('GET', '/api/admin/fal-key').catch(() => null);
           this.aiMode = await this.api('GET', '/api/admin/ai-mode').catch(() => null);
         }
       }
@@ -1089,7 +1093,25 @@ function adminApp() {
       } catch (e) { this.aiModeErr = true; this.aiModeMsg = e.message; } finally { this.aiModeBusy = false; }
     },
 
-    // ── fal.ai key (Settings → System) ─────────────────────────────────
+    // ── Admin key (Settings → Keys) ────────────────────────────────────
+    async saveAdminKey() {
+      this.adminKeyBusy = true; this.adminKeyMsg = ''; this.adminKeyErr = false;
+      try {
+        this.adminKey = await this.api('PUT', '/api/admin/admin-key', { current: this.adminKeyCurrent, new: this.adminKeyNew });
+        this.adminKeyCurrent = ''; this.adminKeyNew = '';
+        this.adminKeyMsg = 'Admin key changed. Every other browser is signed out; this one stays signed in.';
+      } catch (e) { this.adminKeyErr = true; this.adminKeyMsg = e.message; } finally { this.adminKeyBusy = false; }
+    },
+    async removeAdminKey() {
+      this.adminKeyBusy = true; this.adminKeyMsg = ''; this.adminKeyErr = false;
+      try {
+        this.adminKey = await this.api('DELETE', '/api/admin/admin-key', { current: this.adminKeyCurrent });
+        this.adminKeyCurrent = ''; this.adminKeyNew = '';
+        this.adminKeyMsg = 'Back to the server configuration\'s Admin key. Every other browser is signed out.';
+      } catch (e) { this.adminKeyErr = true; this.adminKeyMsg = e.message; } finally { this.adminKeyBusy = false; }
+    },
+
+    // ── fal.ai key (Settings → Keys) ───────────────────────────────────
     async saveFalKey() {
       this.falKeyBusy = true; this.falKeyMsg = ''; this.falKeyErr = false;
       try {

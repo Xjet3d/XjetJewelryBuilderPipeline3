@@ -42,6 +42,7 @@ from p3.materialprices import MaterialPriceError
 from p3.db import Now
 from p3.usage import AccountActivity
 from p3 import credits as Credits
+from p3 import adminkey as AdminKeys
 from p3 import falkey as FalKeys
 from p3.registration import PublicOrigin
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
@@ -1095,7 +1096,57 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             Logger.warning("AI mode switched to %s in the Admin by %s", State["mode"].upper(), Who.Id)
         return State
 
-    # ── fal.ai API key (Settings → System): shown masked, never returned ───────────────────────────────
+    # ── Admin key (Settings → Keys): changing it needs the current key again and signs every other browser out ──
+    def _AdminKeyState() -> dict:
+        S = Ctx.Settings
+        return {"source": "admin" if S.AdminKeyFromAdmin else "environment", "length": len(S.AdminKey or ""),
+                "editable": not S.Production, "min_chars": AdminKeys.MinChars,
+                "note": ("In production the Admin key is part of the server configuration (P3_ADMIN_KEY in the environment "
+                         "file: 24+ random characters); it cannot be changed here." if S.Production else "")}
+
+    def _NewAdminKey(Req: Request, Key: str | None, FromAdmin: bool, Who) -> JSONResponse:
+        Ctx.Settings.AdminKey, Ctx.Settings.AdminKeyFromAdmin = Key, FromAdmin
+        N = AdminAuth.RevokeAll(Ctx)                                    # every remembered browser, this one included...
+        Token = AdminAuth.NewSession(Ctx, Req.headers.get("user-agent"))    # ...which stays signed in with a new session
+        Resp = JSONResponse({**_AdminKeyState(), "signed_out_browsers": N})
+        AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, Token)
+        return Resp
+
+    @App_.get("/api/admin/admin-key")
+    async def GetAdminKey(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _AdminKeyState()
+
+    @App_.put("/api/admin/admin-key")
+    async def SetAdminKey(Req: Request, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        if Ctx.Settings.Production:
+            raise HttpError(409, "admin_key_locked", "In production the Admin key is set in the server configuration.")
+        Supplied = str(Body_.get("current") or "").strip()
+        if not Supplied or not hmac.compare_digest(Supplied.encode(), (Ctx.Settings.AdminKey or "").encode()):
+            raise HttpError(400, "current_key_wrong", "The current Admin key is not right.")
+        Key = AdminKeys.Normalize(Body_.get("new"), Ctx.Settings.AdminKey)
+        AdminKeys.WriteSaved(Ctx.Settings.DataDir, Key)
+        Logger.warning("Admin key changed in the Admin by %s; every browser was signed out", Who.Id)
+        return _NewAdminKey(Req, Key, True, Who)
+
+    @App_.delete("/api/admin/admin-key")
+    async def RemoveAdminKey(Req: Request, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """Go back to P3_ADMIN_KEY from the environment (needs the current key again)."""
+        Who = Admin(authorization)
+        if Ctx.Settings.Production:
+            raise HttpError(409, "admin_key_locked", "In production the Admin key is set in the server configuration.")
+        Supplied = str(Body_.get("current") or "").strip()
+        if not Supplied or not hmac.compare_digest(Supplied.encode(), (Ctx.Settings.AdminKey or "").encode()):
+            raise HttpError(400, "current_key_wrong", "The current Admin key is not right.")
+        Env = os.environ.get("P3_ADMIN_KEY") or None
+        if not Env:
+            raise HttpError(409, "no_environment_key", "The server configuration has no P3_ADMIN_KEY to go back to.")
+        AdminKeys.RemoveSaved(Ctx.Settings.DataDir)
+        Logger.warning("Admin key saved in the Admin removed by %s; every browser was signed out", Who.Id)
+        return _NewAdminKey(Req, Env, False, Who)
+
+    # ── fal.ai API key (Settings → Keys): shown masked, never returned ───────────────────────────────
     def _FalKeyState() -> dict:
         S = Ctx.Settings
         Source = "none" if not S.FalKey else ("admin" if S.FalKeyFromAdmin else "environment")

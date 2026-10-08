@@ -71,6 +71,11 @@ def Login(Ctx: Context, Key: str, UserAgent: str | None) -> str | None:
     Supplied = (Key or "").strip()
     if not Expected or not Supplied or not hmac.compare_digest(Supplied.encode(), Expected.encode()):
         return None
+    return NewSession(Ctx, UserAgent)
+
+
+def NewSession(Ctx: Context, UserAgent: str | None) -> str:
+    """A fresh remembered session (the caller has already proven the key)."""
     Token = secrets.token_urlsafe(32)
     T = datetime.now(timezone.utc)
     Ctx.Db.Execute("INSERT INTO admin_sessions (id, session_hash, created_at, last_seen_at, expires_at, user_agent) "
