@@ -182,6 +182,32 @@ CREATE TABLE IF NOT EXISTS gallery_favorites (
     PRIMARY KEY (owner_account_id, design_id)
 );
 
+-- Gallery sync (p3/gallerysync.py): every row an import from another site wrote, so a later import updates its own
+-- rows only and never one this site made, and takes off the gallery the synced tiles the source no longer publishes.
+CREATE TABLE IF NOT EXISTS gallery_sync_items (
+    kind      TEXT NOT NULL,                  -- designs | batches | candidates | movies | gallery_items
+    id        TEXT NOT NULL,
+    source    TEXT NOT NULL,                  -- the site it came from ("proto")
+    run_id    TEXT NOT NULL,                  -- the latest import that wrote or confirmed it
+    first_at  TEXT NOT NULL,
+    last_at   TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+);
+-- Every applied import: when, from which site and bundle, what it changed, or why it failed.
+CREATE TABLE IF NOT EXISTS gallery_sync_runs (
+    id            TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,
+    bundle_ref    TEXT,                       -- the git commit of refs/gallery/<source> it came in (scripts/gallery-sync.sh)
+    content_id    TEXT,
+    exported_at   TEXT,
+    started_at    TEXT NOT NULL,
+    finished_at   TEXT,
+    status        TEXT NOT NULL,              -- ok | failed
+    summary_json  TEXT NOT NULL DEFAULT '{}',
+    error         TEXT,
+    by            TEXT NOT NULL
+);
+
 -- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
 CREATE TABLE IF NOT EXISTS stage_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

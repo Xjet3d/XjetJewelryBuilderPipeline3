@@ -55,6 +55,62 @@ It backs up all three files to `/var/backups/p3-proto-<timestamp>/` and refuses 
 
 **Do not run Pipeline 2's `nginx-install.sh` on proto.** proto's live `jewelry-b2c` site has hand-added routes the script does not know about, such as `/pendant/` (Pendant Maker on :8011) and the `/amulette` redirects, and the script rewrites the whole file.
 
+## atelier
+
+atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from outside) runs Pipeline 3 under
+`/JewelryB2C3/` as a user systemd service in `~/git/XjetJewelryBuilderPipeline3`, next to Pipeline 2's live shop.
+
+### Update procedure
+
+1. **Code: automatic.** `xjet-jewelry-b2c3-autodeploy.timer` (`deploy/atelier/`) runs `scripts/auto-deploy-atelier.sh`
+   every 2 minutes. When GitHub `main` moved, it backs up, fast-forwards, restarts, waits for the health answer and rolls
+   back if there is none. Whatever is pushed to `main` is live on atelier within minutes. Backups (`scripts/backup.sh`)
+   hard-link every unchanged asset file to the previous backup, so a backup at every deploy costs only what changed.
+2. **Gallery content: an explicit step, whenever proto's approved Inspiration Gallery changed.** On a developer machine
+   with ssh to tron and push access to GitHub:
+
+   ```bash
+   bash scripts/gallery-sync.sh publish
+   ```
+
+   It exports proto's approved gallery, checks it and pushes it to `refs/gallery/proto` in the GitHub repository, a ref
+   that clones and normal fetches never download. atelier's auto-deploy imports it at its next tick (every tick, also
+   when `main` did not move): it plans the import and stops on any row atelier made itself, backs up, imports, and checks
+   its own site. Publishing unchanged content does nothing.
+3. **Check, from anywhere:**
+
+   ```bash
+   bash scripts/gallery-sync.sh verify https://xjetatelier.xjet3d.com/JewelryB2C3
+   ```
+
+   `/api/gallery` has the tiles, `/api/showcase` tells the homepage story, and every image, the movie, its poster and its
+   clip answer. The latest import is in `/api/health` outside production and in `/api/admin/health` (`gallery_sync`:
+   source, status, time, bundle, items, or the error).
+
+### What the Gallery sync moves (`p3/gallerysync.py`)
+
+- **Moves:** XJet's own published gallery masters (`owner_kind` xjet, made with the real AI provider), the XJet design a
+  variation came from (the homepage story starts there), their batches, their images (ready and failed options, so the
+  option letters of every Ring ID stay the same), their ready 360° movies, the files behind them, and the thumbnails,
+  posters and clips already made of those files. Only the columns the gallery and `/api/showcase` read.
+- **Never moves:** accounts or sign-in tokens, sessions and session events, gallery uses and favourites, customizations,
+  bag, orders, quote requests, usage and credits, 3D models, a customer's design (also one published with consent),
+  anything made in mock mode or still in progress, who asked for a movie, provider upload URLs.
+- **Idempotent.** Rows are matched by id and written only when they differ, files only when their content differs. Every
+  row it wrote is recorded on atelier (`gallery_sync_items`; each import in `gallery_sync_runs`). A later import brings
+  what changed on proto and takes off atelier's gallery the synced tiles proto no longer publishes; their designs stay,
+  because customers may be using them. A tile atelier added itself stays, after the synced ones, which keep proto's order.
+  A row on atelier that did not come from a sync stops the import, and nothing is written.
+- **IDs and links.** A design keeps proto's Ring ID and share link name when they are free on atelier, and keeps what it
+  was given there on every later import.
+- **Safety.** The bundle is checked before anything is written: allow-listed tables and columns, safe ids and paths, the
+  SHA-256 of every file and of the rows. Files are written atomically with proto's modification time, so a thumbnail or
+  poster made on proto counts as current; the rows in one transaction. An import needs twice its size plus 1 GB free. A
+  failed import is recorded and logged, and is not tried again until `refs/gallery/proto` moves.
+- **By hand, with a shell on the target:** `bash scripts/gallery-sync.sh export DIR` on the source,
+  `bash scripts/gallery-sync.sh import DIR` on the target (plan, backup, import, check). `python -m p3.gallerysync import
+  DIR` alone is a dry run. To withdraw the published bundle: `git push origin :refs/gallery/proto`.
+
 ## Rollback
 
 - **proto:**

@@ -88,6 +88,11 @@ pending legal decision. A shared master never exposes its prompt, its reference 
 other customers: they see its images and its name; a refinement forked from it keeps the master's prompt private too.
 The share link name is assigned at publication (a share GET never writes).
 
+**On atelier (since 2026-10-08).** XJet's published masters reach atelier's gallery and homepage story through the
+Gallery sync: `bash scripts/gallery-sync.sh publish` on a developer machine, imported by atelier's auto-deploy at its
+next tick. Only gallery content moves; customers' designs, uses, favourites and everything else stay on proto. See
+`deploy/README.md` → atelier.
+
 The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 
 - **One shared master design per tile.** A customer who taps **Make it yours** is *linked* to the XJet design (`gallery_uses`); the design, its images, its 360° movies and its Hi3D raw model are never copied. The customer's own selection lives on the link, their Customize choices in `customizations` (one row per customer, design and option), their bag lines in `bag_lines`.

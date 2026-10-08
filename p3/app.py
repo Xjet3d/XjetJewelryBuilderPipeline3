@@ -23,6 +23,7 @@ from p3 import assets
 from p3 import media as Media
 from p3 import products as Products
 from p3 import showcase as Showcase
+from p3.gallerysync import LastRun as GallerySyncLastRun
 from p3 import credits as Credits
 from p3.ratelimit import ClientIp, RateLimiter
 from p3.quotes import QuoteDesk
@@ -406,6 +407,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""
         return {"ok": True, "env": S.Env, "provider": Ctx.Provider.Name, "mode": Modes.Mode, "mode_source": Modes.Source,
                 "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
+                "gallery_sync": GallerySyncLastRun(Ctx.Db),        # the latest import of another site's gallery
                 "mode_locked": S.LockMode, "base_path": Base or "/", "admin_host": S.AdminHost or None,
                 "public_base_url": S.PublicBaseUrl or None, "mail_mode": S.MailMode,
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
@@ -461,6 +463,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Out = {"ok": True}
         if S.DevTools:
             Out.update({"env": S.Env, "mode": Modes.Mode, "mode_source": Modes.Source, "provider": Ctx.Provider.Name, "base_path": Base or "/"})
+            Sync = GallerySyncLastRun(Ctx.Db)             # outside production: the latest gallery import, when there was one
+            if Sync:
+                Out["gallery_sync"] = Sync
         return Out
 
     @App_.get("/api/session")

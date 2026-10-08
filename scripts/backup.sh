@@ -33,7 +33,10 @@ done
 
 if [[ -d "$DATA/assets" ]]; then
     if command -v rsync >/dev/null 2>&1; then
-        rsync -a "$DATA/assets/" "$OUT/assets/"
+        # An unchanged file is a hard link into the previous backup, so a backup at every deploy costs only what changed
+        # (the app writes assets by atomic replace, never in place, so a linked file never changes under a backup)
+        PREV="$(ls -1d "$DEST"/[0-9]*T[0-9]*Z/assets 2>/dev/null | grep -v "^$OUT/" | sort | tail -1 || true)"
+        rsync -a ${PREV:+--link-dest="$PREV"} "$DATA/assets/" "$OUT/assets/"
     else
         cp -a "$DATA/assets" "$OUT/assets"
     fi
