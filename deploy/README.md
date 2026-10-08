@@ -66,17 +66,23 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
    every 2 minutes. When GitHub `main` moved, it backs up, fast-forwards, restarts, waits for the health answer and rolls
    back if there is none. Whatever is pushed to `main` is live on atelier within minutes. Backups (`scripts/backup.sh`)
    hard-link every unchanged asset file to the previous backup, so a backup at every deploy costs only what changed.
-2. **Gallery content: an explicit step, whenever proto's approved Inspiration Gallery changed.** On a developer machine
-   with ssh to tron and push access to GitHub:
+2. **Gallery content: an explicit step after an update, whenever proto's approved Inspiration Gallery changed.** From a
+   machine with ssh to tron and HTTPS to atelier:
 
    ```bash
-   bash scripts/gallery-sync.sh publish
+   bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
    ```
 
-   It exports proto's approved gallery, checks it and pushes it to `refs/gallery/proto` in the GitHub repository, a ref
-   that clones and normal fetches never download. atelier's auto-deploy imports it at its next tick (every tick, also
-   when `main` did not move): it plans the import and stops on any row atelier made itself, backs up, imports, and checks
-   its own site. Publishing unchanged content does nothing.
+   It exports proto's approved gallery on tron, checks it, and sends it to atelier's own Admin API with atelier's Admin
+   key, which it asks for (or reads from the file `P3_TARGET_ADMIN_KEY_FILE` names). The files go in 8 MB pieces, smaller
+   if a proxy refuses that size, and only the files atelier does not have yet are sent. atelier plans the import, stops on
+   any row it made itself, keeps a snapshot of its database (`<data dir>/gallery-sync/backups`, the newest five), imports,
+   and the script then checks the site. Pushing unchanged content sends nothing and changes nothing. In Git Bash on
+   Windows the key prompt may not work: put the key in a file and set `P3_TARGET_ADMIN_KEY_FILE`, or run it on tron
+   (`ssh -t tron`, then `P3_GALLERY_SOURCE_HOST=local bash scripts/gallery-sync.sh push …` in the checkout).
+
+   The bundle never goes through GitHub: the repository is public, and a bundle holds what the site keeps private
+   (prompts, refinement words, reference images).
 3. **Check, from anywhere:**
 
    ```bash
@@ -106,10 +112,11 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
 - **Safety.** The bundle is checked before anything is written: allow-listed tables and columns, safe ids and paths, the
   SHA-256 of every file and of the rows. Files are written atomically with proto's modification time, so a thumbnail or
   poster made on proto counts as current; the rows in one transaction. An import needs twice its size plus 1 GB free. A
-  failed import is recorded and logged, and is not tried again until `refs/gallery/proto` moves.
+  failed import is recorded (`gallery_sync`) and changes nothing. The upload API (`/api/admin/gallery-sync/uploads`)
+  needs the site's Admin key and can change gallery content only.
 - **By hand, with a shell on the target:** `bash scripts/gallery-sync.sh export DIR` on the source,
   `bash scripts/gallery-sync.sh import DIR` on the target (plan, backup, import, check). `python -m p3.gallerysync import
-  DIR` alone is a dry run. To withdraw the published bundle: `git push origin :refs/gallery/proto`.
+  DIR` alone is a dry run.
 
 ## Rollback
 

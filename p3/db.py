@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS gallery_sync_items (
 CREATE TABLE IF NOT EXISTS gallery_sync_runs (
     id            TEXT PRIMARY KEY,
     source        TEXT NOT NULL,
-    bundle_ref    TEXT,                       -- the git commit of refs/gallery/<source> it came in (scripts/gallery-sync.sh)
+    bundle_ref    TEXT,                       -- the upload it came in (an Admin API push), or a name given to `import --ref`
     content_id    TEXT,
     exported_at   TEXT,
     started_at    TEXT NOT NULL,

@@ -89,9 +89,9 @@ other customers: they see its images and its name; a refinement forked from it k
 The share link name is assigned at publication (a share GET never writes).
 
 **On atelier (since 2026-10-08).** XJet's published masters reach atelier's gallery and homepage story through the
-Gallery sync: `bash scripts/gallery-sync.sh publish` on a developer machine, imported by atelier's auto-deploy at its
-next tick. Only gallery content moves; customers' designs, uses, favourites and everything else stay on proto. See
-`deploy/README.md` → atelier.
+Gallery sync: `bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3` sends it to atelier's Admin
+API with atelier's Admin key. Only gallery content moves; customers' designs, uses, favourites and everything else stay
+on proto. See `deploy/README.md` → atelier.
 
 The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 

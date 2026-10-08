@@ -1058,6 +1058,10 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Gallery.Move(ItemId, str(Body_.get("direction") or "up"))
         return {"items": Gallery.AdminList()}
 
+    # ── Gallery sync: another site's approved gallery pushed here (p3/gallerysync.py; gallery content only) ─────
+    from p3 import gallerysync as GallerySync
+    GallerySync.RegisterRoutes(App_, Ctx, Admin)
+
     # ── Material pricing (density, price $/g, cost $/g, website fixed price) ─────
     def _MaterialTable() -> dict:
         Doc = Ctx.MaterialPrices.Current()

@@ -8,10 +8,14 @@ read or written. Nothing about who used, bought, paid for or asked for a design 
 sessions or session events, no gallery uses or favourites, no customizations, bag, orders or quotes, no usage or credits,
 no 3D models, nothing generated in mock mode, no customer's design.
 
-A bundle is a directory (scripts/gallery-sync.sh carries it as the tree of a git commit, or as a tar):
+A bundle is a directory:
   manifest.json   format, source, the gallery items, every file with its SHA-256, size and modification time
   rows.json       the rows per table, allow-listed columns only
   files/<sha256>  the files, content-addressed: a name never comes from the source, a file shared by two rows is stored once
+It reaches another site through that site's own Admin API (`push`; HTTPS only, the site's Admin key, in pieces small
+enough for Cloudflare and nginx; only the files the site does not have yet are sent), or as a directory on a target with a
+shell (`import`). Never through the GitHub repository: it is public, and a bundle holds what the site keeps private
+(prompts, refinement words, reference images).
 
 Import is idempotent. Rows are matched by id and written only when they differ, files only when their content differs, and
 every row the sync wrote is recorded (gallery_sync_items), so a second run changes nothing and a later run brings what
@@ -22,7 +26,8 @@ given. The synced tiles come first, in the source's order.
 
     python -m p3.gallerysync export DIR [--data-dir D] [--source proto]
     python -m p3.gallerysync check DIR
-    python -m p3.gallerysync import DIR [--data-dir D] [--apply] [--keep-removed] [--ref COMMIT] [--json]
+    python -m p3.gallerysync push DIR BASE_URL          (the target's Admin key: P3_TARGET_ADMIN_KEY_FILE, or asked for)
+    python -m p3.gallerysync import DIR [--data-dir D] [--apply] [--keep-removed] [--json]
     python -m p3.gallerysync status [--data-dir D]
     python -m p3.gallerysync verify BASE_URL [--expect N]
 """
@@ -343,12 +348,29 @@ def Load(BundleDir: Path) -> tuple[dict, dict]:
         RowsBytes = (BundleDir / "rows.json").read_bytes()
     except (OSError, ValueError) as E:
         raise SyncError(f"Not a gallery bundle: {E}") from E
-    if M.get("format") != Format or not isinstance(M.get("version"), int) or not 1 <= M["version"] <= Version:
-        raise SyncError(f"Not a gallery bundle this version can read (format {M.get('format')!r}, version {M.get('version')!r})")
-    if not SourceRe.match(str((M.get("source") or {}).get("name") or "")):
-        raise SyncError("The bundle does not name its source site")
+    Paths = _CheckManifest(M)
     if hashlib.sha256(RowsBytes).hexdigest() != M.get("rows_sha256"):
         raise SyncError("rows.json does not match the manifest")
+    for F in M["files"]:
+        Blob = BundleDir / "files" / F["sha256"]
+        if not Blob.is_file() or Blob.stat().st_size != F["bytes"] or _Sha(Blob) != F["sha256"]:
+            raise SyncError(f"{F['path']}: its file is missing from the bundle or its content does not match")
+    Rows = json.loads(RowsBytes)
+    _CheckRows(Rows, Paths)
+    return M, Rows
+
+
+def _CheckManifest(M) -> set:
+    """The manifest alone (no files needed): format, source, every file entry's path, SHA-256, size and time, the
+    totals and the content id. Returns the set of paths."""
+    if not isinstance(M, dict) or M.get("format") != Format or not isinstance(M.get("version"), int) \
+            or not 1 <= M["version"] <= Version:
+        raise SyncError(f"Not a gallery bundle this version can read ({(M or {}).get('format')!r}, version {(M or {}).get('version')!r})"
+                        if isinstance(M, dict) else "Not a gallery bundle")
+    if not SourceRe.match(str((M.get("source") or {}).get("name") or "")):
+        raise SyncError("The bundle does not name its source site")
+    if not ShaRe.match(str(M.get("rows_sha256"))):
+        raise SyncError("The manifest has no rows hash")
     Files = M.get("files")
     if not isinstance(Files, list) or len(Files) > MaxFiles:
         raise SyncError("The manifest's file list is missing or too long")
@@ -360,18 +382,13 @@ def Load(BundleDir: Path) -> tuple[dict, dict]:
             raise SyncError(f"{F['path']} appears twice")
         if not isinstance(F.get("bytes"), int) or not 0 <= F["bytes"] <= MaxFileBytes or not isinstance(F.get("mtime"), (int, float)):
             raise SyncError(f"{F['path']}: size or time missing, or the file is too large")
-        Blob = BundleDir / "files" / F["sha256"]
-        if not Blob.is_file() or Blob.stat().st_size != F["bytes"] or _Sha(Blob) != F["sha256"]:
-            raise SyncError(f"{F['path']}: its file is missing from the bundle or its content does not match")
         Paths.add(F["path"])
         Total += F["bytes"]
     if Total > MaxTotalBytes:
         raise SyncError("The bundle is larger than a gallery can be")
     if M.get("content_id") != _ContentId(M["rows_sha256"], Files):
         raise SyncError("The manifest's content id does not match its rows and files")
-    Rows = json.loads(RowsBytes)
-    _CheckRows(Rows, Paths)
-    return M, Rows
+    return Paths
 
 
 # ── import (on the target) ─────────────────────────────────────────────────
@@ -505,15 +522,16 @@ def _Report(M: dict, P: dict, Conn=None) -> dict:
 
 
 def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: bool = False, Ref: str | None = None,
-           By: str = "gallery-sync") -> dict:
-    """Plan (dry run) or apply a bundle on the target whose data directory is DataDir. Raises SyncError when the bundle
-    is invalid or the target has rows in the way (nothing is written then)."""
+           By: str = "gallery-sync", Db=None) -> dict:
+    """Plan (dry run) or apply a bundle on the target whose data directory is DataDir (inside the running app, its own
+    Db, so the import shares the app's write lock). Raises SyncError when the bundle is invalid or the target has rows in
+    the way (nothing is written then)."""
     M, Rows = Load(BundleDir)
     DataDir = Path(DataDir)
     Assets = DataDir / "assets"
     if not (DataDir / "pipeline3.db").is_file():
         raise SyncError(f"No database in {DataDir}: is this the site's data directory?")
-    Db = Database(DataDir / "pipeline3.db")                  # the target's own schema, up to date
+    Db = Db or Database(DataDir / "pipeline3.db")            # the target's own schema, up to date
     with Db.Connect() as Conn:
         P = _Plan(Conn, M, Rows, Assets, KeepRemoved)
     if P["conflicts"]:
@@ -570,6 +588,249 @@ def LastRun(Db) -> dict | None:
     if R["error"]:
         Out["error"] = R["error"][:200]
     return Out
+
+
+# ── over HTTPS: the target's own Admin API takes the bundle in pieces ──────
+UploadIdRe = re.compile(r"^up_[0-9a-f]{32}$")
+MaxChunkBytes, KeepSnapshots, UploadTtlS = 32 << 20, 5, 24 * 3600
+
+
+def _Uploads(DataDir: Path) -> Path:
+    return Path(DataDir) / "gallery-sync" / "uploads"
+
+
+def _Snapshot(DataDir: Path) -> Path:
+    """A copy of the site's database before an import (SQLite's online backup, safe while the site runs); the newest
+    five are kept in <data dir>/gallery-sync/backups."""
+    Dir = Path(DataDir) / "gallery-sync" / "backups"
+    Dir.mkdir(parents=True, exist_ok=True)
+    Out = Dir / f"pipeline3-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.db"
+    Src = sqlite3.connect((Path(DataDir) / "pipeline3.db").resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        Dst = sqlite3.connect(Out)
+        try:
+            Src.backup(Dst)
+        finally:
+            Dst.close()
+    finally:
+        Src.close()
+    for Old in sorted(Dir.glob("pipeline3-*.db"))[:-KeepSnapshots]:
+        Old.unlink(missing_ok=True)
+    return Out
+
+
+def _StartUpload(DataDir: Path, M: dict) -> dict:
+    """A new upload directory with the manifest; a file the site already has (same SHA-256 at the same path) is linked
+    into it, so only the others have to be sent. Uploads left behind for a day are removed."""
+    Root = _Uploads(DataDir)
+    Root.mkdir(parents=True, exist_ok=True)
+    for Old in Root.iterdir():
+        try:
+            if Old.is_dir() and datetime.now().timestamp() - Old.stat().st_mtime > UploadTtlS:
+                shutil.rmtree(Old, ignore_errors=True)
+        except OSError:
+            pass
+    Id = NewId("up")
+    D = Root / Id
+    (D / "files").mkdir(parents=True)
+    (D / "manifest.json").write_text(json.dumps(M, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    Assets, Need = Path(DataDir) / "assets", {}
+    for F in M["files"]:
+        Blob = D / "files" / F["sha256"]
+        if Blob.exists() or F["sha256"] in Need:
+            continue
+        Have = assets.Resolve(Assets, F["path"])
+        if Have.is_file() and Have.stat().st_size == F["bytes"] and _Sha(Have) == F["sha256"]:
+            try:
+                os.link(Have, Blob)
+            except OSError:
+                shutil.copyfile(Have, Blob)
+        else:
+            Need[F["sha256"]] = F["bytes"]
+    return {"upload_id": Id, "need": sorted(Need), "bytes": sum(Need.values())}
+
+
+async def _Body(Request_, Limit: int) -> bytes:
+    from p3.context import HttpError
+    Buf = bytearray()
+    async for Chunk in Request_.stream():
+        Buf += Chunk
+        if len(Buf) > Limit:
+            raise HttpError(413, "too_large", f"At most {Limit >> 20} MB per request.")
+    return bytes(Buf)
+
+
+def RegisterRoutes(App_, Ctx, Admin) -> None:
+    """The Admin API a source pushes a bundle to (Admin key required; only gallery content can change):
+    POST uploads (the manifest; answers which files to send) · PUT uploads/{id}/rows · PUT uploads/{id}/files/{sha256}
+    ?offset=N (a piece of a file) · POST uploads/{id}/plan (the dry run) · POST uploads/{id}/apply (a snapshot of the
+    database, then the import) · DELETE uploads/{id}."""
+    from fastapi import Body, Header, Request
+    from starlette.concurrency import run_in_threadpool
+
+    from p3.context import HttpError
+
+    Base = "/api/admin/gallery-sync/uploads"
+
+    def Dir(Id: str) -> Path:
+        D = _Uploads(Ctx.Settings.DataDir) / Id
+        if not UploadIdRe.match(Id or "") or not D.is_dir():
+            raise HttpError(404, "upload_not_found", "No such upload (an upload is kept for a day).")
+        return D
+
+    def Manifest(D: Path) -> dict:
+        return json.loads((D / "manifest.json").read_text(encoding="utf-8"))
+
+    def Refused(E: SyncError):
+        return HttpError(409, "gallery_sync_refused", str(E))
+
+    @App_.post(Base)
+    async def GallerySyncStart(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Admin(authorization)
+        try:
+            _CheckManifest(Body_)
+        except SyncError as E:
+            raise HttpError(400, "invalid_bundle", str(E))
+        return await run_in_threadpool(_StartUpload, Ctx.Settings.DataDir, Body_)
+
+    @App_.put(Base + "/{UploadId}/rows")
+    async def GallerySyncRows(UploadId: str, request: Request, authorization: str | None = Header(None)):
+        Admin(authorization)
+        D = Dir(UploadId)
+        Data = await _Body(request, 64 << 20)
+        if hashlib.sha256(Data).hexdigest() != Manifest(D)["rows_sha256"]:
+            raise HttpError(400, "rows_mismatch", "rows.json does not match the manifest.")
+        (D / "rows.json").write_bytes(Data)
+        return {"ok": True}
+
+    @App_.put(Base + "/{UploadId}/files/{Sha}")
+    async def GallerySyncFile(UploadId: str, Sha: str, request: Request, offset: int = 0,
+                              authorization: str | None = Header(None)):
+        Admin(authorization)
+        D = Dir(UploadId)
+        Sizes = {F["sha256"]: F["bytes"] for F in Manifest(D)["files"]}
+        if not ShaRe.match(Sha or "") or Sha not in Sizes:
+            raise HttpError(404, "file_not_in_bundle", "This file is not in the bundle.")
+        Final, Part = D / "files" / Sha, D / "files" / f"{Sha}.part"
+        if Final.is_file():
+            return {"received": Sizes[Sha], "complete": True}
+        Have = Part.stat().st_size if Part.exists() else 0
+        if offset not in (0, Have):
+            raise HttpError(409, "wrong_offset", f"The site has {Have} bytes of this file: send from {Have}, or from 0 again.")
+        Data = await _Body(request, MaxChunkBytes)
+        if offset + len(Data) > Sizes[Sha]:
+            raise HttpError(400, "too_long", "More bytes than the file has.")
+        with open(Part, "wb" if offset == 0 else "ab") as F:
+            F.write(Data)
+        Size = offset + len(Data)
+        if Size < Sizes[Sha]:
+            return {"received": Size, "complete": False}
+        if _Sha(Part) != Sha:
+            Part.unlink(missing_ok=True)
+            raise HttpError(400, "file_mismatch", "The file's content does not match its SHA-256: send it again.")
+        os.replace(Part, Final)
+        return {"received": Size, "complete": True}
+
+    @App_.post(Base + "/{UploadId}/plan")
+    async def GallerySyncPlan(UploadId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        D = Dir(UploadId)
+        try:
+            return await run_in_threadpool(Import, D, Ctx.Settings.DataDir, Db=Ctx.Db)
+        except SyncError as E:
+            raise Refused(E)
+
+    @App_.post(Base + "/{UploadId}/apply")
+    async def GallerySyncApply(UploadId: str, authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        D = Dir(UploadId)
+
+        def Run() -> dict:
+            Snap = _Snapshot(Ctx.Settings.DataDir)
+            Report = Import(D, Ctx.Settings.DataDir, Apply=True, Ref=UploadId, By=f"admin:{Who.Id}", Db=Ctx.Db)
+            shutil.rmtree(D, ignore_errors=True)
+            return {**Report, "snapshot": Snap.name}
+        try:
+            return await run_in_threadpool(Run)
+        except SyncError as E:
+            raise Refused(E)
+
+    @App_.delete(Base + "/{UploadId}")
+    async def GallerySyncDrop(UploadId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        shutil.rmtree(Dir(UploadId), ignore_errors=True)
+        return {"ok": True}
+
+
+async def Push(BundleDir: Path, Base: str, Key: str, Client=None, Out=sys.stdout, ChunkBytes: int = 8 << 20) -> dict:
+    """Send a bundle to a site's Admin API and import it there: the manifest, the rows, the files the site does not
+    have (in pieces; smaller ones when a proxy refuses a size), the plan, then the import. Returns the import report."""
+    import asyncio
+
+    import httpx
+
+    BundleDir = Path(BundleDir)
+    M, _ = Load(BundleDir)                                  # nothing leaves before the bundle checks out here
+    Own = Client is None
+    if Own:
+        Client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0), headers={"User-Agent": UserAgent})
+    Auth = {"Authorization": f"Bearer {Key}"}
+    Api = f"{Base.rstrip('/')}/api/admin/gallery-sync/uploads"
+
+    async def Call(Method: str, Url: str, Retry: bool = True, **Kw):
+        for Attempt in range(4 if Retry else 1):
+            try:
+                R = await Client.request(Method, Url, headers=Auth, **Kw)
+            except httpx.TransportError as E:
+                if not Retry or Attempt == 3:
+                    raise SyncError(f"{Method} {Url}: {E}") from E
+                await asyncio.sleep(2 ** Attempt)
+                continue
+            if Retry and R.status_code in (502, 503, 504, 520, 521, 522, 523, 524) and Attempt < 3:
+                await asyncio.sleep(2 ** Attempt)
+                continue
+            return R
+
+    def Ok(R, What: str) -> dict:
+        if R.status_code >= 400:
+            try:
+                Msg = R.json()["error"]["message"]
+            except Exception:  # noqa: BLE001 — a proxy's page is not JSON
+                Msg = R.text[:200]
+            raise SyncError(f"{What}: HTTP {R.status_code} — {Msg}")
+        return R.json()
+
+    try:
+        S = Ok(await Call("POST", Api, json=M), "start")
+        Id, Need = S["upload_id"], S["need"]
+        Unique = len({F["sha256"] for F in M["files"]})
+        print(f"Upload {Id}: {len(Need)} of {Unique} files to send ({_Mb(S['bytes'])}); the site has the others", file=Out)
+        Ok(await Call("PUT", f"{Api}/{Id}/rows", content=(BundleDir / "rows.json").read_bytes()), "rows")
+        Sent, Chunk = 0, max(64 << 10, min(ChunkBytes, MaxChunkBytes))
+        for N, Sha in enumerate(Need, 1):
+            Data, Off = (BundleDir / "files" / Sha).read_bytes(), 0
+            while True:
+                Piece = Data[Off:Off + Chunk]
+                R = await Call("PUT", f"{Api}/{Id}/files/{Sha}", params={"offset": Off}, content=Piece)
+                if R.status_code == 413 and Chunk > 256 << 10:
+                    Chunk //= 2                              # a proxy's limit: smaller pieces from here on
+                    continue
+                Res = Ok(R, f"file {N} of {len(Need)}")
+                Off += len(Piece)
+                Sent += len(Piece)
+                if Res.get("complete"):
+                    break
+                if not Piece:
+                    raise SyncError("The site did not take the end of a file")
+            if N % 10 == 0 or N == len(Need):
+                print(f"  sent {N} of {len(Need)} files ({_Mb(Sent)})", file=Out)
+        Plan = Ok(await Call("POST", f"{Api}/{Id}/plan", Retry=False), "plan")
+        print(f"Plan: {sum(Plan['insert'].values())} rows new, {sum(Plan['update'].values())} changed, "
+              f"{Plan['files_write']} files to write, {len(Plan['unpublish'])} tiles to take off", file=Out)
+        return Ok(await Call("POST", f"{Api}/{Id}/apply", Retry=False), "import")
+    finally:
+        if Own:
+            await Client.aclose()
 
 
 # ── verify a site over HTTP(S) ─────────────────────────────────────────────
@@ -635,6 +896,19 @@ def Verify(Base: str, Expect: int | None = None, Out=sys.stdout) -> bool:
 
 
 # ── command line ───────────────────────────────────────────────────────────
+def _TargetKey(Base: str) -> str:
+    """The target site's Admin key: from the file P3_TARGET_ADMIN_KEY_FILE names, else asked for (never shown or kept)."""
+    Name = os.environ.get("P3_TARGET_ADMIN_KEY_FILE", "").strip()
+    if Name:
+        Key = Path(Name).expanduser().read_text(encoding="utf-8").strip()
+    else:
+        import getpass
+        Key = getpass.getpass(f"Admin key of {Base} (not shown): ").strip()
+    if not Key:
+        raise SyncError("No Admin key for the target site")
+    return Key
+
+
 def _DataDir(Arg: str | None) -> Path:
     if Arg:
         return Path(Arg)
@@ -667,6 +941,8 @@ def Main(Argv=None) -> int:
     E.add_argument("out"); E.add_argument("--data-dir"); E.add_argument("--source", default="proto"); E.add_argument("--commit")
     C = Sub.add_parser("check", help="check a bundle without a target")
     C.add_argument("bundle")
+    Pu = Sub.add_parser("push", help="send a bundle to a site's Admin API, import it there and check the site")
+    Pu.add_argument("bundle"); Pu.add_argument("base_url"); Pu.add_argument("--chunk-mb", type=int, default=8)
     I = Sub.add_parser("import", help="plan (default) or apply a bundle on this site")
     I.add_argument("bundle"); I.add_argument("--data-dir"); I.add_argument("--apply", action="store_true")
     I.add_argument("--keep-removed", action="store_true", help="keep synced tiles the source no longer publishes")
@@ -688,6 +964,11 @@ def Main(Argv=None) -> int:
             M, _ = Load(Path(A.bundle))
             print(f"Valid bundle from {M['source']['name']}: {M['counts']['gallery_items']} gallery items, {M['counts']['files']} files "
                   f"({_Mb(M['counts']['bytes'])}); content {M['content_id'][:12]}")
+        elif A.cmd == "push":
+            import asyncio
+            R = asyncio.run(Push(Path(A.bundle), A.base_url, _TargetKey(A.base_url), ChunkBytes=A.chunk_mb << 20))
+            _Print(R)
+            return 0 if Verify(A.base_url) else 1
         elif A.cmd == "import":
             R = Import(Path(A.bundle), _DataDir(A.data_dir), Apply=A.apply, KeepRemoved=A.keep_removed, Ref=A.ref)
             print(json.dumps(R, indent=1, sort_keys=True)) if A.json else _Print(R)

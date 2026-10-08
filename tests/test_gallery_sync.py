@@ -4,7 +4,9 @@ made of them, and only the rows the gallery and the homepage story need. Nothing
 mode; a second import changes nothing; a row the target made itself is never touched."""
 
 import hashlib
+import io
 import json
+import re
 
 import pytest
 
@@ -171,6 +173,59 @@ async def test_only_xjets_published_masters_move_and_the_gallery_and_story_work_
     finally:
         await H.Close()
         await T.Close()
+
+
+async def test_a_bundle_pushed_to_the_sites_admin_api_lands_once_and_only_with_its_admin_key(tmp_path):
+    """atelier is reached over HTTPS only: the bundle goes to its own Admin API, in pieces, and only the files it does not
+    have yet are sent."""
+    H, X = await _Proto(tmp_path)
+    T = Harness(tmp_path / "atelier", AdminKey=AdminKey)
+    U = Harness(tmp_path / "third", AdminKey=AdminKey)
+    try:
+        Bundle = tmp_path / "bundle"
+        M = Sync.Export(H.Settings.DataDir, Bundle, "proto")
+        with pytest.raises(Sync.SyncError, match=r"HTTP 40[13]"):
+            await Sync.Push(Bundle, "", "not-the-key", Client=T.Client, Out=io.StringIO())
+        assert (await T.Client.get("/api/gallery", headers=Anon)).json()["items"] == []
+        Out = io.StringIO()
+        R = await Sync.Push(Bundle, "", AdminKey, Client=T.Client, Out=Out, ChunkBytes=64 << 10)   # several pieces a file
+        assert R["applied"] and R["insert"]["gallery_items"] == 2 and R["snapshot"].startswith("pipeline3-")
+        Tiles = (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]
+        assert {I["design_id"] for I in Tiles} == {X["master"], X["var"]}
+        Sync_ = T.Settings.DataDir / "gallery-sync"
+        assert list((Sync_ / "uploads").iterdir()) == [] and len(list((Sync_ / "backups").glob("pipeline3-*.db"))) == 1
+        assert (await T.Client.get("/api/health")).json()["gallery_sync"]["status"] == "ok"
+        # Again: the site has every file — nothing is sent and nothing changes
+        Out = io.StringIO()
+        R = await Sync.Push(Bundle, "", AdminKey, Client=T.Client, Out=Out)
+        assert re.search(r"Upload up_[0-9a-f]{32}: 0 of \d+ files to send", Out.getvalue()), Out.getvalue()
+        assert sum(R["insert"].values()) == sum(R["update"].values()) == R["files_write"] == 0
+
+        # The protocol refuses what does not fit: a customer, a piece out of order, a wrong file, a file not in the bundle
+        Api = "/api/admin/gallery-sync/uploads"
+        assert (await U.Client.post(Api, json=M)).status_code in (401, 403)
+        Bad = json.loads(json.dumps(M))
+        Bad["files"][0]["path"] = "../../etc/passwd"
+        assert (await U.Client.post(Api, json=Bad, headers=Admin)).status_code == 400
+        S = (await U.Client.post(Api, json=M, headers=Admin)).json()
+        Sha = max(M["files"], key=lambda F: F["bytes"])["sha256"]
+        assert Sha in S["need"] and len(S["need"]) == len({F["sha256"] for F in M["files"]})        # a new site needs them all
+        Data = (Bundle / "files" / Sha).read_bytes()
+        assert (await U.Client.put(f"{Api}/{S['upload_id']}/files/{Sha}", params={"offset": 5}, content=Data[:10],
+                                   headers=Admin)).status_code == 409
+        Wrong = bytes([Data[0] ^ 1]) + Data[1:]
+        R = await U.Client.put(f"{Api}/{S['upload_id']}/files/{Sha}", params={"offset": 0}, content=Wrong, headers=Admin)
+        assert R.status_code == 400 and R.json()["error"]["code"] == "file_mismatch"
+        assert (await U.Client.put(f"{Api}/{S['upload_id']}/files/{'0' * 64}", content=b"x", headers=Admin)).status_code == 404
+        R = await U.Client.post(f"{Api}/{S['upload_id']}/plan", headers=Admin)            # no rows yet, files missing
+        assert R.status_code == 409 and R.json()["error"]["code"] == "gallery_sync_refused"
+        assert (await U.Client.delete(f"{Api}/{S['upload_id']}", headers=Admin)).status_code == 200
+        assert (await U.Client.post(f"{Api}/{S['upload_id']}/apply", headers=Admin)).status_code == 404
+        assert (await U.Client.get("/api/gallery", headers=Anon)).json()["items"] == []
+    finally:
+        await H.Close()
+        await T.Close()
+        await U.Close()
 
 
 async def test_a_row_the_target_made_itself_stops_the_import_and_nothing_is_written(tmp_path):

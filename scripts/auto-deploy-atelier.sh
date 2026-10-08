@@ -8,6 +8,9 @@
 #   4. wait for the health answer; if there is none, go back to the previous commit and restart it (the failure is
 #      logged and the same broken commit is not retried until main moves again);
 #   5. run the read-only checks of scripts/verify-production.sh (their result is logged, never a reason to roll back).
+# Gallery content is not part of this automatic update. After an update, when proto's approved Inspiration Gallery
+# changed, push it explicitly (only gallery content moves; deploy/README.md, atelier):
+#   bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
 # Manual run: bash scripts/auto-deploy-atelier.sh   ·   Pause: systemctl --user stop xjet-jewelry-b2c3-autodeploy.timer
 # Environment: P3_CHECKOUT (default ~/git/XjetJewelryBuilderPipeline3), P3_SERVICE (xjet-jewelry-b2c3),
 # P3_LOCAL_URL (http://127.0.0.1:8340/JewelryB2C3), P3_BACKUP_DIR (~/p3-backups).
