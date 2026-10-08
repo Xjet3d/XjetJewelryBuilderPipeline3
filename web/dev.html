@@ -32,7 +32,14 @@
 
   <section class="stack" x-show="!ok" style="max-width:480px">
     <h2>Developer key</h2>
-    <input type="password" x-model="keyInput" placeholder="P3_ADMIN_KEY" @keydown.enter="connect()">
+    <div x-data="{ show: false }" style="position:relative">
+      <input :type="show ? 'text' : 'password'" style="padding-right:2.5rem;width:100%;box-sizing:border-box" x-model="keyInput" placeholder="P3_ADMIN_KEY" aria-label="Developer key" @keydown.enter="connect()">
+      <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+    </div>
     <button class="btn" @click="connect()">Connect</button>
     <p class="error" x-text="error" x-show="error"></p>
   </section>

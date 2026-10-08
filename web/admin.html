@@ -136,7 +136,14 @@
       <h1 class="cinzel text-xl">Admin sign-in</h1>
       <p class="text-sm text-zinc-500">Enter the P3 admin key once. This browser stays signed in — across closed tabs, a closed browser and restarts — until you sign out. The key itself is never stored in the browser.</p>
       <label class="lbl block" for="admin-key">Admin key</label>
-      <input id="admin-key" type="password" class="inp" x-model="keyInput" placeholder="Admin key" @keydown.enter="connect()" autocomplete="current-password" autofocus>
+      <div x-data="{ show: false }" style="position:relative">
+        <input id="admin-key" :type="show ? 'text' : 'password'" class="inp" style="padding-right:2.5rem" x-model="keyInput" placeholder="Admin key" @keydown.enter="connect()" autocomplete="current-password" autofocus>
+        <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+      </div>
       <p x-show="error" class="text-sm text-red-600" role="alert" x-text="error"></p>
       <button class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
     </div>
@@ -1690,8 +1697,15 @@
         <p class="text-sm text-zinc-600" x-show="!falKey?.configured">No key: live AI mode is unavailable and the mock provider is used.</p>
         <p class="text-[12px] text-zinc-500" x-show="falKey && !falKey.editable" x-text="falKey?.note"></p>
         <form x-show="falKey?.editable" @submit.prevent="saveFalKey()" class="flex flex-wrap items-center gap-3" autocomplete="off">
-          <input id="fal-key-input" aria-label="New fal.ai API key" type="password" class="inp flex-1 min-w-[260px] font-mono" autocomplete="off" spellcheck="false"
-                 placeholder="Paste a new fal.ai key" x-model="falKeyInput">
+          <div x-data="{ show: false }" class="flex-1 min-w-[260px]" style="position:relative">
+            <input id="fal-key-input" aria-label="New fal.ai API key" :type="show ? 'text' : 'password'" class="inp font-mono" style="padding-right:2.5rem" autocomplete="off" spellcheck="false"
+                   placeholder="Paste a new fal.ai key" x-model="falKeyInput">
+            <button type="button" @click="show = !show" :aria-label="show ? 'Hide the key' : 'Show the key'" :aria-pressed="show ? 'true' : 'false'" :title="show ? 'Hide' : 'Show'"
+                style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;line-height:0;background:none;border:0;cursor:pointer;color:#71717a">
+          <svg x-show="!show" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
+        </button>
+          </div>
           <button class="btn" type="submit" :disabled="falKeyBusy || !falKeyInput.trim()">Check and save</button>
           <button class="underline text-xs uppercase tracking-widest text-zinc-500" type="button" x-show="falKey?.source === 'admin'"
                   @click="removeFalKey()" :disabled="falKeyBusy">Remove saved key</button>
