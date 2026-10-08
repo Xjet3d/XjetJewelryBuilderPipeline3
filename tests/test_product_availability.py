@@ -98,3 +98,28 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
             assert (await Browser.get(f"/api/gallery/{Items['ring']}/share")).status_code == 200   # (the Admin cookie reaches the API only)
     finally:
         await H.Close()
+
+
+async def test_the_line_under_start_designing_follows_the_products_customers_can_design(tmp_path):
+    """Rings only: "Rings — the first XJet Atelier collection, …"; Charms only: "Charms — …"; both: "Rings & Charms —
+    XJet Atelier collections, …". Computed on the page from the catalog's products (the availability switches), never
+    from an Admin's preview; the static text is the rings line for a page read before its script runs."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Index = (await H.Client.get("/")).text
+        Bound = ('<span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span '
+                 'x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span>')
+        assert Index.count(Bound) == 2 and Index.count('x-show="heroCollection.label"') == 2     # desktop and phone
+        App = (await H.Client.get("/static/app.js")).text
+        Getter = App[App.index("get heroCollection()"):App.index("chooseProduct(p)")]
+        assert "this.productsList.filter(p => !this.previewedProducts.includes(p))" in Getter    # customers' products only
+        assert "' — the first XJet Atelier collection, made to order in real metal.'" in Getter
+        assert "' — XJet Atelier collections, made to order in real metal.'" in Getter and "' & '" in Getter
+        # The products it reads are the switches: the catalog lists what customers can design
+        assert "products" not in (await H.Client.get("/api/catalog")).json()                    # rings only → ['ring']
+        await _Set(H, "charm", True)
+        assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["ring", "charm"]
+        await _Set(H, "ring", False)
+        assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["charm"]
+    finally:
+        await H.Close()

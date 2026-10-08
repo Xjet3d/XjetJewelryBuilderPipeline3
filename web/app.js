@@ -851,6 +851,14 @@ function p3App() {
                list: list.map(p => this.productPlural(p)).join(' and '), ring: list.includes('ring'), charm: list.includes('charm'),
                sizeWord: sole === 'ring' ? 'ring size' : 'size' };
     },
+    // The line under Start Designing: the collections customers can design now (Admin → Settings → Products), never a
+    // product only an Admin's preview shows. Rings · Charms · "Rings & Charms" (more products: "A, B & C").
+    get heroCollection() {
+      const on = this.productsList.filter(p => !this.previewedProducts.includes(p)).map(p => this.productPlural(p));
+      if (!on.length) return { label: '', text: '' };
+      if (on.length === 1) return { label: on[0], text: ' — the first XJet Atelier collection, made to order in real metal.' };
+      return { label: on.slice(0, -1).join(', ') + ' & ' + on[on.length - 1], text: ' — XJet Atelier collections, made to order in real metal.' };
+    },
     chooseProduct(p) {
       if (!this.productsList.includes(p)) return;
       this.newProduct = p; this.persist({ newProduct: p });

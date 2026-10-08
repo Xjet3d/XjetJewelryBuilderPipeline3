@@ -14,7 +14,8 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "aa2231e2657e5f7028cdcfc87c22605f2db9cd9cd95cece705b466ccaea2915d"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer
+HeroSha256 = "dcdf7a672c65867d201e4b2fcfcef164c0dc6fdb04945000cd352824d1be8161"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+#   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
