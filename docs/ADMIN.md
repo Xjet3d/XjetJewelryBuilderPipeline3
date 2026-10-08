@@ -228,6 +228,31 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
   - `GET …/3d/{id}/export/{job}`;
   - `GET /api/admin/storage` (3D bytes and free disk; shown on the Dashboard, with no automatic deletion).
 
+## Quote requests (Orders → a quote request)
+
+**Code:** `p3/quotes.py`, `p3/orders.py` (`CreateFromQuote`). **API:** `GET /api/admin/quote-requests/{id}`,
+`POST …/offer`, `POST …/note`, `POST …/status`; the customer's page `GET /quote?token=…`, `POST /quote/approve`,
+`POST /quote/reject`.
+
+- **Every detail.** The customer (name, email, phone), the design (image, Ring/Charm ID, session link), material, size,
+  quantity and message; where the request notification went (`P3_STAFF_NOTIFY_EMAILS`, or none configured), whether
+  the customer's confirmation was sent, and the address the quote goes to (the customer's email). The customer's
+  request dialog says the same address.
+- **Price suggestion.** When the design has a measured 3D model, its weight at the requested size in the requested
+  material (volume × density) × that material's price per g (Settings → Pricing & Materials; charms: the charm
+  table). A model of another option is used as an estimate and says so. Size, weight, price per g, price per piece,
+  quantity and validity are all editable; weight × price per g fills the price until the Admin types one.
+- **The reply.** A suggested message (no numbers in it: the email's quote box carries them) to edit, and an internal
+  note for the history. Sending emails the quote with **Approve the quote** and **Decline the quote** on the
+  customer's own link (stored hashed). A revised quote replaces the link: the earlier email's buttons then say a newer
+  quote exists. The link can be copied from the workspace (useful while mail delivery is not active).
+- **Approve** asks for the shipping address, the delivery option and the terms, then turns the quote into an order at
+  the quoted price: one line, `pricing_version` `quote:Q-5001:v1`, the order notes say which quote it came from; one
+  order per quote; payment as for every order (pending until arranged). **Decline** marks the quote rejected; the team
+  is told when staff recipients are configured. An expired quote can no longer be approved.
+- **History.** The request, the emails, notes, each quote sent (with its numbers), status changes, the customer's
+  decision and note. An approved quote's status is changed through its order.
+
 ## Fixed price vs production cost vs 3D price
 
 Three separate values that never overwrite each other:

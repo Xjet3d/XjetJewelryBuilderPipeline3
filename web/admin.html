@@ -1242,7 +1242,7 @@
   </main>
 
   <!-- ══════════════════════════ Orders ══════════════════════════ -->
-  <main x-show="ok && tab === 'orders' && !orderId" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+  <main x-show="ok && tab === 'orders' && !orderId && !quoteId" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
     <section class="card">
       <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
         <div class="flex items-center gap-3"><p class="lbl">Orders (<span x-text="orders.length"></span>)</p>
@@ -1319,27 +1319,140 @@
     <!-- Gold: quote requests (no fixed price yet) -->
     <section class="card">
       <div class="px-6 py-4 border-b border-zinc-100 flex items-baseline justify-between gap-3"><p class="lbl">Quote requests · gold (<span x-text="quoteRequests.length"></span>)</p>
-        <p class="text-[12px] text-zinc-500">Reply to the customer by email; mark the request answered or closed here.</p></div>
+        <p class="text-[12px] text-zinc-500">Open a request to quote it: the customer approves (it becomes an order) or declines from the email.</p></div>
       <div class="overflow-x-auto">
       <table class="w-full">
-        <thead><tr><th>Request</th><th>Customer</th><th>Design</th><th>Material · size · qty</th><th>Message</th><th>Status</th></tr></thead>
+        <thead><tr><th>Request</th><th>Customer</th><th>Design</th><th>Material · size · qty</th><th>Message</th><th>Quote</th><th>Status</th></tr></thead>
         <tbody>
           <template x-for="q in quoteRequests" :key="q.id">
-            <tr class="align-top">
+            <tr class="align-top row-link" @click="go('#/orders/quote/' + encodeURIComponent(q.id))" tabindex="0" @keydown.enter="go('#/orders/quote/' + encodeURIComponent(q.id))" :aria-label="'Open quote request ' + q.ref">
               <td><p class="font-mono font-semibold" x-text="q.ref"></p><p class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="dateTime(q.created_at)"></p></td>
               <td><p class="font-medium" x-text="(q.customer.first_name + ' ' + q.customer.last_name).trim()"></p><p class="text-[12px] text-zinc-500" x-text="q.customer.email"></p><p class="text-[12px] text-zinc-500" x-text="q.customer.phone"></p></td>
               <td><a class="hover:underline" :href="'#/sessions/' + encodeURIComponent(q.design_id)"><span class="inline-flex align-middle mr-1" :class="isCharm(q) ? 'text-[#8A6420]' : 'text-zinc-500'" :title="pLabel(q.product_type)" x-html="pIcon(q.product_type, 'w-3.5 h-3.5')"></span><span class="font-medium" x-text="q.title"></span> <span class="font-mono text-[12px] text-zinc-500" x-text="q.ring_id || ''"></span></a></td>
               <td class="whitespace-nowrap" x-text="q.material_label + ' · ' + sizeOf(q) + ' · ×' + q.quantity"></td>
               <td class="text-[12px] text-zinc-600 max-w-[280px]" x-text="q.message || '—'"></td>
-              <td><select class="inp !w-auto !py-1 !text-[12px]" :value="q.status" @change="setQuoteStatus(q, $event.target.value)" aria-label="Request status">
-                  <option value="new">New</option><option value="answered">Answered</option><option value="closed">Closed</option></select></td>
+              <td class="whitespace-nowrap"><span x-show="q.offer" class="tabular-nums" x-text="money(q.offer?.total) + ' · until ' + (q.offer?.valid_until || '')"></span><span x-show="!q.offer" class="text-zinc-400">—</span>
+                <p x-show="q.order_ref" class="text-[12px]"><a class="underline font-mono" :href="'#/orders/' + encodeURIComponent(q.order_id || '')" @click.stop x-text="q.order_ref"></a></p></td>
+              <td><span class="badge" :class="quoteStatusClass(q.status)" x-text="quoteStatusLabel(q.status)"></span></td>
             </tr>
           </template>
-          <tr x-show="!quoteRequests.length"><td colspan="6" class="text-center text-zinc-500 !py-8">No quote requests.</td></tr>
+          <tr x-show="!quoteRequests.length"><td colspan="7" class="text-center text-zinc-500 !py-8">No quote requests.</td></tr>
         </tbody>
       </table>
       </div>
     </section>
+  </main>
+
+  <!-- ══════════════════════════ Quote request: every detail, the quote, the history ══════════════════════════ -->
+  <main x-show="ok && tab === 'orders' && quoteId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <p class="text-xs uppercase tracking-widest text-zinc-500"><a href="#/orders" class="hover:text-black">Orders</a> / <span x-text="qd?.ref || 'Quote request'"></span></p>
+    <p x-show="qdError" class="text-sm text-red-600" role="alert" x-text="qdError"></p>
+    <template x-if="qd">
+    <div class="space-y-6">
+      <section class="card p-6 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-3">
+              <h1 class="cinzel text-2xl" x-text="'Quote request ' + qd.ref"></h1>
+              <span class="badge" :class="quoteStatusClass(qd.status)" x-text="quoteStatusLabel(qd.status)"></span>
+            </div>
+            <p class="text-sm text-zinc-600" x-text="'Received ' + dateTime(qd.created_at)"></p>
+          </div>
+          <label class="text-[12px] text-zinc-500 flex items-center gap-2">Status
+            <select class="inp !w-auto !py-1.5 !text-[12px]" :value="qd.status" @change="setQuoteDetailStatus($event.target.value)" :disabled="qdBusy || qd.status === 'approved'" aria-label="Request status">
+              <template x-for="s in (qd.status === 'approved' ? ['approved'] : qd.statuses)" :key="s"><option :value="s" x-text="quoteStatusLabel(s)"></option></template>
+            </select></label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-zinc-100 text-sm">
+          <div class="space-y-1">
+            <p class="lbl">Customer</p>
+            <p class="font-medium"><a class="hover:underline" :href="'#/users/' + encodeURIComponent(qd.owner_account_id)" x-text="(qd.customer.first_name + ' ' + qd.customer.last_name).trim()"></a></p>
+            <p x-text="qd.customer.email"></p>
+            <p x-text="qd.customer.phone"></p>
+          </div>
+          <div class="space-y-1">
+            <p class="lbl">Emails</p>
+            <p><span class="text-zinc-500">The quote goes to</span> <strong x-text="qd.email_to"></strong></p>
+            <p><span class="text-zinc-500">Request notification:</span> <span x-text="qd.notification.staff.length ? 'sent to ' + qd.notification.staff.join(', ') : 'no staff recipients configured (P3_STAFF_NOTIFY_EMAILS)'"></span></p>
+            <p><span class="text-zinc-500">Customer's confirmation:</span> <span x-text="qConfirmText(qd)"></span></p>
+          </div>
+          <div class="space-y-1">
+            <p class="lbl">Request</p>
+            <div class="flex gap-3">
+              <div class="w-16 h-16 bg-zinc-100 border border-zinc-200 overflow-hidden shrink-0"><img x-show="qd.image_url" :src="small(qd.image_url)" class="w-full h-full object-cover" alt=""></div>
+              <div>
+                <a class="font-medium hover:underline" :href="'#/sessions/' + encodeURIComponent(qd.design_id)" x-text="qd.title"></a>
+                <p class="flex items-center gap-1.5"><span class="prod-chip" :class="isCharm(qd) ? 'is-charm' : ''"><span x-html="pIcon(qd.product_type, 'w-3.5 h-3.5')"></span><span x-text="pLabel(qd.product_type)"></span></span><span class="font-mono text-[12px] text-zinc-500" x-text="qd.ring_id || '—'"></span></p>
+                <p x-text="qd.material_label + ' · ' + sizeOf(qd) + ' · ×' + qd.quantity"></p>
+              </div>
+            </div>
+            <p x-show="qd.message" class="text-zinc-700 whitespace-pre-wrap" x-text="'Message: ' + qd.message"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card p-6 space-y-4" aria-label="The quote">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="lbl" x-text="qd.offer ? 'Quote · version ' + qd.offer.version + ' sent' : 'Prepare the quote'"></p>
+          <p x-show="qd.offer" class="text-[12px] text-zinc-500" x-text="'Sent ' + dateTime(qd.offer?.sent_at) + ' by ' + (qd.offer?.sent_by || '—') + ' to ' + (qd.offer?.to || '')"></p>
+        </div>
+        <div class="border border-zinc-200 bg-zinc-50 p-4 text-sm space-y-1">
+          <p class="font-semibold">Price suggestion</p>
+          <p x-show="qd.suggestion.basis" x-text="qd.suggestion.basis"></p>
+          <p x-show="qd.suggestion.weight_g != null" x-text="qd.suggestion.weight_g + ' g × ' + (qd.suggestion.price_per_g != null ? money(qd.suggestion.price_per_g) + ' per g' : 'no price per g') + ' = ' + (qd.suggestion.unit_price != null ? money(qd.suggestion.unit_price) + ' per piece' : 'no price')"></p>
+          <p x-show="qd.suggestion.weight_g == null && qd.suggestion.price_per_g != null" x-text="qd.material_label + ': ' + money(qd.suggestion.price_per_g) + ' per g (Admin → Settings → Pricing & Materials)'"></p>
+          <p x-show="qd.suggestion.warning" class="text-amber-700" x-text="qd.suggestion.warning"></p>
+          <button x-show="qd.suggestion.unit_price != null && qd.can_send" class="btn2 !py-1" @click="qUseSuggestion()">Use the suggestion</button>
+        </div>
+        <template x-if="qd.can_send">
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label class="lbl block">Size<select class="inp mt-1" x-model.number="qForm.size"><template x-for="s in qd.sizes" :key="s"><option :value="s" x-text="isCharm(qd) ? s + ' mm' : 'US ' + s"></option></template></select></label>
+            <label class="lbl block">Weight (g)<input class="inp mt-1" type="number" step="0.01" min="0" x-model.number="qForm.weight_g" @input="qRecalc()"></label>
+            <label class="lbl block">Price per g ($)<input class="inp mt-1" type="number" step="0.01" min="0" x-model.number="qForm.price_per_g" @input="qRecalc()"></label>
+            <label class="lbl block">Price per piece ($)<input class="inp mt-1" type="number" step="0.01" min="0" x-model.number="qForm.unit_price" @input="qUnitTouched = true"></label>
+            <label class="lbl block">Quantity<input class="inp mt-1" type="number" min="1" max="10" x-model.number="qForm.quantity"></label>
+            <label class="lbl block">Valid until<input class="inp mt-1" type="date" x-model="qForm.valid_until"></label>
+            <div class="md:col-span-2"><p class="lbl">Total</p><p class="text-2xl font-semibold tabular-nums" x-text="money(qTotal)"></p></div>
+          </div>
+          <p class="text-[12px] text-zinc-500">Weight × price per g sets the price per piece until you type a price yourself.</p>
+          <label class="lbl block">Message to the customer — the quote's numbers and the Approve / Decline buttons follow it in the email
+            <textarea class="inp mt-1" rows="9" x-model="qForm.message"></textarea></label>
+          <label class="lbl block">Internal note — kept in the history, not sent
+            <textarea class="inp mt-1" rows="2" x-model="qForm.note"></textarea></label>
+          <div class="flex flex-wrap items-center gap-3">
+            <button class="btn" :disabled="qdBusy || !(qForm.unit_price > 0)" @click="sendQuote()" x-text="qd.offer ? 'Send the revised quote' : 'Send the quote'"></button>
+            <span class="text-[12px] text-zinc-500" x-text="'To ' + qd.email_to + (qd.mail_mode === 'smtp' ? '' : ' · mail delivery is not active here: the email stays in the outbox, so copy the customer link below')"></span>
+          </div>
+        </div>
+        </template>
+        <div x-show="qd.offer" class="border-t border-zinc-100 pt-3 text-sm space-y-1">
+          <p><strong class="tabular-nums" x-text="money(qd.offer?.unit_price)"></strong> per piece × <span x-text="qd.offer?.quantity"></span> = <strong class="tabular-nums" x-text="money(qd.offer?.total)"></strong> · <span x-text="qd.offer?.size_label"></span> · valid until <span x-text="qd.offer?.valid_until"></span>
+            <span x-show="qd.offer_expired" class="badge bg-amber-100 text-amber-800">expired</span></p>
+          <p class="text-[12px] text-zinc-500">The customer's link (Approve / Decline): <button class="underline" @click="copyQuoteLink()" x-text="qLinkCopied ? 'copied' : 'copy'"></button></p>
+        </div>
+        <div x-show="qd.decision" class="border-t border-zinc-100 pt-3 text-sm space-y-1">
+          <p x-show="qd.status === 'approved'">Approved by the customer <span x-text="dateTime(qd.decision?.at)"></span> · order <a class="underline font-mono" :href="'#/orders/' + encodeURIComponent(qd.order?.id || '')" x-text="qd.order?.ref"></a></p>
+          <p x-show="qd.status === 'rejected'">Declined by the customer <span x-text="dateTime(qd.decision?.at)"></span></p>
+          <p x-show="qd.decision?.note" class="text-zinc-700" x-text="'Their note: ' + (qd.decision?.note || '')"></p>
+        </div>
+      </section>
+
+      <section class="card" aria-label="History">
+        <div class="px-6 py-4 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-3"><p class="lbl">History</p>
+          <div class="flex gap-2"><input class="inp !py-1.5 !text-[12px]" x-model="qNote" placeholder="Add a note" @keydown.enter="addQuoteNote()" aria-label="Note"><button class="btn2 !py-1.5" :disabled="qdBusy || !qNote.trim()" @click="addQuoteNote()">Add</button></div></div>
+        <table class="w-full">
+          <tbody>
+            <template x-for="e in qd.history.slice().reverse()" :key="e.id">
+              <tr class="align-top"><td class="whitespace-nowrap text-[12px] text-zinc-500" x-text="dateTime(e.created_at)"></td>
+                <td><span class="font-medium" x-text="qEventTitle(e)"></span> <span class="text-zinc-600 whitespace-pre-wrap" x-text="qEventDetail(e)"></span></td>
+                <td class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="e.by"></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </section>
+    </div>
+    </template>
   </main>
 
   <!-- ══════════════════════════ Order detail ══════════════════════════ -->

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>XJet Atelier — {{TITLE}}</title>
+  <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
+  <!-- The customer's quote (p3/quotes.py): the quote and its two answers, Approve (address + terms → an order) and Decline -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; background: #FAF8F4; color: #2A2A2A; min-height: 100vh;
+           display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+    .card { background: #fff; max-width: 32rem; width: 100%; padding: 2.5rem 2rem; border: 1px solid #EDE8DF;
+            border-top: 3px solid #C9A96E; box-shadow: 0 20px 50px rgba(154,114,48,0.12); }
+    .card.wide { max-width: 40rem; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 0.25em; font-size: 10px; color: #8A6420; font-weight: 700; margin-bottom: 0.75rem; }
+    h1 { font-family: 'Cinzel', serif; font-weight: 600; font-size: 1.6rem; color: #1A1A1A; margin-bottom: 1rem; }
+    h2 { font-family: 'Cinzel', serif; font-weight: 600; font-size: 1.15rem; color: #1A1A1A; margin-bottom: 0.6rem; }
+    p { font-size: 0.92rem; line-height: 1.65; color: #4A4A4A; margin-bottom: 0.9rem; }
+    p.msg { color: #2A2A2A; }
+    p.small { font-size: 0.8rem; color: #6F6F6F; }
+    .quote { display: flex; gap: 1rem; align-items: flex-start; border: 1px solid #EDE8DF; background: #FBF7EF; padding: 1rem; margin: 0.5rem 0 0.8rem; }
+    .quote img { width: 110px; height: 110px; object-fit: contain; background: #fff; flex-shrink: 0; }
+    .quote table { border-collapse: collapse; font-size: 0.88rem; width: 100%; }
+    .quote th { text-align: left; font-weight: 600; color: #6F6F6F; padding: 0.2rem 0.75rem 0.2rem 0; white-space: nowrap; vertical-align: top; }
+    .quote td { color: #1A1A1A; padding: 0.2rem 0; }
+    .panel { border: 1px solid #EDE8DF; padding: 1.25rem; margin-top: 1.25rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0; }
+    label { display: block; font-size: 0.78rem; font-weight: 600; color: #4A4A4A; }
+    input[type=text], input:not([type]), select, textarea { display: block; width: 100%; margin-top: 0.3rem; padding: 0.6rem 0.7rem;
+           border: 1px solid #D9D2C5; background: #fff; font: inherit; font-size: 0.92rem; font-weight: 400; color: #1A1A1A; border-radius: 4px; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #C9A96E; outline-offset: 1px; }
+    fieldset { border: 0; margin: 0.75rem 0; }
+    legend { font-size: 0.78rem; font-weight: 600; color: #4A4A4A; margin-bottom: 0.35rem; }
+    .opt, .check { display: flex; gap: 0.6rem; align-items: flex-start; font-weight: 400; font-size: 0.88rem; margin: 0.35rem 0; cursor: pointer; }
+    .opt input, .check input { margin-top: 0.25rem; }
+    textarea { resize: vertical; }
+    .panel > label { margin: 0.75rem 0; }
+    button { display: inline-block; margin-top: 0.75rem; border: 0; cursor: pointer; background: linear-gradient(135deg, #C9A96E 0%, #B08040 100%);
+             color: #1A1A1A; padding: 0.95rem 1.6rem; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; }
+    button.secondary { background: #fff; border: 1px solid #B4443A; color: #B4443A; }
+    button:focus-visible { outline: 2px solid #1A1A1A; outline-offset: 2px; }
+    .err { display: block; color: #B4443A; font-size: 0.78rem; font-weight: 600; margin-top: 0.25rem; }
+    p.err { margin-bottom: 0.5rem; }
+    .bad { border-top-color: #B4443A; }
+    .bad h1 { color: #B4443A; }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .quote { flex-direction: column; } .card { padding: 1.75rem 1.1rem; } }
+  </style>
+</head>
+<body>
+  <main class="card {{CARD_CLASS}}">
+    <p class="eyebrow">XJet Atelier</p>
+    <h1>{{TITLE}}</h1>
+{{BODY}}
+  </main>
+</body>
+</html>

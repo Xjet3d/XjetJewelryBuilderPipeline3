@@ -17,6 +17,7 @@ Limits = {                      # name: (requests, window in seconds)
     "auth:ip": (30, 900),
     "register:ip": (10, 900),
     "register:email": (5, 3600),
+    "quote:ip": (30, 900),          # a customer's answer to a quote (the emailed link)
 }
 MaxWindows = 50_000             # before pruning expired windows
 

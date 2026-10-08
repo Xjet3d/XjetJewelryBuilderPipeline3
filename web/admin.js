@@ -195,6 +195,7 @@ function adminApp() {
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
+    quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
@@ -303,7 +304,8 @@ function adminApp() {
       const wasList = this.tab === 'sessions' && !this.sessionId;
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
-      this.orderId = this.tab === 'orders' ? id : '';
+      this.orderId = this.tab === 'orders' && !id.startsWith('quote/') ? id : '';
+      this.quoteId = this.tab === 'orders' && id.startsWith('quote/') ? id.slice(6) : '';
       this.openDesign = null; this.zoom = null; this.rename.open = false;
       const backToList = this.tab === 'sessions' && !id && !wasList;
       if (!backToList) window.scrollTo({ top: 0 });
@@ -317,7 +319,8 @@ function adminApp() {
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
       if (this.tab === 'orders' && !id) await this.loadOrders();
-      if (this.tab === 'orders' && id) await this.loadOrder(); else this.od = null;
+      if (this.tab === 'orders' && this.orderId) await this.loadOrder(); else this.od = null;
+      if (this.tab === 'orders' && this.quoteId) await this.loadQuote(); else this.qd = null;
       if (this.tab === 'gallery') await this.loadGallery();
       if (this.tab === 'settings') {
         if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
@@ -455,6 +458,86 @@ function adminApp() {
       this.odBusy = true; this.odError = '';
       try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/note`, { note: this.oNote }); this.oNote = ''; }
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // ── a quote request: every detail, a 3D-based price, the quote email (Approve / Decline), the history ──
+    async loadQuote() {
+      this.qdError = '';
+      try { this.qd = await this.api('GET', '/api/admin/quote-requests/' + encodeURIComponent(this.quoteId)); this.qResetForm(); }
+      catch (e) { this.qd = null; this.qdError = e.message; }
+    },
+    qResetForm() {
+      const q = this.qd, s = q.suggestion || {}, o = q.offer || {};
+      this.qForm = { size: o.size ?? q.defaults.size ?? null, weight_g: o.weight_g ?? s.weight_g ?? null,
+                     price_per_g: o.price_per_g ?? s.price_per_g ?? null, unit_price: o.unit_price ?? s.unit_price ?? null,
+                     quantity: o.quantity ?? q.quantity, valid_until: q.defaults.valid_until, message: o.message || q.suggested_reply, note: '' };
+      this.qUnitTouched = o.unit_price != null; this.qLinkCopied = false;
+    },
+    qRecalc() {
+      if (this.qUnitTouched) return;
+      const w = Number(this.qForm.weight_g), p = Number(this.qForm.price_per_g);
+      if (w > 0 && p > 0) this.qForm.unit_price = Math.round(w * p * 100) / 100;
+    },
+    get qTotal() { const u = Number(this.qForm.unit_price), n = Number(this.qForm.quantity); return u > 0 && n > 0 ? Math.round(u * n * 100) / 100 : null; },
+    qUseSuggestion() {
+      const s = this.qd?.suggestion || {};
+      Object.assign(this.qForm, { weight_g: s.weight_g, price_per_g: s.price_per_g, unit_price: s.unit_price, size: s.size ?? this.qForm.size });
+      this.qUnitTouched = false;
+    },
+    async sendQuote() {
+      if (!this.qd) return;
+      const f = this.qForm, revised = !!this.qd.offer;
+      const ok = await this.ask({ title: (revised ? 'Send the revised quote to ' : 'Send the quote to ') + this.qd.email_to + '?',
+        text: `${this.money(f.unit_price)} per piece × ${f.quantity} = ${this.money(this.qTotal)}, valid until ${f.valid_until}. The customer approves (it becomes an order) or declines from the email.` + (revised ? ' The buttons of the earlier quote stop working.' : ''),
+        confirmLabel: revised ? 'Send revised quote' : 'Send quote' });
+      if (!ok) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/offer`, f); this.qResetForm(); this.notify('Quote sent to ' + this.qd.email_to); }
+      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
+    },
+    async addQuoteNote() {
+      if (!this.qd || !this.qNote.trim()) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/note`, { note: this.qNote }); this.qNote = ''; this.qResetForm(); }
+      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
+    },
+    async setQuoteDetailStatus(status) {
+      if (!this.qd || status === this.qd.status) return;
+      this.qdBusy = true; this.qdError = '';
+      try { await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/status`, { status }); await this.loadQuote(); }
+      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
+    },
+    async copyQuoteLink() {
+      try { await navigator.clipboard.writeText(this.qd?.offer?.link || ''); this.qLinkCopied = true; setTimeout(() => { this.qLinkCopied = false; }, 2500); }
+      catch (_) { await this.ask({ title: 'The customer link', text: 'Copy it from the box:', copy: this.qd?.offer?.link || '', confirmLabel: 'Done', cancelLabel: '' }); }
+    },
+    quoteStatusLabel(s) { return { new: 'New', quoted: 'Quoted', answered: 'Answered', approved: 'Approved', rejected: 'Rejected', closed: 'Closed' }[s] || s; },
+    quoteStatusClass(s) { return { new: 'bg-amber-100 text-amber-800', quoted: 'bg-sky-100 text-sky-800', answered: 'bg-sky-100 text-sky-800', approved: 'bg-emerald-100 text-emerald-800', rejected: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    qConfirmText(q) {
+      const c = q.notification?.customer_confirmation;
+      if (!c) return 'not recorded';
+      if (c.failed) return 'failed for ' + c.to;
+      return (c.delivery === 'smtp' ? 'sent to ' : 'kept in the outbox, not sent, for ') + c.to;
+    },
+    qEventTitle(e) {
+      const d = e.data || {};
+      return ({ created: 'Request received', note: 'Note', offer_sent: d.revised ? 'Revised quote sent' : 'Quote sent', approved: 'Approved by the customer',
+                rejected: 'Declined by the customer', status: 'Status changed', staff_notified: 'Team notified', staff_notify_failed: 'Team notification failed',
+                email: d.type === 'offer' ? 'Quote email' : 'Confirmation email', email_failed: d.type === 'offer' ? 'Quote email failed' : 'Confirmation email failed' })[e.kind] || e.kind;
+    },
+    qEventDetail(e) {
+      const d = e.data || {}, m = v => this.money(v);
+      switch (e.kind) {
+        case 'created': return [d.quantity ? '×' + d.quantity : '', d.message ? '“' + d.message + '”' : ''].filter(Boolean).join(' · ');
+        case 'note': return d.note || '';
+        case 'offer_sent': return `v${d.version}: ${m(d.unit_price)} × ${d.quantity} = ${m(d.total)} · ${d.size_label || ''} · valid until ${d.valid_until}` + (d.weight_g ? ` · ${d.weight_g} g` : '') + (d.price_per_g ? ` × ${m(d.price_per_g)} per g` : '') + ' · to ' + (d.to || '');
+        case 'approved': return 'order ' + (d.order_ref || '') + (d.total != null ? ' · ' + m(d.total) : '') + (d.shipping_method ? ' · ' + d.shipping_method : '') + (d.note ? ' · “' + d.note + '”' : '');
+        case 'rejected': return d.note ? '“' + d.note + '”' : '';
+        case 'status': return (this.quoteStatusLabel(d.from) || '') + ' to ' + (this.quoteStatusLabel(d.to) || '');
+        case 'email': return (d.delivery === 'smtp' ? 'sent to ' : 'kept in the outbox for ') + (d.to || '');
+        case 'email_failed': case 'staff_notify_failed': return (d.to || '') + (d.error ? ' · ' + d.error : '');
+        case 'staff_notified': return d.to || '';
+        default: return '';
+      }
     },
     async setQuoteStatus(q, status) {
       try { const r = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(q.id)}/status`, { status }); Object.assign(q, r); }

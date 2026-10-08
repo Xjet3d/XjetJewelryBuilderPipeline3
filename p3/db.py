@@ -353,14 +353,30 @@ CREATE TABLE IF NOT EXISTS quote_requests (
     quantity          INTEGER NOT NULL,
     customer_json     TEXT NOT NULL,
     message           TEXT,
-    status            TEXT NOT NULL,               -- new | answered | closed
+    status            TEXT NOT NULL,               -- new | quoted | answered | approved | rejected | closed (p3/quotes.py)
     created_at        TEXT NOT NULL,
-    updated_at        TEXT NOT NULL
+    updated_at        TEXT NOT NULL,
+    offer_json        TEXT,                        -- the Admin's current quote (p3/quotes.py SendOffer)
+    link_hash        TEXT,                        -- SHA-256 of the current quote's customer link
+    decided_at        TEXT,                        -- the customer approved or declined
+    decision_note     TEXT,
+    order_id          TEXT                         -- the order an approved quote became
 );
 CREATE TRIGGER IF NOT EXISTS quote_requests_no_assign AFTER INSERT ON quote_requests
 WHEN NEW.request_no IS NULL BEGIN
   UPDATE quote_requests SET request_no = (SELECT COALESCE(MAX(request_no), 5000) + 1 FROM quote_requests) WHERE id = NEW.id;
 END;
+
+-- A quote request's history: the request, its emails, notes, each quote sent, the customer's decision and note
+CREATE TABLE IF NOT EXISTS quote_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id  TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    data_json   TEXT NOT NULL DEFAULT '{}',
+    by          TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS quote_events_request ON quote_events(request_id, id);
 """
 
 
@@ -615,6 +631,13 @@ class Database:
                 if "owner_account_id" in Cols and "share_slug" not in Cols:
                     # Customer share link by design name (/design/aurora-twist): assigned once, stable through renames
                     Conn.execute("ALTER TABLE designs ADD COLUMN share_slug TEXT")
+                QCols = {R[1] for R in Conn.execute("PRAGMA table_info(quote_requests)")}
+                if QCols and "offer_json" not in QCols:
+                    # The Admin's quote and the customer's decision (p3/quotes.py)
+                    for Col in ("offer_json TEXT", "link_hash TEXT", "decided_at TEXT", "decision_note TEXT", "order_id TEXT"):
+                        Conn.execute(f"ALTER TABLE quote_requests ADD COLUMN {Col}")
+                if QCols:
+                    Conn.execute("CREATE INDEX IF NOT EXISTS quote_requests_token ON quote_requests(link_hash)")
                 GCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_items)")}
                 if GCols and "owner_kind" not in GCols:
                     # Publication provenance: whose design a gallery item shows and the customer's consent (privacy)

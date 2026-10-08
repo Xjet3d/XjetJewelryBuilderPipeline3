@@ -24,7 +24,8 @@ from p3 import media as Media
 from p3 import products as Products
 from p3 import showcase as Showcase
 from p3 import credits as Credits
-from p3.ratelimit import RateLimiter
+from p3.ratelimit import ClientIp, RateLimiter
+from p3.quotes import QuoteDesk
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
@@ -78,6 +79,7 @@ class Services:
         self.Promos = PromoService(Ctx)                          # promo codes (Admin), evaluated server-side
         # Checkout + orders: payment and address validation sit behind adapters (none connected yet).
         self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer, self.Production3D)
+        self.Quotes = QuoteDesk(Ctx, self.Orders, Mailer)                 # the Admin's quote and the customer's decision
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
@@ -416,7 +418,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                                                                                 "minimax-camera-charm", "hi3d-charm")}}
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, Ctx.AiPrices, Svc.Gallery,
-                  Svc.Orders, Svc.Promos, HealthDetails=HealthDetails)
+                  Svc.Orders, Svc.Promos, HealthDetails=HealthDetails, Quotes=Svc.Quotes)
 
     # ── derived media: thumbnails and movie posters, made on first request and cached (p3/media.py) ──
     @App_.get("/thumb/{Rel:path}", include_in_schema=False)
@@ -720,6 +722,28 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/orders/{OrderId}")
     async def MyOrder(OrderId: str, request: Request, x_access_token: str | None = Header(None)):
         return RingOnly(Svc.Orders.Get(Tok(x_access_token), OrderId), request)
+
+    # ── the customer's answer to a quote: the emailed link (p3/quotes.py); the token is a query value, so the access
+    #    log redacts it ──
+    def _QuoteHtml(Out):
+        Html, Code = Out
+        return HTMLResponse(Html, status_code=Code, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"})
+
+    @App_.get("/quote", include_in_schema=False)
+    async def QuotePage(token: str = "", action: str = ""):
+        return _QuoteHtml(Svc.Quotes.Page(token, action if action in ("approve", "reject") else ""))
+
+    @App_.post("/quote/approve", include_in_schema=False)
+    async def QuoteApprove(request: Request, Background: BackgroundTasks):
+        Ctx.RateLimiter.Hit("quote:ip", ClientIp(request))
+        Form_ = {K: str(V) for K, V in (await request.form()).items()}
+        return _QuoteHtml(Svc.Quotes.Approve(Form_.get("token", ""), Form_, Background.add_task))
+
+    @App_.post("/quote/reject", include_in_schema=False)
+    async def QuoteReject(request: Request):
+        Ctx.RateLimiter.Hit("quote:ip", ClientIp(request))
+        Form_ = {K: str(V) for K, V in (await request.form()).items()}
+        return _QuoteHtml(Svc.Quotes.Reject(Form_.get("token", ""), Form_))
 
     @App_.post("/api/quote-requests")
     async def RequestQuote(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):

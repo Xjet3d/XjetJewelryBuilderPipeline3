@@ -19,6 +19,7 @@ XJ numbers, mandatory XJET10 coupon and client-side prices were deliberately NOT
 import html
 import json
 import re
+import sqlite3
 
 from p3 import addressing as Addressing
 from p3 import charmprices as CharmPrices
@@ -53,6 +54,17 @@ def OrderRef(No) -> str | None:
 
 def QuoteRef(No) -> str | None:
     return f"Q-{No}" if No is not None else None
+
+
+QuoteOpen = ("new", "quoted", "answered")          # a quote can still be sent, revised and decided
+QuoteManualStatuses = ("new", "quoted", "answered", "rejected", "closed")   # "approved" only by the customer (it creates the order)
+
+
+def QuoteEvent(DbOrConn, RequestId: str, Kind: str, Data: dict | None = None, By: str = "system") -> None:
+    """One line of a quote request's history (quote_events), on the database or inside an open transaction."""
+    Sql = "INSERT INTO quote_events (request_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)"
+    Args = (RequestId, Kind, Dumps(Data or {}), By, Now())
+    (DbOrConn.Execute if hasattr(DbOrConn, "Execute") else DbOrConn.execute)(Sql, Args)
 
 
 class OrderService:
@@ -392,6 +404,8 @@ class OrderService:
         Sessions.Record(self.Ctx, Who.AccountId, "quote_requested", DesignId, request_id=Id, candidate_id=CandidateId,
                         ring_id=Ring, material_id=Mat.Id,
                         **({"product_type": Products.Charm, "charm_size": Size} if Charm else {"ring_size": Size}), quantity=Qty)
+        QuoteEvent(Db, Id, "created", {"message": str(Body.get("message") or "")[:1000], "quantity": Qty, "material_id": Mat.Id,
+                                        "size": float(Size) if Size is not None else None}, "customer")
         Out = self.QuoteRequestJson(Db.One("SELECT * FROM quote_requests WHERE id = ?", (Id,)), C)
         # What the customer may be told: "sent" only when mail really leaves the server (SMTP); the outbox keeps a copy
         Out["email_status"] = "not_configured" if self.Mailer is None else ("pending" if self.Mailer.Mode == "smtp" else "not_sent")
@@ -399,32 +413,42 @@ class OrderService:
             from p3.mail import QuoteRequestEmail, StaffQuoteEmail
             Subject, Html = QuoteRequestEmail(Out)
             Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
+            Mode = self.Mailer.Mode
 
             def Send():
                 try:
                     self.Mailer.Send(Customer["email"], Subject, Html)
-                except Exception:  # noqa: BLE001
-                    pass
+                    QuoteEvent(Db, Id, "email", {"type": "request_confirmation", "to": Customer["email"], "delivery": Mode})
+                except Exception as E:  # noqa: BLE001
+                    QuoteEvent(Db, Id, "email_failed", {"type": "request_confirmation", "to": Customer["email"], "error": str(E)[:200]})
                 if Staff:
                     StaffSubject, StaffHtml = StaffQuoteEmail(Out)
                     for Address in Staff:
                         try:
                             self.Mailer.Send(Address, StaffSubject, StaffHtml)
-                        except Exception:  # noqa: BLE001
-                            pass
+                            QuoteEvent(Db, Id, "staff_notified", {"to": Address, "about": "request"})
+                        except Exception as E:  # noqa: BLE001
+                            QuoteEvent(Db, Id, "staff_notify_failed", {"to": Address, "about": "request", "error": str(E)[:200]})
             (SendMail or (lambda Fn: Fn()))(Send)
         return Out
 
     def QuoteRequestJson(self, R: dict, Cand: dict | None = None) -> dict:
         Cand = Cand or self.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
         Product = R.get("product_type") or Products.Ring
+        Offer = json.loads(R["offer_json"]) if R.get("offer_json") else None
+        Order = self.Ctx.Db.One("SELECT order_no FROM orders WHERE id = ?", (R["order_id"],)) if R.get("order_id") else None
         return {"id": R["id"], "ref": QuoteRef(R["request_no"]), "design_id": R["design_id"], "candidate_id": R["candidate_id"],
                 "title": R["title"], "ring_id": R["ring_id"], "material_id": R["material_id"], "material_label": R["material_label"],
                 "product_type": Product, "charm_size": R.get("charm_size"),
                 "size_label": Products.SizeLabel(Product, R["ring_size"], R.get("charm_size")),
                 "ring_size": R["ring_size"], "quantity": R["quantity"], "customer": json.loads(R["customer_json"]),
                 "message": R["message"], "status": R["status"], "created_at": R["created_at"], "updated_at": R["updated_at"],
-                "image_url": self.Ctx.AssetUrl(Cand["asset_path"]) if Cand else None, "owner_account_id": R["owner_account_id"]}
+                "image_url": self.Ctx.AssetUrl(Cand["asset_path"]) if Cand else None, "owner_account_id": R["owner_account_id"],
+                # the current quote (p3/quotes.py) and the customer's decision
+                "offer": {K: Offer.get(K) for K in ("version", "unit_price", "quantity", "total", "valid_until", "sent_at", "size_label")}
+                if Offer else None,
+                "decided_at": R.get("decided_at"), "decision_note": R.get("decision_note"), "order_id": R.get("order_id"),
+                "order_ref": OrderRef(Order["order_no"]) if Order else None}
 
     # ── admin ────────────────────────────────────────────────────────────
     def _ThreeDForLine(self, L: dict) -> dict:
@@ -605,12 +629,102 @@ class OrderService:
                                (Status,) if Status else ())
         return [self.QuoteRequestJson(R) for R in Rows]
 
-    def SetQuoteStatus(self, RequestId: str, Status: str) -> dict:
-        if Status not in ("new", "answered", "closed"):
+    def SetQuoteStatus(self, RequestId: str, Status: str, By: str = "admin") -> dict:
+        """The Admin's own status for a request (recorded in its history). An approved quote became an order: it is
+        changed through the order, not here."""
+        if Status not in QuoteManualStatuses:
             raise HttpError(400, "invalid_status", "Unknown request status.")
-        if self.Ctx.Db.Execute("UPDATE quote_requests SET status = ?, updated_at = ? WHERE id = ?", (Status, Now(), RequestId)) == 0:
+        R = self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (RequestId,))
+        if R is None:
             raise HttpError(404, "request_not_found", "Quote request not found.")
+        if R["status"] == "approved":
+            raise HttpError(409, "quote_approved", "This quote was approved and became an order: change the order instead.")
+        if R["status"] != Status:
+            self.Ctx.Db.Execute("UPDATE quote_requests SET status = ?, updated_at = ? WHERE id = ?", (Status, Now(), RequestId))
+            QuoteEvent(self.Ctx.Db, RequestId, "status", {"from": R["status"], "to": Status}, By)
         return self.QuoteRequestJson(self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (RequestId,)))
+
+    def CreateFromQuote(self, Q: dict, Offer: dict, AddressRaw: dict, Method: str, Note: str = "", SendMail=None) -> dict:
+        """An approved quote becomes an order: the quoted piece at the quoted price (one line), the customer of the
+        request, the address and the terms given on approval. One order per quote (a repeated approval returns it);
+        payment as for every order — never faked."""
+        Db = self.Ctx.Db
+        Rid, Ref = f"quote:{Q['id']}", QuoteRef(Q["request_no"])
+        Existing = Db.One("SELECT id FROM orders WHERE owner_account_id = ? AND client_request_id = ?", (Q["owner_account_id"], Rid))
+        if Existing:
+            return self._OrderJson(Existing["id"])
+        Addr = self.ValidateAddress(AddressRaw)
+        Problems = list(Addr["problems"])
+        if Method not in ShippingOptions:
+            Problems.append({"field": "shipping_method", "message": "Please choose a delivery option."})
+        if Problems:
+            raise _Invalid(Problems)
+        Product = Q.get("product_type") or Products.Ring
+        Charm = Product == Products.Charm
+        Size, Unit, Qty = float(Offer["size"]), round(float(Offer["unit_price"]), 2), int(Offer["quantity"])
+        Line = {"design_id": Q["design_id"], "candidate_id": Q["candidate_id"], "title": Q["title"], "ring_id": Q["ring_id"],
+                "product_type": Product, "material_id": Q["material_id"], "material_label": Q["material_label"],
+                "ring_size": None if Charm else Size, "charm_size": Size if Charm else None, "quantity": Qty, "unit_price": Unit,
+                "line_total": round(Unit * Qty, 2), "currency": Offer.get("currency") or "USD",
+                "pricing_version": f"quote:{Ref}:v{Offer['version']}"}
+        Ship = ShippingOptions[Method]
+        Validation = Addr["validation"]
+        Status = Validation.get("status") or "unverified"
+        if Status not in ("unverified", "verified", "corrected", "failed"):
+            Status = "unverified"
+        Img = Db.One("SELECT asset_path FROM candidates WHERE id = ?", (Q["candidate_id"],))
+        Snapshot = {**PurchaseSnapshot(Line), "quote": {"ref": Ref, "version": Offer["version"], "weight_g": Offer.get("weight_g"),
+                                                        "price_per_g": Offer.get("price_per_g")}}
+        OrderId, T = NewId("ord"), Now()
+        Total = round(Line["line_total"] + Ship["price"], 2)
+        Notes = f"From quote {Ref} (version {Offer['version']})." + (f" Customer's note: {Note}" if Note else "")
+        try:
+            with Db.Transaction() as Conn:
+                Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
+                             "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
+                             "terms_version, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (OrderId, Q["owner_account_id"], "new", "pending", Q["customer_json"],
+                              Dumps({**Addr["address"], "validation": {K: V for K, V in Validation.items() if K != "suggestion"},
+                                     "suggestion": Validation.get("suggestion")}),
+                              Status, Method, Line["currency"], Line["line_total"], 0.0, Ship["price"], Total, None, None,
+                              TermsVersion, T, Rid, Notes, T, T))
+                Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
+                             "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
+                             "line_total, currency, pricing_version, image_path, purchase_json) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (NewId("oln"), OrderId, 1, Line["design_id"], Line["candidate_id"], None, None, Line["title"],
+                              Line["ring_id"], Product, Line["material_id"], Line["material_label"], Line["ring_size"],
+                              Line["charm_size"], Qty, Unit, Line["line_total"], Line["currency"], Line["pricing_version"],
+                              Img["asset_path"] if Img else None, Dumps(Snapshot)))
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (OrderId, "placed", Dumps({"total": Total, "lines": 1, "from_quote": Ref, "version": Offer["version"]}),
+                              "customer", T))
+        except sqlite3.IntegrityError:                  # the same approval twice at once: the first one placed the order
+            Existing = Db.One("SELECT id FROM orders WHERE owner_account_id = ? AND client_request_id = ?", (Q["owner_account_id"], Rid))
+            if Existing:
+                return self._OrderJson(Existing["id"])
+            raise
+        Order = Db.One("SELECT * FROM orders WHERE id = ?", (OrderId,))
+        Pay = self.Payment.Begin(Order)
+        PayStatus = Pay["status"] if Pay["status"] in Payments.Statuses else "pending"
+        Db.Execute("UPDATE orders SET payment_status = ?, payment_provider = ?, payment_ref = ?, payment_json = ?, updated_at = ? WHERE id = ?",
+                   (PayStatus, self.Payment.Name if self.Payment.Available else None, Pay.get("ref"),
+                    Dumps({"message": Pay.get("message"), "client": Pay.get("client")}), Now(), OrderId))
+        if PayStatus == "paid":
+            self._SetStatus(OrderId, "payment_confirmed", self.Payment.Name, "Paid through the provider")
+        OrderNo = Db.One("SELECT order_no FROM orders WHERE id = ?", (OrderId,))["order_no"]
+        Sizes = {"product_type": Products.Charm, "charm_size": Size} if Charm else {"ring_size": Size}
+        Sessions.Record(self.Ctx, Q["owner_account_id"], "order_placed", Q["design_id"], order_id=OrderId, order_ref=OrderRef(OrderNo),
+                        candidate_id=Q["candidate_id"], ring_id=Q["ring_id"], material_id=Q["material_id"], **Sizes, quantity=Qty,
+                        unit_price=Unit, line_total=Line["line_total"], currency=Line["currency"], from_quote=Ref)
+        Out = self._OrderJson(OrderId)
+        self._Email(Out, SendMail)
+        return Out
+
+    def _OrderJson(self, OrderId: str) -> dict:
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ?", (OrderId,))
+        return self.ToJson(O, self._Lines(OrderId))
 
     def Summary(self, ExcludeMock: bool = True, Since: str | None = None) -> dict:
         """Dashboard numbers: counts by status and payment, revenue of live orders, open quote requests.

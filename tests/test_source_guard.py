@@ -37,14 +37,18 @@ def test_no_block_of_code_is_repeated_right_after_itself():
     assert Found == []
 
 
-def test_a_database_from_before_credit_actions_is_migrated(tmp_path):
-    """A database without candidates.credit_ref starts cleanly: every existing image slot belongs to its own
-    batch's credit action."""
+def test_a_database_from_before_credit_actions_and_quote_offers_is_migrated(tmp_path):
+    """A database without candidates.credit_ref and without the quote offer columns and history starts cleanly:
+    every existing image slot belongs to its own batch's credit action, and the quote columns and table appear."""
     Path_ = tmp_path / "old.db"
     Database(Path_)                                                   # today's schema …
     with sqlite3.connect(Path_) as Conn:                              # … taken back to before 2026-10-07
         Conn.executescript("""
             ALTER TABLE candidates DROP COLUMN credit_ref;
+            DROP INDEX quote_requests_token; DROP TABLE quote_events;
+            ALTER TABLE quote_requests DROP COLUMN offer_json; ALTER TABLE quote_requests DROP COLUMN link_hash;
+            ALTER TABLE quote_requests DROP COLUMN decided_at; ALTER TABLE quote_requests DROP COLUMN decision_note;
+            ALTER TABLE quote_requests DROP COLUMN order_id;
         """)
         Conn.execute("PRAGMA foreign_keys=OFF")
         Conn.execute("INSERT INTO designs (id, owner_account_id, title, prompt, created_at, updated_at, ring_no) VALUES "
@@ -55,4 +59,7 @@ def test_a_database_from_before_credit_actions_is_migrated(tmp_path):
                      "('cand_1', 'bat_1', 0, 'ready', 7, '2026-10-01', '2026-10-01')")
     Db = Database(Path_)                                              # the migration runs on start, once
     assert Db.One("SELECT credit_ref FROM candidates WHERE id = 'cand_1'")["credit_ref"] == "bat_1"
+    Cols = {R["name"] for R in Db.All("PRAGMA table_info(quote_requests)")}
+    assert {"offer_json", "link_hash", "decided_at", "decision_note", "order_id"} <= Cols
+    assert Db.One("SELECT COUNT(*) AS n FROM quote_events")["n"] == 0
     Database(Path_)                                                   # and again: nothing left to migrate

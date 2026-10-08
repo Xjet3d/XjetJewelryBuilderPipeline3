@@ -21,7 +21,7 @@ import re
 import time
 from statistics import mean
 
-from fastapi import Body, FastAPI, Header, Request
+from fastapi import BackgroundTasks, Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import adminauth as AdminAuth
@@ -43,6 +43,7 @@ from p3.db import Now
 from p3.usage import AccountActivity
 from p3 import credits as Credits
 from p3 import falkey as FalKeys
+from p3.registration import PublicOrigin
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 
@@ -203,7 +204,7 @@ def Attention(Ctx: Context, Orders=None) -> dict:
                 Items.append({**Base, "kind": "order_needs_3d", "severity": "info", "label": "Paid order without a 3D model yet"})
         for Q in Orders.AdminQuoteRequests("new"):
             Items.append({"kind": "quote_request", "severity": "info", "label": "Quote request awaiting a reply", "ref": Q["ref"],
-                          "title": Q["title"], "href": "#/orders", "at": Q["created_at"],
+                          "title": Q["title"], "href": f"#/orders/quote/{Q['id']}", "at": Q["created_at"],
                           "customer": (Q["customer"]["first_name"] + " " + Q["customer"]["last_name"]).strip()})
     Items.sort(key=lambda I: (Severity.get(I["severity"], 9), -(_Ts(I["at"]))))
     ByKind: dict[str, int] = {}
@@ -468,7 +469,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     }
 
 def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None, Orders=None, Promos=None,
-                  HealthDetails=None) -> None:
+                  HealthDetails=None, Quotes=None) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page; `HealthDetails()` is the
     server's full health picture (admin-only; the public /api/health says only that the service is up)."""
 
@@ -689,8 +690,27 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.post("/api/admin/quote-requests/{RequestId}/status")
     async def AdminQuoteStatus(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.SetQuoteStatus(RequestId, str(Body_.get("status") or ""), Who.Id)
+
+    # ── the quote workspace (p3/quotes.py): every detail, a 3D-based price, the quote email, the history ──
+    @App_.get("/api/admin/quote-requests/{RequestId}")
+    async def AdminQuote(RequestId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        return Orders.SetQuoteStatus(RequestId, str(Body_.get("status") or ""))
+        return Quotes.AdminDetail(RequestId)
+
+    @App_.post("/api/admin/quote-requests/{RequestId}/offer")
+    async def AdminQuoteOffer(RequestId: str, request: Request, Background: BackgroundTasks, Body_: dict = Body(...),
+                              authorization: str | None = Header(None)):
+        """Send (or revise) the quote: the customer's link points at the public site, never at the Admin host."""
+        Who = Admin(authorization)
+        Origin = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
+        return Quotes.SendOffer(RequestId, Body_, Who.Id, Origin, Background.add_task)
+
+    @App_.post("/api/admin/quote-requests/{RequestId}/note")
+    async def AdminQuoteNote(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Quotes.AddNote(RequestId, str(Body_.get("note") or ""), Who.Id)
 
     @App_.get("/api/admin/sessions")
     async def ListSessions(include_mock: bool = False, authorization: str | None = Header(None)):

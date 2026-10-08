@@ -194,6 +194,39 @@ def StaffQuoteEmail(Request: dict) -> tuple[str, str]:
         <p style="margin:0;font-size:12px;color:#8F8F8F;">The customer was promised an answer within one business day. Open the Admin → Orders → Quote requests.</p>"""))
 
 
+def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
+    """The Admin's quote (p3/quotes.py): their message, the quote itself, and the customer's two answers on the customer's
+    own link — Approve asks for the shipping address and places the order; Decline records the answer."""
+    Msg = "".join(f'<p style="margin:0 0 14px;">{_Esc(P).replace(chr(10), "<br>")}</p>'
+                  for P in (Offer.get("message") or "").split("\n\n") if P.strip())
+    Rows = [("Design", f"{Request['title']} · {Request.get('ring_id') or ''}"), ("Material", Request["material_label"]),
+            ("Size", Offer.get("size_label") or "—"), ("Quantity", str(Offer["quantity"])),
+            ("Price per piece", _Money(Offer["unit_price"])), ("Total", _Money(Offer["total"])), ("Valid until", Offer["valid_until"])]
+    Table = "".join(f'<tr><td style="padding:5px 14px 5px 0;{_Font}font-size:13px;color:#6F6F6F;white-space:nowrap;">{_Esc(K)}</td>'
+                    f'<td style="padding:5px 0;{_Font}font-size:14px;color:#1A1A1A;"><strong>{_Esc(V)}</strong></td></tr>' for K, V in Rows)
+    Approve, Decline = Offer["link"] + "&action=approve", Offer["link"] + "&action=reject"
+    return (f"Your quote {Request['ref']} — {Request['title']}", _Layout(f"Your quote {_Esc(Request['ref'])}", f"""\
+        {Msg}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 18px;background:#FFFFFF;border:1px solid #EDE8DF;">
+          <tr><td style="padding:14px 18px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0">{Table}</table></td></tr>
+        </table>
+        {_Button(_Esc(Approve), "Approve the quote")}
+        <p style="margin:12px 0 0;text-align:center;{_Font}font-size:13px;"><a href="{_Esc(Decline)}" target="_blank" style="color:#B4443A;">Decline the quote</a></p>
+        <p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">Delivery is chosen when you approve: Standard delivery is free, Express is $45.
+           Prices in US dollars; import duties or VAT, where charged, are paid by the recipient. {ContactLine(Request['ref'])}</p>"""))
+
+
+def StaffQuoteDecisionEmail(Request: dict, Decision: str, Note: str = "") -> tuple[str, str]:
+    """For the team: the customer declined a quote (an approval arrives as a new order instead)."""
+    C = Request["customer"]
+    Who = f"{C.get('first_name') or ''} {C.get('last_name') or ''}".strip()
+    return (f"Quote {Request['ref']} {Decision} by the customer", _Layout(f"Quote {_Esc(Request['ref'])} {_Esc(Decision)}", f"""\
+        <p style="margin:0 0 12px;">{_Esc(Who)} &lt;{_Esc(C.get('email') or '')}&gt; {_Esc(Decision)} the quote for
+           <strong>{_Esc(Request['title'])}</strong> ({_Esc(Request.get('ring_id') or '—')}).</p>
+        {('<p style="margin:0 0 12px;">Their note: ' + _Esc(Note) + '</p>') if Note else ''}
+        <p style="margin:0;font-size:12px;color:#8F8F8F;">Open the Admin → Orders → {_Esc(Request['ref'])} for the history.</p>"""))
+
+
 def _Reserved(Order: dict) -> str:
     """'Your ring is reserved' — or charm, or pieces for an order that holds both (the wording of before for rings)."""
     Kinds = {"charm" if _IsCharm(L) else "ring" for L in Order.get("lines") or []} or {"ring"}
@@ -211,7 +244,7 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
         <p style="margin:0 0 16px;">Thank you for your interest in <strong>{_Esc(Request['title'])}</strong>
            ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')}) in <strong>{_Esc(Request['material_label'])}</strong>, {_Esc(Size)}, ×{_Esc(Request['quantity'])}.</p>
-        <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will come back to you within one business day
+        <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will email you the quote within one business day
            with a price and the next steps. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
         {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
         <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))

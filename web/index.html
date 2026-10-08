@@ -2145,14 +2145,14 @@
                             <button @click="closeQuoteRequest()" class="btn-outline flex-1 py-3">Cancel</button>
                             <button @click="sendQuoteRequest()" :disabled="quoteReq.busy" class="btn-gold flex-1 py-3" x-text="quoteReq.busy ? 'Sending…' : 'Send request'"></button>
                         </div>
-                        <p class="text-[12px] text-zinc-400 text-center">We reply within one business day. Nothing is ordered or charged.</p>
+                        <p class="text-[12px] text-zinc-400 text-center" x-text="(quoteReq.customer.email ? 'We will email the quote to ' + quoteReq.customer.email + ' within one business day.' : 'We reply within one business day.') + ' Nothing is ordered or charged.'"></p>
                     </div>
                 </template>
                 <template x-if="quoteReq.done">
                     <div class="text-center py-4">
                         <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-6 h-6" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                         <h4 class="brand-font text-xl text-zinc-900 mb-2">Request <span class="font-mono" x-text="quoteReq.done.ref"></span> received</h4>
-                        <p class="text-[13px] text-zinc-600 leading-relaxed"><span x-text="emailText(quoteReq.done.email_status, quoteReq.done.customer.email)"></span> A specialist will reply within one business day with a price and the next steps.</p>
+                        <p class="text-[13px] text-zinc-600 leading-relaxed"><span x-text="emailText(quoteReq.done.email_status, quoteReq.done.customer.email)"></span> <span x-text="'A specialist will email the quote to ' + quoteReq.done.customer.email + ' within one business day; you can approve or decline it from that email.'"></span></p>
                         <button @click="closeQuoteRequest()" class="btn-black mt-6 px-8 py-3">Done</button>
                     </div>
                 </template>
