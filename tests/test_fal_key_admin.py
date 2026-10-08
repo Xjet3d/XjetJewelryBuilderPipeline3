@@ -121,3 +121,19 @@ async def test_production_locks_the_key(tmp_path, Accepted):
     finally:
         await App.state.Ctx.Runner.Shutdown()
         await Client.aclose()
+
+
+async def test_check_button_tests_the_key_in_use_for_free(H, Accepted, monkeypatch):
+    assert (await H.Client.post("/api/admin/fal-key/check")).status_code == 403
+    R = await H.Client.post("/api/admin/fal-key/check", headers=Admin)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "no_fal_key"              # nothing to check
+    await H.Client.put("/api/admin/fal-key", json={"key": NewKey}, headers=Admin)
+    Accepted.clear()
+    R = await H.Client.post("/api/admin/fal-key/check", headers=Admin)
+    assert R.status_code == 200 and R.json() == {"ok": True, "source": "admin", "last4": NewKey[-4:]}
+    assert Accepted == [NewKey] and NewKey not in R.text
+
+    async def Refuse(Key):
+        raise HttpError(400, "fal_key_rejected", "fal.ai did not accept this key")
+    monkeypatch.setattr(falkey, "CheckKey", Refuse)
+    assert (await H.Client.post("/api/admin/fal-key/check", headers=Admin)).status_code == 400

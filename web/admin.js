@@ -999,6 +999,13 @@ function adminApp() {
         this.health = await this.api('GET', '/api/admin/health').catch(() => this.health);
       } catch (e) { this.falKeyErr = true; this.falKeyMsg = e.message; } finally { this.falKeyBusy = false; }
     },
+    async checkFalKey() {
+      this.falKeyBusy = true; this.falKeyMsg = ''; this.falKeyErr = false;
+      try {
+        const r = await this.api('POST', '/api/admin/fal-key/check');
+        this.falKeyMsg = 'fal.ai accepted the key in use (…' + r.last4 + ') — a free test upload; no model ran, nothing was billed.';
+      } catch (e) { this.falKeyErr = true; this.falKeyMsg = e.message; } finally { this.falKeyBusy = false; }
+    },
     async removeFalKey() {
       this.falKeyBusy = true; this.falKeyMsg = ''; this.falKeyErr = false;
       try {

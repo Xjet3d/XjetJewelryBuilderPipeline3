@@ -1551,6 +1551,8 @@
                 x-text="!falKey?.configured ? 'not set' : (falKey.source === 'admin' ? 'set here' : 'from the server configuration')"></span>
         </div>
         <p class="text-sm text-zinc-600" x-show="falKey?.configured">Key in use: <span class="font-mono" x-text="'••••••••' + (falKey?.last4 || '')"></span>. It is never shown in full and never leaves the server.</p>
+        <div x-show="falKey?.configured"><button class="btn" type="button" @click="checkFalKey()" :disabled="falKeyBusy">Check key now</button>
+          <span class="text-[12px] text-zinc-500 ml-2">Free test upload to fal.ai; no model runs.</span></div>
         <p class="text-sm text-zinc-600" x-show="!falKey?.configured">No key: live AI mode is unavailable and the mock provider is used.</p>
         <p class="text-[12px] text-zinc-500" x-show="falKey && !falKey.editable" x-text="falKey?.note"></p>
         <form x-show="falKey?.editable" @submit.prevent="saveFalKey()" class="flex flex-wrap items-center gap-3" autocomplete="off">

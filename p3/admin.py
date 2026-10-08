@@ -1098,6 +1098,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Logger.warning("fal.ai key set in the Admin by %s (ends ...%s)", Who.Id, FalKeys.Last4(Key))
         return State
 
+    @App_.post("/api/admin/fal-key/check")
+    async def CheckFalKey(authorization: str | None = Header(None)):
+        """Test the key in use with a free upload (no model runs, no cost). Allowed in production too: it changes nothing."""
+        Admin(authorization)
+        if not Ctx.Settings.FalKey:
+            raise HttpError(409, "no_fal_key", "No fal.ai key is configured.")
+        await FalKeys.CheckKey(Ctx.Settings.FalKey)
+        return {"ok": True, "source": _FalKeyState()["source"], "last4": FalKeys.Last4(Ctx.Settings.FalKey)}
+
     @App_.delete("/api/admin/fal-key")
     async def RemoveFalKey(authorization: str | None = Header(None)):
         Who = Admin(authorization)

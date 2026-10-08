@@ -361,10 +361,10 @@ The card shows whether a key is configured, where it comes from (`set here` or `
 its last four characters — the key is never returned by any API. **Check and save** first makes a free test upload to
 fal.ai (no model runs, no cost); a key fal.ai rejects is not saved. A saved key lives in `<data dir>/fal_key.secret`
 (mode 0600), replaces `FAL_KEY` from the environment, survives restarts, and is rebuilt into a live provider at once
-(refused while generations are running). **Remove saved key** returns to `FAL_KEY` (refused in live mode when there is
+(refused while generations are running). **Check key now** tests the key in use the same free way (also in production; changes nothing). **Remove saved key** returns to `FAL_KEY` (refused in live mode when there is
 none: switch to mock first). The AI mode is not changed by saving a key. **In production** the key belongs to the server
 configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file is ignored. API:
-`GET|PUT|DELETE /api/admin/fal-key` (`PUT {"key"}`).
+`GET|PUT|DELETE /api/admin/fal-key` (`PUT {"key"}`), `POST /api/admin/fal-key/check`.
 
 ## Products — rings and charms (Settings → Products)
 
