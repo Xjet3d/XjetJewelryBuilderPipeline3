@@ -39,6 +39,15 @@ class DuplicateEmail(Exception):
         self.AccountId = AccountId
 
 
+class RemovedAccount(Exception):
+    """An admin tried to create a customer with the email of a removed account: that account is restored instead of
+    a second one being made (its history, credits and activity stay with it)."""
+
+    def __init__(self, AccountId: str, Name: str = "", RemovedAt: str | None = None):
+        super().__init__("This email belongs to a removed account.")
+        self.AccountId, self.Name, self.RemovedAt = AccountId, Name, RemovedAt
+
+
 class AccountNotFound(Exception):
     def __init__(self, AccountId: str):
         super().__init__(f"Unknown account: {AccountId}")
@@ -100,10 +109,11 @@ class AccountProvider(Protocol):
         """Charge the account's allowance for a FINISHED result (P2: one generation per 360° movie)."""
 
     def StartEmailRegistration(self, Name: str, Email: str) -> dict:
-        """Self-service registration (P2 /api/register semantics). Returns status + secret/token to mail."""
+        """Email sign-in / registration (P2 /api/register semantics, for every account with that email):
+        already_registered (+ token to mail) | verification_sent / verification_resent (+ secret) | inactive | removed."""
 
     def VerifyEmail(self, Secret: str) -> dict:
-        """Consume a verification link (P2 /verify): verified | already | expired | invalid."""
+        """Consume a verification link (P2 /verify): verified | already | expired | invalid | removed."""
 
     def UsageSummary(self, AccountId: str) -> dict:
         """{kind: units} for display."""

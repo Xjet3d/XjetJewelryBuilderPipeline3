@@ -274,6 +274,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Err = {"code": E.Code, "message": E.Message}
         if getattr(E, "Problems", None):              # field-level problems (checkout forms)
             Err["problems"] = E.Problems
+        for K, V in (getattr(E, "Details", None) or {}).items():
+            Err.setdefault(K, V)                      # e.g. the removed account an Admin can restore
         Headers = {"Retry-After": str(E.RetryAfter)} if getattr(E, "RetryAfter", None) else None
         return JSONResponse(status_code=E.Status, content={"error": Err}, headers=Headers)
 

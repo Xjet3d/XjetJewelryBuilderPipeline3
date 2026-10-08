@@ -167,9 +167,12 @@
       <div x-show="createError" x-cloak class="mt-4 px-4 py-3 border text-sm bg-red-50 border-red-200 text-red-700 flex items-center gap-3">
         <span x-text="createError"></span>
         <button x-show="duplicateOf" class="underline font-semibold" @click="go('#/users/' + encodeURIComponent(duplicateOf))">Open existing user →</button>
+        <button x-show="removedOf" class="btn !py-1 !px-2 !text-xs" :disabled="busy" @click="restoreExisting()"
+                title="Brings back the removed account with its history, credits and activity, and turns its sign-in code on again">Restore existing account</button>
       </div>
       <div x-show="created" x-cloak class="mt-4 px-4 py-3 border text-sm bg-emerald-50 border-emerald-200 text-emerald-800 flex flex-wrap items-center gap-3">
-        <span>Sign-in code created for <strong x-text="created?.name"></strong>:</span>
+        <span x-show="!created?.restored">Sign-in code created for <strong x-text="created?.name"></strong>:</span>
+        <span x-show="created?.restored"><strong x-text="created?.name"></strong> is restored, with their history and credits. Their sign-in code works again:</span>
         <code class="font-mono font-bold text-base tracking-[0.2em] bg-white border border-emerald-200 px-2 py-0.5" x-text="created?.token"></code>
         <button class="underline" @click="copy(created?.token)" x-text="copied === created?.token ? 'Copied ✓' : 'Copy'"></button>
         <span class="text-emerald-700">— copy it now and send it to the user.</span>

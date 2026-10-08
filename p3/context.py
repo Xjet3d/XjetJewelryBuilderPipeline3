@@ -15,11 +15,12 @@ from p3.settings import Settings
 class HttpError(Exception):
     """Service-level error carrying an HTTP status and a stable error code."""
 
-    def __init__(self, Status: int, Code: str, Message: str):
+    def __init__(self, Status: int, Code: str, Message: str, Details: dict | None = None):
         super().__init__(Message)
         self.Status = Status
         self.Code = Code
         self.Message = Message
+        self.Details = Details or {}                  # extra fields of the error JSON (never "code" or "message")
 
 
 @dataclass

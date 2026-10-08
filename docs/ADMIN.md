@@ -26,7 +26,7 @@ Every admin route calls `RequireAdmin(Ctx, Authorization)`, which returns an `Ad
 | table: Token, Name, Email, Used/Max, Status, Created | same, plus **Last activity**; statuses Active / Unused / Pending verification / Exhausted / Inactive / Removed |
 | Edit: name, email, max, reset usage | same (Name/Email still required) |
 | Deactivate / Activate | same: deactivating turns off all of the account's tokens, and activating turns its current token back on |
-| Remove = hard delete | **soft remove**: tokens revoked and the user hidden (shown again under "Show removed"). Designs and usage history are kept, and the user can be restored. |
+| Remove = hard delete | **soft remove**: tokens revoked and the user hidden (shown again under "Show removed"). Designs and usage history are kept, and the user can be restored. Restore brings back the same account with its history, credits and activity; Activate turns its code on again. **Create a customer** with the e-mail of a removed account creates nothing and offers **Restore existing account**, which restores and activates that account (since 2026-10-08). |
 | rows not clickable | **row opens the user detail** |
 
 ## User detail

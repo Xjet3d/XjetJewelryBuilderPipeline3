@@ -34,7 +34,7 @@ from p3 import payments as PaymentsModule
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
-from p3.accounts import AccountNotFound, DuplicateEmail
+from p3.accounts import AccountNotFound, DuplicateEmail, RemovedAccount
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
 from p3.aipricing import PriceError
@@ -69,6 +69,11 @@ def _Errors(Fn):
         return Fn()
     except DuplicateEmail as E:
         raise HttpError(409, "duplicate_email", f"This email already has an account ({E.AccountId}).") from E
+    except RemovedAccount as E:
+        raise HttpError(409, "removed_account",
+                        f"This email belongs to a removed account{' (' + E.Name + ')' if E.Name else ''}. Restore that "
+                        "account instead: its history, credits and activity come back with it.",
+                        {"account": {"account_id": E.AccountId, "name": E.Name, "removed_at": E.RemovedAt}}) from E
     except AccountNotFound as E:
         raise HttpError(404, "account_not_found", "User not found.") from E
     except ValueError as E:

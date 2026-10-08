@@ -141,8 +141,11 @@ async def test_table_edit_deactivate_activate_and_soft_remove(HA):
     assert Uid not in Ids
     All = (await H.Client.get("/api/admin/users?include_removed=true", headers=Admin)).json()["users"]
     assert next(X for X in All if X["account_id"] == Uid)["status"] == "removed"
-    assert (await _Create(H, "New Dana", "dana.l@example.com")).status_code == 200      # email freed by removal
-    assert (await H.Client.post(f"/api/admin/users/{Uid}/restore", headers=Admin)).status_code == 409
+    # A removed account's email makes no second account (2026-10-08): the answer offers that account back
+    R = await _Create(H, "New Dana", "dana.l@example.com")
+    assert R.status_code == 409 and R.json()["error"]["code"] == "removed_account"
+    assert R.json()["error"]["account"]["account_id"] == Uid
+    assert (await H.Client.post(f"/api/admin/users/{Uid}/restore", headers=Admin)).json()["status"] == "inactive"
     assert (await H.Client.post("/api/admin/users/p3local:acct_nope/remove", headers=Admin)).status_code == 404
 
 

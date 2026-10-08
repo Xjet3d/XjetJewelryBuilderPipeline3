@@ -29,7 +29,7 @@ import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from p3.accounts import AccountNotFound, AuthError, DuplicateEmail, InsufficientCredits, Principal, UsageMovie
+from p3.accounts import AccountNotFound, AuthError, DuplicateEmail, InsufficientCredits, Principal, RemovedAccount, UsageMovie
 from p3.db import Database, Now
 
 Issuer = "p3local"
@@ -280,23 +280,56 @@ class LocalAccountProvider:
                 "issuer": Who.Issuer, "balance": Q["remaining"],
                 "usage": {"image_requests": Usage.get("image", 0), "movie_requests": Usage.get("movie", 0)}}
 
-    # ── self-service email registration (P2 /api/register + /verify) ─────
-    def _SelfAccountByEmail(self, Email: str) -> dict | None:
-        return self.Db.One("SELECT * FROM accounts WHERE source = 'self' AND lower(email) = ? "
-                           "ORDER BY created_at DESC LIMIT 1", ((Email or "").strip().lower(),))
+    # ── e-mail sign-in / self-service registration (P2 /api/register + /verify) ─────
+    def _AccountsByEmail(self, Email: str) -> list[dict]:
+        """Every account with this address — self-registered or created in the Admin, removed or not — newest first,
+        with how many of its sign-in codes are on."""
+        return self.Db.All("SELECT a.*, (SELECT COUNT(*) FROM access_tokens t WHERE t.account_id = a.account_id AND "
+                           "t.active = 1) AS active_tokens FROM accounts a WHERE lower(a.email) = ? "
+                           "ORDER BY a.created_at DESC, a.account_id DESC", ((Email or "").strip().lower(),))
+
+    def _TokenActive(self, Token: str | None) -> bool:
+        return bool(Token) and bool(self.Db.One("SELECT 1 AS x FROM access_tokens WHERE token_hash = ? AND active = 1",
+                                                (HashToken(Token),)))
 
     def StartEmailRegistration(self, Name: str, Email: str) -> dict:
-        """P2 RegisterEndpoint storage rules. Returns {"status": "verification_sent"|"verification_resent"|
-        "already_registered", "name", "email", "verify_secret" (new/pending) or "token" (verified)}."""
+        """P2 RegisterEndpoint storage rules, for every account with the address (2026-10-08):
+          already_registered   a live account whose code works — self-registered and verified, or created in the
+                               Admin: its code is e-mailed again ("token"); register-once, so no new credits;
+          verification_resent  a self-registration still waiting for its e-mail check: a new link ("verify_secret");
+          inactive             a live account XJet switched off: nothing is sent — its code would not work;
+          removed              only removed accounts have it: nothing is sent, and no new account is made (credits
+                               are not handed out twice); the Admin restores the account;
+          verification_sent    a new address: a new self-registration and its verification link.
+        A blocked attempt is recorded on the account (register_blocked), so the Admin sees it."""
         Name, Email = (Name or "").strip(), (Email or "").strip()
-        Existing = self._SelfAccountByEmail(Email)
-        if Existing and Existing["verified_at"]:          # register-once: re-send the existing token
-            Token = Existing["delivery_token"] or self._RotateToken(Existing["account_id"], "self-registration")
+        Rows = self._AccountsByEmail(Email)
+        Live = [R for R in Rows if not R["removed_at"]]
+        Pending = [R for R in Live if R["source"] == "self" and not R["verified_at"]]
+        Usable = [R for R in Live if R not in Pending and R["active_tokens"] and R["status"] == "active"]
+        if Usable:                                         # register-once: its code again, by e-mail
+            Existing = max(Usable, key=lambda R: (R["last_sign_in_at"] or "", R["created_at"] or ""))
+            Token = Existing["delivery_token"]
+            if not self._TokenActive(Token):              # no code to e-mail (older accounts): a fresh one
+                Token = self._RotateToken(Existing["account_id"], "self-registration" if Existing["source"] == "self"
+                                          else "email sign-in")
+            self._Event(Existing["account_id"], "code_emailed", "e-mail sign-in")
             return {"status": "already_registered", "name": Existing["display_name"] or "", "email": Email,
-                    "token": Token}
+                    "token": Token, "account_id": Existing["account_id"]}
+        Blocked = [R for R in Live if R not in Pending]
+        if Blocked:                                        # switched off by XJet: a code would not work
+            self._Event(Blocked[0]["account_id"], "register_blocked", "account not active")
+            return {"status": "inactive", "name": Blocked[0]["display_name"] or "", "email": Email,
+                    "account_id": Blocked[0]["account_id"]}
+        Removed = self._RemovedAccountByEmail(Email) if any(R["removed_at"] for R in Rows) else None
+        if Removed:                                        # removed: no dead code, no second account
+            self._Event(Removed["account_id"], "register_blocked", "account removed")
+            return {"status": "removed", "name": Removed["display_name"] or "", "email": Email,
+                    "account_id": Removed["account_id"]}
         Secret = secrets.token_urlsafe(32)
         Expires = (_Utc() + timedelta(hours=VerifyTtlHours)).isoformat()
-        if Existing:   # pending → re-issue the link (P2 RefreshVerification keeps the stored name)
+        if Pending:    # pending → re-issue the link (P2 RefreshVerification keeps the stored name)
+            Existing = Pending[0]
             self.Db.Execute("UPDATE accounts SET verify_hash = ?, verify_expires_at = ? WHERE account_id = ?",
                             (_HashSecret(Secret), Expires, Existing["account_id"]))
             return {"status": "verification_resent", "name": Name or Existing["display_name"] or "",
@@ -312,13 +345,15 @@ class LocalAccountProvider:
         return {"status": "verification_sent", "name": Name, "email": Email, "verify_secret": Secret}
 
     def VerifyEmail(self, Secret: str) -> dict:
-        """P2 VerifyRegistration. {"status": "verified"|"already"|"expired"|"invalid", "name", "email",
-        "token" (verified / already)}."""
+        """P2 VerifyRegistration. {"status": "verified"|"already"|"expired"|"invalid"|"removed", "name", "email",
+        "token" (verified / already)}. A link to a removed account switches nothing on."""
         Secret = (Secret or "").strip()
         Row = self.Db.One("SELECT * FROM accounts WHERE verify_hash = ?", (_HashSecret(Secret),)) if Secret else None
         if Row is None:
             return {"status": "invalid", "name": "", "email": ""}
         Base = {"name": Row["display_name"] or "", "email": Row["email"] or ""}
+        if Row["removed_at"]:                              # an old link to a removed account: nothing is switched on
+            return {"status": "removed", **Base}
         if Row["verified_at"]:
             return {"status": "already", "token": Row["delivery_token"], **Base}
         if Row["verify_expires_at"] and Row["verify_expires_at"] < _Utc().isoformat():
@@ -391,6 +426,13 @@ class LocalAccountProvider:
         return self.Db.One("SELECT account_id FROM accounts WHERE lower(email) = ? AND removed_at IS NULL "
                            "AND account_id != ? LIMIT 1", ((Email or "").strip().lower(), Except or ""))
 
+    def _RemovedAccountByEmail(self, Email: str) -> dict | None:
+        """The removed account to bring back for this address: the one the customer really used (latest sign-in, then
+        most credits used), else the oldest — never an empty duplicate made after it (atelier, 2026-10-08)."""
+        return self.Db.One("SELECT account_id, display_name, removed_at FROM accounts WHERE lower(email) = ? AND "
+                           "removed_at IS NOT NULL ORDER BY (last_sign_in_at IS NULL), last_sign_in_at DESC, "
+                           "generations_used DESC, created_at ASC LIMIT 1", ((Email or "").strip().lower(),))
+
     @staticmethod
     def _ValidateIdentity(Name: str, Email: str) -> tuple[str, str]:
         Name, Email = (Name or "").strip(), (Email or "").strip()
@@ -417,6 +459,9 @@ class LocalAccountProvider:
         Dup = self._ActiveAccountByEmail(Email)
         if Dup:
             raise DuplicateEmail(Dup["account_id"])
+        Removed = self._RemovedAccountByEmail(Email)       # never a second account: restore that one instead
+        if Removed:
+            raise RemovedAccount(Removed["account_id"], Removed["display_name"] or "", Removed["removed_at"])
         Token, Who = self.IssueToken(Name, DisplayName=Name, Email=Email, MaxGenerations=Max)
         self._Event(Who.AccountId, "admin_created")
         return self.AdminGet(Who.AccountId) | {"token": Token}
@@ -460,7 +505,8 @@ class LocalAccountProvider:
         return self.AdminGet(AccountId)
 
     def AdminRestore(self, AccountId: str) -> dict:
-        """Undo a soft remove. The token stays inactive until an admin activates it."""
+        """Undo a soft remove: the same account, with its history, credits, designs and activity. The token stays
+        inactive until an admin activates it."""
         A = self._Account(AccountId)
         if A["email"] and self._ActiveAccountByEmail(A["email"], Except=AccountId):
             raise DuplicateEmail(self._ActiveAccountByEmail(A["email"], Except=AccountId)["account_id"])

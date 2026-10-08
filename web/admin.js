@@ -137,6 +137,8 @@ const EVENTS = {
   deactivated: ['Deactivated', 'bg-zinc-200 text-zinc-600'],
   removed: ['Removed', 'bg-zinc-800 text-white'],
   restored: ['Restored', 'bg-emerald-100 text-emerald-800'],
+  register_blocked: ['Tried to sign in or register (blocked)', 'bg-amber-100 text-amber-800'],
+  code_emailed: ['Sign-in code e-mailed', 'bg-zinc-100 text-zinc-600'],
 };
 
 // Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
@@ -163,7 +165,7 @@ function adminApp() {
     users: [], search: '', showRemoved: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
     credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
-    created: null, createError: '', duplicateOf: null, copied: null,
+    created: null, createError: '', duplicateOf: null, removedOf: null, copied: null,
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
     tab: 'sessions', materials: {}, charmMaterials: {}, swatches: {}, showChoices: false,
@@ -255,7 +257,7 @@ function adminApp() {
       if ((r.status === 401 || r.status === 403) && !path.endsWith('/login')) {
         this.ok = false; this.error = 'Your admin sign-in has expired or was revoked — please sign in again.';
       }
-      if (!r.ok) { const e = new Error(data?.error?.message || ('Request failed (' + r.status + ')')); e.code = data?.error?.code; throw e; }
+      if (!r.ok) { const e = new Error(data?.error?.message || ('Request failed (' + r.status + ')')); e.code = data?.error?.code; e.details = data?.error || {}; throw e; }
       return data;
     },
 
@@ -617,7 +619,7 @@ function adminApp() {
       return q ? this.users.filter(u => [u.name, u.email, u.token].some(v => (v || '').toLowerCase().includes(q))) : this.users;
     },
     async create() {
-      this.busy = true; this.createError = ''; this.duplicateOf = null; this.created = null;
+      this.busy = true; this.createError = ''; this.duplicateOf = null; this.removedOf = null; this.created = null;
       try {
         const u = await this.api('POST', '/api/admin/users', this.form);
         this.created = u;
@@ -626,7 +628,23 @@ function adminApp() {
       } catch (e) {
         this.createError = e.message;
         if (e.code === 'duplicate_email') this.duplicateOf = (e.message.match(/\((p3local:[^)]+)\)/) || [])[1] || null;
+        if (e.code === 'removed_account') this.removedOf = e.details?.account || null;    // offer Restore instead
       } finally { this.busy = false; }
+    },
+    // Create a customer with the email of a removed account: that account comes back — the same account, with its
+    // history, credits and activity — and its sign-in code is turned on again (Restore, then Activate).
+    async restoreExisting() {
+      const a = this.removedOf; if (!a) return;
+      this.busy = true;
+      try {
+        const Id = encodeURIComponent(a.account_id);
+        await this.api('POST', '/api/admin/users/' + Id + '/restore');
+        const u = await this.api('POST', '/api/admin/users/' + Id + '/activate');
+        this.createError = ''; this.removedOf = null;
+        this.created = { ...u, restored: true };
+        this.form = { Name: '', Email: '', MaxGenerations: 10 };
+        await this.load();
+      } catch (e) { this.createError = e.message; } finally { this.busy = false; }
     },
     startEdit(u) {
       this.editing = u.account_id; this.editError = '';

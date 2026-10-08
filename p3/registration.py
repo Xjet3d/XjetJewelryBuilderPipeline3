@@ -53,6 +53,10 @@ class RegistrationService:
         if not EmailPattern.match(Email):
             raise HttpError(400, "invalid_email", "Please enter a valid email address.")
         R = self.Ctx.Accounts.StartEmailRegistration(Name, Email)
+        if R["status"] == "removed":                     # no dead code is e-mailed; the page says what to do
+            raise HttpError(403, "account_removed", RemovedMessage(self.Ctx.Settings.SupportEmail))
+        if R["status"] == "inactive":
+            raise HttpError(403, "account_inactive", InactiveMessage(self.Ctx.Settings.SupportEmail))
         if R["status"] == "already_registered":
             self._Queue(Defer, Email, TokenEmail(R["name"], R["token"], f"{self._StudioUrl(Request_)}#token={R['token']}"))
         else:
@@ -81,7 +85,7 @@ class RegistrationService:
             self._Queue(Defer, R["email"], TokenEmail(R["name"], R["token"], f"{Studio}#token={R['token']}"))
         # A link is used once: opened again it confirms the verification and reveals nothing (the code was emailed)
         return RenderVerifyPage(R["status"], R.get("token") if R["status"] == "verified" else None, R["name"], Studio,
-                                self.Ctx.Settings.BasePath)
+                                self.Ctx.Settings.BasePath, self.Ctx.Settings.SupportEmail)
 
 
 def MaskEmail(Email: str) -> str:
@@ -90,12 +94,26 @@ def MaskEmail(Email: str) -> str:
     return f"{Local[:1]}***@{Domain}" if Domain else "***"
 
 
+def _Contact(Support: str = "") -> str:
+    return f"XJet at {Support}" if Support and "@" in Support else "XJet"
+
+
+def RemovedMessage(Support: str = "") -> str:
+    """What a removed address sees when it tries to sign in or register again (no code is e-mailed)."""
+    return f"This account was removed. Please contact {_Contact(Support)} to restore access."
+
+
+def InactiveMessage(Support: str = "") -> str:
+    """What an address sees whose account XJet switched off (no code is e-mailed: it would not work)."""
+    return f"This account is not active. Please contact {_Contact(Support)} to restore access."
+
+
 def RegisterMessage(Email: str) -> str:
     return (f"We've sent an email to {Email}. Open it to continue: its link verifies your email and signs you in — "
             "or, if you're already registered, it carries your sign-in code.")
 
 
-def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str) -> str:
+def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str, Support: str = "") -> str:
     """P2 templates/verify.html, rendered without a template engine (all values escaped)."""
     E = lambda V: html.escape(V or "", quote=True)
     Ok = Status in ("verified", "already")
@@ -137,6 +155,11 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
       <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Sign in with the code we emailed
         you — or register again with the same email to have it sent once more.</p>
       <a class="btn" href="{E(StudioUrl)}">Start designing →</a>"""
+    elif Status == "removed":
+        Body = f"""
+      <h1>Account removed</h1>
+      <p>{E(RemovedMessage(Support))}</p>
+      <a class="btn" href="{E(BasePath)}/">Back to XJET ATELIER →</a>"""
     elif Status == "expired":
         Body = f"""
       <h1>Link expired</h1>
