@@ -1544,6 +1544,27 @@
         <p class="lbl mb-3">Active configuration versions</p>
         <div class="flex flex-wrap gap-4 text-sm"><template x-for="(v, m) in (health?.config_versions || {})" :key="m"><span><span class="font-mono text-zinc-600" x-text="m"></span> <span class="badge bg-zinc-100 text-zinc-700 ml-1" x-text="v"></span></span></template></div>
       </div>
+      <section class="card p-5 space-y-3" x-show="aiMode" aria-label="AI mode">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="lbl">AI mode</p>
+          <span class="badge" :class="aiMode?.mode === 'mock' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'" x-text="aiMode?.mode === 'mock' ? 'MOCK' : 'LIVE'"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="mock-switch-label" class="text-sm">Mock mode (no provider is called, nothing is billed):</span>
+          <button type="button" role="switch" aria-labelledby="mock-switch-label" :aria-checked="aiMode?.mode === 'mock' ? 'true' : 'false'"
+                  @click="toggleMock()" :disabled="aiModeBusy || aiMode?.locked || (aiMode?.mode === 'mock' && !aiMode?.live_available)"
+                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+                  :class="aiMode?.mode === 'mock' ? 'bg-amber-500' : 'bg-zinc-300'">
+            <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="aiMode?.mode === 'mock' ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+          </button>
+          <span class="badge" :class="aiMode?.mode === 'mock' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-200 text-zinc-700'" x-text="aiMode?.mode === 'mock' ? 'ON' : 'OFF'"></span>
+        </div>
+        <p class="text-[12px] text-zinc-500" x-show="aiMode?.locked">The AI mode is fixed by the server configuration (<span class="font-mono">P3_PROVIDER</span> / production); it cannot be switched here.</p>
+        <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked && !aiMode?.live_available">Live mode needs a fal.ai key: set one below.</p>
+        <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked && aiMode?.active_jobs" x-text="aiMode?.active_jobs + ' generation(s) are running: the mode can be switched when they finish.'"></p>
+        <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked">Turning mock mode off makes every generation, movie and 3D request a paid fal.ai call (you are asked to confirm). The choice survives restarts.</p>
+        <p x-show="aiModeMsg" class="text-sm" role="status" :class="aiModeErr ? 'text-red-600' : 'text-emerald-700'" x-text="aiModeMsg"></p>
+      </section>
       <section class="card p-5 space-y-3" x-show="falKey" aria-label="fal.ai key">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <p class="lbl">fal.ai API key</p>

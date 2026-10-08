@@ -137,3 +137,40 @@ async def test_check_button_tests_the_key_in_use_for_free(H, Accepted, monkeypat
         raise HttpError(400, "fal_key_rejected", "fal.ai did not accept this key")
     monkeypatch.setattr(falkey, "CheckKey", Refuse)
     assert (await H.Client.post("/api/admin/fal-key/check", headers=Admin)).status_code == 400
+
+
+async def test_admin_toggles_mock_mode(tmp_path):
+    from tests.test_modes import _Factories
+    Obj = Harness(tmp_path, AdminKey=AdminKey, FalKey="fake-key-123456", Factories=_Factories([]))
+    try:
+        C = Obj.Client
+        assert (await C.get("/api/admin/ai-mode")).status_code == 403
+        S = (await C.get("/api/admin/ai-mode", headers=Admin)).json()
+        assert S["mode"] == "mock" and S["live_available"] and S["locked"] is False
+        No = await C.put("/api/admin/ai-mode", json={"mode": "live"}, headers=Admin)                 # needs the typed confirmation
+        assert No.status_code == 400 and No.json()["error"]["code"] == "live_confirmation_required"
+        Live = await C.put("/api/admin/ai-mode", json={"mode": "live", "confirmation": S["live_confirmation"]}, headers=Admin)
+        assert Live.status_code == 200 and Live.json()["mode"] == "live"
+        assert (await C.get("/api/health")).json()["mode"] == "live"
+        Back = await C.put("/api/admin/ai-mode", json={"mode": "mock"}, headers=Admin)
+        assert Back.status_code == 200 and Back.json()["mode"] == "mock"
+        assert (await C.get("/api/health")).json()["mode"] == "mock"
+    finally:
+        await Obj.Close()
+
+
+async def test_mock_toggle_needs_a_key_and_is_locked_by_configuration(tmp_path):
+    Obj = Harness(tmp_path, AdminKey=AdminKey, FalKey=None)
+    try:
+        R = await Obj.Client.put("/api/admin/ai-mode", json={"mode": "live", "confirmation": "x"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "live_unavailable"
+        assert (await Obj.Client.get("/api/admin/ai-mode", headers=Admin)).json()["live_available"] is False
+    finally:
+        await Obj.Close()
+    Locked = Harness(tmp_path / "b", AdminKey=AdminKey, FalKey="fake-key-123456", LockMode=True)
+    try:
+        assert (await Locked.Client.get("/api/admin/ai-mode", headers=Admin)).json()["locked"] is True
+        R = await Locked.Client.put("/api/admin/ai-mode", json={"mode": "live"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "mode_locked"
+    finally:
+        await Locked.Close()

@@ -74,6 +74,7 @@ class ModeManager:
     def Status(self) -> dict:
         return {"mode": self.Mode, "source": self.Source, "provider": self.Ctx.Provider.Name,
                 "live_available": self.LiveAvailable, "active_jobs": self.ActiveJobs(),
+                "locked": bool(self.Ctx.Settings.LockMode),
                 "live_confirmation": LiveConfirmation}
 
     def Switch(self, Target: str, Confirmation: str | None) -> dict:

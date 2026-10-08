@@ -355,6 +355,14 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 
 **Export:** TXT (readable) or JSON (structured: model ids, endpoints, version ids and numbers, parameters, which parameters are omitted, and the pipeline-controlled fields), for one model or all. Configurations contain no API keys, and the export includes none.
 
+## AI mode (Settings → System)
+
+The **Mock mode** switch (ON = mock: no provider is called, nothing is billed). Turning it OFF switches to live — every
+generation, movie and 3D request becomes a paid fal.ai call — and asks for confirmation; it needs a fal.ai key (set one
+below) and is refused while generations are running. The choice survives restarts (`<data dir>/runtime.json`), exactly
+like the `/dev` page's switch. Where the configuration fixes the mode (`P3_LOCK_MODE`, always in production) the switch is
+disabled. API: `GET|PUT /api/admin/ai-mode` (`PUT {"mode": "mock"|"live", "confirmation"}`).
+
 ## fal.ai API key (Settings → System)
 
 The card shows whether a key is configured, where it comes from (`set here` or `from the server configuration`) and

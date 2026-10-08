@@ -1059,6 +1059,22 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             raise HttpError(400, "invalid_material_prices", str(E)) from E
         return _MaterialTable()
 
+    # ── AI mode (Settings → System): mock (no provider, no cost) or live (fal.ai, billed) ───────────────
+    @App_.get("/api/admin/ai-mode")
+    async def GetAiMode(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return App_.state.Modes.Status()
+
+    @App_.put("/api/admin/ai-mode")
+    async def SetAiMode(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        Modes = App_.state.Modes
+        Before = Modes.Mode
+        State = Modes.Switch(Body_.get("mode"), Body_.get("confirmation"))   # refuses: locked, no key, no confirmation, jobs running
+        if State["mode"] != Before:
+            Logger.warning("AI mode switched to %s in the Admin by %s", State["mode"].upper(), Who.Id)
+        return State
+
     # ── fal.ai API key (Settings → System): shown masked, never returned ───────────────────────────────
     def _FalKeyState() -> dict:
         S = Ctx.Settings

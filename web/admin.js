@@ -198,6 +198,7 @@ function adminApp() {
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
+    aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
@@ -327,6 +328,7 @@ function adminApp() {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
           this.health = await this.api('GET', '/api/admin/health').catch(() => null);   // the full picture is admin-only
           this.falKey = await this.api('GET', '/api/admin/fal-key').catch(() => null);
+          this.aiMode = await this.api('GET', '/api/admin/ai-mode').catch(() => null);
         }
       }
     },
@@ -988,6 +990,19 @@ function adminApp() {
       if (x.designs) parts.push(`${x.designs} design${x.designs === 1 ? '' : 's'}`);
       if (x.sign_ins) parts.push(`${x.sign_ins} sign-in${x.sign_ins === 1 ? '' : 's'}`);
       return x.day + (parts.length ? ': ' + parts.join(', ') : ': no activity');
+    },
+
+    // ── AI mode (Settings → System) ────────────────────────────────────
+    async toggleMock() {
+      const toLive = this.aiMode.mode === 'mock';
+      if (toLive && !await this.ask({ title: 'Switch to LIVE AI mode?', text: 'Every generation, movie and 3D request is sent to fal.ai and billed to the configured key.', confirmLabel: 'Switch to live', danger: true })) return;
+      this.aiModeBusy = true; this.aiModeMsg = ''; this.aiModeErr = false;
+      try {
+        this.aiMode = await this.api('PUT', '/api/admin/ai-mode', { mode: toLive ? 'live' : 'mock', confirmation: toLive ? this.aiMode.live_confirmation : null });
+        this.mode = this.aiMode.mode;
+        this.health = await this.api('GET', '/api/admin/health').catch(() => this.health);
+        this.aiModeMsg = toLive ? 'Live mode is on: requests go to fal.ai and are billed.' : 'Mock mode is on: no provider is called and nothing is billed.';
+      } catch (e) { this.aiModeErr = true; this.aiModeMsg = e.message; } finally { this.aiModeBusy = false; }
     },
 
     // ── fal.ai key (Settings → System) ─────────────────────────────────
