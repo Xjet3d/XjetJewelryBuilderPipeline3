@@ -527,7 +527,8 @@ function adminApp() {
     qEventDetail(e) {
       const d = e.data || {}, m = v => this.money(v);
       switch (e.kind) {
-        case 'created': return [d.quantity ? '×' + d.quantity : '', d.message ? '“' + d.message + '”' : ''].filter(Boolean).join(' · ');
+        case 'created': return [d.quantity ? '×' + d.quantity : '', d.message ? '“' + d.message + '”' : '',
+                                d.earlier ? 'made before the quote history existed: its emails were not recorded' : ''].filter(Boolean).join(' · ');
         case 'note': return d.note || '';
         case 'offer_sent': return `v${d.version}: ${m(d.unit_price)} × ${d.quantity} = ${m(d.total)} · ${d.size_label || ''} · valid until ${d.valid_until}` + (d.weight_g ? ` · ${d.weight_g} g` : '') + (d.price_per_g ? ` × ${m(d.price_per_g)} per g` : '') + ' · to ' + (d.to || '');
         case 'approved': return 'order ' + (d.order_ref || '') + (d.total != null ? ' · ' + m(d.total) : '') + (d.shipping_method ? ' · ' + d.shipping_method : '') + (d.note ? ' · “' + d.note + '”' : '');

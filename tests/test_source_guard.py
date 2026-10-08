@@ -2,6 +2,7 @@
 
 On 2026-10-07 a repeated migration block (ADD COLUMN credit_ref, twice) stopped the service once on an existing
 database; the other copies (a doubled assignment, log line or dict key) were harmless but hid the same mistake."""
+import json
 import sqlite3
 from pathlib import Path
 
@@ -57,9 +58,19 @@ def test_a_database_from_before_credit_actions_and_quote_offers_is_migrated(tmp_
                      "config_version, created_at) VALUES ('bat_1', 'dsg_a', 'initial', 'p', 'p', 'mock', 4, 'v1', '2026-10-01')")
         Conn.execute("INSERT INTO candidates (id, batch_id, slot, status, seed, created_at, updated_at) VALUES "
                      "('cand_1', 'bat_1', 0, 'ready', 7, '2026-10-01', '2026-10-01')")
+        Conn.execute("INSERT INTO quote_requests (id, owner_account_id, design_id, candidate_id, title, material_id, "
+                     "material_label, ring_size, quantity, customer_json, message, status, created_at, updated_at) VALUES "
+                     "('qr_1', 'acc_1', 'dsg_a', 'cand_1', 'Fil Twist', 'gold18y', '18K Yellow Gold', 7.5, 2, '{}', "
+                     "'In rose gold?', 'new', '2026-10-03T10:00:00Z', '2026-10-03T10:00:00Z')")
     Db = Database(Path_)                                              # the migration runs on start, once
     assert Db.One("SELECT credit_ref FROM candidates WHERE id = 'cand_1'")["credit_ref"] == "bat_1"
     Cols = {R["name"] for R in Db.All("PRAGMA table_info(quote_requests)")}
     assert {"offer_json", "link_hash", "decided_at", "decision_note", "order_id"} <= Cols
-    assert Db.One("SELECT COUNT(*) AS n FROM quote_events")["n"] == 0
-    Database(Path_)                                                   # and again: nothing left to migrate
+    # The request made before the history existed starts it: its request, at its own time
+    Events = Db.All("SELECT request_id, kind, data_json, by, created_at FROM quote_events")
+    assert [(E["request_id"], E["kind"], E["by"], E["created_at"]) for E in Events] == [
+        ("qr_1", "created", "customer", "2026-10-03T10:00:00Z")]
+    assert json.loads(Events[0]["data_json"]) == {"message": "In rose gold?", "quantity": 2, "material_id": "gold18y",
+                                                "size": 7.5, "earlier": 1}
+    Database(Path_)                                                   # and again: nothing left to migrate, no second line
+    assert Db.One("SELECT COUNT(*) AS n FROM quote_events")["n"] == 1

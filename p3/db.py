@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS quote_requests (
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     offer_json        TEXT,                        -- the Admin's current quote (p3/quotes.py SendOffer)
-    link_hash        TEXT,                        -- SHA-256 of the current quote's customer link
+    link_hash         TEXT,                        -- SHA-256 of the current quote's customer link
     decided_at        TEXT,                        -- the customer approved or declined
     decision_note     TEXT,
     order_id          TEXT                         -- the order an approved quote became
@@ -636,6 +636,13 @@ class Database:
                     # The Admin's quote and the customer's decision (p3/quotes.py)
                     for Col in ("offer_json TEXT", "link_hash TEXT", "decided_at TEXT", "decision_note TEXT", "order_id TEXT"):
                         Conn.execute(f"ALTER TABLE quote_requests ADD COLUMN {Col}")
+                    # Requests made before the history existed start it with their request (their emails were not recorded)
+                    Size = "COALESCE(charm_size, ring_size)" if "charm_size" in QCols else "ring_size"
+                    Conn.execute("INSERT INTO quote_events (request_id, kind, data_json, by, created_at) "
+                                 "SELECT id, 'created', json_object('message', substr(COALESCE(message, ''), 1, 1000), "
+                                 f"'quantity', quantity, 'material_id', material_id, 'size', {Size}, 'earlier', 1), "
+                                 "'customer', created_at FROM quote_requests "
+                                 "WHERE id NOT IN (SELECT request_id FROM quote_events)")
                 if QCols:
                     Conn.execute("CREATE INDEX IF NOT EXISTS quote_requests_token ON quote_requests(link_hash)")
                 GCols = {R[1] for R in Conn.execute("PRAGMA table_info(gallery_items)")}
