@@ -57,6 +57,7 @@ class Settings:
     RateLimits: bool = True          # P3_RATE_LIMITS: per-IP / per-account abuse protection (tests switch it off)
     NoDevTools: bool = False         # P3_NO_DEV_TOOLS: hide the developer tools outside production too (staging)
     SupportEmail: str = ""           # P3_SUPPORT_EMAIL: the address the site and the emails name for questions (never invented)
+    FalKeyFromAdmin: bool = False    # the key was saved in Admin → Settings → System (p3/falkey.py); never in production
     StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated)
     ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail; without it the mail says how to get in touch
 
@@ -134,6 +135,11 @@ def LoadSettings(**Overrides) -> Settings:
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
     S = Settings(**Values)
+    if not S.Production:                           # a key saved in the Admin wins over FAL_KEY (never in production)
+        from p3.falkey import ReadSaved
+        Saved = ReadSaved(S.DataDir)
+        if Saved:
+            S.FalKey, S.FalKeyFromAdmin = Saved, True
     if S.Env not in ("development", "production"):
         raise ValueError(f"P3_ENV must be 'development' or 'production', got {S.Env!r}")
     if S.Provider not in ("mock", "fal"):

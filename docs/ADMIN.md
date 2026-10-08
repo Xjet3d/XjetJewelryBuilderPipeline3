@@ -355,6 +355,17 @@ Saving can't replace these with example text or a fixed URL: such fields are ref
 
 **Export:** TXT (readable) or JSON (structured: model ids, endpoints, version ids and numbers, parameters, which parameters are omitted, and the pipeline-controlled fields), for one model or all. Configurations contain no API keys, and the export includes none.
 
+## fal.ai API key (Settings → System)
+
+The card shows whether a key is configured, where it comes from (`set here` or `from the server configuration`) and
+its last four characters — the key is never returned by any API. **Check and save** first makes a free test upload to
+fal.ai (no model runs, no cost); a key fal.ai rejects is not saved. A saved key lives in `<data dir>/fal_key.secret`
+(mode 0600), replaces `FAL_KEY` from the environment, survives restarts, and is rebuilt into a live provider at once
+(refused while generations are running). **Remove saved key** returns to `FAL_KEY` (refused in live mode when there is
+none: switch to mock first). The AI mode is not changed by saving a key. **In production** the key belongs to the server
+configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file is ignored. API:
+`GET|PUT|DELETE /api/admin/fal-key` (`PUT {"key"}`).
+
 ## Products — rings and charms (Settings → Products)
 
 **Code:** `p3/products.py`. **API:** `GET /api/admin/products` and `PUT /api/admin/products/availability`.

@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 
 import asyncio
 import json
+import logging
+import os
 import hashlib
 import hmac
 import re
@@ -40,8 +42,11 @@ from p3.materialprices import MaterialPriceError
 from p3.db import Now
 from p3.usage import AccountActivity
 from p3 import credits as Credits
+from p3 import falkey as FalKeys
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
+
+Logger = logging.getLogger("p3.admin")
 
 
 @dataclass(frozen=True)
@@ -1053,6 +1058,56 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         except MaterialPriceError as E:
             raise HttpError(400, "invalid_material_prices", str(E)) from E
         return _MaterialTable()
+
+    # ── fal.ai API key (Settings → System): shown masked, never returned ───────────────────────────────
+    def _FalKeyState() -> dict:
+        S = Ctx.Settings
+        Source = "none" if not S.FalKey else ("admin" if S.FalKeyFromAdmin else "environment")
+        return {"configured": bool(S.FalKey), "source": Source, "last4": FalKeys.Last4(S.FalKey),
+                "editable": not S.Production,
+                "note": ("In production the key is part of the server configuration (FAL_KEY in the environment file); "
+                         "it cannot be changed here." if S.Production else "")}
+
+    def _ApplyFalKey(Key: str | None, Admin_: bool, Who) -> dict:
+        """Use `Key` from now on; a live provider is rebuilt with it, but never while generations are running."""
+        Modes = App_.state.Modes
+        Live = Modes.Mode == "live"
+        if Live and Modes.ActiveJobs():
+            raise HttpError(409, "jobs_running", "Wait until the running generations finish before changing the key.")
+        if Live and not Key:
+            raise HttpError(409, "live_would_lose_key", "The AI mode is live: switch to mock before removing the only key.")
+        Ctx.Settings.FalKey, Ctx.Settings.FalKeyFromAdmin = Key, Admin_
+        if Live:
+            Ctx.Provider = Modes.Factories["live"]()
+        return _FalKeyState()
+
+    @App_.get("/api/admin/fal-key")
+    async def GetFalKey(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _FalKeyState()
+
+    @App_.put("/api/admin/fal-key")
+    async def SetFalKey(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        if Ctx.Settings.Production:
+            raise HttpError(409, "fal_key_locked", "In production the fal.ai key is set in the server configuration.")
+        Key = FalKeys.Normalize(Body_.get("key"))
+        await FalKeys.CheckKey(Key)                                    # free; nothing is saved when it fails
+        State = _ApplyFalKey(Key, True, Who)
+        FalKeys.WriteSaved(Ctx.Settings.DataDir, Key)
+        Logger.warning("fal.ai key set in the Admin by %s (ends ...%s)", Who.Id, FalKeys.Last4(Key))
+        return State
+
+    @App_.delete("/api/admin/fal-key")
+    async def RemoveFalKey(authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        if Ctx.Settings.Production:
+            raise HttpError(409, "fal_key_locked", "In production the fal.ai key is set in the server configuration.")
+        Env = (os.environ.get("FAL_KEY") or None)
+        State = _ApplyFalKey(Env, False, Who)
+        FalKeys.RemoveSaved(Ctx.Settings.DataDir)
+        Logger.warning("fal.ai key saved in the Admin removed by %s", Who.Id)
+        return State
 
     # ── AI price list (cost estimates) ─────────────────────────────────────
     @App_.get("/api/admin/ai-prices")

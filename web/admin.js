@@ -198,6 +198,7 @@ function adminApp() {
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
+    falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
       { key: 'images', label: 'Images', color: '#3b82f6' },
@@ -325,6 +326,7 @@ function adminApp() {
         if (this.sub === 'system') {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
           this.health = await this.api('GET', '/api/admin/health').catch(() => null);   // the full picture is admin-only
+          this.falKey = await this.api('GET', '/api/admin/fal-key').catch(() => null);
         }
       }
     },
@@ -986,6 +988,23 @@ function adminApp() {
       if (x.designs) parts.push(`${x.designs} design${x.designs === 1 ? '' : 's'}`);
       if (x.sign_ins) parts.push(`${x.sign_ins} sign-in${x.sign_ins === 1 ? '' : 's'}`);
       return x.day + (parts.length ? ': ' + parts.join(', ') : ': no activity');
+    },
+
+    // ── fal.ai key (Settings → System) ─────────────────────────────────
+    async saveFalKey() {
+      this.falKeyBusy = true; this.falKeyMsg = ''; this.falKeyErr = false;
+      try {
+        this.falKey = await this.api('PUT', '/api/admin/fal-key', { key: this.falKeyInput });
+        this.falKeyInput = ''; this.falKeyMsg = 'Key checked with fal.ai (a free test upload) and saved.';
+        this.health = await this.api('GET', '/api/admin/health').catch(() => this.health);
+      } catch (e) { this.falKeyErr = true; this.falKeyMsg = e.message; } finally { this.falKeyBusy = false; }
+    },
+    async removeFalKey() {
+      this.falKeyBusy = true; this.falKeyMsg = ''; this.falKeyErr = false;
+      try {
+        this.falKey = await this.api('DELETE', '/api/admin/fal-key');
+        this.falKeyMsg = this.falKey.configured ? 'The saved key was removed; the server configuration\'s key is used.' : 'The saved key was removed. No key is configured.';
+      } catch (e) { this.falKeyErr = true; this.falKeyMsg = e.message; } finally { this.falKeyBusy = false; }
     },
 
     // ── AI prompts & params ────────────────────────────────────────────
