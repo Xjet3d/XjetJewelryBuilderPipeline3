@@ -2,6 +2,7 @@
 editable numbers, a suggested reply, notes), the quote email with Approve / Decline, the customer's page, an approved
 quote becoming an order, a declined one marked rejected, revisions and expiry, and the history of it all."""
 
+import html
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -100,6 +101,8 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         assert Page.status_code == 200 and "noindex" in Page.headers["x-robots-tag"] and Page.headers["cache-control"] == "no-store"
         for Text in ("$2,600.00", "$5,200.00", "Approve the quote", "Decline the quote", "Here is your quote.", "US 7"):
             assert Text in Page.text, Text
+        Picture = re.search(r'<img src="([^"]+)"', Page.text)                                     # the design's picture loads
+        assert Picture and (await H.Client.get(html.unescape(Picture.group(1)))).status_code == 200, Picture
         Token = Link.split("token=")[1]
         # Without the terms nothing is ordered
         R = await H.Client.post("/quote/approve", data={"token": Token, **Address, "shipping_method": "express"})

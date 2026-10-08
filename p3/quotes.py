@@ -322,7 +322,7 @@ class QuoteDesk:
 
     def _QuoteBox(self, R: dict, Offer: dict) -> str:
         Asset = self.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
-        Img = Media.ThumbUrl(self.Ctx.AssetUrl(Asset["asset_path"]), 480) if Asset else None
+        Img = Media.ThumbUrl(self.Ctx.AssetUrl(Asset["asset_path"]), 320) if Asset else None   # shown at 110 px; a made width
         Rows = [("Design", f"{R['title']} · {R['ring_id'] or ''}"), ("Material", R["material_label"]),
                 ("Size", Offer.get("size_label") or "—"), ("Quantity", str(Offer["quantity"])),
                 ("Price per piece", _Money(Offer["unit_price"])), ("Total", _Money(Offer["total"])),
