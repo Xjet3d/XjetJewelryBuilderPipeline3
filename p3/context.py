@@ -38,9 +38,6 @@ class Context:
     AiPrices: "PriceBook" = None                  # fal.ai list prices: the estimated cost recorded with every submission
     RateLimiter: "RateLimiter" = None             # per-IP / per-account request limits (p3/ratelimit.py)
     SpendInFlight: float = 0.0                    # estimated cost of the paid submissions between cap check and record
-    AiPrices: "PriceBook" = None                  # fal.ai list prices: the estimated cost recorded with every submission
-    RateLimiter: "RateLimiter" = None             # per-IP / per-account request limits (p3/ratelimit.py)
-    SpendInFlight: float = 0.0                    # estimated cost of the paid submissions between cap check and record
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None
     _Locks: dict = field(default_factory=dict)

@@ -25,8 +25,6 @@ from p3 import products as Products
 from p3 import showcase as Showcase
 from p3 import credits as Credits
 from p3.ratelimit import RateLimiter
-from p3 import credits as Credits
-from p3.ratelimit import RateLimiter
 
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
@@ -170,8 +168,6 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
     Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
     Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
-    Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
-    Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
     Mailer = BuildMailer(S.DataDir)
     Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
@@ -191,9 +187,6 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def Lifespan(_App):
         Summary = Svc.Reconcile()
         Logger.info("Startup reconciliation: %s (provider=%s)", Summary, Ctx.Provider.Name)
-        Reserved = Credits.Rebuild(Ctx)           # the credits held by the work still in flight, from the job tables
-        if Reserved:
-            Logger.info("Credit reservations rebuilt: %s", Reserved)
         Reserved = Credits.Rebuild(Ctx)           # the credits held by the work still in flight, from the job tables
         if Reserved:
             Logger.info("Credit reservations rebuilt: %s", Reserved)
@@ -410,7 +403,6 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     def HealthDetails() -> dict:
         """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""
         return {"ok": True, "env": S.Env, "provider": Ctx.Provider.Name, "mode": Modes.Mode, "mode_source": Modes.Source,
-                "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
                 "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
                 "mode_locked": S.LockMode, "base_path": Base or "/", "admin_host": S.AdminHost or None,
                 "public_base_url": S.PublicBaseUrl or None, "mail_mode": S.MailMode,

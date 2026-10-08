@@ -597,10 +597,6 @@ class Database:
                     # Credits per action (2026-10-07): every slot belongs to its batch's request unless retried later
                     Conn.execute("ALTER TABLE candidates ADD COLUMN credit_ref TEXT")
                     Conn.execute("UPDATE candidates SET credit_ref = batch_id WHERE credit_ref IS NULL")
-                if CandCols and "credit_ref" not in CandCols:
-                    # Credits per action (2026-10-07): every slot belongs to its batch's request unless retried later
-                    Conn.execute("ALTER TABLE candidates ADD COLUMN credit_ref TEXT")
-                    Conn.execute("UPDATE candidates SET credit_ref = batch_id WHERE credit_ref IS NULL")
                 if MCols and "made_by_admin" not in MCols:
                     # A movie the Admin asked for ("Make a new movie"): outside the one-live-movie rule, no allowance charge
                     Conn.execute("ALTER TABLE movies ADD COLUMN made_by_admin TEXT")
