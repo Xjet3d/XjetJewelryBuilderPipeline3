@@ -359,7 +359,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if View == "materials":
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
         if Design:
-            Before['<section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)]'] = Design["block"]
+            Before['<section class="hero-section'] = Design["block"]           # before the hero
         Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
         Html = SitePages.ServerView(Html, View, Fill, Before)
         if Design:                                     # the design's name is the page's heading, not the site's tagline

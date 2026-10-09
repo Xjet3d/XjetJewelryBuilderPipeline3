@@ -37,6 +37,20 @@
         h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
         [x-cloak] { display: none !important; }
         .ssr-view { display: contents; }      /* the server's copy of the page asked for (p3/sitepages.py) */
+        /* Phones: the headline, Start Designing and the moving ring share the first screen (a smaller headline, the
+           eyebrow on one line, tighter spacing, the showcase a little narrower). Two classes, so they win over the
+           single-class utilities; from 768 px the hero is exactly as before. */
+        @media (max-width: 767px) {
+            .hero-section .hero-text { padding-top: 1rem; }
+            .hero-section .hero-eyebrow { flex-direction: row; flex-wrap: wrap; column-gap: .75rem; margin-bottom: .75rem; }
+            .hero-section .hero-eyebrow > span + span::before { content: '·'; margin-right: .75rem; }
+            .hero-section .hero-eyebrow > span { letter-spacing: .16em; }
+            .hero-section .hero-title { font-size: 2.25rem; line-height: 1.06; margin-bottom: .75rem; }
+            .hero-section .hero-sub { font-size: 16px; margin-bottom: 1.25rem; }
+            .hero-section .hero-cta > button { padding-top: .85rem; padding-bottom: .85rem; }
+            .hero-section .hero-visual { padding-top: .25rem; }
+            .hero-section .hero-visual > [data-testid="hero-showcase"] { width: 82%; }
+        }
         /* ♥ Favorites: a small heart on gallery tiles and in the lightbox (gold outline; filled when saved) */
         .fav-heart { background: rgba(255,255,255,0.88); color: #8A6420; box-shadow: 0 1px 4px rgba(0,0,0,0.08); backdrop-filter: blur(4px); }
         .fav-heart:hover { background: #fff; transform: scale(1.06); }
@@ -363,17 +377,17 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'home'">
         <main class="flex-1 overflow-y-auto fade-in">
-            <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-115px)] bg-white">
-                <div class="md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
-                    <div class="flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
+            <section class="hero-section flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-115px)] bg-white">
+                <div class="hero-text md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
+                    <div class="hero-eyebrow flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewelry</span>
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
                     </div>
-                    <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
+                    <h1 class="hero-title text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
                         Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
                     </h1>
-                    <p class="text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
-                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    <p class="hero-sub text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
+                    <div class="hero-cta flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[12px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
                         <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 transition">How It Works</button>
                     </div>
@@ -389,7 +403,7 @@
                 <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
                      (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
                      On phones it comes after the headline and the buttons. -->
-                <div class="md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-115px)] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
+                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-115px)] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
                     <div class="w-full md:w-[min(100%,700px,calc(100vh-195px))]" data-testid="hero-showcase">
                         <div role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
                              x-init="$nextTick(() => window.P3Showcase && P3Showcase.mount($el, { design: 'aurora-mesh' }))"></div>

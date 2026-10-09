@@ -229,11 +229,11 @@ async def test_a_design_page_is_headed_by_the_design_name(tmp_path):
         Live = _Live(Page, "home")
         Title = html.escape(Share["title"])
         assert f"<h1>{Title}</h1>" in Live and "data-ssr-fallback" in Live          # for readers that run no scripts
-        assert '<h2 class="text-5xl md:text-6xl' in Page and '<h1 class="text-5xl md:text-6xl' not in Page   # the tagline steps down
+        assert '<h2 class="hero-title text-5xl' in Page and '<h1 class="hero-title' not in Page   # the tagline steps down
         assert '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>' in Page        # the dialog's name is the H1
         assert f"<title>{Title} · XJet Atelier</title>" in Page and Page.count('rel="canonical"') == 1
         Home = (await H.Client.get("/")).text
-        assert '<h1 class="text-5xl md:text-6xl' in Home and "<h1>" not in Home        # the home page keeps its own H1
+        assert '<h1 class="hero-title text-5xl' in Home and "<h1>" not in Home        # the home page keeps its own H1
     finally:
         await H.Close()
 

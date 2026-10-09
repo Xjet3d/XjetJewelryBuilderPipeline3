@@ -283,7 +283,7 @@ def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | No
 def DesignHeading(Html: str) -> str:
     """A gallery design's own page: the site's tagline becomes a second-level heading and the design's name in its dialog
     the H1 (the same classes, so nothing looks different)."""
-    Hero, Out, I = '<h1 class="text-5xl md:text-6xl', [], 0
+    Hero, Out, I = '<h1 class="hero-title ', [], 0
     while (J := Html.find(Hero, I)) != -1:
         K = Html.index("</h1>", J)
         Out.append(Html[I:J] + "<h2" + Html[J + 3:K] + "</h2>")
