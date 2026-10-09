@@ -367,7 +367,7 @@ class QuoteDesk:
   </div>
   <fieldset><legend>Delivery</legend>{Ship}{self._Err(Problems, 'shipping_method')}</fieldset>
   <label class="check"><input type="checkbox" name="terms" value="1"{' checked' if F.get('terms') else ''}>
-    <span>I accept the Terms of Service and understand that the piece is made to order (design and size) and is not returnable
+    <span>I accept the <a href="{_E(self.Ctx.Settings.BasePath)}/terms" target="_blank" rel="noopener">Terms of Service</a> and understand that the piece is made to order (design and size) and is not returnable
     for change of mind.</span></label>{self._Err(Problems, 'terms')}
   <label>A note for our team (optional)<textarea name="note" rows="3" maxlength="1000">{V('note') if (Form or {}).get('_form') == 'approve' else ''}</textarea></label>
   <button type="submit">Approve and place the order</button>

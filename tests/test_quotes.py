@@ -101,6 +101,7 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         assert Page.status_code == 200 and "noindex" in Page.headers["x-robots-tag"] and Page.headers["cache-control"] == "no-store"
         for Text in ("$2,600.00", "$5,200.00", "Approve the quote", "Decline the quote", "Here is your quote.", "US 7"):
             assert Text in Page.text, Text
+        assert f'<a href="{H.Base}/terms" target="_blank" rel="noopener">Terms of Service</a>' in Page.text     # the terms one accepts
         Picture = re.search(r'<img src="([^"]+)"', Page.text)                                     # the design's picture loads
         assert Picture and (await H.Client.get(html.unescape(Picture.group(1)))).status_code == 200, Picture
         Token = Link.split("token=")[1]
