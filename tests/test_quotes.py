@@ -117,6 +117,18 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         assert (L["unit_price"], L["quantity"], L["material_id"], L["ring_size"]) == (2600, 2, "gold_18k_yellow", 7)
         Ad = (await H.Client.get("/api/admin/orders/ORD-10001", headers=Admin)).json()
         assert "From quote Q-5001" in Ad["notes"] and "Please gift wrap" in Ad["notes"]
+        # My Account: the quote with what the customer was told, the order it became, the order's statuses
+        Mine = (await H.Client.get("/api/quote-requests")).json()["quote_requests"]
+        assert [(X["ref"], X["status"], X["status_label"], X["order_ref"]) for X in Mine] == [("Q-5001", "approved", "Approved", "ORD-10001")]
+        assert [(E["kind"], E["label"]) for E in Mine[0]["history"]] == [("requested", "Quote requested"), ("quote_sent", "Quote sent"),
+                                                                        ("approved", "You approved the quote")]
+        assert Mine[0]["history"][1]["total"] == 5200 and Mine[0]["history"][2]["order_ref"] == "ORD-10001"
+        assert Mine[0]["offer"]["total"] == 5200 and "link" not in Mine[0]["offer"] and "weight_g" not in Mine[0]["offer"]
+        assert not {"customer", "message", "owner_account_id", "decision_note"} & set(Mine[0])        # nothing internal
+        assert "Weight checked with the workshop" not in json.dumps(Mine)                                # the Admin's note
+        MyOrder = (await H.Client.get("/api/orders")).json()["orders"][0]
+        assert MyOrder["quote_ref"] == "Q-5001" and [S["label"] for S in MyOrder["status_history"]] == ["Order placed"]
+        assert (await H.Client.get(f"/api/orders/{MyOrder['id']}")).json()["quote_ref"] == "Q-5001"
         assert Ad["quote"] == {"id": Q["id"], "ref": "Q-5001"}                               # Order → its quote
         Sd = (await H.Client.get(f"/api/admin/sessions/{Q['design_id']}", headers=Admin)).json()
         assert Sd["quotes"] == [{"id": Q["id"], "ref": "Q-5001", "status": "approved", "order_id": Ad["id"]}]   # Session → quote
@@ -184,6 +196,14 @@ async def test_decline_revisions_expiry_and_notes(tmp_path):
         L = I["quote_requests"]
         assert {X["ref"]: X["status"] for X in L} == {"Q-5001": "closed", "Q-5002": "quoted"} and I["total"] == 2
         Q2Row = next(X for X in L if X["ref"] == "Q-5002")
+        # The customer reads an expired quote, a declined one with its revision, never another customer's requests
+        Mine = {X["ref"]: X for X in (await H.Client.get("/api/quote-requests")).json()["quote_requests"]}
+        assert (Mine["Q-5002"]["status_label"], Mine["Q-5001"]["status_label"]) == ("Quote expired", "Closed")
+        assert [E["kind"] for E in Mine["Q-5001"]["history"]] == ["requested", "quote_sent", "quote_sent", "declined", "status"]
+        assert Mine["Q-5001"]["history"][2]["label"] == "Revised quote sent" and Mine["Q-5001"]["history"][-1]["label"] == "Closed"
+        OtherToken, _ = H.Ctx.Accounts.IssueToken("other", MaxGenerations=5)
+        assert (await H.Client.get("/api/quote-requests", headers={"X-Access-Token": OtherToken})).json()["quote_requests"] == []
+        assert (await H.Client.get("/api/quote-requests", headers={"X-Access-Token": ""})).status_code == 401
         assert Q2Row["offer"]["total"] == 5200 and Q2Row["offer_expired"]                   # open, but its quote ran out
         assert not next(X for X in L if X["ref"] == "Q-5001")["offer_expired"]              # closed: not "expired"
         assert I["counts"]["closed"] == 1 and I["counts"]["quoted"] == 1 and I["counts"]["new"] == 0

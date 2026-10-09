@@ -1798,8 +1798,10 @@
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="text-center mb-10">
                     <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
-                    <h2 class="text-3xl brand-font text-zinc-900 mb-2">Your order has been received</h2>
+                    <h2 class="text-3xl brand-font text-zinc-900 mb-2" x-text="order.status === 'new' ? 'Your order has been received' : 'Your order'"></h2>
                     <p class="text-[15px] text-zinc-700">Order ID <span class="font-mono font-semibold text-zinc-900" x-text="order.ref"></span> · <span x-text="orderDate(order.created_at)"></span></p>
+                    <p class="mt-3"><span class="inline-block text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(order)" x-text="'Status: ' + order.status_label"></span></p>
+                    <p x-show="order.quote_ref" class="text-[13px] text-zinc-600 mt-2">From your quote request <button type="button" class="font-mono underline" @click="openAccountPage('quote-' + order.quote_ref)" x-text="order.quote_ref"></button></p>
                     <p class="text-[13px] text-zinc-500 mt-2"><span x-text="emailText(order.confirmation_email, order.customer.email)"></span> Quote the Order ID in any question.</p>
                 </div>
                 <div class="space-y-4 mb-8">
@@ -1827,7 +1829,15 @@
                         <div class="border border-zinc-100 rounded-lg p-4"><p class="flbl">Payment</p><p class="text-zinc-900 font-semibold" x-text="order.payment_label"></p><p class="text-zinc-600 mt-1" x-text="order.payment_message"></p></div>
                     </div>
                 </div>
-                <div class="rounded-xl p-6 mb-10" style="background:#FBF7EF; border:1px solid #E8DCC4;">
+                <div x-show="(order.status_history || []).length > 1" class="border border-zinc-100 rounded-lg p-4 mb-8 text-[13px]">
+                    <p class="flbl">Order history</p>
+                    <ol class="space-y-1.5">
+                        <template x-for="(h, i) in (order.status_history || [])" :key="i">
+                            <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span><span class="text-zinc-800" x-text="h.label"></span></li>
+                        </template>
+                    </ol>
+                </div>
+                <div x-show="!['shipped', 'completed', 'cancelled'].includes(order.status)" class="rounded-xl p-6 mb-10" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                     <p class="flbl">What happens next</p>
                     <ol class="space-y-3 text-[13px] text-zinc-700">
                         <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">1.</span><span><strong class="text-zinc-900">Design review.</strong> Our team checks the design for production feasibility and confirms the order to you (about 2 business days). Until then your order is a reservation.</span></li>
@@ -1838,6 +1848,81 @@
                 <div class="flex flex-col sm:flex-row gap-3">
                     <button @click="design ? navigateTo('ai-studio') : resetAIFlow()" class="flex-1 btn-gold py-3.5">Continue designing</button>
                     <button @click="navigateTo('home')" class="flex-1 btn-outline py-3.5">Back to home</button>
+                </div>
+            </div>
+        </main>
+    </template>
+
+    <!-- ── My Account → Quotes & orders (#account): every quote request and order, where each stands, its history ── -->
+    <template x-if="view === 'account'">
+        <main class="flex-1 overflow-y-auto fade-in bg-white">
+            <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
+                <div class="mb-8">
+                    <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My account</p>
+                    <h2 class="text-3xl brand-font text-zinc-900">Quotes &amp; orders</h2>
+                    <p class="text-[14px] text-zinc-600 mt-2">Every quote you asked for and every order you placed, and where each one stands.</p>
+                </div>
+                <div x-show="!userSession" class="rounded-xl p-6 text-[14px] text-zinc-700" style="background:#FBF7EF; border:1px solid #E8DCC4;">
+                    <p class="mb-4">Sign in to see your quotes and orders.</p>
+                    <button type="button" @click="openAccountPage()" class="btn-gold px-6 py-3">Sign in</button>
+                </div>
+                <div x-show="userSession" class="space-y-8">
+                    <p x-show="(ordersLoading || myQuotesLoading) && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-500">Loading…</p>
+                    <p x-show="!ordersLoading && !myQuotesLoading && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-600">No quotes or orders yet. Quote requests (for gold) and orders appear here.</p>
+                    <!-- Quote requests -->
+                    <section x-show="myQuotes.length" aria-labelledby="account-quotes">
+                        <h3 id="account-quotes" class="flbl">Quote requests</h3>
+                        <div class="space-y-4">
+                            <template x-for="q in myQuotes" :key="q.id">
+                                <article :id="'quote-' + q.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
+                                    <div class="flex gap-5">
+                                        <div class="w-20 h-20 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100"><img x-show="q.image_url" :src="thumb(q.image_url, 320)" :alt="q.title" class="w-full h-full object-contain" loading="lazy"></div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                <p class="text-[13px] text-zinc-600">Quote <span class="font-mono font-semibold text-zinc-900" x-text="q.ref"></span> · <span x-text="orderDate(q.created_at)"></span></p>
+                                                <span class="text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="quoteChip(q)" x-text="q.status_label"></span>
+                                            </div>
+                                            <p class="text-base font-medium text-zinc-900 mt-1" x-text="q.title"></p>
+                                            <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(q)"></span> <span class="font-mono text-zinc-700" x-text="q.ring_id || '—'"></span></p>
+                                            <p class="text-[13px] text-zinc-600 mt-1"><span x-text="q.material_label"></span> · Size <span x-text="q.size_label"></span> · Qty <span x-text="q.quantity"></span></p>
+                                            <p x-show="q.offer" class="text-[14px] text-zinc-900 mt-2" x-text="'Quote: ' + (q.offer ? money(q.offer.total) : '') + (q.offer?.valid_until ? ' · valid until ' + orderDate(q.offer.valid_until + 'T12:00:00Z') : '')"></p>
+                                            <p class="text-[13px] text-zinc-600 mt-1" x-text="quoteNextStep(q)"></p>
+                                        </div>
+                                    </div>
+                                    <ol class="mt-4 pt-3 border-t border-zinc-100 space-y-1.5 text-[13px]" :aria-label="'History of ' + q.ref">
+                                        <template x-for="(h, i) in q.history" :key="i">
+                                            <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span>
+                                                <span class="text-zinc-800"><span x-text="h.label"></span><span x-show="h.total != null" x-text="' — ' + money(h.total || 0) + (h.valid_until ? ', valid until ' + orderDate(h.valid_until + 'T12:00:00Z') : '')"></span>
+                                                    <template x-if="h.order_ref"><span> — order <button type="button" class="font-mono underline" @click="openOrderByRef(h.order_ref)" x-text="h.order_ref"></button></span></template></span></li>
+                                        </template>
+                                    </ol>
+                                </article>
+                            </template>
+                        </div>
+                    </section>
+                    <!-- Orders -->
+                    <section x-show="orders.length" aria-labelledby="account-orders">
+                        <h3 id="account-orders" class="flbl">Orders</h3>
+                        <div class="space-y-4">
+                            <template x-for="o in orders" :key="o.id">
+                                <article :id="'order-' + o.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <p class="text-[13px] text-zinc-600">Order <span class="font-mono font-semibold text-zinc-900" x-text="o.ref"></span> · <span x-text="orderDate(o.created_at)"></span></p>
+                                        <span class="text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(o)" x-text="o.status_label"></span>
+                                    </div>
+                                    <p class="text-base font-medium text-zinc-900 mt-1" x-text="(o.lines || []).map(l => l.title).join(', ')"></p>
+                                    <p class="text-[13px] text-zinc-600 mt-1" x-text="orderCountText(o) + ' · ' + money(o.total, o.currency) + ' · ' + o.payment_label"></p>
+                                    <p x-show="o.quote_ref" class="text-[13px] text-zinc-600 mt-1">From your quote request <button type="button" class="font-mono underline" @click="document.getElementById('quote-' + o.quote_ref)?.scrollIntoView({ behavior: 'smooth', block: 'start' })" x-text="o.quote_ref"></button></p>
+                                    <ol class="mt-4 pt-3 border-t border-zinc-100 space-y-1.5 text-[13px]" :aria-label="'History of ' + o.ref">
+                                        <template x-for="(h, i) in (o.status_history || [])" :key="i">
+                                            <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span><span class="text-zinc-800" x-text="h.label"></span></li>
+                                        </template>
+                                    </ol>
+                                    <button type="button" @click="openOrder(o)" class="btn-outline mt-4 px-5 py-2.5 !text-[13px]">View order</button>
+                                </article>
+                            </template>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>
@@ -1965,11 +2050,19 @@
                         <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">Use this code to sign in on another device. It's tied to your account and its movie allowance — keep it private.</div>
                     </div>
 
-                    <!-- Orders -->
-                    <div x-show="orders.length || ordersLoading" x-cloak>
-                        <div class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#8A6420;">My orders</div>
-                        <p x-show="ordersLoading && !orders.length" class="text-[12px]" style="color:#6F6F6F;">Loading…</p>
+                    <!-- Quotes & orders: the latest of each here, everything on the Quotes & orders page -->
+                    <div x-show="orders.length || myQuotes.length || ordersLoading" x-cloak>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold" style="color:#8A6420;">Quotes &amp; orders</span>
+                            <button type="button" @click="openAccountPage()" class="text-[12px] underline" style="color:#6F6F6F;">See all</button>
+                        </div>
+                        <p x-show="ordersLoading && !orders.length && !myQuotes.length" class="text-[12px]" style="color:#6F6F6F;">Loading…</p>
                         <ul class="divide-y divide-zinc-100 max-h-40 overflow-y-auto">
+                            <template x-for="q in myQuotes.slice(0, 3)" :key="q.id">
+                                <li><button type="button" @click="openAccountPage('quote-' + q.ref)" class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-zinc-50 rounded px-1 -mx-1 transition">
+                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="q.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="'Quote · ' + q.title + ' · ' + q.status_label"></span></span>
+                                    <span class="text-[12px] shrink-0" style="color:#1A1A1A;" x-text="q.offer ? money(q.offer.total) : '—'"></span></button></li>
+                            </template>
                             <template x-for="o in orders" :key="o.id">
                                 <li><button type="button" @click="openOrder(o)" class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-zinc-50 rounded px-1 -mx-1 transition">
                                     <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + orderCountText(o) + ' · ' + o.status_label"></span></span>
@@ -1984,6 +2077,10 @@
                 <div class="py-1.5" style="border-top:1px solid #F0ECE4;">
                     <button type="button" @click="openPanel('designs')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
                         <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>My Designs
+                    </button>
+                    <button type="button" @click="openAccountPage()" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
+                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l2 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7l2-3z" stroke-linejoin="round"/><path d="M5 7h14M9 11h6M9 15h4" stroke-linecap="round"/></svg>Quotes &amp; orders
+                        <span x-show="myQuotes.length + orders.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="myQuotes.length + orders.length"></span>
                     </button>
                     <button type="button" @click="openPanel('favorites')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
                         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>Favorites

@@ -509,6 +509,11 @@ charm (they read "US 20" before). Rings read as before. Tested in `tests/test_ch
   - Materials use the charm names. A charm has no suggested size: a chosen one counts as confirmed.
   - The price, summary, bag-button and gold-quote texts are charm-worded, and a quote request sends `charm_size`.
 - **Bag, checkout, confirmation, My Orders.**
+  - My Account → *Quotes & orders* is the `account` view (`#account`, `openAccountPage(anchor)`; signed out it asks
+    for sign-in first, `_pendingPanel = 'account'`): `GET /api/quote-requests` (`Orders.ListQuotes`: the customer's
+    own requests, a customer-safe history from `quote_events`) and `GET /api/orders` (each order with
+    `status_history` from `order_events` and `quote_ref`). The order page shows *Status*, the quote it came from and
+    the history; *What happens next* only while the order is not shipped, completed or cancelled.
   - `lineSize` gives "US 7" (as before) or "20 mm", and `lineIdLabel` gives Ring ID / Charm ID.
   - Order counts read "2 rings", "1 charm" or "3 pieces".
 - **Inspiration Gallery.** A *All · Rings · Charms* filter (`galleryShown`) on the gallery page and dialog, and a

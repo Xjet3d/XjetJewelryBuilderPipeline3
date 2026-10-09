@@ -69,6 +69,9 @@ _Email = "COALESCE(json_extract({0}.customer_json, '$.email'), '')"
 
 QuoteOpen = ("new", "quoted", "answered")          # a quote can still be sent, revised and decided
 QuoteStatuses = ("new", "quoted", "answered", "approved", "rejected", "closed")
+# What a customer reads for each of those statuses (My Account); an open request whose quote ran out reads "Quote expired"
+CustomerQuoteLabels = {"new": "Requested", "quoted": "Quote sent", "answered": "Answered", "approved": "Approved",
+                       "rejected": "Declined", "closed": "Closed"}
 QuoteManualStatuses = ("new", "quoted", "answered", "rejected", "closed")   # "approved" only by the customer (it creates the order)
 
 
@@ -367,11 +370,58 @@ class OrderService:
         O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? AND owner_account_id = ?", (OrderId, Who.AccountId))
         if O is None:
             raise HttpError(404, "order_not_found", "Order not found.")
-        return self.ToJson(O, self._Lines(OrderId))
+        return self._ForCustomer(O)
 
     def List(self, Who: Principal) -> list[dict]:
-        return [self.ToJson(O, self._Lines(O["id"])) for O in
+        return [self._ForCustomer(O) for O in
                 self.Ctx.Db.All("SELECT * FROM orders WHERE owner_account_id = ? ORDER BY created_at DESC LIMIT 50", (Who.AccountId,))]
+
+    def _ForCustomer(self, O: dict) -> dict:
+        """An order as its customer sees it in My Account: the order, its statuses with their dates (never the Admin's
+        notes) and the quote it came from."""
+        J = self.ToJson(O, self._Lines(O["id"]))
+        History = []
+        for E in self.Ctx.Db.All("SELECT kind, data_json, created_at FROM order_events WHERE order_id = ? AND kind IN ('placed', 'status') "
+                                 "ORDER BY id", (O["id"],)):
+            To = "new" if E["kind"] == "placed" else json.loads(E["data_json"] or "{}").get("to")
+            History.append({"status": To, "label": "Order placed" if E["kind"] == "placed" else StatusLabels.get(To, To), "at": E["created_at"]})
+        J["status_history"] = History
+        Quote = self.Ctx.Db.One("SELECT request_no FROM quote_requests WHERE order_id = ?", (O["id"],))
+        J["quote_ref"] = QuoteRef(Quote["request_no"]) if Quote else None
+        return J
+
+    def ListQuotes(self, Who: Principal) -> list[dict]:
+        """The customer's own quote requests, newest first, with what they were told: the request, each quote sent
+        (amount, validity), their decision and the order it became, the status changes. Internal notes, staff emails,
+        the quote link and the weight behind the price stay in the Admin."""
+        Out = []
+        for R in self.Ctx.Db.All("SELECT * FROM quote_requests WHERE owner_account_id = ? ORDER BY created_at DESC LIMIT 50", (Who.AccountId,)):
+            J = self.QuoteRequestJson(R)
+            History = []
+            for E in self.Ctx.Db.All("SELECT kind, data_json, created_at FROM quote_events WHERE request_id = ? "
+                                     "AND kind IN ('created', 'offer_sent', 'approved', 'rejected', 'status') ORDER BY id", (R["id"],)):
+                D, At = json.loads(E["data_json"] or "{}"), E["created_at"]
+                if E["kind"] == "created":
+                    History.append({"kind": "requested", "label": "Quote requested", "at": At})
+                elif E["kind"] == "offer_sent":
+                    History.append({"kind": "quote_sent", "label": "Revised quote sent" if D.get("revised") else "Quote sent", "at": At,
+                                    "version": D.get("version"), "total": D.get("total"), "valid_until": D.get("valid_until")})
+                elif E["kind"] == "approved":
+                    History.append({"kind": "approved", "label": "You approved the quote", "at": At, "order_ref": D.get("order_ref")})
+                elif E["kind"] == "rejected":
+                    History.append({"kind": "declined", "label": "You declined the quote", "at": At})
+                elif D.get("to") in CustomerQuoteLabels:
+                    History.append({"kind": "status", "label": CustomerQuoteLabels[D["to"]], "at": At})
+            if not any(H["kind"] == "requested" for H in History):          # a request from before its history was kept
+                History.insert(0, {"kind": "requested", "label": "Quote requested", "at": R["created_at"]})
+            Out.append({**{K: J[K] for K in ("id", "ref", "design_id", "title", "ring_id", "material_label", "product_type", "size_label",
+                                             "quantity", "image_url", "created_at", "order_id", "order_ref", "offer_expired")},
+                        "status": R["status"],
+                        "status_label": "Quote expired" if J["offer_expired"] else CustomerQuoteLabels.get(R["status"], R["status"]),
+                        "offer": J["offer"] and {K: J["offer"].get(K) for K in ("version", "unit_price", "quantity", "total", "valid_until",
+                                                                                 "sent_at", "size_label")},
+                        "history": History})
+        return Out
 
     # ── gold: request a quote instead of ordering ────────────────────────
     def RequestQuote(self, Who: Principal, Body: dict, SendMail=None) -> dict:

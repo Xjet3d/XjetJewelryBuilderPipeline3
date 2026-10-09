@@ -767,6 +767,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Form_ = {K: str(V) for K, V in (await request.form()).items()}
         return _QuoteHtml(Svc.Quotes.Reject(Form_.get("token", ""), Form_))
 
+    # My Account: the customer's own quote requests and what happened to each
+    @App_.get("/api/quote-requests")
+    async def MyQuoteRequests(request: Request, x_access_token: str | None = Header(None)):
+        return RingOnly({"quote_requests": Svc.Orders.ListQuotes(Tok(x_access_token))}, request)
+
     @App_.post("/api/quote-requests")
     async def RequestQuote(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         return RingOnly(Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task), request)

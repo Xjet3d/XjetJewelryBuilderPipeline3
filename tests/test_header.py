@@ -82,7 +82,7 @@ async def test_the_account_menu_is_a_dropdown_with_sign_out_last(HG):
     I = Index.index('data-testid="account-menu"')
     Menu = Index[I:Index.index("\n    </template>", I)]
     assert ":style=\"{ top: accountPanelPos.top + 'px', right: accountPanelPos.right + 'px'" in Menu
-    for Piece in ('x-text="displayName || \'Your account\'"', 'x-text="displayEmail"', 'x-text="quotaRemaining"', "Your sign-in code", "My orders",
+    for Piece in ('x-text="displayName || \'Your account\'"', 'x-text="displayEmail"', 'x-text="quotaRemaining"', "Your sign-in code", "Quotes &amp; orders", "openAccountPage()",
                   "openPanel('designs')", "openPanel('favorites')"):
         assert Piece in Menu, Piece
     Buttons = re.findall(r'<button type="button" @click="([^"]+)"', Menu)

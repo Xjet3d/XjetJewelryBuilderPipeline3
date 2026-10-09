@@ -177,6 +177,7 @@ function p3App() {
 
     // ── checkout & orders ─────────────────────────────────────────────
     checkout: null, coQuote: null, order: null, orders: [], ordersLoading: false,
+    myQuotes: [], myQuotesLoading: false,          // My Account → Quotes & orders: the customer's quote requests
     co: { step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
@@ -230,8 +231,10 @@ function p3App() {
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
       if (PAGE_VIEWS.includes(hashView)) { this.view = hashView; if (hashView === 'materials') this.loadMaterialQuotes(); }
+      if (hashView === 'account') this.view = 'account';          // signed out, the page offers the sign-in
       if (!this.token) return;
       this.refreshBag();
+      if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); }
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
@@ -239,7 +242,7 @@ function p3App() {
         return;
       }
       // A link to a page (#materials, #terms from the checkout …) wins over restoring the studio.
-      if (st.designId && STUDIO_VIEWS.includes(st.view) && !PAGE_VIEWS.includes(hashView)) {
+      if (st.designId && STUDIO_VIEWS.includes(st.view) && !PAGE_VIEWS.includes(hashView) && hashView !== 'account') {
         try { await this.openDesign(st.designId, { restoreView: st.view }); }
         catch { this.persist({ designId: null }); }
       }
@@ -327,12 +330,14 @@ function p3App() {
       this.menuOpen = false; this.aboutOpen = false;
       this.view = v;
       if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', v === 'home' ? location.pathname : '#' + v);
+      else if (v === 'account') history.replaceState(null, '', '#account');     // My Account → Quotes & orders (never indexed)
       else history.replaceState(null, '', location.pathname);
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
       if (v === 'checkout') { this.refreshBag(); this.track('bag_viewed'); }
       if (v === 'materials') this.loadMaterialQuotes();
+      if (v === 'account') { this.loadOrders(); this.loadMyQuotes(); }
     },
     // Session analytics for the Admin (best effort; never blocks the customer).
     track(kind, designId = null) {
@@ -556,6 +561,7 @@ function p3App() {
       this._pendingPanel = '';
       this._enterDesignAfterSignIn(fromVerification);
       if (panel === 'bag') { this.signInNotice = null; this.goToCheckout(); }
+      else if (panel === 'account') { this.signInNotice = null; this.openAccountPage(); }
       else if (panel) this.openPanel(panel);
     },
 
@@ -697,7 +703,7 @@ function p3App() {
     toggleAccountPanel() {
       this.accountPanelOpen = !this.accountPanelOpen;
       this.tokenCopied = false;
-      if (this.accountPanelOpen) { this.menuOpen = false; this.aboutOpen = false; this._placeAccountPanel(); this._refreshQuota(); this.loadOrders(); }
+      if (this.accountPanelOpen) { this.menuOpen = false; this.aboutOpen = false; this._placeAccountPanel(); this._refreshQuota(); this.loadOrders(); this.loadMyQuotes(); }
     },
     // A dropdown under the header's account button, right edges aligned (on a phone: full width under the header).
     // Opened from the composer's balance line, or with the button hidden, it sits under the header.
@@ -1645,6 +1651,43 @@ function p3App() {
       finally { this.ordersLoading = false; }
     },
     openOrder(o) { this.order = o; this.closeAccountPanel(); this.navigateTo('confirmation'); },
+    async loadMyQuotes() {
+      if (!this.token) return;
+      this.myQuotesLoading = true;
+      try { this.myQuotes = (await this.api('GET', '/api/quote-requests')).quote_requests; } catch (_) { /* keep what we have */ }
+      finally { this.myQuotesLoading = false; }
+    },
+    // My Account → Quotes & orders (#account); anchor: a quote or order on it ("quote-Q-5001", "order-ORD-10001")
+    openAccountPage(anchor = '') {
+      this.closeAccountPanel(); this.menuOpen = false;
+      if (!this.userSession) { this._pendingPanel = 'account'; this.openRegModal(); return; }
+      this.navigateTo('account');
+      if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    },
+    openOrderByRef(ref) {
+      const o = this.orders.find(x => x.ref === ref);
+      if (o) this.openOrder(o); else this.openAccountPage('order-' + ref);
+    },
+    // Where a quote request stands and what the customer can do next (the Admin's statuses, in the customer's words)
+    quoteNextStep(q) {
+      if (q.offer_expired) return 'This quote has expired. Contact us if you would like a new one.';
+      return { new: 'We are preparing your quote and will email it to you.',
+               quoted: 'To go ahead, approve or decline it with the buttons in the quote email' + (q.offer?.valid_until ? ' before ' + this.orderDate(q.offer.valid_until + 'T12:00:00Z') : '') + '.',
+               answered: 'We replied to your request by email.',
+               approved: 'You approved this quote' + (q.order_ref ? ': it became order ' + q.order_ref + '.' : '.'),
+               rejected: 'You declined this quote. Contact us if you would like a new one.',
+               closed: 'This request is closed.' }[q.status] || '';
+    },
+    // Status chips: in progress (gold), done (green), ended (grey), expired (red)
+    statusChipStyle(kind) {
+      return { progress: 'background:#FBF7EF;color:#8A6420;border:1px solid #E8DCC4',
+               done: 'background:#ECFDF3;color:#146C43;border:1px solid #B7E4C7',
+               ended: 'background:#F4F4F5;color:#52525B;border:1px solid #E4E4E7',
+               expired: 'background:#FDECEA;color:#A1261D;border:1px solid #F3C4BE' }[kind] || '';
+    },
+    quoteChip(q) { return this.statusChipStyle(q.offer_expired ? 'expired' : q.status === 'approved' ? 'done' : ['rejected', 'closed'].includes(q.status) ? 'ended' : 'progress'); },
+    orderChip(o) { return this.statusChipStyle(o.status === 'completed' || o.status === 'shipped' ? 'done' : o.status === 'cancelled' ? 'ended' : 'progress'); },
+    historyDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; },
     orderDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; },
 
     // ── gold: "Request a quote" instead of the fixed-price path ──────────
