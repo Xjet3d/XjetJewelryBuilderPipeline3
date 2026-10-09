@@ -78,7 +78,10 @@ The sitemap is submitted in Search Console directly, so nothing waits for that f
 
 1. On Atelier, after this release: Admin → Settings → System → **Search engines** → turn it **ON**. Check that
    `https://xjetatelier.xjet3d.com/JewelryB2C3/faq` shows `<meta name="robots" content="index,follow">` (View source).
-2. In Search Console (search.google.com/search-console), **Add property → URL prefix**:
+2. First check whether your organisation already has a **Domain property for `xjet3d.com`** in Search Console:
+   `xjet3d.com` already carries two `google-site-verification` TXT records (seen 2026-10-09), so someone may have
+   verified the whole domain — it covers `xjetatelier.xjet3d.com` too; ask its owner to add you, then go to step 4.
+   Otherwise, in Search Console (search.google.com/search-console), **Add property → URL prefix**:
    `https://xjetatelier.xjet3d.com/JewelryB2C3/`.
 3. Verify ownership with **HTML tag**: copy the `content` of the `google-site-verification` meta tag Google shows (or the
    whole tag), paste it in the same Admin card (*Google Search Console verification*) and Save, then press **Verify** in
