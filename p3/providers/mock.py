@@ -25,7 +25,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, PngImagePlugin
 
 from p3.providers import endpoints
-from p3.providers.base import ProviderError, ProviderStatus, TransientProviderError
+from p3.providers.base import ClassifyErrorMessage, ProviderError, ProviderStatus, TransientProviderError
 
 
 def _RingImage(Seed: int, Label: str, Size: int = 512) -> bytes:
@@ -208,6 +208,8 @@ class MockProvider:
             raise ProviderError("Mock provider failure")
         if Req["outcome"] == "nomedia":            # the model finished without an image (fal: no_media_generated)
             raise ProviderError("Mock: the model returned no image.", "no_media_generated")
+        if Req["outcome"] == "policy":             # refused under the model's content rules (fal: content_policy_violation)
+            raise ProviderError(*ClassifyErrorMessage("content_policy_violation"))
         Args = Req["arguments"]
         Url = f"mock://result/{RequestId}"
         if Endpoint in (endpoints.ImageGenerate, endpoints.ImageEdit):

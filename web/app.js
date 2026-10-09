@@ -1053,6 +1053,15 @@ function p3App() {
     },
     get canActOnSelection() { return this.selectedCandidate?.status === 'ready'; },
     readyCount(b) { return b ? b.candidates.filter(c => c.status === 'ready').length : 0; },
+    retryableCount(b) { return b ? b.candidates.filter(c => c.status === 'failed' && c.retryable).length : 0; },
+    // Every option refused under the AI model's content rules: the same words would be refused again, so the customer is
+    // asked for different ones and never offered a paid retry (the server refuses one too)
+    policyRefused(b) { return !!b && b.status === 'failed' && b.candidates.every(c => c.error_code === 'content_policy'); },
+    failedBatchText(b) {
+      if (!this.policyRefused(b)) return 'None of the designs could be created.';
+      return (b.kind === 'refine' ? 'None of the variations could be created: the change' : 'None of the designs could be created: the description')
+        + ' may not meet our content guidelines. We can’t make pictures of real people, such as public figures — try a symbol, motif or style instead.';
+    },
     batchLabel(b) {
       if (b.kind === 'initial') return 'Original';
       const n = this.design.batches.filter(x => x.kind === 'refine').indexOf(b) + 1;
@@ -1113,7 +1122,9 @@ function p3App() {
       if (this.sidebarOpen && !this.anyActive(b)) this.loadDesigns();
       if (b.id === this.pendingRefineBatchId && !this.anyActive(b)) {
         this.pendingRefineBatchId = null;
-        if (b.status === 'failed') this.actionError = 'The refinement could not be generated. You can retry the failed designs.';
+        if (b.status === 'failed') this.actionError = this.policyRefused(b)
+          ? 'The refinement could not be generated: the change may not meet our content guidelines. Please describe a different change.'
+          : 'The refinement could not be generated. You can retry the failed designs.';
         // Switch to the new batch so the user can choose again; the earlier batch stays in history.
         this.viewBatchId = b.id;
         this.setSelection(null);

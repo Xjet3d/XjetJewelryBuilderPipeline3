@@ -32,7 +32,8 @@ def _Wrap(E: Exception) -> Exception:
         Text, Kind = _Detail(E)
         if Kind == "no_media_generated" or "no_media_generated" in Text:
             # The model finished without an image (it answered with text, or declined this one attempt). Not a fault
-            # of the input: the slot is re-requested with a new seed (p3/images.py) before anyone sees a failure.
+            # of the input: only this slot is unavailable, and the app never re-requests it — the customer's "Generate
+            # another option" is the only second request (p3/images.py).
             return ProviderError(NoMediaMessage, "no_media_generated")
         if Kind == "downstream_service_error" or "downstream_service_error" in Text or "Downstream service error" in Text:
             # fal.ai reports that the model's own (partner) service failed on this request. It is a

@@ -146,6 +146,7 @@ async def test_live_adapter_provider_error_fails_only_that_slot(HLive):
     Batch = await H.NewDesign("Plain comfort-fit band")
     Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
     assert len(Failed) == 1 and Failed[0]["error_code"] == "content_policy" and Batch["status"] == "partial"
+    assert not Failed[0]["retryable"]                                   # refused again: never offered for another paid request
 
 
 async def test_fal_error_classification():

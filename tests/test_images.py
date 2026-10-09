@@ -153,6 +153,65 @@ async def test_entire_batch_failure_is_reported_and_retryable(H):
     assert (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["status"] == "complete"
 
 
+async def test_a_description_the_model_refuses_is_never_offered_again(tmp_path):
+    """Every option refused under the model's content rules (atelier, 2026-10-08: a charm asking for a real politician's
+    picture): the customer gets the app's sentence and no retry — asking anyway is refused before anything is reserved or
+    paid — and no credit is charged; the Admin sees the provider's words."""
+    from p3.images import CustomerError
+    Key = "policy-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        H.Provider.Script(endpoints.ImageGenerate, *["policy"] * N)
+        Batch = await H.NewDesign("A charm with a famous politician's portrait")
+        assert Batch["status"] == "failed"
+        assert all(C["error_code"] == "content_policy" and not C["retryable"] for C in Batch["candidates"])
+        assert {C["error"] for C in Batch["candidates"]} == {CustomerError("content_policy")}
+        for Path_ in (f"/api/candidates/{Batch['candidates'][0]['id']}/retry", f"/api/batches/{Batch['id']}/retry-failed"):
+            R = await H.Client.post(Path_)
+            assert R.status_code == 409 and R.json()["error"]["code"] == "not_retryable", Path_
+        await H.Idle()
+        assert len(H.Provider.Submissions) == N                                         # nothing asked again
+        S = (await H.Client.get("/api/token-status")).json()
+        assert (S["used"], S["reserved"]) == (0, 0)                                       # no image, no credit
+        D = (await H.Client.get(f"/api/admin/sessions/{Batch['design_id']}", headers={"Authorization": f"Bearer {Key}"})).json()
+        assert {C["error"] for B in D["design"]["batches"] for C in B["candidates"]} == {
+            "We couldn't process this image or description because it may not meet our content guidelines. "
+            "Please revise your description."}
+        assert not any(E["kind"] == "option_requested" for E in D["timeline"])
+    finally:
+        await H.Close()
+
+
+async def test_try_again_skips_a_refused_option_and_every_retry_is_in_the_journey(tmp_path):
+    """One option refused, two with no image: "Generate another option" and "Try again" ask only for the slots that can
+    come out differently, and the Admin's Journey shows each customer retry (which options, why they had failed)."""
+    Key = "journey-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        H.Provider.Script(endpoints.ImageGenerate, "policy", "nomedia", "nomedia")
+        Batch = await H.NewDesign("Band")
+        Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
+        Refused = [C for C in Failed if C["error_code"] == "content_policy"]
+        Empty = [C for C in Failed if C["error_code"] == "no_media_generated"]
+        assert len(Refused) == 1 and len(Empty) == 2 and Batch["status"] == "partial"
+        assert all(C["retryable"] for C in Empty) and not Refused[0]["retryable"]
+        assert (await H.Client.post(f"/api/candidates/{Empty[0]['id']}/retry")).status_code == 200       # Generate another option
+        await H.Idle()
+        assert (await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")).status_code == 200      # Try again: the rest
+        await H.Idle()
+        After = {C["id"]: C for C in (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["candidates"]}
+        assert len(H.Provider.Submissions) == N + 2                                      # the two empty slots, never the refused one
+        assert all(After[C["id"]]["status"] == "ready" for C in Empty)
+        assert After[Refused[0]["id"]]["error_code"] == "content_policy"
+        D = (await H.Client.get(f"/api/admin/sessions/{Batch['design_id']}", headers={"Authorization": f"Bearer {Key}"})).json()
+        Refs = {C["id"]: C["ring_id"] for B in D["design"]["batches"] for C in B["candidates"]}
+        Asked = [E["data"] for E in D["timeline"] if E["kind"] == "option_requested"]
+        assert [(A["options"], A["after"]) for A in Asked] == [([Refs[Empty[0]["id"]]], ["no_media_generated"]),
+                                                                ([Refs[Empty[1]["id"]]], ["no_media_generated"])]
+    finally:
+        await H.Close()
+
+
 async def test_exact_duplicate_output_is_a_failed_option_never_re_requested(H):
     H.Provider.Script(endpoints.ImageGenerate, "duplicate", "duplicate")
     Batch = await H.NewDesign("Band")

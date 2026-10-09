@@ -827,10 +827,10 @@
             <span x-show="sd.session.three_d_state" class="badge" :class="prodClass(sd.session.three_d_state)" x-text="sd.session.three_d_state === 'review_required' ? '3D · review required' : '3D · ' + prodLabel(sd.session.three_d_state).toLowerCase()"></span>
           </div>
           <div class="flex flex-wrap items-center gap-2 ml-auto">
-            <button class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
-            <button class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (' + (latestResult().size_label || 'US ' + latestResult().production_size) + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
+            <button x-show="!noImage()" class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
+            <button x-show="!noImage()" class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (' + (latestResult().size_label || 'US ' + latestResult().production_size) + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
             <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
-            <button class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
+            <button x-show="!noImage()" class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
           </div>
         </div>
       </div>
@@ -895,8 +895,20 @@
         </div>
       </section>
 
+      <!-- Nothing was made (every option failed — e.g. the AI model refused the description): why, in one notice,
+           instead of three empty boxes; there is no image to show, to make a movie of or to turn into 3D -->
+      <section x-show="noImage()" class="card p-5 space-y-2" role="status">
+        <p class="text-sm font-semibold text-red-700" x-text="noImage()?.policy ? 'No design image — the AI model refused all ' + noImage()?.count + ' options (content policy)' : 'No design image — none of the ' + (noImage()?.count || 0) + ' options could be made'"></p>
+        <p x-show="noImage()?.policy" class="text-[13px] text-zinc-700">Image models refuse pictures of real, identifiable people (such as public figures) and other restricted subjects. The same description is refused again, so the customer is asked for a different one instead of being offered a retry.</p>
+        <ul class="text-[12px] text-zinc-600 space-y-1">
+          <template x-for="r in (noImage()?.reasons || [])" :key="r.code">
+            <li><span class="font-mono text-red-700" x-text="r.code"></span> · <span x-text="r.text"></span> <span class="text-zinc-500" x-text="'— ' + r.options.join(', ')"></span></li>
+          </template>
+        </ul>
+        <p class="text-[12px] text-zinc-500">Nothing to show, to make a movie of or to turn into 3D. A credit is charged only when an image is delivered, so none was charged here; the AI cost above is the estimate for the requests that were sent.</p>
+      </section>
       <!-- What exists: image · movie · 3D -->
-      <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section x-show="!noImage()" class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="card overflow-hidden"><div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2"><p class="lbl" x-text="'Selected image' + (sd.artifacts.ring_id ? ' · ' + sd.artifacts.ring_id : '')"></p>
             <button x-show="sd.artifacts.image_url" class="text-[11px] uppercase tracking-widest underline whitespace-nowrap" :class="sd.gallery ? 'text-amber-700' : 'text-zinc-500'" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery · remove' : 'Show in gallery'"></button></div>
           <div class="aspect-square bg-zinc-50 flex items-center justify-center"><img x-show="sd.artifacts.image_url" :src="sd.artifacts.image_url" class="w-full h-full object-contain" alt="">
@@ -961,7 +973,7 @@
       </section>
 
       <!-- 3D production -->
-      <section id="sect-3d" class="card p-6 space-y-5 scroll-mt-20">
+      <section id="sect-3d" x-show="!noImage() || sd.three_d.length" class="card p-6 space-y-5 scroll-mt-20">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <p class="lbl">3D production · Hi3D v3.0</p>
           <p class="text-[12px] text-zinc-500">Never runs automatically. Each new Hi3D generation is a paid call in live mode (AI mode: <span x-text="mode"></span>).</p>

@@ -72,7 +72,12 @@ A **session is one design journey**:
   - a journey timeline with the time between steps;
   - Generate 3D, plus any results;
   - the Customize choice history and every image of the session;
-  - AI requests for the session (cost "—" until configured).
+  - AI requests for the session (cost "—" until configured);
+  - a session where nothing was made (every option failed — e.g. the AI model refused a description asking for a real
+    person's picture) shows one notice with each reason and its options instead of the empty image, movie and 3D boxes;
+    Generate 3D, Download STL and Show in gallery are hidden, and *Designs in this session* opens;
+  - the Journey shows each customer *Generate another option* / *Try again* as **Another option** (which options, and
+    why they had failed).
 - **Dashboard:**
   - sessions, New Design clicks and the funnel;
   - average refinements and % selected for 3D;

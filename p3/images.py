@@ -44,14 +44,19 @@ def ValidateText(Text: str, What: str) -> str:
 # never the provider's words (fal.ai's message, an HTTP status, an exception), which stay with the slot for the
 # Admin's session page and the log.
 CustomerFailureText = {
-    "content_policy": "We couldn't create this option because the description or image may not meet our content "
-                      "guidelines. Please revise it.",
+    "content_policy": "We couldn't create this option: the description or image may not meet our content guidelines.",
     "billing": "The design service is temporarily unavailable. Please try again later.",
     "reference_unavailable": "The reference image could not be loaded.",
     "duplicate_output": "This option came out identical to another one.",
     "spend_cap_reached": "AI generation is paused for today. Please try again tomorrow.",
 }
 GenericFailureText = "This option couldn't be generated."
+
+# A refusal under the AI model's content rules (most often a picture of a real, identifiable person): the same
+# description is refused again, so the app never offers it for another paid request — the customer changes it instead.
+NotRetryable = {"content_policy"}
+PolicyRetryText = ("This option was refused under our content guidelines, and the same description would be refused again. "
+                   "Please change your description.")
 
 
 def CustomerError(Code: str | None) -> str:
@@ -233,21 +238,37 @@ class ImageService:
         Cand, Batch = self._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "failed":
             raise HttpError(409, "not_failed", "Only a failed image can be retried.")
+        if Cand["error_code"] in NotRetryable:                                 # refused again: nothing is reserved or paid
+            raise HttpError(409, "not_retryable", PolicyRetryText)
         Credits.Reserve(self.Ctx, Who, Credits.Option, 1)                      # "Generate another option": one credit per click
+        self._RecordRetry(Who, Batch, [Cand])
         self._ResetForRetry(CandidateId, Credits.ActionId())
         self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId))
         return self.GetBatch(Batch["id"])
 
     def RetryFailed(self, Who: Principal, BatchId: str) -> dict:
         Batch = self._OwnedBatch(Who, BatchId)
-        Failed = self.Ctx.Db.All("SELECT id FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
-        if Failed:
+        Failed = self.Ctx.Db.All("SELECT id, slot, error_code FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
+        Retry = [C for C in Failed if C["error_code"] not in NotRetryable]     # a content refusal is never asked again
+        if Failed and not Retry:
+            raise HttpError(409, "not_retryable", PolicyRetryText)
+        if Retry:
             Credits.Reserve(self.Ctx, Who, Credits.Option, 1)                   # one click, one credit, however many slots
+            self._RecordRetry(Who, Batch, Retry)
         Action = Credits.ActionId()
-        for C in Failed:
+        for C in Retry:
             self._ResetForRetry(C["id"], Action)
             self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
         return self.GetBatch(Batch["id"])
+
+    def _RecordRetry(self, Who: Principal, Batch: dict, Cands: list[dict]) -> None:
+        """The customer's "Generate another option" / "Try again" in the session's Journey: which options were asked for
+        again and why each had failed, so every paid request shows on the Admin's session page."""
+        from p3 import ringids as RingIds, sessions as Sessions
+        Refs = RingIds.CandidateRefs(self.Ctx.Db, [Batch["design_id"]])
+        Sessions.Record(self.Ctx, Who.AccountId, "option_requested", Batch["design_id"],
+                        options=[Refs.get(C["id"]) or f"option {C['slot'] + 1}" for C in Cands],
+                        after=sorted({C["error_code"] or "failed" for C in Cands}))
 
     def _ResetForRetry(self, CandidateId: str, CreditRef: str) -> None:
         self.Ctx.Db.Update("candidates", CandidateId, status="pending", provider_request_id=None,
@@ -428,7 +449,7 @@ class ImageService:
         return {"id": C["id"], "batch_id": C["batch_id"], "slot": C["slot"], "status": C["status"],
                 "image_url": self.Ctx.AssetUrl(C["asset_path"]) if C["status"] == "ready" else None,
                 "error": CustomerError(C["error_code"]) if C["status"] == "failed" else None, "error_code": C["error_code"],
-                "retryable": C["status"] == "failed"}
+                "retryable": C["status"] == "failed" and C["error_code"] not in NotRetryable}
 
     def GetBatch(self, BatchId: str) -> dict:
         B = self.Ctx.Db.One("SELECT * FROM batches WHERE id = ?", (BatchId,))

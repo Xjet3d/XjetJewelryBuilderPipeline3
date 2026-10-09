@@ -17,6 +17,7 @@ const STEPS = {
   generated: ['Generated', 'bg-blue-100 text-blue-700'],
   refine_requested: ['Refine request', 'bg-zinc-100 text-zinc-600'],
   refined: ['Refined', 'bg-violet-100 text-violet-700'],
+  option_requested: ['Another option', 'bg-zinc-100 text-zinc-600'],
   option_selected: ['Option selected', 'bg-zinc-100 text-zinc-600'],
   customize_opened: ['Customize', 'bg-amber-100 text-amber-800'],
   customization_changed: ['Changed choice', 'bg-amber-50 text-amber-800'],
@@ -768,6 +769,19 @@ function adminApp() {
       return { prev: i > 0 ? ids[i - 1] : null, next: i >= 0 && i < ids.length - 1 ? ids[i + 1] : null, index: i, total: ids.length };
     },
     sectionToggle(k) { this.sect[k] = !this.sect[k]; },
+    // A session none of whose options was made (every one failed, none still running — e.g. the AI model refused the
+    // description): one notice with the reasons instead of empty image / movie / 3D boxes and actions that need an image
+    noImage() {
+      const cs = (this.sd?.design?.batches || []).flatMap(b => b.candidates || []);
+      if (!cs.length || cs.some(c => c.status !== 'failed')) return null;
+      const why = {};
+      for (const c of cs) {
+        const k = c.error_code || 'failed';
+        if (!why[k]) why[k] = { code: k, text: c.error || '', options: [] };
+        why[k].options.push(c.ring_id || 'option ' + (c.slot + 1));
+      }
+      return { count: cs.length, policy: cs.every(c => c.error_code === 'content_policy'), reasons: Object.values(why) };
+    },
     scrollToId(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     // Rename a design (gallery masters should have distinctive names; a shared name needs confirmation)
     async openRename() {
@@ -831,6 +845,7 @@ function adminApp() {
         this.g3.size = null; this.g3.material = '';
         this.sd = sd;
         this.showChoices = false;
+        if (!keep && this.noImage()) this.sect.designs = true;             // nothing was made: every option and its reason
         for (const t of sd.three_d) this.setLive(t.id, t.live);
         const latest = sd.three_d.find(t => this.previewReady(t));       // visual only: also for "needs review"
         const sid = sd.session.session_id;                               // still this session when the viewer starts
@@ -1672,6 +1687,7 @@ function adminApp() {
                       gallery: 'is in the gallery', split: 'was split off by ' + (d.by || 'the admin') }[d.reason] || 'is a master';
         return 'Refinement of ' + (d.source_ring_id || 'the selected image') + ' into this new design — the original ' + why + ', so it stays as it was';
       }
+      if (e.kind === 'option_requested') return 'Generate another option: ' + (d.options || []).join(', ') + (d.after?.length ? ' (had failed: ' + d.after.join(', ') + ')' : '');
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
       if (e.kind === 'admin_movie_requested') return 'A new 360° movie was requested by ' + (d.by || 'admin') + (d.config_version ? ' (' + d.config_version + ')' : '');

@@ -965,16 +965,19 @@
                                     </template>
 
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
-                                    <p x-show="!viewBatchGenerating" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
+                                    <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
                                        x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
 
                                     <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
                                         <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch?.desired_count + ' designs are ready — some options could not be created.'"></span>
-                                        <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold" style="color:#8A561B;">Retry missing</button>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold" style="color:#8A561B;">Retry missing</button>
                                     </div>
                                     <div x-show="viewBatch?.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
-                                        <span class="flex-1">None of the designs could be created.</span>
-                                        <button @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
+                                        <!-- Every option refused under the AI model's content rules: the same description would be refused again, so the
+                                             customer is asked for a different one — no paid retry is offered (the server refuses one too) -->
+                                        <span class="flex-1" x-text="failedBatchText(viewBatch)">None of the designs could be created.</span>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
+                                        <button x-show="policyRefused(viewBatch) && viewBatch?.kind !== 'refine'" @click="startNew()" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap">Start a new design</button>
                                     </div>
 
                                     <!-- Four candidates: a 2×2 grid from 640 px up; on a phone one large option at a time, swipe to compare -->
@@ -994,12 +997,13 @@
                                                     </div>
                                                 </template>
                                                 <!-- An option that could not be made (the model returned no image, or it ran out of time): a quiet
-                                                     state, never the provider's words; "Generate another option" is the customer's explicit request -->
+                                                     state, never the provider's words; "Generate another option" is the customer's explicit request — never offered
+                                                     for a content refusal, which the same words get again -->
                                                 <template x-if="c.status === 'failed'">
                                                     <div class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-4 text-center" style="background:#FAFAF8;">
                                                         <span class="text-[13px] font-medium" style="color:#1A1A1A;" x-text="c.error || 'This option couldn\'t be generated.'"></span>
-                                                        <span class="text-[12px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
-                                                        <button @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]">Generate another option</button>
+                                                        <span x-show="readyCount(viewBatch)" class="text-[12px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
+                                                        <button x-show="c.retryable" @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]">Generate another option</button>
                                                     </div>
                                                 </template>
                                                 <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
