@@ -347,10 +347,10 @@ function p3App() {
       this.menuOpen = false; this.aboutOpen = false;
       this.view = v;
       if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', this.pageUrl(v));         // a page at its own URL
-      const titles = window.__p3?.titles || {};                                          // and its own title (p3/sitepages.py)
-      if (titles[v] || titles.home) document.title = titles[v] || titles.home;
       else if (v === 'account') history.replaceState(null, '', BASE + '/#account');     // My Account → Quotes & orders (never indexed)
       else history.replaceState(null, '', BASE + '/');                                  // the Design screens live at the home URL
+      const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
+      if (titles[v] || titles.home) document.title = titles[v] || titles.home;
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });

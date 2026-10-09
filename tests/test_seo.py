@@ -103,6 +103,11 @@ async def test_every_public_page_has_its_own_url_title_description_canonical_and
         App = (await H.Client.get("/static/app.js")).text
         assert "if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView);" in App
         assert "history.replaceState(null, '', this.pageUrl(v));" in App and "P3_PAGE === 'home'" in App
+        # one chain: a page's URL, else My Account's, else the home URL (the Design screens) — then the tab's title
+        Nav = App[App.index("    navigateTo(v) {"):App.index("    pageUrl(v)")]
+        Chain = [L.strip().split("history")[0].strip() for L in Nav.splitlines() if "history.replaceState" in L]
+        assert Chain == ["if (PAGE_VIEWS.includes(v))", "else if (v === 'account')", "else"], Chain
+        assert Nav.index("document.title") > Nav.rindex("history.replaceState")
         assert (await H.Client.get("/faq/")).status_code in (200, 307)                     # a trailing slash still finds it
     finally:
         await H.Close()
