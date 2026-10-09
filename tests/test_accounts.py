@@ -166,3 +166,21 @@ async def test_pre_accounts_database_is_migrated(tmp_path):
         assert len(list(Var.glob("pipeline3.pre-accounts-*.db"))) == 1
     finally:
         await H2.Close()
+
+
+def test_last_used_is_written_at_most_once_a_minute(tmp_path):
+    """Every request is authenticated: "last used" is written at most once a minute and "activated" once."""
+    P = LocalAccountProvider(tmp_path / "accounts.db")
+    Token, Who = P.IssueToken("t", MaxGenerations=1)
+    Writes = []
+    Real = P.Db.Execute
+    P.Db.Execute = lambda Sql, *A, **K: (Writes.append(Sql), Real(Sql, *A, **K))[1]
+    for _ in range(5):
+        P.Authenticate(Token)
+    assert sum("last_used_at" in W for W in Writes) <= 1 and sum("activated_at" in W for W in Writes) <= 1
+    Writes.clear()
+    P.Db.Execute = Real
+    P.Db.Execute("UPDATE access_tokens SET last_used_at = '2000-01-01T00:00:00.000+00:00'")
+    P.Db.Execute = lambda Sql, *A, **K: (Writes.append(Sql), Real(Sql, *A, **K))[1]
+    P.Authenticate(Token)
+    assert sum("last_used_at" in W for W in Writes) == 1 and not any("activated_at" in W for W in Writes)   # a minute later: once

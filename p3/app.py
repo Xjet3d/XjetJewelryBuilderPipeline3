@@ -124,6 +124,11 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
         Path_ = WebDir / Asset
         if Path_.is_file():
             Html = Html.replace(f'"{{{{BASE}}}}/static/{Asset}"', f'"{{{{BASE}}}}/static/{Asset}?v={Path_.stat().st_mtime_ns}"')
+    # Images and videos the page names (src, href, an onerror fallback) get ?v=<mtime> too: a year in the cache, and a
+    # changed file is a new address — never a stale picture
+    Html = re.sub(r"""\{\{BASE\}\}/static/(images|videos)/([\w.-]+)(?=["'])""",
+                  lambda M: M.group(0) + (f"?v={(WebDir / M.group(1) / M.group(2)).stat().st_mtime_ns}"
+                                          if (WebDir / M.group(1) / M.group(2)).is_file() else ""), Html)
     Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
     Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;")).replace("{{OG}}", Og)
     return Html.replace("{{BASE}}", BasePath)

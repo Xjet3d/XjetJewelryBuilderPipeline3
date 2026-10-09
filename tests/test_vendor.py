@@ -19,7 +19,7 @@ def test_pages_load_nothing_from_third_party_hosts():
 async def test_vendored_files_are_served_and_versioned(H):
     for Rel, Ctype in [("vendor/tailwind.css", "text/css"), ("vendor/fonts.css", "text/css"), ("vendor/alpine.min.js", "javascript"),
                        ("vendor/three.min.js", "javascript"), ("vendor/STLLoader.js", "javascript"), ("vendor/OrbitControls.js", "javascript"),
-                       ("vendor/fonts/inter-400-latin.woff2", "font/woff2"), ("vendor/fonts/cinzel-400-latin.woff2", "font/woff2")]:
+                       ("vendor/fonts/inter-latin.woff2", "font/woff2"), ("vendor/fonts/cinzel-latin.woff2", "font/woff2")]:
         R = await H.Client.get(f"/static/{Rel}")
         assert R.status_code == 200 and Ctype in R.headers["content-type"], (Rel, R.status_code, R.headers.get("content-type"))
     Html = (await H.Client.get("/")).text
@@ -31,13 +31,40 @@ async def test_vendored_files_are_served_and_versioned(H):
     assert re.search(r'/static/vendor/alpine\.min\.js\?v=\d+', Dev)
     # a versioned vendor file is cacheable for a year; the fonts a month
     assert (await H.Client.get("/static/vendor/tailwind.css?v=1")).headers["cache-control"] == "public, max-age=31536000, immutable"
-    assert (await H.Client.get("/static/vendor/fonts/inter-400-latin.woff2")).headers["cache-control"] == "public, max-age=2592000"
+    assert (await H.Client.get("/static/vendor/fonts/inter-latin.woff2")).headers["cache-control"] == "public, max-age=2592000"
     # every font file the stylesheet names exists, and the stylesheet names only relative files
     Css = (Web / "vendor" / "fonts.css").read_text(encoding="utf-8")
     Files = re.findall(r"url\(([^)]+)\)", Css)
     assert Files and all(F.startswith("fonts/") for F in Files)
     for F in Files:
         assert (Web / "vendor" / F).is_file(), F
+    # one file per family and script (the variable font), the weights as a range: a page downloads each file once
+    assert len(Files) == len(set(Files)) == 9 and "font-weight: 300 600;" in Css and "font-weight: 400 600;" in Css
+    assert sorted(P.name for P in (Web / "vendor" / "fonts").iterdir()) == sorted(F.removeprefix("fonts/") for F in Files)
+    assert Css.count("font-display: swap;") == 9
+
+
+async def test_page_images_are_versioned_and_cached_for_a_year(H):
+    """Images and videos a page names carry ?v=<mtime>: cacheable for a year, and a changed file is a new address."""
+    Html = (await H.Client.get("/technology")).text
+    for Name in ("PrintHead.webp", "PrintHead.jpg", "Ink.JPG", "Angel.JPG", "favicon-32.png"):
+        assert re.search(r"/static/images/" + re.escape(Name) + r"\?v=\d+", Html), Name
+    assert re.search(r"/static/videos/atelier-loading\.mp4\?v=\d+", Html)
+    assert "PrintHead.png" not in Html and '<source srcset="/static/images/PrintHead.webp?v=' in Html     # 2.2 MB → 30 KB
+    Url = re.search(r'"(/static/images/PrintHead\.webp\?v=\d+)"', Html).group(1)
+    R = await H.Client.get(Url)
+    assert R.status_code == 200 and R.headers["cache-control"] == "public, max-age=31536000, immutable" and len(R.content) < 120_000
+    assert (await H.Client.get("/static/images/PrintHead.webp")).headers["cache-control"] == "no-cache"       # unversioned: revalidated
+    # the scripts wait for the page (in order: Alpine last), the startup requests go out together
+    Index = (await H.Client.get("/")).text
+    Scripts = re.findall(r'<script ([^>]*)src="[^"]*/static/([\w./-]+)\?v=\d+"', Index)
+    assert [S for _, S in Scripts] == ["metal.js", "products.js", "app.js", "showcase.js", "vendor/alpine.min.js"]
+    assert all(A.strip() == "defer" for A, _ in Scripts)
+    App = (await H.Client.get("/static/app.js")).text
+    assert "await Promise.all([this.api('GET', '/api/health'" in App and "const gallery = this.loadGallery();" in App
+    assert "${this.thumb(url, 1024)} 1024w" in App                                   # never the full-size original
+    Show = (await H.Client.get("/static/showcase.js")).text
+    assert "stage.clientWidth < 480 ? 800 : 1024" in Show and "? 480 : 960" not in Show
 
 
 # Utility prefixes (the part before the first "-", after any variants) — string literals in :class expressions that

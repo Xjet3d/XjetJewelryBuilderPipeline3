@@ -280,3 +280,7 @@ def test_polling_pauses_while_the_tab_is_hidden():
     App = (WebDir / "app.js").read_text(encoding="utf-8")
     Tick = App[App.index("    ensurePolling() {"):App.index("    stopPolling()")]
     assert "if (document.hidden) return;" in Tick
+    Movie = App[App.index("    pollCustomization() {"):App.index("    async retryMovie()")]          # the 360° movie's poll too
+    assert "if (document.hidden) return;" in Movie
+    Admin = (WebDir / "admin.js").read_text(encoding="utf-8")
+    assert "}, document.hidden ? 10000 : 2000);" in Admin[Admin.index("    poll3d() {"):Admin.index("    now() {")]

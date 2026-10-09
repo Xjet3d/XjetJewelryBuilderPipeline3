@@ -163,7 +163,7 @@ class LocalAccountProvider:
 
     def _Row(self, Token: str) -> dict | None:
         return self.Db.One(
-            "SELECT t.token_hash, t.active, t.label, a.* FROM access_tokens t "
+            "SELECT t.token_hash, t.active, t.label, t.last_used_at AS token_last_used_at, a.* FROM access_tokens t "
             "JOIN accounts a ON a.account_id = t.account_id WHERE t.token_hash = ?", (HashToken(Token),))
 
     # ── authentication ───────────────────────────────────────────────────
@@ -175,10 +175,14 @@ class LocalAccountProvider:
             raise AuthError("token_not_found", "Token not found. Check the code and try again.")
         if not Row["active"] or Row["status"] != "active" or Row["removed_at"]:
             raise AuthError("token_inactive", "This token has been deactivated. Contact XJet.")
+        # Every request is authenticated: "last used" is written at most once a minute and "activated" once — not two
+        # writes per request
         T = Now()
-        self.Db.Execute("UPDATE access_tokens SET last_used_at = ? WHERE token_hash = ?", (T, Row["token_hash"]))
-        self.Db.Execute("UPDATE accounts SET activated_at = COALESCE(activated_at, ?) WHERE account_id = ?",
-                        (T, Row["account_id"]))
+        if (Row["token_last_used_at"] or "") < (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(timespec="milliseconds"):
+            self.Db.Execute("UPDATE access_tokens SET last_used_at = ? WHERE token_hash = ?", (T, Row["token_hash"]))
+        if not Row["activated_at"]:
+            self.Db.Execute("UPDATE accounts SET activated_at = COALESCE(activated_at, ?) WHERE account_id = ?",
+                            (T, Row["account_id"]))
         return Principal(AccountId=Row["account_id"], DisplayName=Row["display_name"] or "",
                          Issuer=Issuer, Attributes={"token_label": Row["label"]})
 

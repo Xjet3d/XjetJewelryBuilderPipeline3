@@ -1044,7 +1044,7 @@ function adminApp() {
           } catch (e) { /* transient: keep polling */ }
         }
         if (reload) await this.loadSession(); else this.poll3d();
-      }, 2000);
+      }, document.hidden ? 10000 : 2000);                 // a background tab checks every 10 s; the work goes on regardless
     },
     now() { return this.clock + this.skew; },
     clockText(ms) {

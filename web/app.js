@@ -205,11 +205,14 @@ function p3App() {
       if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
         setInterval(() => { this.waitStatusIndex++; }, 3500);
       }
-      try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch { this.health = null; }
-      this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true });
+      // The health answer, the catalog and the gallery are independent: asked at once, not one after another
+      const gallery = this.loadGallery();
+      const [health, catalog] = await Promise.all([this.api('GET', '/api/health', null, { noAuth: true }).catch(() => null),
+                                                   this.api('GET', '/api/catalog', null, { noAuth: true })]);
+      this.health = health; this.catalog = catalog;
       // The product a new design will be: the one chosen before sign-in while it is still on offer, else the default on offer
       this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : (this.catalog?.products?.default || this.productsList[0] || 'ring');
-      this.loadGallery().then(() => { this._openSharedGallery(); this.startHeroRotation(); });
+      gallery.then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
       if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
       const lux = this.materialsOf('luxury');
@@ -265,7 +268,7 @@ function p3App() {
     // Delivery: small places get a thumbnail (WebP or JPEG at 320 / 800 px, made on first request and cached);
     // the original full-size image stays behind every large view, the zoom and the download.
     thumb(url, w = 320) { return url && ASSET_PATH.test(url) ? url.replace(ASSET_PATH, '/thumb/') + '?w=' + w : (url || ''); },
-    srcsetFor(url) { return url && ASSET_PATH.test(url) ? `${this.thumb(url, 320)} 320w, ${this.thumb(url, 800)} 800w, ${url} 1024w` : ''; },
+    srcsetFor(url) { return url && ASSET_PATH.test(url) ? `${this.thumb(url, 320)} 320w, ${this.thumb(url, 800)} 800w, ${this.thumb(url, 1024)} 1024w` : ''; },
     poster(url) { return url && ASSET_PATH.test(url) ? url.replace(ASSET_PATH, '/poster/') : ''; },
     async api(method, path, body, opts = {}) {
       const headers = {};
@@ -1368,6 +1371,7 @@ function p3App() {
       const custId = this.cust?.id;
       const tick = async () => {
         if (!this.cust || this.cust.id !== custId || this.view !== 'review') { clearInterval(this._pollCust); this._pollCust = null; return; }
+        if (document.hidden) return;                       // a background tab asks nothing; the movie keeps being made
         const st = this.cust.movie?.status;
         if (st !== 'queued' && st !== 'running') { clearInterval(this._pollCust); this._pollCust = null; return; }
         try {

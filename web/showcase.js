@@ -326,7 +326,7 @@
         function showStill(St) {
             const img = document.createElement('img');
             img.className = 'sc-still'; img.alt = St.title + ' — designed with XJet Atelier'; img.decoding = 'async';
-            img.src = thumb(St.image_url, stage.clientWidth < 480 ? 480 : 960);
+            img.src = thumb(St.image_url, stage.clientWidth < 480 ? 800 : 1024);      // the thumbnail widths p3/media.py makes
             const cap = document.createElement('div');
             cap.className = 'sc-still-name';
             cap.innerHTML = '<span class="sc-title"></span><span class="sc-by">Designed with XJet Atelier</span>';

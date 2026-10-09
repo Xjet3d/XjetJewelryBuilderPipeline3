@@ -21,13 +21,14 @@
     <!-- Everything the page needs is served from this site (no third-party CDN): the Tailwind production build
          (tailwind.config.js), Inter + Cinzel (web/vendor/fonts) and Alpine. Rebuild the stylesheet after changing classes:
          npx -y tailwindcss@3.4.17 -c tailwind.config.js -i web/tailwind.src.css -o web/vendor/tailwind.css --minify -->
-    <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
     <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
-    <script src="{{BASE}}/static/metal.js"></script>
-    <script src="{{BASE}}/static/products.js"></script>
-    <script src="{{BASE}}/static/app.js"></script>
+    <!-- deferred: they run in this order once the page is parsed (Alpine last, so p3App() exists when it starts) -->
+    <script defer src="{{BASE}}/static/metal.js"></script>
+    <script defer src="{{BASE}}/static/products.js"></script>
+    <script defer src="{{BASE}}/static/app.js"></script>
     <script defer src="{{BASE}}/static/showcase.js"></script>
     <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
 
@@ -714,7 +715,7 @@
                     </div>
                 </div>
                 <div class="md:w-1/2 space-y-6">
-                    <img src="{{BASE}}/static/images/PrintHead.png" alt="An XJet NanoParticle Jetting print head" class="rounded-sm shadow-2xl" onerror="this.src='{{BASE}}/static/images/Ink.JPG'">
+                    <picture><source srcset="{{BASE}}/static/images/PrintHead.webp" type="image/webp"><img src="{{BASE}}/static/images/PrintHead.jpg" alt="An XJet NanoParticle Jetting print head" width="1280" height="629" class="rounded-sm shadow-2xl" loading="lazy" decoding="async" onerror="this.src='{{BASE}}/static/images/Ink.JPG'"></picture>
                     <figure class="flex items-center gap-5 bg-white rounded-xl border border-zinc-100 p-4">
                         <img src="{{BASE}}/static/images/Angel.JPG" alt="A figurine printed in metal with NanoParticle Jetting" class="w-24 h-24 object-contain" style="mix-blend-mode:multiply;" onerror="this.parentElement.style.display='none'">
                         <figcaption class="text-[13px] text-zinc-600 leading-relaxed" x-text="'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'"></figcaption>
