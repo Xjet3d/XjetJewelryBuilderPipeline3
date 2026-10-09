@@ -202,6 +202,7 @@ function adminApp() {
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
     quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
+    qSnapshot: '',                               // the quote form as last loaded or sent: anything else is an unsent draft
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
     sub: 'pricing', health: null,
@@ -217,6 +218,8 @@ function adminApp() {
     ],
 
     async init() {
+      // Closing or reloading the tab with an unsent quote draft asks the browser to warn first
+      window.addEventListener('beforeunload', e => { if (this.qDirty) { e.preventDefault(); e.returnValue = ''; } });
       window.addEventListener('hashchange', () => this.route());
       this.startSessionsRefresh();
       this.installZoom();
@@ -295,6 +298,13 @@ function adminApp() {
     async route() {
       let hash = location.hash;
       if (hash.startsWith('#/models')) { hash = '#/settings' + hash.slice(1); history.replaceState(null, '', hash); }   // old links
+      // An unsent quote draft is never dropped silently: leaving the request asks first
+      const quoteHash = this.quoteId ? '#/orders/quote/' + encodeURIComponent(this.quoteId) : '';
+      if (this.qDirty && quoteHash && hash !== quoteHash) {
+        history.replaceState(null, '', quoteHash);
+        if (!await this.ask({ title: 'Discard the unsent quote?', text: 'Your changes to the quote for ' + (this.qd?.ref || 'this request') + ' are not sent: price, quantity, weight, validity, message or note.', confirmLabel: 'Discard changes', cancelLabel: 'Keep editing', danger: true })) return;
+        this.qSnapshot = JSON.stringify(this.qForm); location.hash = hash; return;
+      }
       if (this.dirty && this.tab === 'settings' && this.sub === 'models' && !hash.startsWith('#/settings/models/' + this.mid)) {
         history.replaceState(null, '', '#/settings/models/' + this.mid);
         if (!await this.ask({ title: 'Discard unsaved changes?', text: 'The changes to ' + (this.mc?.model.label || 'this model') + ' are not saved.', confirmLabel: 'Discard', danger: true })) return;
@@ -451,6 +461,19 @@ function adminApp() {
     },
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;
+      // Cancelled and Completed (final) are never one click. A cancellation asks for its reason (kept in the notes and history).
+      const to = this.oStatusForm.status;
+      if (to === 'cancelled' || to === 'completed') {
+        const cancel = to === 'cancelled';
+        const r = await this.ask({
+          title: cancel ? 'Cancel order ' + this.od.ref + '?' : 'Mark order ' + this.od.ref + ' as completed?',
+          text: cancel ? 'The order (' + this.money(this.od.total) + ') is marked as cancelled. This sends the customer no email and refunds nothing — a refund is recorded under Payment. The reason is kept in the order’s notes and history.'
+                       : 'Completed is final: the order cannot change status afterwards.',
+          confirmLabel: cancel ? 'Cancel the order' : 'Mark as completed', cancelLabel: 'Keep it as it is', danger: true,
+          input: cancel ? { label: 'Reason for the cancellation (optional)', value: this.oStatusForm.note || '', placeholder: 'For example: the customer changed their mind', max: 300 } : null });
+        if (!r) return;
+        if (cancel) this.oStatusForm.note = (r.value || '').trim();
+      }
       this.odBusy = true; this.odError = '';
       try { this.od = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/status`, this.oStatusForm); this.oStatusForm.note = ''; this.oStatusForm.force = false; }
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
@@ -470,17 +493,24 @@ function adminApp() {
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     // ── a quote request: every detail, a 3D-based price, the quote email (Approve / Decline), the history ──
-    async loadQuote() {
+    // keepDraft: refresh the request (status, history) without touching an unsent quote being edited
+    async loadQuote(keepDraft = false) {
       this.qdError = '';
-      try { this.qd = await this.api('GET', '/api/admin/quote-requests/' + encodeURIComponent(this.quoteId)); this.qResetForm(); }
-      catch (e) { this.qd = null; this.qdError = e.message; }
+      try {
+        const fresh = await this.api('GET', '/api/admin/quote-requests/' + encodeURIComponent(this.quoteId));
+        const same = keepDraft && this.qd && this.qd.id === fresh.id;
+        this.qd = fresh;
+        if (!same) this.qResetForm();
+      } catch (e) { this.qd = null; this.qdError = e.message; }
     },
+    get qDirty() { return !!(this.qd && this.qd.can_send && this.qSnapshot) && JSON.stringify(this.qForm) !== this.qSnapshot; },
     qResetForm() {
       const q = this.qd, s = q.suggestion || {}, o = q.offer || {};
       this.qForm = { size: o.size ?? q.defaults.size ?? null, weight_g: o.weight_g ?? s.weight_g ?? null,
                      price_per_g: o.price_per_g ?? s.price_per_g ?? null, unit_price: o.unit_price ?? s.unit_price ?? null,
                      quantity: o.quantity ?? q.quantity, valid_until: q.defaults.valid_until, message: o.message || q.suggested_reply, note: '' };
       this.qUnitTouched = o.unit_price != null; this.qLinkCopied = false;
+      this.qSnapshot = JSON.stringify(this.qForm);
     },
     qRecalc() {
       if (this.qUnitTouched) return;
@@ -507,13 +537,14 @@ function adminApp() {
     async addQuoteNote() {
       if (!this.qd || !this.qNote.trim()) return;
       this.qdBusy = true; this.qdError = '';
-      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/note`, { note: this.qNote }); this.qNote = ''; this.qResetForm(); }
+      // A note never touches the unsent quote (price, quantity, weight, validity, message, internal note)
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/note`, { note: this.qNote }); this.qNote = ''; }
       catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
     },
     async setQuoteDetailStatus(status) {
       if (!this.qd || status === this.qd.status) return;
       this.qdBusy = true; this.qdError = '';
-      try { await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/status`, { status }); await this.loadQuote(); }
+      try { await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/status`, { status }); await this.loadQuote(true); }
       catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
     },
     async copyQuoteLink() {
@@ -558,7 +589,7 @@ function adminApp() {
     linePrep: {},
     async downloadOrderStl(line) {
       if (!line.three_d_id || !line.three_d_match) return;
-      await this.exportStl({ id: line.three_d_id, scaled_stl: 'on_demand' }, this.od?.ref);
+      await this.safeExportStl({ id: line.three_d_id, scaled_stl: 'on_demand', production_state: line.three_d_state }, this.od?.ref);
     },
     // No result for this size/material yet: scale the design's existing model to it (arithmetic, no Hi3D
     // call), wait for the numbers, then download. A design without a model is handled on its session page.
@@ -573,7 +604,7 @@ function adminApp() {
         if (!s.done) { this.notify('The geometry is still being calculated — try again in a moment.', 'error'); return; }
         if (s.status === 'failed') { this.notify('Geometry failed: ' + (s.error || ''), 'error'); return; }
         const fresh = this.od.lines.find(x => x.id === line.id);
-        if (fresh?.three_d_id && fresh.three_d_match) await this.exportStl({ id: fresh.three_d_id, scaled_stl: 'on_demand' }, this.od.ref);
+        if (fresh?.three_d_id && fresh.three_d_match) await this.safeExportStl({ id: fresh.three_d_id, scaled_stl: 'on_demand', production_state: fresh.three_d_state }, this.od.ref);
       } catch (e) { this.fail(e); }
       finally { const p = { ...this.linePrep }; delete p[line.id]; this.linePrep = p; }
     },
@@ -685,7 +716,22 @@ function adminApp() {
       if (!this.galleryItems.length) this.loadGallery().catch(() => {});       // top designs
     },
     galleryTopList(k, n) { return [...this.galleryItems].filter(g => g[k]).sort((a, b) => (b[k] || 0) - (a[k] || 0)).slice(0, n); },
-    latestResult() { return (this.sd?.three_d || []).find(t => t.geometry?.production) || null; },
+    // The session's STL is the result for THIS journey's size and material, never simply the newest one
+    journeyResult() {
+      const id = this.sd?.three_d_defaults?.existing_model?.journey_3d_id;
+      return id ? (this.sd.three_d || []).find(t => t.id === id) || null : null;
+    },
+    stlNotReviewed(t) { return !!t && t.production_state === 'review_required'; },
+    // A result still flagged for production review is labelled, and downloading it asks first: it is not production-approved
+    async safeExportStl(t, orderRef = null) {
+      if (this.stlNotReviewed(t)) {
+        const ok = await this.ask({ title: 'This STL has not passed production review',
+          text: 'Its 3D result is flagged for review and has not been accepted. Download it only to inspect it — do not use it for production until the review is done (accept it, or fix the model).',
+          confirmLabel: 'Download to inspect', cancelLabel: 'Cancel', danger: true });
+        if (!ok) return;
+      }
+      return this.exportStl(t, orderRef);
+    },
     async setDashDays(d) { this.dashDays = d; await this.loadDashboard(); },
 
     // ── sessions ───────────────────────────────────────────────────────
@@ -916,9 +962,8 @@ function adminApp() {
       this.$refs.viewer?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
     },
     async exportJourneyStl() {
-      const id = this.sd?.three_d_defaults.existing_model?.journey_3d_id;
-      const t = this.sd.three_d.find(x => x.id === id);
-      if (t) await this.exportStl(t);
+      const t = this.journeyResult();
+      if (t) await this.safeExportStl(t);
     },
     prodLabel(s) { return (PROD_STATE[s] || [s || '—'])[0]; },
     prodClass(s) { return (PROD_STATE[s] || [, 'bg-zinc-100 text-zinc-500'])[1]; },

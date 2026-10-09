@@ -117,6 +117,11 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         assert (L["unit_price"], L["quantity"], L["material_id"], L["ring_size"]) == (2600, 2, "gold_18k_yellow", 7)
         Ad = (await H.Client.get("/api/admin/orders/ORD-10001", headers=Admin)).json()
         assert "From quote Q-5001" in Ad["notes"] and "Please gift wrap" in Ad["notes"]
+        # The note the order was created with stays visible when the Admin adds one (notes are never overwritten)
+        Ad = (await H.Client.post(f"/api/admin/orders/{Ad['id']}/note", json={"note": "Workshop confirmed the weight"}, headers=Admin)).json()
+        assert "From quote Q-5001" in Ad["notes"]
+        assert [(N["kind"], N["by"]) for N in Ad["notes_list"]] == [("created", "system"), ("note", Ad["events"][-1]["by"])]
+        assert "Please gift wrap" in Ad["notes_list"][0]["note"] and Ad["notes_list"][1]["note"] == "Workshop confirmed the weight"
         assert H.Ctx.Db.One("SELECT pricing_version FROM order_lines")["pricing_version"] == "quote:Q-5001:v1"
         D = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}", headers=Admin)).json()
         assert D["status"] == "approved" and D["order"]["ref"] == "ORD-10001" and D["decision"]["note"] == "Please gift wrap"

@@ -57,7 +57,7 @@
        on equal specificity the utilities win over the page's own rules above -->
   <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
 </head>
-<body class="bg-zinc-50 text-zinc-900 min-h-screen" x-data="adminApp()" x-init="init()">
+<body class="bg-zinc-50 text-zinc-900 min-h-screen" x-data="adminApp()"><!-- Alpine calls init() itself: an x-init="init()" ran it twice (two routes per link) -->
   <!-- In-app dialog (confirmations, dangerous / paid actions, share links) — never the browser's confirm()/prompt() -->
   <template x-if="dialog">
     <div class="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center p-4" @click.self="answer(false)" @keydown.escape.window="answer(false)">
@@ -65,13 +65,14 @@
         <p id="admin-dialog-title" class="text-base font-semibold" :class="dialog.danger ? 'text-red-700' : 'text-zinc-900'" x-text="dialog.title"></p>
         <p x-show="dialog.text" class="text-sm text-zinc-700 leading-relaxed" x-text="dialog.text"></p>
         <input x-show="dialog.copy" class="inp font-mono text-xs" :value="dialog.copy" readonly @focus="$event.target.select()" aria-label="Link">
-        <template x-if="dialog.choices"><div class="space-y-1.5" role="radiogroup">
-          <template x-for="c in dialog.choices" :key="c.value">
-            <label class="flex items-start gap-2 text-sm text-zinc-800 cursor-pointer"><input type="radio" class="mt-1" name="admin-dialog-choice" :value="c.value" x-model="dialog.choice"><span x-text="c.label"></span></label>
+        <template x-if="dialog?.choices"><div class="space-y-1.5" role="radiogroup">
+          <template x-for="c in (dialog?.choices || [])" :key="c.value">
+            <label class="flex items-start gap-2 text-sm text-zinc-800 cursor-pointer"><input type="radio" class="mt-1" name="admin-dialog-choice" :value="c.value" :checked="dialog?.choice === c.value" @change="dialog && (dialog.choice = c.value)"><span x-text="c.label"></span></label>
           </template>
         </div></template>
-        <template x-if="dialog.input"><div><label class="lbl block mb-1" for="admin-dialog-input" x-text="dialog.input.label"></label>
-          <textarea id="admin-dialog-input" class="inp" rows="2" x-model="dialog.value" :placeholder="dialog.input.placeholder || ''"></textarea></div></template>
+        <!-- null-safe: these bindings may run once more while the closed dialog (null) is being removed -->
+        <template x-if="dialog?.input"><div><label class="lbl block mb-1" for="admin-dialog-input" x-text="dialog?.input?.label"></label>
+          <textarea id="admin-dialog-input" class="inp" rows="2" :value="dialog?.value ?? ''" @input="dialog && (dialog.value = $event.target.value)" :placeholder="dialog?.input?.placeholder || ''" :maxlength="dialog?.input?.max || null"></textarea></div></template>
         <div class="flex gap-3 justify-end pt-1">
           <button x-show="dialog.cancelLabel" class="btn2" @click="answer(false)" x-text="dialog.cancelLabel"></button>
           <button class="btn" :class="dialog.danger ? '!bg-red-700 hover:!bg-red-800' : ''" @click="answer(true)" x-text="dialog.confirmLabel"></button>
@@ -828,7 +829,7 @@
           </div>
           <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button x-show="!noImage()" class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
-            <button x-show="!noImage()" class="btn2 !py-1.5" :disabled="!latestResult()" @click="exportStl(latestResult())" :title="latestResult() ? 'Scaled STL of the latest result (' + (latestResult().size_label || 'US ' + latestResult().production_size) + ' · ' + latestResult().material_label + ')' : 'No 3D result yet'">Download STL</button>
+            <button x-show="!noImage()" class="btn2 !py-1.5" :class="stlNotReviewed(journeyResult()) ? '!text-amber-800 !border-amber-400' : ''" :disabled="!journeyResult()" @click="safeExportStl(journeyResult())" :title="journeyResult() ? 'Scaled STL for this journey (' + (journeyResult().size_label || 'US ' + journeyResult().production_size) + ' · ' + journeyResult().material_label + ')' + (stlNotReviewed(journeyResult()) ? ' — not reviewed: not for production' : '') : 'No 3D result for this journey’s size and material yet — recalculate the geometry first'" x-text="stlNotReviewed(journeyResult()) ? 'Download STL · not reviewed' : 'Download STL'"></button>
             <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
             <button x-show="!noImage()" class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
           </div>
@@ -1164,7 +1165,7 @@
                 <p x-show="downloadNote" class="text-[12px] text-emerald-700" x-text="downloadNote"></p>
                 <div class="flex gap-4 text-xs uppercase tracking-widest">
                   <button x-show="previewReady(t)" class="underline" @click="show3d(t)">View in 3D</button>
-                  <button class="underline" :disabled="!!exports3d[t.id]" @click="exportStl(t)">Download scaled STL</button>
+                  <button class="underline" :class="stlNotReviewed(t) ? 'text-amber-800' : ''" :disabled="!!exports3d[t.id]" @click="safeExportStl(t)" x-text="stlNotReviewed(t) ? 'Download scaled STL · not reviewed' : 'Download scaled STL'"></button>
                   <button class="underline text-zinc-500" @click="downloadStl(t.id, 'raw')">Download raw Hi3D</button>
                 </div>
               </div>
@@ -1530,7 +1531,14 @@
           </div>
           <div class="space-y-2">
             <p class="lbl">Notes</p>
-            <p x-show="od.notes" class="text-sm text-zinc-700 whitespace-pre-wrap" x-text="od.notes"></p>
+            <!-- Every note, oldest first, with who wrote it and when; a new note never replaces an earlier one -->
+            <ol x-show="(od.notes_list || []).length" class="space-y-1.5 max-h-64 overflow-y-auto">
+              <template x-for="(n, i) in (od.notes_list || [])" :key="i">
+                <li class="text-[13px] text-zinc-700"><span class="text-[11px] text-zinc-500 tabular-nums" x-text="dateTime(n.at) + ' · ' + (n.by || '—') + (n.kind === 'cancelled' ? ' · reason for the cancellation' : n.kind === 'created' ? ' · when the order was created' : '')"></span>
+                  <span class="block whitespace-pre-wrap" x-text="n.note"></span></li>
+              </template>
+            </ol>
+            <p x-show="!(od.notes_list || []).length" class="text-[12px] text-zinc-500">No notes yet.</p>
             <div class="flex gap-2"><input class="inp !py-1.5 !text-[12px]" x-model="oNote" placeholder="Add a note" @keydown.enter="addOrderNote()"><button class="btn2 !py-1.5" :disabled="odBusy || !oNote.trim()" @click="addOrderNote()">Add</button></div>
           </div>
         </div>
@@ -1561,7 +1569,7 @@
                   <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line)'"></p>
                   <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p></td>
                 <td class="text-right whitespace-nowrap">
-                  <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)">Download STL</button>
+                  <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :class="l.three_d_state === 'review_required' ? 'text-amber-800' : ''" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)" x-text="l.three_d_state === 'review_required' ? 'Download STL · not reviewed' : 'Download STL'"></button>
                   <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
                   <a x-show="!l.has_model" class="text-xs uppercase tracking-widest underline" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Generate 3D on the session</a>
                   <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p></td>

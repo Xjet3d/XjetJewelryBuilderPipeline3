@@ -557,6 +557,7 @@ class OrderService:
         J["events"] = [{**E, "data": json.loads(E.pop("data_json") or "{}")} for E in
                        self.Ctx.Db.All("SELECT * FROM order_events WHERE order_id = ? ORDER BY id", (O["id"],))]
         J["allowed_statuses"] = StatusOrder + ["cancelled"]
+        J["notes_list"] = self._NotesList(O, J["events"])
         try:
             J["user"] = self.Ctx.Accounts.AdminGet(O["owner_account_id"])
         except Exception:  # noqa: BLE001
@@ -615,14 +616,31 @@ class OrderService:
         return self.AdminGet(O["id"])
 
     def AddNote(self, OrderId: str, Note: str, By: str) -> dict:
+        """A note joins the order's history and never replaces an earlier one: the note the order was created with
+        ("From quote Q-5001 …") stays in orders.notes, every Admin note is its own event with its author and time."""
         O = self.AdminGet(OrderId)
         Note = (Note or "").strip()[:1000]
         if not Note:
             raise HttpError(400, "note_required", "Please write a note.")
-        self.Ctx.Db.Execute("UPDATE orders SET notes = ?, updated_at = ? WHERE id = ?", (Note, Now(), O["id"]))
+        T = Now()
+        self.Ctx.Db.Execute("UPDATE orders SET updated_at = ? WHERE id = ?", (T, O["id"]))
         self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
-                            (O["id"], "note", Dumps({"note": Note}), By, Now()))
+                            (O["id"], "note", Dumps({"note": Note}), By, T))
         return self.AdminGet(O["id"])
+
+    @staticmethod
+    def _NotesList(O: dict, Events: list[dict]) -> list[dict]:
+        """Every note of an order, oldest first: the one it was created with ("From quote Q-5001 … Customer's note: …"),
+        each Admin note, and a cancellation's reason. Before notes were append-only, a later note replaced orders.notes;
+        that copy is not shown twice."""
+        Out = [{"kind": "note", "note": E["data"]["note"], "at": E["created_at"], "by": E["by"]}
+               for E in Events if E["kind"] == "note" and E["data"].get("note")]
+        Out += [{"kind": "cancelled", "note": E["data"]["note"].strip(), "at": E["created_at"], "by": E["by"]}
+                for E in Events if E["kind"] == "status" and E["data"].get("to") == "cancelled" and (E["data"].get("note") or "").strip()]
+        First = (O.get("notes") or "").strip()
+        if First and First not in {N["note"] for N in Out if N["kind"] == "note"}:
+            Out.append({"kind": "created", "note": First, "at": O["created_at"], "by": "system"})
+        return sorted(Out, key=lambda N: (N["at"] or "", N["kind"] != "created"))
 
     def AdminQuoteRequests(self, Status: str | None = None) -> list[dict]:
         Rows = self.Ctx.Db.All("SELECT * FROM quote_requests" + (" WHERE status = ?" if Status else "") + " ORDER BY created_at DESC LIMIT 300",

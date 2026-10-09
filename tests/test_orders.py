@@ -246,7 +246,12 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "production"}, headers=Admin)).status_code == 409
     assert (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "bogus"}, headers=Admin)).status_code == 400
     D = (await H.Client.post(f"/api/admin/orders/{O['id']}/note", json={"note": "Customer asked for gift wrap"}, headers=Admin)).json()
-    assert D["notes"] == "Customer asked for gift wrap"
+    assert D["notes"] is None and [N["note"] for N in D["notes_list"]] == ["Customer asked for gift wrap"]
+    assert D["notes_list"][0]["by"] and D["notes_list"][0]["at"] and D["notes_list"][0]["kind"] == "note"
+    # A later note joins the list: it never replaces an earlier one
+    D = (await H.Client.post(f"/api/admin/orders/{O['id']}/note", json={"note": "Engraving checked"}, headers=Admin)).json()
+    assert [N["note"] for N in D["notes_list"]] == ["Customer asked for gift wrap", "Engraving checked"]
+    assert [E["kind"] for E in D["events"]][-2:] == ["note", "note"]
     Mine = (await H.Client.get(f"/api/orders/{O['id']}")).json()
     assert Mine["status_label"] == "Completed" and Mine["payment_label"] == "Paid" and "notes" not in Mine
     # 3D for the ordered design: only a result for the ORDERED size and material counts as the line's 3D.
@@ -289,6 +294,21 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     MakeLive(H)
     Dash = (await H.Client.get("/api/admin/dashboard", headers=Admin)).json()["orders"]
     assert Dash["orders"] == 1 and Dash["revenue"] == pytest.approx(O["total"]) and Dash["by_status"]["completed"] == 1
+
+
+async def test_a_cancellation_keeps_its_reason_beside_the_notes(HO):
+    H = HO
+    await _InBag(H)
+    O = (await H.Client.post("/api/orders", json=_Order())).json()
+    await H.Client.post(f"/api/admin/orders/{O['id']}/note", json={"note": "Called the customer"}, headers=Admin)
+    D = (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "cancelled", "note": "  Customer changed their mind  "},
+                             headers=Admin)).json()
+    assert D["status"] == "cancelled" and D["events"][-1]["data"] == {"from": "new", "to": "cancelled", "note": "  Customer changed their mind  "}
+    assert [(N["kind"], N["note"]) for N in D["notes_list"]] == [("note", "Called the customer"), ("cancelled", "Customer changed their mind")]
+    # A status note that is not a cancellation stays in the history only; a cancellation without a reason adds nothing
+    D = (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "new", "note": "Reopened"}, headers=Admin)).json()
+    D = (await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "cancelled"}, headers=Admin)).json()
+    assert [N["kind"] for N in D["notes_list"]] == ["note", "cancelled"] and D["events"][-2]["data"]["note"] == "Reopened"
 
 
 async def test_gold_asks_for_a_quote_instead_of_ordering(HO):
