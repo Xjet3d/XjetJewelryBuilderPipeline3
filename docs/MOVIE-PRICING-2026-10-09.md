@@ -37,5 +37,6 @@ The stored rates were fal.ai's launch prices (50% off until 30 Sep 2026); they h
 
 - The price list now supports a dated change (`scheduled`), so the list moves to $0.05 / $0.08 / $0.16 by itself on
   15 Oct 2026.
-- The code's default list (`p3/aipricing.py`) carries the official rates and the scheduled change; each site's stored
-  list is updated through the Admin (*AI Prompts & Params → AI prices*) as a new version: proto and Atelier.
+- The code's default list (`p3/aipricing.py`) carries the official rates and the scheduled change. A site whose stored
+  list still has the expired launch rates, unedited, moves to them on start-up as a new version (by `update`): proto
+  and Atelier at this release. A list edited by hand is left as it is.

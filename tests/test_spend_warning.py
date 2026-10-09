@@ -76,6 +76,30 @@ def test_every_recorded_submission_checks_the_warning(monkeypatch, tmp_path):
     assert Seen == [Ctx]
 
 
+def test_a_site_on_the_expired_movie_launch_rates_moves_to_the_official_rates_once(tmp_path):
+    """Sites seeded before the 2026-10-09 review list the movie at fal.ai's expired launch rates: on start-up an unedited
+    list moves to the official rates (a new version, by "update"); a list edited by hand is never touched."""
+    import json
+    from p3 import aipricing
+    from p3.db import Database
+    from p3.providers import endpoints
+    Db = Database(tmp_path / "p.db")
+    Book = aipricing.PriceBook(Db)                                        # seeded with today's list: nothing to do
+    assert Book.Current()["version"] == 1 and "scheduled" in Book.Current()["endpoints"][endpoints.Movie]
+    Old = json.loads(json.dumps(aipricing.DefaultPriceList))
+    Old["endpoints"][endpoints.Movie] = {"unit": "second", "per_second": dict(aipricing.ExpiredMovieRates), "note": "launch rates"}
+    Book.Save(Old, "seed", "as on a site seeded before the review")
+    Book = aipricing.PriceBook(Db)                                        # the next start-up
+    Cur = Book.Current()
+    assert Cur["updated_by"] == "update" and Cur["endpoints"][endpoints.Movie]["per_second"] == {"480P": 0.03, "768P": 0.048, "1080P": 0.096}
+    assert Cur["endpoints"][endpoints.Movie]["scheduled"]["from"] == "2026-10-15" and Cur["endpoints"]["fal-ai/any-llm"]["per_request"] == 0.001
+    V = Cur["version"]
+    assert aipricing.PriceBook(Db).Current()["version"] == V                # once
+    Edited = json.loads(json.dumps(Old)); Edited["endpoints"][endpoints.Movie]["per_second"]["480P"] = 0.026
+    Book.Save(Edited, "admin", "by hand")
+    assert aipricing.PriceBook(Db).Current()["endpoints"][endpoints.Movie]["per_second"]["480P"] == 0.026   # left as it is
+
+
 class _Req:
     def __init__(self, Peer, Xff=None):
         self.client = type("C", (), {"host": Peer})()

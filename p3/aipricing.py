@@ -23,6 +23,8 @@ from p3.db import Database, Dumps, Now
 from p3.providers import endpoints
 
 PricingApi = "https://api.fal.ai/v1/models/pricing"
+# The movie's earlier list: fal.ai's launch rates, which ended on 30 Sep 2026 (replaced on start-up where unedited)
+ExpiredMovieRates = {"480P": 0.025, "768P": 0.04, "1080P": 0.08}
 
 DefaultPriceList = {
     "currency": "USD",
@@ -113,6 +115,20 @@ class PriceBook:
             Conn.executescript(Schema)
         if not Db.One("SELECT id FROM ai_price_lists LIMIT 1"):
             self.Save(DefaultPriceList, "seed", "Initial list prices (fal.ai, 2026-10-01)")
+        self._UpgradeExpiredMovieRates()
+
+    def _UpgradeExpiredMovieRates(self) -> None:
+        """A site still listing the movie at fal.ai's launch rates (expired 30 Sep 2026), unedited, moves to the official
+        rates of the 2026-10-09 review — with the list rates scheduled from 15 Oct 2026 (docs/MOVIE-PRICING-2026-10-09.md).
+        A list edited by hand is left as it is."""
+        Cur = self.Current()
+        E = Cur["endpoints"].get(endpoints.Movie)
+        if not E or E.get("per_second") != ExpiredMovieRates or "scheduled" in E:
+            return
+        Doc = {K: V for K, V in Cur.items() if K not in ("version", "updated_at", "updated_by", "update_note")}
+        Doc["endpoints"] = {**Doc["endpoints"], endpoints.Movie: json.loads(json.dumps(DefaultPriceList["endpoints"][endpoints.Movie]))}
+        self.Save(Doc, "update", "Movie: fal.ai's official rates (2026-10-09 review) replace the expired launch rates; "
+                                 "the list rates apply from 15 Oct 2026")
 
     def Current(self) -> dict:
         R = self.Db.One("SELECT * FROM ai_price_lists ORDER BY id DESC LIMIT 1")
