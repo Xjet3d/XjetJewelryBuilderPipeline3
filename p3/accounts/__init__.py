@@ -72,6 +72,7 @@ class Principal:
 UsageImage = "image"
 UsageMovie = "movie"
 UsageMesh = "mesh"
+UsagePromptCheck = "prompt_check"      # one LLM request before the images (XJet's cost)
 
 
 class AccountProvider(Protocol):

@@ -315,7 +315,7 @@ Until then the Cost column shows "—".
 
 | Tab | Endpoint | Used for |
 |---|---|---|
-| any-llm | `fal-ai/any-llm` | **Not used by the P3 pipeline yet** (B2C2 uses it for its prompt gate). Settings can be prepared and previewed. |
+| any-llm | `fal-ai/any-llm` | **The prompt check** for rings, where its switch is on (off by default): every new design and refinement request is read before any paid image request — see *Prompt check* below |
 | nano-banana-pro | `fal-ai/nano-banana-pro` | New Design without a reference image: 4 separate requests, 1 image each |
 | nano-banana-pro/edit | `fal-ai/nano-banana-pro/edit` | Refinements (selected image), and New Design with an uploaded reference |
 | minimax camera | `minimax/h3-max/camera-controls` | The 360° movie (selected final image) |
@@ -330,10 +330,30 @@ versions and history:
 | Ring | `any-llm`, `nano-banana-pro`, `nano-banana-pro-edit`, `minimax-camera`, `hi3d` (the table above, unchanged) |
 | Charm | `any-llm-charm`, `nano-banana-pro-charm`, `nano-banana-pro-edit-charm`, `minimax-camera-charm`, `hi3d-charm`: the same endpoints, their own versions |
 
-Every Ring model has its Charm counterpart. **any-llm · Charm** is the Charm request check — like the Ring one, it is
-not used by the P3 pipeline yet. It has its own model, instructions, parameters, versions and history. Version 1
+Every Ring model has its Charm counterpart. **any-llm · Charm** is the Charm prompt check — the Ring one's counterpart,
+with its own switch. It has its own model, instructions, parameters, versions and history. Version 1
 copied the Ring Any-LLM's active settings by value (model, temperature, token limit, priority, reasoning) with its
 own charm instructions (`config/prompts/charm_anyllm_system.txt`, the same JSON answer as the Ring check).
+
+**Prompt check** (`p3/promptcheck.py`). The any-llm page of each product has a switch — *Prompt check for rings / for
+charms: On | Off*, **off by default on every site**, logged with the product settings. With it on, every new design and
+every refinement of that product is first sent to `fal-ai/any-llm` with the page's active instructions (one paid LLM
+request, about $0.001 at list price), which answer `{is_jewelry, is_feasible, reason_for_rejection, refined_prompt}`:
+
+- **Accepted** (both true): the design is made exactly as before — the image requests use the customer's own words; the
+  rewrite is kept for the Admin only.
+- **Stopped**: nothing is created — no design, no credit, no image request. The customer reads the reason under the
+  prompt box (in their language) and can change the words (`422 prompt_rejected`).
+- **No decision** (a provider error, an answer that is not that JSON object, no answer within 20 s): the request goes
+  ahead — the check saves money; the image model keeps its own rules.
+
+A refinement is read with its design ("Previous request: … Requested change: …"), a request with an uploaded image with
+the line "Reference image: attached (not shown to you)" — the instructions explain both. The switch turns on only while
+the active instructions ask for `is_jewelry` and `is_feasible` (the seeded ring version has no instructions), and while
+it is on, activating or restoring instructions without them is refused. Each check shows in the session's *AI
+pipeline* (*Prompt check*, with its cost) and *Journey*, in the customer's *Activity*, and in *Latest prompt checks* on
+the any-llm page; its cost counts in the day's AI spend, never as a customer credit. The customer page says
+*Checking your description…* while it reads (about 2 s).
 
 - Saving, activating or restoring a Charm version never changes a Ring prompt, parameter, version or active pointer, and
   the reverse is also true. A version can only be restored into its own model (tested).

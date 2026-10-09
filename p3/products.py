@@ -154,7 +154,8 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie": 1, "mesh": 0},   # p3/credits.py decides
             "rings_available": True, "charms_available": False, "rings_movie": True, "charms_movie": True,
             "charm_sizes": list(DefaultCharmSizes),
-            "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize}
+            "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize,
+            "prompt_check": {"ring": False, "charm": False}}                          # p3/promptcheck.py: off
 
 
 def ValidateCharmSizeNames(Raw, Sizes) -> dict:

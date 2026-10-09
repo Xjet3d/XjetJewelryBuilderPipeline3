@@ -37,7 +37,7 @@ DefaultPriceList = {
                          "credits": {"geometry": {"2048quality": 90, "2048master": 440}, "texture": 10, "pbr": 5},
                          "note": "Credits = geometry (by resolution) + texture (if enabled) + PBR (if enabled); "
                                  "fal.ai: $2.10 (2048quality) / $9.10 (2048master) with texture and PBR."},
-        "fal-ai/any-llm": {"unit": "request", "per_request": 0.001, "note": "Not used by the P3 pipeline."},
+        "fal-ai/any-llm": {"unit": "request", "per_request": 0.001, "note": "The prompt check, where it is on (p3/promptcheck.py)."},
     },
 }
 

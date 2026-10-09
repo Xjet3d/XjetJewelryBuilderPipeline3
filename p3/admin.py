@@ -34,6 +34,7 @@ from p3 import payments as PaymentsModule
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
+from p3 import promptcheck as PromptCheck
 from p3.accounts import AccountNotFound, DuplicateEmail, RemovedAccount
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
@@ -860,7 +861,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/models")
     async def ListModels(authorization: str | None = Header(None)):
         Admin(authorization)
-        return {"models": [{**Ctx.Models.State(M), "history": None} for M in ModelSpecs],
+        return {"models": [_Connected({**Ctx.Models.State(M), "history": None}) for M in ModelSpecs],
                 "runtime_placeholders": RuntimeInputs}
 
     @App_.get("/api/admin/models/export")
@@ -877,7 +878,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/models/{ModelId}")
     async def GetModel(ModelId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        return Ctx.Models.State(_Model(ModelId))
+        return _Connected(Ctx.Models.State(_Model(ModelId)))
 
     @App_.post("/api/admin/models/{ModelId}/validate")
     async def ValidateModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
@@ -899,7 +900,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def ActivateModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
         try:
-            return Ctx.Models.SaveAndActivate(_Model(ModelId), Body_.get("params"), Who.Id, str(Body_.get("note") or "")[:200])
+            _KeepsDecision(_Model(ModelId), Body_.get("params"))
+            return _Connected(Ctx.Models.SaveAndActivate(ModelId, Body_.get("params"), Who.Id, str(Body_.get("note") or "")[:200]))
         except ConfigError as E:
             return _Invalid(E)
 
@@ -907,9 +909,44 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def RestoreModel(ModelId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
         try:
-            return Ctx.Models.Restore(_Model(ModelId), str(Body_.get("version_id") or ""), Who.Id)
+            Old = Ctx.Models.Get(str(Body_.get("version_id") or ""))
+            _KeepsDecision(_Model(ModelId), Old.Params if Old else None)
+            return _Connected(Ctx.Models.Restore(ModelId, str(Body_.get("version_id") or ""), Who.Id))
         except ConfigError as E:
             return _Invalid(E)
+
+    # ── the prompt check (p3/promptcheck.py): any-llm before paid image requests, one switch per product ──
+    def _Connected(State_: dict) -> dict:
+        """any-llm is connected where the prompt check is on for its product."""
+        M = State_.get("model") or {}
+        if M.get("id") in PromptCheck.Models.values():
+            M["connected"] = PromptCheck.Enabled(Ctx, M.get("product") or Products.Ring)
+        return State_
+
+    def _KeepsDecision(ModelId: str, Params) -> None:
+        """While the check is on for a product, its any-llm instructions must keep asking for the decision it reads."""
+        Product = next((P for P, M in PromptCheck.Models.items() if M == ModelId), None)
+        if Product and PromptCheck.Enabled(Ctx, Product) and isinstance(Params, dict):
+            Missing = [F for F in PromptCheck.Fields if F not in str(Params.get("system_prompt") or "")]
+            if Missing:
+                raise ConfigError([f"The prompt check is on for {Products.Plurals[Product].lower()}: these instructions must "
+                                   f"keep asking for {', '.join(Missing)}. Turn the check off first to use them."])
+
+    @App_.get("/api/admin/prompt-check")
+    async def PromptCheckState(product: str = "ring", limit: int = 50, authorization: str | None = Header(None)):
+        Admin(authorization)
+        P = Products.Normalize(product)
+        return {"on": PromptCheck.State(Ctx), "product": P, "problem": PromptCheck.InstructionsProblem(Ctx, P),
+                "model": PromptCheck.Models[P], "timeout_s": PromptCheck.TimeoutS,
+                "checks": PromptCheck.Recent(Ctx, P, min(max(int(limit), 1), 200)), "counts": PromptCheck.Counts(Ctx, P)}
+
+    @App_.put("/api/admin/prompt-check")
+    async def SetPromptCheck(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"product": "ring" | "charm", "on": true | false} — logged with the product settings."""
+        Who = Admin(authorization)
+        if not isinstance(Body_.get("on"), bool):
+            raise HttpError(400, "invalid_value", "on must be true or false.")
+        return {"on": PromptCheck.SetEnabled(Ctx, Body_.get("product"), Body_["on"], Who.Id)}
 
     # ── Products: rings and charms (customer availability per product, charm sizes) ──
     def _ProductsState() -> dict:

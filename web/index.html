@@ -1121,6 +1121,8 @@
                                     </button>
                                 </div>
                                 <p x-show="composeError" class="text-[13px] px-1" style="color:#A1261D;" x-text="composeError"></p>
+                                <p x-show="checkingPrompt" x-cloak class="text-[12px] px-1 flex items-center gap-2" style="color:#8A6420;" role="status">
+                                    <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>Checking your description…</p>
                                 <!-- A design that already has a movie, 3D or order is kept as it is: a refinement becomes a new design -->
                                 <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[12px] px-1" style="color:#6F6F6F;">
                                     <span x-text="'Your refinement will be saved as a new design — ' + (design?.title || 'this design') + ' ' + ({movie: 'already has a 360° movie', '3d': 'already has a 3D model', order: 'already has an order', quote: 'already has a quote request', gallery: 'is in the Inspiration Gallery'}[design?.refinement_creates_new_design] || 'is already in use') + ', so it stays as it is.'"></span></p>

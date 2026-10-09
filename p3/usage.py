@@ -142,6 +142,11 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
             "design_id": M["design_id"]} for M in Meshes]
         + [{"at": L["created_at"], "kind": "bag_add", "text": f"{Titles.get(L['design_id'], '')} · {L['material_id']} · "
             f"{_SizeText(L)} × {L['quantity']}", "design_id": L["design_id"]} for L in Bag]
+        # The prompt check (p3/promptcheck.py): every LLM request before the images, a stopped one with its reason
+        + [{"at": P["created_at"], "kind": "prompt_check", "status": P["decision"],
+            "text": P["text"] + (f" — {P['reason']}" if P["reason"] else ""), "design_id": P["design_id"] or P["source_design_id"]}
+           for P in Db.All("SELECT * FROM prompt_checks WHERE owner_account_id = ? ORDER BY created_at", (AccountId,))
+           if IncludeMock or P["ai_mode"] != "mock"]
     )
 
     # Daily counts over the last `Days` days (UTC dates), per kind.

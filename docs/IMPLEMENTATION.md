@@ -77,7 +77,7 @@ This document separates three things:
 - **Access.** Customer requests require an access token (`X-Access-Token`), issued by an operator via `python -m p3.cli create-token`. Unlike P2, anonymous generation is not allowed. Email self-registration and mail were not carried over.
 - **Usage.** Each provider submission is recorded in `usage_events` (image = 1 per slot, movie = 1). **No quota is enforced** — see Open items.
 - **Asset URLs** (`/assets/...`) are unauthenticated capability URLs built from random 128-bit IDs. Developer meshes are stored outside the public asset root and are served only through the authenticated download route.
-- **Prompt validation** is length-only (3–2000 characters). P2's LLM prompt gate and ONNX ring classifier were **not** carried over (see Open items).
+- **Prompt validation** is length-only (3–2000 characters), plus the LLM prompt check where an Admin switched it on (section 8d, 2026-10-09). P2's ONNX ring classifier was **not** carried over (see Open items).
 - **Reference upload** (optional) requires a rights-confirmation checkbox, as in P2. It is limited to PNG/JPEG/WebP up to 10 MB and re-encoded to PNG. With a reference, the initial batch uses the edit endpoint.
 
 ## 4. Provider verification (fal.ai OpenAPI, fetched 2026-09-29)
@@ -203,7 +203,7 @@ The P2 ring classifier was not copied, because it imports VisualHull. The conseq
 1. **Fashion price numbers** — fixed table, or approved CPP reference dimensions, plus the Vermeil plating cost. Until then, Fashion shows "Price unavailable" in the shipped configuration. See [PRICING.md](PRICING.md).
 2. **Minimax cost** per video (not published on the model page), and **live validation** of the camera trajectory, duration, and resolution. The chosen values are recommendations.
 3. **Batch charging/quota policy.** Six images per batch and per refinement cost about 6× a P2 generation. P3 records usage but enforces no limits. A policy is needed before public use; P2's "one credit per video" was deliberately not reinterpreted.
-4. **Prompt/ring validation.** P2's LLM gate (config absent from the P2 checkout) and ONNX ring classifier (VisualHull dependency) are not in P3. Only length validation plus the Nano Banana system prompt constrain outputs. Decide whether an independent validator is needed.
+4. **Prompt/ring validation.** The LLM prompt check exists since 2026-10-09 (section 8d; off by default, on per site and product). P2's ONNX ring classifier (VisualHull dependency) is not in P3.
 5. **Registration.** Email self-registration was not carried over; tokens are operator-issued.
 6. **Checkout/order integration** — out of scope by spec §12; requires a separately identified system.
 7. **Video gating.** P3 does not require the movie before Add to Bag (recommendation). Confirm.
@@ -524,6 +524,34 @@ charm (they read "US 20" before). Rings read as before. Tested in `tests/test_ch
   - the page wiring.
 
   Two phase 1 tests now expect the ring-only answers while hidden.
+
+## 8d. The prompt check before paid image requests (2026-10-09)
+
+`p3/promptcheck.py`. On atelier (2026-10-08) a charm prompt asking for a real politician's picture cost five image requests
+that the image model refused. The LLM configured in Admin → AI models & prompts (any-llm, any-llm · Charm — Pipeline 2's
+prompt gate, configured but never called by P3) now reads each new design and refinement **before** the image requests,
+where a per-product switch is on (product setting `prompt_check`, default off; Admin API `GET/PUT /api/admin/prompt-check`).
+
+- **Routes.** `POST /api/designs` and `POST /api/designs/{id}/batches` await `PromptCheck.Before()` before the request is
+  created: a rejection is `422 prompt_rejected` with the LLM's reason — no design, batch, credit reservation or image
+  request. A repeated client request id is not checked again; a customer without the credits gets the usual 402 without
+  a check. Accepted and undecided checks are linked to the batch they let through (`prompt_checks.batch_id`).
+- **What the LLM reads** (`Frame`): the customer's words; a refinement as "Refinement of an existing design. / Previous
+  request: … / Requested change: …"; an uploaded image as "Reference image: attached (not shown to you). / Customer
+  request: …". The image requests still use the customer's words — `refined_prompt` is recorded, never sent.
+- **No decision = go ahead**: provider errors, the 20 s limit (`TimeoutS`, polled every 0.3 s), an answer that is not the
+  JSON decision. Each check is one usage event (`prompt_check`, internal: XJet's cost) at list price ($0.001) and counts
+  in the daily spend cap.
+- **Instructions.** The switch turns on only while the product's active instructions ask for `is_jewelry` and
+  `is_feasible`; while it is on, activating or restoring instructions without them is refused.
+- **Evaluation on proto (2026-10-09, Gemini 2.5 Flash).** 20 representative prompts (10 rings, 10 charms: valid,
+  ambiguous, poorly written, Hebrew, public figures, a brand logo, a copyrighted character, nudity, a hate symbol, a ring
+  asked for in Charm mode). The existing instructions (ring v4, charm v3) got 16 of 20 right — they let through a public
+  figure's face on a ring, a brand logo and a copyrighted character. With a *Content limits* section (public figures'
+  likeness, brands and characters, sexual / hate / gore content; pets, family and engraved names allowed; customer-asked
+  stones allowed on rings; a neutral suggestion in the customer's language) and an *Application context* section (the
+  two context lines above; vague new designs are fine), the same 20 plus three refinement / reference cases came out 23
+  of 23, 1.5–2.8 s each. Those instructions are any-llm v5 and any-llm-charm v4 on proto.
 
 ## 9. Verification evidence
 

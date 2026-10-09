@@ -18,6 +18,7 @@ const STEPS = {
   refine_requested: ['Refine request', 'bg-zinc-100 text-zinc-600'],
   refined: ['Refined', 'bg-violet-100 text-violet-700'],
   option_requested: ['Another option', 'bg-zinc-100 text-zinc-600'],
+  prompt_check: ['Prompt check', 'bg-zinc-100 text-zinc-600'],
   option_selected: ['Option selected', 'bg-zinc-100 text-zinc-600'],
   customize_opened: ['Customize', 'bg-amber-100 text-amber-800'],
   customization_changed: ['Changed choice', 'bg-amber-50 text-amber-800'],
@@ -140,6 +141,7 @@ const EVENTS = {
   restored: ['Restored', 'bg-emerald-100 text-emerald-800'],
   register_blocked: ['Tried to sign in or register (blocked)', 'bg-amber-100 text-amber-800'],
   code_emailed: ['Sign-in code e-mailed', 'bg-zinc-100 text-zinc-600'],
+  prompt_check: ['Prompt check', 'bg-zinc-100 text-zinc-600'],
 };
 
 // Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
@@ -178,6 +180,7 @@ function adminApp() {
     sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
+    pc: { on: {}, problem: null, checks: [], counts: {}, timeout: 20, busy: false, msg: '', err: false },   // the prompt check (any-llm pages)
     rename: { open: false, title: '', busy: false, error: '', force: false, suggestions: [], lineage: null },
     retired: [],                                   // Ring IDs of merged legacy copies (never reused): a search for one says where it went
     refBox: null,                                  // full-size view of a customer's reference image (Journey)
@@ -1178,6 +1181,34 @@ function adminApp() {
       if (want !== this.mid || !this.mc || !this.dirty) await this.selectModel(want);
     },
     modelHash(id) { return '#/settings/models/' + id; },
+    // The prompt check (p3/promptcheck.py): each product's any-llm page holds its switch and its latest checks
+    isPromptCheckModel(mc) { return !!mc && ['any-llm', 'any-llm-charm'].includes(mc.model.id); },
+    async loadPromptCheck(product) {
+      try {
+        const r = await this.api('GET', '/api/admin/prompt-check?product=' + encodeURIComponent(product));
+        if ((this.mc?.model.product || 'ring') !== product) return;          // another model was opened meanwhile
+        Object.assign(this.pc, { on: r.on, problem: r.problem, checks: r.checks, counts: r.counts, timeout: r.timeout_s });
+      } catch (e) { this.pc.err = true; this.pc.msg = e.message; }
+    },
+    async setPromptCheck(product, on) {
+      const what = this.pLabel(product).toLowerCase();
+      if (on && !(await this.ask({ title: 'Turn the prompt check on for ' + this.pPlural(product).toLowerCase() + '?',
+        text: 'Every new ' + what + ' design and refinement request is first read by ' + this.mc.model.label + ' with its active instructions — one paid LLM request (about $0.001) before any image request. A request it stops creates nothing and costs the customer no credit.',
+        confirmLabel: 'Turn on' }))) return;
+      this.pc.busy = true; this.pc.msg = ''; this.pc.err = false;
+      try {
+        const r = await this.api('PUT', '/api/admin/prompt-check', { product, on });
+        this.pc.on = r.on;
+        if (this.mc) this.mc.model.connected = !!r.on[product];
+        for (const m of this.models) if (this.isPromptCheckModel(m) && (m.model.product || 'ring') === product) m.model.connected = !!r.on[product];
+        this.pc.msg = 'The prompt check is ' + (on ? 'on' : 'off') + ' for ' + this.pPlural(product).toLowerCase() + '.';
+        await this.loadPromptCheck(product);
+      } catch (e) { this.pc.err = true; this.pc.msg = e.message; } finally { this.pc.busy = false; }
+    },
+    pcCountsText() {
+      const c = this.pc.counts?.live || {};
+      return 'Live checks: ' + ['accepted', 'rejected', 'undecided'].map(k => (c[k] || 0) + ' ' + (k === 'rejected' ? 'stopped' : k === 'undecided' ? 'no decision' : k)).join(' · ');
+    },
     // Ring | Charm: the configuration being edited. Each product has its own models, versions and history.
     get modelsShown() { return this.models.filter(m => (m.model.product || 'ring') === this.mProduct); },
     chooseConfigProduct(p) {
@@ -1192,6 +1223,8 @@ function adminApp() {
       this.draft = this.draftFrom(mc.active.params, mc);
       this.mc = mc;
       this.mProduct = mc.model.product || 'ring';
+      this.pc.msg = '';
+      if (this.isPromptCheckModel(mc)) this.loadPromptCheck(this.mProduct);
       this.mid = id; this.note = ''; this.mProblems = []; this.mMessage = ''; this.preview = null;
       this.dirty = false;
     },
@@ -1669,7 +1702,7 @@ function adminApp() {
     // Journey rows that are the customer's own words (prompt, refinement) read as input: muted and italic
     isCustomerInput(e) { return !!e && ['started', 'generate_requested', 'refine_requested'].includes(e.kind); },
     openRef(e) { if (!e?.reference_url) return; this.zoom = null; this.refBox = { url: e.reference_url, label: e.reference_label || 'Reference image', name: e.download_name || 'reference.png', text: e.text || '' }; },
-    stepClass(e) { return e.status === 'failed' ? 'bg-red-100 text-red-700' : (STEPS[e.kind] || [, 'bg-zinc-100'])[1]; },
+    stepClass(e) { return e.status === 'failed' ? 'bg-red-100 text-red-700' : e.status === 'rejected' ? 'bg-amber-100 text-amber-800' : (STEPS[e.kind] || [, 'bg-zinc-100'])[1]; },
     stepText(e) {
       const d = e.data || {};
       if (e.text) return e.text;
@@ -1705,8 +1738,8 @@ function adminApp() {
     statusLabel(s) { return (STATUS[s] || [s])[0]; },
     statusClass(s) { return (STATUS[s] || [, 'bg-zinc-100'])[1]; },
     eventLabel(e) { const l = (EVENTS[e.kind] || [e.kind])[0]; return e.status && e.status !== 'ready' ? `${l} · ${e.status}` : l; },
-    eventClass(e) { return e.status === 'failed' || e.status === 'interrupted' ? 'bg-red-100 text-red-700' : (EVENTS[e.kind] || [, 'bg-zinc-100'])[1]; },
-    kindLabel(k) { return { image: 'Image', movie: '360° movie', mesh: '3D' }[k] || k; },
+    eventClass(e) { return e.status === 'failed' || e.status === 'interrupted' ? 'bg-red-100 text-red-700' : e.status === 'rejected' ? 'bg-amber-100 text-amber-800' : (EVENTS[e.kind] || [, 'bg-zinc-100'])[1]; },
+    kindLabel(k) { return { image: 'Image', movie: '360° movie', mesh: '3D', prompt_check: 'Prompt check (LLM)' }[k] || k; },
     date(iso) { return iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'; },
     dateTime(iso) { return iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; },
     ago(iso) {

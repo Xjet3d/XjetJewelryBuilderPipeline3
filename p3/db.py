@@ -208,6 +208,31 @@ CREATE TABLE IF NOT EXISTS gallery_sync_runs (
     by            TEXT NOT NULL
 );
 
+-- The prompt check before paid image requests (p3/promptcheck.py): one row per check, whatever it decided.
+CREATE TABLE IF NOT EXISTS prompt_checks (
+    id                   TEXT PRIMARY KEY,
+    owner_account_id     TEXT NOT NULL,
+    kind                 TEXT NOT NULL,              -- design | refinement
+    product_type         TEXT NOT NULL,
+    text                 TEXT NOT NULL,              -- the customer's words
+    checked_text         TEXT NOT NULL,              -- what the LLM read (with the application's context lines)
+    source_design_id     TEXT,                       -- a refinement: the design it refines
+    design_id            TEXT,                       -- the design it let through (set once that exists)
+    batch_id             TEXT,                       -- the batch it let through
+    decision             TEXT NOT NULL,              -- accepted | rejected | undecided (no decision: the request went ahead)
+    reason               TEXT,                       -- a rejection: what the customer read
+    refined_prompt       TEXT,                       -- the LLM's rewrite (kept for the Admin; never sent to the image model)
+    config_version       TEXT NOT NULL,
+    provider_request_id  TEXT,
+    seconds              REAL,
+    error                TEXT,                       -- no decision: why
+    ai_mode              TEXT NOT NULL,
+    created_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prompt_checks_owner ON prompt_checks(owner_account_id, created_at);
+CREATE INDEX IF NOT EXISTS prompt_checks_batch ON prompt_checks(batch_id);
+CREATE INDEX IF NOT EXISTS prompt_checks_design ON prompt_checks(design_id);
+
 -- Real processing stages with start/end times (Hi3D, download, queue, geometry, ready).
 CREATE TABLE IF NOT EXISTS stage_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

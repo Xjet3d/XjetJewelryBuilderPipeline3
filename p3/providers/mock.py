@@ -14,6 +14,7 @@ which (paid, in live mode) calls would have been made.
 import asyncio
 import hashlib
 import io
+import json
 import shutil
 import subprocess
 import tempfile
@@ -236,6 +237,14 @@ class MockProvider:
             Charm = _IsCharmImage(self.Uploads.get(Args.get("image_url")))      # a mock charm image → a charm model
             self.Files[Url] = (_CharmMeshBytes if Charm else _MeshBytes)(Fmt)
             return {"model_mesh": {"url": Url, "file_name": f"mesh.{Fmt}"}}
+        if Endpoint == endpoints.Llm:              # the prompt check: the JSON decision its instructions ask for
+            if Req["outcome"] == "prose":
+                return {"output": "Mock: I can help you design a lovely piece of jewelry!", "error": None}
+            Accept = Req["outcome"] != "reject"
+            return {"output": json.dumps({"is_jewelry": True, "is_feasible": Accept,
+                                          "reason_for_rejection": None if Accept else "Mock: this request can't be designed.",
+                                          "refined_prompt": ("Mock: " + str(Args.get("prompt", ""))[:80]) if Accept else None}),
+                    "error": None}
         raise ProviderError(f"Mock has no handler for {Endpoint}")
 
     async def Download(self, Url: str) -> bytes:

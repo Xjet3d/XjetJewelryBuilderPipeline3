@@ -966,6 +966,13 @@ function p3App() {
       return this.canActOnSelection && !this.pendingBatch && this.userInput.trim().length > 0;
     },
 
+    // The prompt check reads a request before the images are asked for (where it is on): a word meanwhile
+    get checkingPrompt() {
+      if (!this.submitting) return false;
+      const p = this.composerMode === 'refine' ? (this.design?.product_type || 'ring') : (this.catalog?.products ? this.newProduct : 'ring');
+      return (this.catalog?.prompt_check || []).includes(p);
+    },
+
     async sendComposer() {
       if (this.composerMode === 'refine') return this.refine();
       return this.generate();

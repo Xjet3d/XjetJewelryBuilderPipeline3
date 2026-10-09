@@ -24,6 +24,7 @@ from p3 import ringids as RingIds
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
 from p3.products import CharmSizeLabel
+from p3.providers import endpoints
 
 IdleMinutes = 30
 
@@ -385,6 +386,10 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
             Items.append({"at": _Max(*[X["updated_at"] for X in Cs]),
                           "kind": "refined" if Bt["kind"] == "refine" else "generated",
                           "text": f"{len(Ready)} of {len(Cs)} images ready"})
+    # The prompt check (p3/promptcheck.py): what let each batch through, and this customer's requests it stopped
+    for Pc in Db.All("SELECT * FROM prompt_checks WHERE (design_id = ? OR (source_design_id = ? AND decision = 'rejected')) "
+                     "AND owner_account_id = ? ORDER BY created_at", (DesignId, DesignId, Owner)):
+        Items.append({"at": Pc["created_at"], "kind": "prompt_check", "status": Pc["decision"], "text": CheckText(Pc)})
     for Mv in Db.All("SELECT m.* FROM movies m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                      "WHERE b.design_id = ? ORDER BY m.created_at", (DesignId,)):
         if (Mv["requested_by"] or D["owner_account_id"]) == Owner:
@@ -401,6 +406,16 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
                           "data": {"backfilled": True, "candidate_id": Cu["candidate_id"]}})
     Items.sort(key=lambda X: X["at"] or "")
     return Items
+
+
+def CheckText(Pc: dict) -> str:
+    """One prompt check in words: accepted (and how long it took), stopped (the request and the reason), or no decision."""
+    Took = f" · {Pc['seconds']:g} s" if Pc.get("seconds") is not None else ""
+    if Pc["decision"] == "rejected":
+        return f"Stopped “{Pc['text']}” — {Pc['reason'] or ''}{Took}"
+    if Pc["decision"] == "undecided":
+        return f"No decision, the request went ahead — {(Pc['error'] or '')[:120]}{Took}"
+    return f"Accepted{Took}"
 
 
 def _Reference(Ctx: Context, Design: dict, Batch: dict | None, Refs: dict) -> dict:
@@ -458,7 +473,24 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str 
         return {"cost": None if Unknown and not Total else round(Total, 4), "cost_partial": Unknown and bool(Total),
                 "requests": Requests, "providers": sorted(Providers), "basis": sorted(Basis)}
 
+    def CheckStep(Pc: dict) -> dict:
+        """The prompt check before a batch (p3/promptcheck.py): one LLM request, accepted / stopped / no decision."""
+        V = Ctx.Models.Get(Pc["config_version"])
+        return {"kind": "prompt_check", "label": "Prompt check", "endpoint": endpoints.Llm, "text": Pc["text"],
+                "started_at": Pc["created_at"], "finished_at": Pc["created_at"], "duration_s": Pc["seconds"],
+                "status": Pc["decision"], "detail": {"accepted": "Accepted", "rejected": "Stopped — nothing generated",
+                                                     "undecided": "No decision — the request went ahead"}.get(Pc["decision"], ""),
+                **Cost([Pc["id"]], endpoints.Llm, V.Params if V else {})}
+
+    Checks = Db.All("SELECT * FROM prompt_checks WHERE (design_id = ? OR (source_design_id = ? AND decision = 'rejected')) "
+                    "AND owner_account_id = ? ORDER BY created_at", (DesignId, DesignId, Owner))
+    for Pc in Checks:
+        if Pc["decision"] == "rejected":                # a stopped refinement: its check is all it cost
+            Steps.append(CheckStep(Pc))
+    ByBatch = {Pc["batch_id"]: Pc for Pc in Checks if Pc["batch_id"]}
     for B in ([] if Shared else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))):
+        if B["id"] in ByBatch:
+            Steps.append(CheckStep(ByBatch[B["id"]]))
         Cs = Db.All("SELECT id, status, updated_at FROM candidates WHERE batch_id = ?", (B["id"],))
         Done = all(C["status"] in ("ready", "failed") for C in Cs)
         Params = Ctx.Models.Resolve(B["config_version"], B["endpoint"]).Params

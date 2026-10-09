@@ -289,9 +289,10 @@ _AnyLlmParams = (
 
 Models: dict[str, ModelSpec] = {S.Id: S for S in (
     ModelSpec(
-        "any-llm", "any-llm", "fal-ai/any-llm",
-        "Not used by the Pipeline 3 flow yet (Pipeline 2 uses it as its prompt gate). Settings can be prepared and "
-        "previewed here; no P3 request uses them until a feature is connected.", False,
+        "any-llm", "any-llm", endpoints.Llm,
+        "The prompt check for rings: when it is on (the switch on this page; off by default), every new ring design and "
+        "refinement request is read with these instructions before any paid image request. A stopped request creates "
+        "nothing and costs no credit.", False,
         _AnyLlmParams),
     ModelSpec(
         "nano-banana-pro", "fal-ai/nano-banana-pro", endpoints.ImageGenerate,
@@ -316,9 +317,10 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         _MeshFixed),
     # ── Charms: their own models, versions and history — the same providers, never the ring configuration ──
     ModelSpec(
-        "any-llm-charm", "any-llm · Charm", "fal-ai/any-llm",
-        "The Charm request check (not used by the Pipeline 3 flow yet, like the Ring one). Its own model, instructions "
-        "and parameters can be prepared and previewed here; no P3 request uses them until a feature is connected.", False,
+        "any-llm-charm", "any-llm · Charm", endpoints.Llm,
+        "The prompt check for charms: when it is on (the switch on this page; off by default), every new charm design "
+        "and refinement request is read with these instructions before any paid image request. A stopped request "
+        "creates nothing and costs no credit.", False,
         _AnyLlmParams, Product="charm"),
     ModelSpec(
         "nano-banana-pro-charm", "fal-ai/nano-banana-pro · Charm", endpoints.ImageGenerate,

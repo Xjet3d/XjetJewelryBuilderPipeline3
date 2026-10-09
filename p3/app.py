@@ -57,6 +57,7 @@ from p3.payments import BuildPaymentProvider
 from p3.addressing import BuildValidator
 from p3.registration import PublicOrigin, RegistrationService
 from p3 import sessions as Sessions
+from p3 import promptcheck as PromptCheck
 from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
@@ -582,6 +583,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                                    "prices": [{"size": O["size"], "label": O["label"], "price": Q.unit_price, "currency": Q.currency}
                                               for O in Sizes for Q in (Ctx.CharmPrices.QuoteFor(M.Id, O["size"]),)]}
                                   for M in CharmPrices.Offered(Ctx.Catalog)]}
+        Checked = [P for P in Products.All if PromptCheck.Enabled(Ctx, P)]
+        if Checked:                                      # the design screen says "Checking your description…" meanwhile
+            Out["prompt_check"] = Checked
         return JSONResponse(Out, headers={"Cache-Control": "no-store"})
 
     @App_.get("/api/quote")
@@ -623,7 +627,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 ReferencePng = assets.NormalizeReferenceImage(Raw)
             except assets.AssetError as E:
                 raise HttpError(400, "invalid_reference", str(E))
-        return Svc.Images.CreateInitial(Who, prompt, ReferencePng, client_request_id, Product)
+        # The prompt check (when on for the product): a request it stops creates nothing and costs nothing
+        Check = None if PromptCheck.Repeated(Ctx, Who, client_request_id) else await PromptCheck.Before(
+            Ctx, Who, prompt, Product, Reference=ReferencePng is not None)
+        Batch = Svc.Images.CreateInitial(Who, prompt, ReferencePng, client_request_id, Product)
+        PromptCheck.Link(Ctx, Check, Batch)
+        return Batch
 
     @App_.get("/api/designs")
     async def ListDesigns(request: Request, x_access_token: str | None = Header(None)):
@@ -641,9 +650,15 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def Refine(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
-        return Svc.Images.CreateRefinement(Who, DesignId, Body_.get("parent_candidate_id"),
-                                           Body_.get("instruction", ""), Body_.get("client_request_id"),
-                                           Products.VisibleProducts(Ctx, request))
+        Visible, Instruction, RequestId = Products.VisibleProducts(Ctx, request), Body_.get("instruction", ""), Body_.get("client_request_id")
+        Check = None
+        if any(PromptCheck.State(Ctx).values()) and not PromptCheck.Repeated(Ctx, Who, RequestId, DesignId):
+            D = Svc.Images.RequireDesign(Who, DesignId, Visible)          # the design refined: its product and its words
+            Check = await PromptCheck.Before(Ctx, Who, Instruction, D.get("product_type") or Products.Ring, Kind="refinement",
+                                             Previous=D["prompt"], SourceDesignId=DesignId)
+        Batch = Svc.Images.CreateRefinement(Who, DesignId, Body_.get("parent_candidate_id"), Instruction, RequestId, Visible)
+        PromptCheck.Link(Ctx, Check, Batch)
+        return Batch
 
     @App_.get("/api/batches/{BatchId}")
     async def GetBatch(BatchId: str, x_access_token: str | None = Header(None)):

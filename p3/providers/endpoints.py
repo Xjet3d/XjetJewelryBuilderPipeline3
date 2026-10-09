@@ -12,3 +12,4 @@ ImageGenerate = "fal-ai/nano-banana-pro"
 ImageEdit     = "fal-ai/nano-banana-pro/edit"
 Movie         = "minimax/h3-max/camera-controls"
 Mesh          = "hitem3d/hi3d/v3.0/image-to-3d"
+Llm           = "fal-ai/any-llm"                   # the prompt check (p3/promptcheck.py)
