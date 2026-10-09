@@ -14,8 +14,9 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "dcdf7a672c65867d201e4b2fcfcef164c0dc6fdb04945000cd352824d1be8161"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "2bd33d04cd7a0dbf1091cc8fee6e1c928df33f0e76d2292388ee2c8a3de86bdb"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
+#   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 

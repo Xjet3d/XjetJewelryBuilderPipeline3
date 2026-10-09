@@ -164,7 +164,7 @@ async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
     Hero = Index[Index.index('<template x-if="view === \'home\'">'):Index.index('Inspiration Gallery</span>')]
     assert "x-text=\"'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'\"" in Hero   # product-aware since 2026-10-07
     assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
-    assert "Bespoke Jewellery" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero
+    assert "Bespoke Jewelry" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero
     assert 'resetAIFlow()' in Hero and 'scrollToHowItWorks()' in Hero and "made to order in real metal" in Hero
     assert 'data-testid="hero-showcase"' in Hero and "P3Showcase.mount($el, { design: 'aurora-mesh' })" in Hero
     assert 'aria-label="Rings from the Inspiration Gallery"' not in Hero and "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero

@@ -48,7 +48,7 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     assert (await H.Client.get(Img.removeprefix("http://p3.test" + H.Base), headers=Anon)).headers["content-type"] == "image/jpeg"
     assert f'<meta property="og:url" content="{S["url"]}">' in Html and '<meta name="twitter:card" content="summary_large_image">' in Html
     Open = re.search(r"window\.__p3Open = (\{.*?\});", Html).group(1)
-    assert f'"gallery": "{Item["id"]}"' in Open and '"site_title": "XJET Atelier' in Open
+    assert f'"gallery": "{Item["id"]}"' in Open and '"site_title": "XJet Atelier' in Open
     Words = "\n".join(re.findall(r'<title>[^<]*|content="[^"]*"', Html.split("<body")[0]))
     assert "R-1" not in Words                                                        # no Ring ID in what a preview shows
     assert 'src="' + H.Base + '/static/app.js?v=' in Html                           # the normal, versioned app
@@ -56,7 +56,7 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     R = await H.Client.get("/design/aurora-lattice", headers=Anon)
     assert R.status_code == 200 and f'"gallery": "{Item["id"]}"' in R.text
     R = await H.Client.get("/design/no-such-ring", headers=Anon)
-    assert R.status_code == 404 and 'window.__p3Open = {"gallery": null};' in R.text and "<title>XJET Atelier" in R.text
+    assert R.status_code == 404 and 'window.__p3Open = {"gallery": null};' in R.text and "<title>XJet Atelier" in R.text
     assert (await H.Client.get("/api/gallery/gi_nope/share", headers=Anon)).status_code == 404
 
 
