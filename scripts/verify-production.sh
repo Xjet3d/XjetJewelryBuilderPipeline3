@@ -32,7 +32,9 @@ if [[ "$PUBLIC" == https://* ]]; then
         check "public host has no $P (404)"   "$([[ "$(code "$PUBLIC$P")" == 404 ]]; echo $?)"
     done
 else
-    check "robots.txt disallows a staging copy" "$(curl -s "$PUBLIC/robots.txt" | grep -q "^Disallow: /$"; echo $?)"
+    # the whole site, or (served under a base path, Admin's Search engines switch off) everything under it
+    Base="$(sed -E 's#^https?://[^/]+##; s#/+$##' <<<"$PUBLIC")"
+    check "robots.txt disallows a staging copy" "$(curl -s "$PUBLIC/robots.txt" | grep -qE "^Disallow: (${Base})?/$"; echo $?)"
 fi
 check "catalog answers 200"                   "$([[ "$(code "$PUBLIC/api/catalog")" == 200 ]]; echo $?)"
 check "homepage hero data answers 200"        "$([[ "$(code "$PUBLIC/api/showcase")" == 200 ]]; echo $?)"
