@@ -112,6 +112,9 @@ async def test_an_accepted_request_is_made_with_the_customers_words_and_shows_it
     D = (await H.Client.get(f"/api/admin/sessions/{Batch['design_id']}", headers=Admin)).json()
     Steps = [S["kind"] for S in D["pipeline"]["steps"]]
     assert Steps[:2] == ["prompt_check", "design"] and D["pipeline"]["steps"][0]["requests"] == 1
+    Shown = D["design"]["batches"][0]["prompt_check"]                        # the rewrite beside the customer's words
+    assert Shown["decision"] == "accepted" and Shown["refined_prompt"] == C["refined_prompt"]
+    assert D["design"]["batches"][0]["user_text"] == "Art deco band with stepped shoulders"
     assert any(E["kind"] == "prompt_check" and E["status"] == "accepted" for E in D["timeline"])
 
 

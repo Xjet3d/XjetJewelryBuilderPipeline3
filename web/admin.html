@@ -1203,6 +1203,12 @@
               <span x-text="b.user_text"></span>
               <button x-show="b.kind === 'refine' && !sd.session.shared && (sd.design?.batches || []).length > 1" class="act text-[11px] uppercase tracking-widest underline text-zinc-500 hover:text-amber-800" @click="splitBatch(b)"
                       title="A refinement that landed inside this design becomes a design of its own (its images, movie, choices, orders and 3D requests move with it)">Make it its own design</button></p>
+            <!-- The prompt check before this batch: its decision, and the LLM's rewrite next to the customer's words above —
+                 recorded to compare; the image requests used the customer's words -->
+            <div x-show="b.prompt_check" class="text-[12px] text-zinc-600 border-l border-zinc-300 pl-4 space-y-0.5">
+              <p x-text="'Prompt check: ' + ({ accepted: 'accepted', undecided: 'no decision, went ahead' }[b.prompt_check?.decision] || b.prompt_check?.decision || '') + (b.prompt_check?.seconds != null ? ' · ' + b.prompt_check.seconds + ' s' : '') + (b.prompt_check?.config_version ? ' · ' + b.prompt_check.config_version : '')"></p>
+              <p x-show="b.prompt_check?.refined_prompt"><span class="font-semibold">LLM rewrite (recorded, not sent to the image model):</span> <span x-text="b.prompt_check?.refined_prompt || ''"></span></p>
+            </div>
             <div class="grid grid-cols-4 gap-3">
               <template x-for="c in b.candidates" :key="c.id">
                 <div class="space-y-1">
@@ -2096,7 +2102,8 @@
           <tbody><template x-for="c in pc.checks" :key="c.id"><tr class="align-top">
             <td class="whitespace-nowrap" x-text="dateTime(c.created_at)"></td>
             <td class="whitespace-nowrap"><span class="badge" :class="c.decision === 'rejected' ? 'bg-amber-100 text-amber-800' : c.decision === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-600'" x-text="{ accepted: 'Accepted', rejected: 'Stopped', undecided: 'No decision' }[c.decision] || c.decision"></span><span x-show="c.ai_mode === 'mock'" class="text-zinc-400"> · mock</span></td>
-            <td x-text="(c.kind === 'refinement' ? 'Change: ' : '') + c.text"></td>
+            <td><span x-text="(c.kind === 'refinement' ? 'Change: ' : '') + c.text"></span>
+              <span x-show="c.refined_prompt" class="block text-zinc-500 mt-0.5" x-text="'LLM rewrite (not used for images): ' + (c.refined_prompt || '')"></span></td>
             <td x-text="c.reason || c.error || '—'"></td>
             <td x-text="c.customer || '—'"></td>
             <td class="tabular-nums whitespace-nowrap" x-text="c.seconds != null ? c.seconds + ' s' : '—'"></td>

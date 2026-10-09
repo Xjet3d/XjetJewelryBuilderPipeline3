@@ -551,7 +551,13 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
   likeness, brands and characters, sexual / hate / gore content; pets, family and engraved names allowed; customer-asked
   stones allowed on rings; a neutral suggestion in the customer's language) and an *Application context* section (the
   two context lines above; vague new designs are fine), the same 20 plus three refinement / reference cases came out 23
-  of 23, 1.5–2.8 s each. Those instructions are any-llm v5 and any-llm-charm v4 on proto.
+  of 23, 1.5–2.8 s each (any-llm v5 and any-llm-charm v4 on proto).
+- **Decisions of 2026-10-09 (the user).** Brands, logos, trademarks and characters are **not** a reason to stop a request
+  (the *Content limits* section says so instead of listing them); public-figure likeness, sexual / nude content, hate /
+  extremist symbols and graphic violence / gore still are; charms stay metal-only (the charm instructions' own rule stops
+  gemstones); the rewrite is recorded and shown in the Admin, never sent to the image model. Re-evaluated on the same
+  23 prompts plus a Rolex-inspired ring, a Chanel-logo charm and a Mickey Mouse charm: 26 of 26 as intended. Proto runs
+  them as any-llm v6 and any-llm-charm v5; the same texts went to atelier with its switch on (approved the same day).
 
 ## 9. Verification evidence
 

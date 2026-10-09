@@ -65,6 +65,12 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
     Cands = Db.All(f"SELECT c.*, b.design_id, b.kind AS batch_kind FROM candidates c JOIN batches b ON b.id = c.batch_id "
                    f"WHERE b.design_id IN ({Q}) ORDER BY c.created_at, c.slot", Ids)
     CandIds = [C["id"] for C in Cands]
+    # The prompt check before each batch (p3/promptcheck.py): its decision and the LLM's rewrite, for the Admin to compare
+    # with the customer's words (the rewrite is never sent to the image model)
+    BatchIds = [B["id"] for B in Batches]
+    Checked = {R["batch_id"]: R for R in Db.All(
+        f"SELECT batch_id, decision, refined_prompt, seconds, config_version FROM prompt_checks "
+        f"WHERE batch_id IN ({','.join('?' * len(BatchIds)) or 'NULL'})", BatchIds)}
     QC = ",".join("?" * len(CandIds)) or "NULL"
     Movies = Db.All(f"SELECT m.*, b.design_id FROM movies m JOIN candidates c ON c.id = m.candidate_id "
                     f"JOIN batches b ON b.id = c.batch_id WHERE m.candidate_id IN ({QC}) ORDER BY m.created_at", CandIds)
@@ -117,6 +123,8 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
             "updated_at": D["updated_at"], "thumbnail_url": Url(Thumb["asset_path"]) if Thumb else None,
             "batches": [{
                 "id": B["id"], "kind": B["kind"], "user_text": B["user_text"], "created_at": B["created_at"],
+                "prompt_check": {K: Checked[B["id"]][K] for K in ("decision", "refined_prompt", "seconds", "config_version")}
+                                if B["id"] in Checked else None,
                 "candidates": [{
                     "id": C["id"], "slot": C["slot"], "status": C["status"], "image_url": Url(C["asset_path"]),
                     "selected": C["id"] == D["selected_candidate_id"],

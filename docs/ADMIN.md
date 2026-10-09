@@ -340,8 +340,9 @@ charms: On | Off*, **off by default on every site**, logged with the product set
 every refinement of that product is first sent to `fal-ai/any-llm` with the page's active instructions (one paid LLM
 request, about $0.001 at list price), which answer `{is_jewelry, is_feasible, reason_for_rejection, refined_prompt}`:
 
-- **Accepted** (both true): the design is made exactly as before — the image requests use the customer's own words; the
-  rewrite is kept for the Admin only.
+- **Accepted** (both true): the design is made exactly as before — the image requests use the customer's own words. The
+  LLM's rewrite is recorded only, shown beside the customer's words in the session's *Designs in this session* and in
+  *Latest prompt checks*, to compare by hand.
 - **Stopped**: nothing is created — no design, no credit, no image request. The customer reads the reason under the
   prompt box (in their language) and can change the words (`422 prompt_rejected`).
 - **No decision** (a provider error, an answer that is not that JSON object, no answer within 20 s): the request goes
