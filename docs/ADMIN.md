@@ -216,7 +216,7 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
 - **Terms** are accepted explicitly; the order stores `terms_version` and `terms_accepted_at`.
 - **Confirmation**: screen + email (outbox in mock mode, SMTP in live) with Order ID, every ring (image, name, Ring ID, material, size, quantity, amount), totals, address, payment status and "what happens next". No production cost or 3D price ever reaches the customer.
 - **Lifecycle** (Admin → Orders): `new → payment_confirmed → three_d_ready → production → qc → shipped → completed`, plus `cancelled`; completed is final. Recording a paid payment on a new order moves it to payment confirmed. Every change is in the order's history with a note. **Completed** and **Cancelled** are confirmed in a dialog first; a cancellation can carry a reason (kept in the order's notes and history). Cancelling sends the customer no email and refunds nothing (a refund is recorded under Payment).
-- **Admin → Orders** lists Order ID, date, customer, email, ring/design + Ring ID, material, size, quantity, promo, total, payment, address validation, 3D state and order status; search by Order ID, Ring ID, design name, customer name or email; filter by status and payment. The detail page has the status / payment / note actions (notes are append-only: each with its time and author — the note the order was created with, such as *From quote Q-5001 … Customer's note*, every Admin note and a cancellation's reason; a new note never replaces an earlier one), the rings to make with their 3D state and **Download STL** (file name with the Order ID), the address, totals, terms and the history.
+- **Admin → Orders** lists Order ID, date, customer, email, ring/design + Ring ID, material, size, quantity, promo, total, payment, address validation, 3D state and order status; search by Order ID, Ring ID, design name, customer name or email; filter by status and payment. Search and filters run on the server over every order (`GET /api/admin/orders?q=&status=&payment=&product=&offset=&limit=`, 50 per page, `total` = every match), with Previous / Next. An order made from a quote says *From quote request Q-5001* (a link to it). The detail page has the status / payment / note actions (notes are append-only: each with its time and author — the note the order was created with, such as *From quote Q-5001 … Customer's note*, every Admin note and a cancellation's reason; a new note never replaces an earlier one), the rings to make with their 3D state and **Download STL** (file name with the Order ID), the address, totals, terms and the history.
 - **Sessions & statistics:** the funnel is Started → Generated → Selected → Customize → Bag → Checkout → Order; a journey shows its order references; the gallery statistics count customers who ordered a master design; the dashboard has an Orders block (open, payment pending, paid revenue, reserved value, open quote requests).
 
 ### Processing queue and live status
@@ -238,12 +238,21 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
   - `GET …/3d/{id}/export/{job}`;
   - `GET /api/admin/storage` (3D bytes and free disk; shown on the Dashboard, with no automatic deletion).
 
-## Quote requests (Orders → a quote request)
+## Quote requests (Orders → Quote requests)
 
-**Code:** `p3/quotes.py`, `p3/orders.py` (`CreateFromQuote`). **API:** `GET /api/admin/quote-requests/{id}`,
+**Code:** `p3/quotes.py`, `p3/orders.py` (`CreateFromQuote`). **API:** `GET /api/admin/quote-requests` (the inbox),
+`GET /api/admin/quote-requests/{id}`,
 `POST …/offer`, `POST …/note`, `POST …/status`; the customer's page `GET /quote?token=…`, `POST /quote/approve`,
 `POST /quote/reject`.
 
+- **The inbox** (`#/orders/quotes`, beside Orders): Quote ID, received (date and age), customer, design (a link to its
+  session) with material, size and quantity, status, the quote's amount and version, valid until (*Expired* when an
+  open request's quote has run out) and the order it became. Newest first, 50 per page; search (Quote ID, customer,
+  email, design name, Ring / Charm ID, Order ID) and the status filter (any, *open* = new · quoted · answered, or one
+  status, each with its count) run on the server. The number of **New** requests — awaiting a reply — is a badge on
+  the Orders tab and on *Quote requests*. No new statuses: new · quoted · answered · approved · rejected · closed.
+- **Links.** The session page lists the journey's quote requests and orders; a quote links to its session and, once
+  approved, its order; an order made from a quote links back to it.
 - **Every detail.** The customer (name, email, phone), the design (image, Ring/Charm ID, session link), material, size,
   quantity and message; where the request notification went (`P3_STAFF_NOTIFY_EMAILS`, or none configured), whether
   the customer's confirmation was sent, and the address the quote goes to (the customer's email). The customer's

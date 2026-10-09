@@ -194,7 +194,7 @@ def Attention(Ctx: Context, Orders=None) -> dict:
                       "label": f"Copy of {L['master_title']} ({L['master_ring_id']}) from before shared designs — the same ring twice. Merge it."})
     if Orders is not None:
         NowIso = Now()
-        for O in Orders.AdminList():
+        for O in Orders.AdminList(Limit=None, OpenOnly=True):           # every open order, not one page
             if O["mock"] or O["status"] in ("cancelled", "completed"):
                 continue
             Base = {"ref": O["ref"], "title": O["lines"][0]["title"] if O["lines"] else "", "href": f"#/orders/{O['id']}",
@@ -209,7 +209,7 @@ def Attention(Ctx: Context, Orders=None) -> dict:
                 Items.append({**Base, "kind": "address_failed", "severity": "warn", "label": "Shipping address failed validation"})
             if O["status"] == "payment_confirmed" and O["three_d_state"] in (None, "failed"):
                 Items.append({**Base, "kind": "order_needs_3d", "severity": "info", "label": "Paid order without a 3D model yet"})
-        for Q in Orders.AdminQuoteRequests("new"):
+        for Q in Orders.AdminQuoteRequests("new", Limit=None):
             Items.append({"kind": "quote_request", "severity": "info", "label": "Quote request awaiting a reply", "ref": Q["ref"],
                           "title": Q["title"], "href": f"#/orders/quote/{Q['id']}", "at": Q["created_at"],
                           "customer": (Q["customer"]["first_name"] + " " + Q["customer"]["last_name"]).strip()})
@@ -449,6 +449,10 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                      "providers": sorted({U["provider"] or "unknown" for U in Usage}),
                      "cost_usd": round(sum(Cost), 4) if Cost else None},
         "three_d": ThreeD,
+        # The quote requests of this journey (the customer's, for this design), linked both ways with the Admin's quote page
+        "quotes": [{"id": Q["id"], "ref": OrdersModule.QuoteRef(Q["request_no"]), "status": Q["status"], "order_id": Q["order_id"]}
+                   for Q in Ctx.Db.All("SELECT id, request_no, status, order_id FROM quote_requests WHERE design_id = ? "
+                                       "AND owner_account_id = ? ORDER BY created_at", (DesignId, Owner))],
         "three_d_defaults": {
             "customer_size": (Summary["charm_size"] if Summary.get("charm_size_chosen") else None) if Charm
             else (Summary["ring_size"] if Summary["ring_size_chosen"] else None),
@@ -645,12 +649,26 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")
     async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None,
-                          product: str | None = None, authorization: str | None = Header(None)):
+                          product: str | None = None, offset: int = 0, limit: int = 50, authorization: str | None = Header(None)):
+        """One page of orders (search and filters in SQL, `total` = every match), and the quote requests per status."""
         Admin(authorization)
-        return {"orders": Orders.AdminList(status or None, payment or None, q or None, Product=product or None),
+        Limit, Offset = max(1, min(int(limit), 200)), max(0, int(offset))
+        return {"orders": Orders.AdminList(status or None, payment or None, q or None, Limit, Product=product or None, Offset=Offset),
+                "total": Orders.AdminCount(status or None, payment or None, q or None, Product=product or None),
+                "offset": Offset, "limit": Limit,
                 "statuses": [{"id": S, "label": OrdersModule.StatusLabels[S]} for S in OrdersModule.StatusOrder + ["cancelled"]],
                 "payment_statuses": [{"id": S, "label": PaymentsModule.Labels[S]} for S in PaymentsModule.Statuses],
-                "quote_requests": Orders.AdminQuoteRequests()}
+                "quote_counts": Orders.QuoteCounts()}
+
+    @App_.get("/api/admin/quote-requests")
+    async def AdminQuoteInbox(status: str | None = None, q: str | None = None, offset: int = 0, limit: int = 50,
+                              authorization: str | None = Header(None)):
+        """The quote request inbox: one page (search and status in SQL, `total` = every match) and the count per status."""
+        Admin(authorization)
+        Limit, Offset = max(1, min(int(limit), 200)), max(0, int(offset))
+        return {"quote_requests": Orders.AdminQuoteRequests(status or None, q or None, Limit, Offset),
+                "total": Orders.AdminQuoteCount(status or None, q or None), "offset": Offset, "limit": Limit,
+                "counts": Orders.QuoteCounts()}
 
     @App_.get("/api/admin/orders/{OrderId}")
     async def AdminOrder(OrderId: str, authorization: str | None = Header(None)):

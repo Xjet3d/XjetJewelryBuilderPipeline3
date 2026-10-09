@@ -218,7 +218,8 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert (await H.Client.get("/api/admin/orders")).status_code == 403
     L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
     assert [X["ref"] for X in L["orders"]] == ["ORD-10001"] and L["orders"][0]["mock"] and L["orders"][0]["three_d_state"] is None
-    assert [S["id"] for S in L["statuses"]][:2] == ["new", "payment_confirmed"] and L["quote_requests"] == []
+    assert [S["id"] for S in L["statuses"]][:2] == ["new", "payment_confirmed"] and L["quote_counts"]["new"] == 0
+    assert (L["total"], L["offset"], L["limit"]) == (1, 0, 50)
     Row = L["orders"][0]
     assert Row["customer"]["email"] == "dana@example.com" and Row["lines"][0]["ring_id"] == "R-1001-A" and Row["address_validation"] == "unverified"
     # Search by order ID, ring ID, design name, customer name and email
@@ -296,6 +297,26 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert Dash["orders"] == 1 and Dash["revenue"] == pytest.approx(O["total"]) and Dash["by_status"]["completed"] == 1
 
 
+async def test_order_search_and_pages_run_in_sql(HO):
+    """Search and paging happen in the database: every match counts (no 300-row window searched in Python), a page
+    holds `limit` orders, the newest first."""
+    H = HO
+    for N in range(3):
+        await _InBag(H, f"Band number {N}")
+        assert (await H.Client.post("/api/orders", json=_Order(client_request_id=f"click-{N}"))).status_code == 200
+    Page = (await H.Client.get("/api/admin/orders?limit=2", headers=Admin)).json()
+    assert [O["ref"] for O in Page["orders"]] == ["ORD-10003", "ORD-10002"] and Page["total"] == 3
+    Page = (await H.Client.get("/api/admin/orders?limit=2&offset=2", headers=Admin)).json()
+    assert [O["ref"] for O in Page["orders"]] == ["ORD-10001"] and Page["total"] == 3
+    # The full customer name, an Order ID, a design name (any case); LIKE wildcards in the box are plain text
+    Title = Page["orders"][0]["lines"][0]["title"]
+    for Q, Want in (("Dana Levi", 3), ("ORD-10002", 1), (Title.upper(), 1), ("dsg%", 0), ("ds_", 0), ("dsg_", 3), ("nobody@", 0)):
+        R = (await H.Client.get("/api/admin/orders", params={"q": Q}, headers=Admin)).json()
+        assert (R["total"], len(R["orders"])) == (Want, Want), Q
+    assert (await H.Client.get("/api/admin/orders?limit=0", headers=Admin)).json()["limit"] == 1          # clamped
+    assert (await H.Client.get("/api/admin/orders?limit=5000", headers=Admin)).json()["limit"] == 200
+
+
 async def test_a_cancellation_keeps_its_reason_beside_the_notes(HO):
     H = HO
     await _InBag(H)
@@ -328,8 +349,10 @@ async def test_gold_asks_for_a_quote_instead_of_ordering(HO):
     assert Q["ref"] == "Q-5001" and Q["ring_id"] == "R-1001-B" and Q["material_label"] == "18K Yellow Gold" and Q["status"] == "new"
     Mail = H.App.state.Mailer.List()[0]
     assert Mail["to"] == "dana@example.com" and "Q-5001" in Mail["subject"] and "Engraving inside?" in Mail["html"]
-    L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
+    L = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()
     assert [X["ref"] for X in L["quote_requests"]] == ["Q-5001"] and L["quote_requests"][0]["customer"]["email"] == "dana@example.com"
+    assert L["total"] == 1 and L["counts"] == {"new": 1, "quoted": 0, "answered": 0, "approved": 0, "rejected": 0, "closed": 0}
+    assert (await H.Client.get("/api/admin/orders", headers=Admin)).json()["quote_counts"]["new"] == 1          # the inbox badge
     assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/status", json={"status": "answered"}, headers=Admin)).json()["status"] == "answered"
     S = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()
     assert any(E["kind"] == "quote_requested" for E in S["timeline"])

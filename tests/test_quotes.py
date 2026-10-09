@@ -117,6 +117,10 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         assert (L["unit_price"], L["quantity"], L["material_id"], L["ring_size"]) == (2600, 2, "gold_18k_yellow", 7)
         Ad = (await H.Client.get("/api/admin/orders/ORD-10001", headers=Admin)).json()
         assert "From quote Q-5001" in Ad["notes"] and "Please gift wrap" in Ad["notes"]
+        assert Ad["quote"] == {"id": Q["id"], "ref": "Q-5001"}                               # Order → its quote
+        Sd = (await H.Client.get(f"/api/admin/sessions/{Q['design_id']}", headers=Admin)).json()
+        assert Sd["quotes"] == [{"id": Q["id"], "ref": "Q-5001", "status": "approved", "order_id": Ad["id"]}]   # Session → quote
+        assert "ORD-10001" in Sd["session"]["order_refs"]                                    # Session → order
         # The note the order was created with stays visible when the Admin adds one (notes are never overwritten)
         Ad = (await H.Client.post(f"/api/admin/orders/{Ad['id']}/note", json={"note": "Workshop confirmed the weight"}, headers=Admin)).json()
         assert "From quote Q-5001" in Ad["notes"]
@@ -176,8 +180,19 @@ async def test_decline_revisions_expiry_and_notes(tmp_path):
         assert "This quote has expired" in R.text and (await H.Client.get("/api/orders")).json()["orders"] == []
         assert (await H.Client.get("/quote?token=nonsense")).status_code == 404
         # The list carries the quote and the decision
-        L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()["quote_requests"]
-        assert {X["ref"]: X["status"] for X in L} == {"Q-5001": "closed", "Q-5002": "quoted"}
-        assert next(X for X in L if X["ref"] == "Q-5002")["offer"]["total"] == 5200
+        I = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()
+        L = I["quote_requests"]
+        assert {X["ref"]: X["status"] for X in L} == {"Q-5001": "closed", "Q-5002": "quoted"} and I["total"] == 2
+        Q2Row = next(X for X in L if X["ref"] == "Q-5002")
+        assert Q2Row["offer"]["total"] == 5200 and Q2Row["offer_expired"]                   # open, but its quote ran out
+        assert not next(X for X in L if X["ref"] == "Q-5001")["offer_expired"]              # closed: not "expired"
+        assert I["counts"]["closed"] == 1 and I["counts"]["quoted"] == 1 and I["counts"]["new"] == 0
+        # The inbox searches and filters in SQL: by Quote ID, design name, customer, "open" (new, quoted, answered)
+        for Params, Want in (({"q": "Q-5002"}, ["Q-5002"]), ({"q": Q2Row["title"].lower()}, ["Q-5002"]), ({"q": "dana levi"}, ["Q-5002", "Q-5001"]),
+                             ({"status": "open"}, ["Q-5002"]), ({"status": "closed"}, ["Q-5001"]), ({"q": "Q-9"}, [])):
+            R = (await H.Client.get("/api/admin/quote-requests", params=Params, headers=Admin)).json()
+            assert [X["ref"] for X in R["quote_requests"]] == Want and R["total"] == len(Want), Params
+        R = (await H.Client.get("/api/admin/quote-requests?limit=1&offset=1", headers=Admin)).json()
+        assert [X["ref"] for X in R["quote_requests"]] == ["Q-5001"] and R["total"] == 2
     finally:
         await H.Close()

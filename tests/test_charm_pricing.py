@@ -241,7 +241,7 @@ async def test_a_gold_charm_is_quoted_with_its_charm_size(HP):
     assert (J["product_type"], J["charm_size"], J["ring_size"], J["size_label"], J["material_label"]) == \
         ("charm", 25.0, None, "25 mm", "14K Yellow Gold")
     assert (await H.Client.post("/api/quote-requests", json={**Body, "charm_size": 26})).json()["error"]["code"] == "invalid_charm_size"
-    Rows = (await H.Client.get("/api/admin/orders", headers=Admin)).json()["quote_requests"]
+    Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
     assert Rows[0]["size_label"] == "25 mm" and Rows[0]["product_type"] == "charm"
     # A ring request reads as before
     RB = await H.NewDesign()

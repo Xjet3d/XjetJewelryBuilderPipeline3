@@ -201,6 +201,8 @@ function adminApp() {
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
+    oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
+    qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
     quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
     qSnapshot: '',                               // the quote form as last loaded or sent: anything else is an unsent draft
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
@@ -275,6 +277,7 @@ function adminApp() {
         for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
         for (const m of cat.products?.charm?.materials || []) this.charmMaterials[m.id] = m.label;    // "Sterling Silver" …
       } catch (_) {}
+      this.api('GET', '/api/admin/quote-requests?limit=1').then(r => { this.quoteCounts = r.counts || {}; }).catch(() => {});
       this.route();
     },
     // The key is sent once, to /api/admin/login, and never kept in the browser.
@@ -321,8 +324,9 @@ function adminApp() {
       const wasList = this.tab === 'sessions' && !this.sessionId;
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
-      this.orderId = this.tab === 'orders' && !id.startsWith('quote/') ? id : '';
+      this.orderId = this.tab === 'orders' && !id.startsWith('quote/') && id !== 'quotes' ? id : '';
       this.quoteId = this.tab === 'orders' && id.startsWith('quote/') ? id.slice(6) : '';
+      this.ordersView = this.tab === 'orders' && id === 'quotes' ? 'quotes' : 'orders';     // #/orders/quotes: the quote inbox
       this.openDesign = null; this.zoom = null; this.rename.open = false;
       const backToList = this.tab === 'sessions' && !id && !wasList;
       if (!backToList) window.scrollTo({ top: 0 });
@@ -336,6 +340,7 @@ function adminApp() {
       if (this.tab === 'users' && !id) await this.load();
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
       if (this.tab === 'orders' && !id) await this.loadOrders();
+      if (this.tab === 'orders' && id === 'quotes') await this.loadQuoteInbox();
       if (this.tab === 'orders' && this.orderId) await this.loadOrder(); else this.od = null;
       if (this.tab === 'orders' && this.quoteId) await this.loadQuote(); else this.qd = null;
       if (this.tab === 'gallery') await this.loadGallery();
@@ -357,20 +362,37 @@ function adminApp() {
     },
 
     // ── orders ──────────────────────────────────────────────────────────
-    async loadOrders() {
+    // One page of orders: the server searches and filters every order (offset: the first row of the page)
+    async loadOrders(offset = 0) {
       this.ordersLoading = true; this.ordersMsg = '';
       try {
-        const q = new URLSearchParams();
+        const q = new URLSearchParams({ offset: String(typeof offset === 'number' ? offset : 0), limit: String(this.oLimit) });
         if (this.oStatus) q.set('status', this.oStatus);
         if (this.oPayment) q.set('payment', this.oPayment);
         if (this.oq.trim()) q.set('q', this.oq.trim());
         if (this.oProduct) q.set('product', this.oProduct);
-        const r = await this.api('GET', '/api/admin/orders' + (q.toString() ? '?' + q : ''));
-        this.orders = r.orders; this.quoteRequests = r.quote_requests;
+        const r = await this.api('GET', '/api/admin/orders?' + q);
+        this.orders = r.orders; this.oTotal = r.total; this.oOffset = r.offset; this.quoteCounts = r.quote_counts || {};
         this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses };
       } catch (e) { this.ordersMsg = e.message; }
       finally { this.ordersLoading = false; }
     },
+    // The quote request inbox: one page, searched and filtered on the server; counts per status for the filter and badge
+    async loadQuoteInbox(offset = 0) {
+      this.qiLoading = true; this.qiMsg = '';
+      try {
+        const q = new URLSearchParams({ offset: String(typeof offset === 'number' ? offset : 0), limit: String(this.qiLimit) });
+        if (this.qiStatus) q.set('status', this.qiStatus);
+        if (this.qiq.trim()) q.set('q', this.qiq.trim());
+        const r = await this.api('GET', '/api/admin/quote-requests?' + q);
+        this.quoteRequests = r.quote_requests; this.qiTotal = r.total; this.qiOffset = r.offset; this.quoteCounts = r.counts || {};
+      } catch (e) { this.qiMsg = e.message; }
+      finally { this.qiLoading = false; }
+    },
+    quoteStatusList: ['new', 'quoted', 'answered', 'approved', 'rejected', 'closed'],
+    get quoteNewCount() { return this.quoteCounts.new || 0; },                    // awaiting the Admin's reply
+    get quoteOpenCount() { return (this.quoteCounts.new || 0) + (this.quoteCounts.quoted || 0) + (this.quoteCounts.answered || 0); },
+    pageText(offset, limit, total) { return total ? (offset + 1) + '–' + Math.min(offset + limit, total) + ' of ' + total : ''; },
     orderStatusLabel(s) { return (this.ordersMeta.statuses.find(x => x.id === s) || { label: s })?.label || s; },
     orderStatusClass(s) {
       return { new: 'bg-sky-100 text-sky-800', payment_confirmed: 'bg-emerald-100 text-emerald-800', three_d_ready: 'bg-green-100 text-green-700',

@@ -20,6 +20,7 @@ import html
 import json
 import re
 import sqlite3
+from datetime import datetime, timezone
 
 from p3 import addressing as Addressing
 from p3 import charmprices as CharmPrices
@@ -56,7 +57,18 @@ def QuoteRef(No) -> str | None:
     return f"Q-{No}" if No is not None else None
 
 
+def _Like(Text: str) -> str:
+    """A LIKE pattern for a search box: the text anywhere (case-insensitive for ASCII), % and _ taken literally."""
+    return "%" + re.sub(r"([\\%_])", r"\\\1", Text.strip()) + "%"
+
+
+# Customer name ("Dana Levi") and email inside the customer snapshot, for searching
+_Name = "(COALESCE(json_extract({0}.customer_json, '$.first_name'), '') || ' ' || COALESCE(json_extract({0}.customer_json, '$.last_name'), ''))"
+_Email = "COALESCE(json_extract({0}.customer_json, '$.email'), '')"
+
+
 QuoteOpen = ("new", "quoted", "answered")          # a quote can still be sent, revised and decided
+QuoteStatuses = ("new", "quoted", "answered", "approved", "rejected", "closed")
 QuoteManualStatuses = ("new", "quoted", "answered", "rejected", "closed")   # "approved" only by the customer (it creates the order)
 
 
@@ -448,7 +460,10 @@ class OrderService:
                 "offer": {K: Offer.get(K) for K in ("version", "unit_price", "quantity", "total", "valid_until", "sent_at", "size_label")}
                 if Offer else None,
                 "decided_at": R.get("decided_at"), "decision_note": R.get("decision_note"), "order_id": R.get("order_id"),
-                "order_ref": OrderRef(Order["order_no"]) if Order else None}
+                "order_ref": OrderRef(Order["order_no"]) if Order else None,
+                # an open request whose quote can no longer be approved (valid_until is a UTC date)
+                "offer_expired": bool(Offer and Offer.get("valid_until") and R["status"] in QuoteOpen
+                                      and Offer["valid_until"] < datetime.now(timezone.utc).date().isoformat())}
 
     # ── admin ────────────────────────────────────────────────────────────
     def _ThreeDForLine(self, L: dict) -> dict:
@@ -511,8 +526,11 @@ class OrderService:
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
         return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
 
-    def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int = 300,
-                  Product: str | None = None) -> list[dict]:
+    @staticmethod
+    def _AdminWhere(Status: str | None, Payment: str | None, Query: str | None, Product: str | None,
+                    OpenOnly: bool = False) -> tuple[str, list]:
+        """The Admin's order filters in SQL: status, payment, product, still open, and the search box — Order ID,
+        customer name or email, promo code, a line's design name, Ring / Charm ID or design id."""
         Where, Params = [], []
         if Product:
             Where.append("EXISTS (SELECT 1 FROM order_lines l WHERE l.order_id = o.id AND l.product_type = ?)")
@@ -523,11 +541,26 @@ class OrderService:
         if Payment:
             Where.append("o.payment_status = ?")
             Params.append(Payment)
-        Rows = self.Ctx.Db.All("SELECT o.* FROM orders o" + (" WHERE " + " AND ".join(Where) if Where else "")
-                               + " ORDER BY o.created_at DESC LIMIT ?", (*Params, Limit))
+        if OpenOnly:
+            Where.append("o.status NOT IN ('cancelled', 'completed')")
+        if (Query or "").strip():
+            Like = " LIKE ? ESCAPE '\\'"
+            Where.append("(('ORD-' || o.order_no)" + Like + " OR " + _Name.format("o") + Like + " OR " + _Email.format("o") + Like
+                         + " OR COALESCE(o.promo_code, '')" + Like
+                         + " OR EXISTS (SELECT 1 FROM order_lines l WHERE l.order_id = o.id AND (l.title" + Like
+                         + " OR COALESCE(l.ring_id, '')" + Like + " OR l.design_id" + Like + ")))")
+            Params += [_Like(Query)] * 7
+        return (" WHERE " + " AND ".join(Where)) if Where else "", Params
+
+    def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int | None = 50,
+                  Product: str | None = None, Offset: int = 0, OpenOnly: bool = False) -> list[dict]:
+        """One page of orders, newest first (Limit None: every match)."""
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product, OpenOnly)
+        Page = " LIMIT ? OFFSET ?" if Limit is not None else ""
+        Rows = self.Ctx.Db.All("SELECT o.* FROM orders o" + Where + " ORDER BY o.created_at DESC" + Page,
+                               (*Params, *((Limit, max(0, Offset)) if Limit is not None else ())))
         Mock = Sessions.MockDesignIds(self.Ctx)
         Out = []
-        Q = (Query or "").strip().lower()
         for O in Rows:
             Lines = self._Lines(O["id"])
             J = self.ToJson(O, Lines, ForCustomer=False)
@@ -535,13 +568,13 @@ class OrderService:
             for L in J["lines"]:
                 L.update(self._ThreeDForLine(L))
             J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])
-            Hay = " ".join(str(X or "") for X in (J["ref"], J["customer"]["first_name"], J["customer"]["last_name"], J["customer"]["email"],
-                                                 J["promo_code"], *[L["title"] for L in J["lines"]], *[L["ring_id"] for L in J["lines"]],
-                                                 *[L["design_id"] for L in J["lines"]])).lower()
-            if Q and Q not in Hay:
-                continue
             Out.append(J)
         return Out
+
+    def AdminCount(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None,
+                   Product: str | None = None) -> int:
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product)
+        return self.Ctx.Db.One("SELECT COUNT(*) AS n FROM orders o" + Where, tuple(Params))["n"]
 
     def AdminGet(self, OrderId: str) -> dict:
         O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? OR order_no = ?", (OrderId, _OrderNo(OrderId)))
@@ -558,6 +591,8 @@ class OrderService:
                        self.Ctx.Db.All("SELECT * FROM order_events WHERE order_id = ? ORDER BY id", (O["id"],))]
         J["allowed_statuses"] = StatusOrder + ["cancelled"]
         J["notes_list"] = self._NotesList(O, J["events"])
+        Quote = self.Ctx.Db.One("SELECT id, request_no FROM quote_requests WHERE order_id = ?", (O["id"],))
+        J["quote"] = {"id": Quote["id"], "ref": QuoteRef(Quote["request_no"])} if Quote else None   # the quote it came from
         try:
             J["user"] = self.Ctx.Accounts.AdminGet(O["owner_account_id"])
         except Exception:  # noqa: BLE001
@@ -642,10 +677,42 @@ class OrderService:
             Out.append({"kind": "created", "note": First, "at": O["created_at"], "by": "system"})
         return sorted(Out, key=lambda N: (N["at"] or "", N["kind"] != "created"))
 
-    def AdminQuoteRequests(self, Status: str | None = None) -> list[dict]:
-        Rows = self.Ctx.Db.All("SELECT * FROM quote_requests" + (" WHERE status = ?" if Status else "") + " ORDER BY created_at DESC LIMIT 300",
-                               (Status,) if Status else ())
+    @staticmethod
+    def _QuoteWhere(Status: str | None, Query: str | None) -> tuple[str, list]:
+        """The quote inbox's filters in SQL: status ("open": new, quoted or answered) and the search box — Quote ID,
+        customer name or email, design name, Ring / Charm ID, the Order ID it became."""
+        Where, Params = [], []
+        if Status == "open":
+            Where.append("q.status IN (" + ",".join("?" * len(QuoteOpen)) + ")")
+            Params += list(QuoteOpen)
+        elif Status:
+            Where.append("q.status = ?")
+            Params.append(Status)
+        if (Query or "").strip():
+            Like = " LIKE ? ESCAPE '\\'"
+            Where.append("(('Q-' || q.request_no)" + Like + " OR " + _Name.format("q") + Like + " OR " + _Email.format("q") + Like
+                         + " OR q.title" + Like + " OR COALESCE(q.ring_id, '')" + Like
+                         + " OR EXISTS (SELECT 1 FROM orders o WHERE o.id = q.order_id AND ('ORD-' || o.order_no)" + Like + "))")
+            Params += [_Like(Query)] * 6
+        return (" WHERE " + " AND ".join(Where)) if Where else "", Params
+
+    def AdminQuoteRequests(self, Status: str | None = None, Query: str | None = None, Limit: int | None = 50,
+                           Offset: int = 0) -> list[dict]:
+        """One page of quote requests, newest first (Limit None: every match)."""
+        Where, Params = self._QuoteWhere(Status, Query)
+        Page = " LIMIT ? OFFSET ?" if Limit is not None else ""
+        Rows = self.Ctx.Db.All("SELECT q.* FROM quote_requests q" + Where + " ORDER BY q.created_at DESC" + Page,
+                               (*Params, *((Limit, max(0, Offset)) if Limit is not None else ())))
         return [self.QuoteRequestJson(R) for R in Rows]
+
+    def AdminQuoteCount(self, Status: str | None = None, Query: str | None = None) -> int:
+        Where, Params = self._QuoteWhere(Status, Query)
+        return self.Ctx.Db.One("SELECT COUNT(*) AS n FROM quote_requests q" + Where, tuple(Params))["n"]
+
+    def QuoteCounts(self) -> dict[str, int]:
+        """Quote requests per status, every status present (the inbox filter and its badge: "new" awaits a reply)."""
+        Counts = {R["status"]: R["n"] for R in self.Ctx.Db.All("SELECT status, COUNT(*) AS n FROM quote_requests GROUP BY status")}
+        return {S: Counts.get(S, 0) for S in QuoteStatuses}
 
     def SetQuoteStatus(self, RequestId: str, Status: str, By: str = "admin") -> dict:
         """The Admin's own status for a request (recorded in its history). An approved quote became an order: it is
