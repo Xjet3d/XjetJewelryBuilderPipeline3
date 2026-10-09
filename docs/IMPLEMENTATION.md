@@ -546,7 +546,7 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
   `is_feasible`; while it is on, activating or restoring instructions without them is refused.
 - **Evaluation on proto (2026-10-09, Gemini 2.5 Flash).** 20 representative prompts (10 rings, 10 charms: valid,
   ambiguous, poorly written, Hebrew, public figures, a brand logo, a copyrighted character, nudity, a hate symbol, a ring
-  asked for in Charm mode). The existing instructions (ring v4, charm v3) got 16 of 20 right — they let through a public
+  asked for in Charm mode). The existing instructions (ring v4, charm v3) got 17 of 20 right — they let through a public
   figure's face on a ring, a brand logo and a copyrighted character. With a *Content limits* section (public figures'
   likeness, brands and characters, sexual / hate / gore content; pets, family and engraved names allowed; customer-asked
   stones allowed on rings; a neutral suggestion in the customer's language) and an *Application context* section (the
