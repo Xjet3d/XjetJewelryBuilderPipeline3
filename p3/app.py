@@ -110,11 +110,14 @@ def _ScriptJson(Value) -> str:
 
 
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
-                   Og: str = "") -> str:
+                   Og: str = "", Mock: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
-    (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description."""
+    (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description. Mock False: the
+    parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
+    if Mock is not None:
+        Html = re.sub(r"<!--mock-->.*?<!--/mock-->", "", Html, flags=re.S) if not Mock else Html.replace("<!--mock-->", "").replace("<!--/mock-->", "")
     for Asset in ("app.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
@@ -305,7 +308,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Description = html.escape(PageDescription(), quote=True)
         Tiles = Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request))
         Tags = ['<meta property="og:type" content="website">', '<meta property="og:site_name" content="XJet Atelier">',
-                '<meta property="og:title" content="XJET Atelier — Custom AI Jewelry, Designed by You">',
+                '<meta property="og:title" content="XJet Atelier — Custom AI Jewelry, Designed by You">',
                 f'<meta property="og:description" content="{Description}">', f'<meta property="og:url" content="{Url}">',
                 '<meta name="twitter:card" content="summary_large_image">', f'<link rel="canonical" href="{Url}">']
         if Tiles:
@@ -318,12 +321,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """The page's meta description names only the products customers can design (Admin → Settings → Products)."""
         Names = [Products.Plurals[P].lower() for P in Ctx.Products.AvailableProducts()]
         What = " and ".join(Names) if len(Names) <= 2 else ", ".join(Names[:-1]) + " and " + Names[-1]
-        return (f"Design custom {What or 'jewelry'} with AI at XJET Atelier. Describe your vision, choose from four designs, "
+        return (f"Design custom {What or 'jewelry'} with AI at XJet Atelier. Describe your vision, choose from four designs, "
                 "refine it, and preview it in a 360° movie.")
 
     @App_.get("/", include_in_schema=False)
     async def Index(request: Request):
-        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), HomeOg(request)))
+        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), HomeOg(request),
+                                           Mock=Modes.Mode == "mock"))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
@@ -362,7 +366,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
         the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
         that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription())
+        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), Mock=Modes.Mode == "mock")
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:

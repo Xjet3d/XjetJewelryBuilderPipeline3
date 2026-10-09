@@ -162,7 +162,7 @@ def _Clean(Word: str) -> str:
 
 def _Entity(Prompt: str) -> str:
     """A proper noun the prompt is built around ("inspired by Haaland"): a capitalised word that does not
-    open a sentence — never a brand, a material or a jewellery term."""
+    open a sentence — never a brand, a material or a jewelry term."""
     Hero = ""
     for M in re.finditer(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ']{2,}", Prompt or ""):
         Before = (Prompt or "")[:M.start()].rstrip()

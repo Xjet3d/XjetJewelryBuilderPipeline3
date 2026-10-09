@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="p3-base" content="{{BASE}}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XJET Atelier — Custom AI Jewelry, Designed by You</title>
+    <title>XJet Atelier — Custom AI Jewelry, Designed by You</title>
     <meta name="description" content="{{DESCRIPTION}}">
     {{OG}}
     <meta name="robots" content="{{ROBOTS}}">
@@ -189,12 +189,13 @@
         <p class="text-[12px] mt-1.5 px-1 truncate" style="color:#6F6F6F;" x-text="zoom?.label"></p>
     </div>
 
-    <!-- ── Mode banner: always tells the viewer whether the AI provider is real ── -->
-    <div x-show="isMock" x-cloak class="w-full shrink-0 px-4 py-1.5 text-center text-[12px] tracking-wide"
+    <!-- ── Mode banner: always tells the viewer whether the AI provider is real. Everything between the mock markers is
+         sent only while the AI is in mock mode (p3/app.py _VersionedPage): never to a live visitor or a search engine ── -->
+    <!--mock--><div x-show="isMock" x-cloak data-mock-banner class="w-full shrink-0 px-4 py-1.5 text-center text-[12px] tracking-wide"
          style="background:#FFF4DB; color:#7A4D00; border-bottom:1px solid #F0D9A8;" role="status">
         <span class="font-semibold uppercase tracking-[0.16em]">Mock mode</span>
         · Designs, movies and 3D files are simulated placeholders. No AI provider is called and nothing is charged.
-    </div>
+    </div><!--/mock-->
 
     <!-- ── Header ────────────────────────────────────────────────────────────
          One grid (nav.site-header, arranged in the style block above), so every control exists once:
@@ -264,10 +265,10 @@
         <!-- Utility: My Designs · ♥ Favorites · bag · account — a row of its own on the site's pages from 768 px -->
         <div class="h-util flex items-center justify-end gap-0.5 sm:gap-1 md:gap-2.5">
             <!-- Mode chip — internal testing only (live mode is the normal state: no chip); the banner above says it too -->
-            <span x-show="isMock && !inStudio" x-cloak class="hidden md:inline-flex mr-auto items-center gap-1.5 px-2 py-0.5 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
+            <!--mock--><span x-show="isMock && !inStudio" x-cloak class="hidden md:inline-flex mr-auto items-center gap-1.5 px-2 py-0.5 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
                   style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;" title="Simulated provider — nothing is generated or charged">
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
-            </span>
+            </span><!--/mock-->
             <!-- My Designs (signed in) and ♥ Favorites open the Design screen's side panel on that tab (in the studio its toolbar has them) -->
             <!-- Icon-first: an icon alone; hovering or focusing it reveals the name beside the icon (.nav-icon / .nav-label).
                  The open panel or page keeps the selected look (.is-on), still without text. -->
@@ -363,7 +364,7 @@
             <section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-115px)] bg-white">
                 <div class="md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
                     <div class="flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
-                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewellery</span>
+                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewelry</span>
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
                     </div>
                     <h1 class="text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
@@ -377,10 +378,10 @@
                     <div class="hidden md:block">
                         <p x-show="heroCollection.label" class="mt-5 text-[13px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
                         <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
-                        <p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                        <!--mock--><p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
                            style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
                             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
-                        </p>
+                        </p><!--/mock-->
                     </div>
                 </div>
                 <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
@@ -393,10 +394,10 @@
                     </div>
                     <div class="md:hidden w-full px-2">
                         <p x-show="heroCollection.label" class="mt-5 text-[13px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
-                        <p x-show="isMock" x-cloak class="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                        <!--mock--><p x-show="isMock" x-cloak class="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
                            style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8">
                             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
-                        </p>
+                        </p><!--/mock-->
                     </div>
                 </div>
             </section>
@@ -405,7 +406,7 @@
                 <div class="text-center mb-12">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Inspiration Gallery</span>
                     <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
-                    <p class="text-zinc-600 text-[15px] max-w-xl mx-auto">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
+                    <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="homeGalleryIntro">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
                 </div>
                 <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
@@ -531,7 +532,7 @@
                 <div class="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div class="flex flex-col gap-1">
                         <span class="brand-font text-white text-base tracking-[0.12em] uppercase italic">XJet <span class="not-italic text-zinc-400 text-[12px] tracking-[0.2em]">Atelier</span></span>
-                        <span>© 2026 XJet Ltd. Custom rings designed with AI, produced with NanoParticle Jetting™.</span>
+                        <span x-text="footerLine">© 2026 XJet Ltd. Custom rings designed with AI, produced with NanoParticle Jetting™.</span>
                     </div>
                     <nav aria-label="Legal and support" class="flex flex-wrap gap-x-6 gap-y-2">
                         <button @click="navigateTo('shipping-returns')" class="tap-lg hover:text-white transition">Shipping &amp; Returns</button>
@@ -1586,7 +1587,7 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-2xl mx-auto px-6 pt-10 pb-28">
                 <h2 class="text-2xl brand-font mb-2">My Bag</h2>
-                <p x-show="token && bagLines.length" class="text-[13px] text-zinc-500 mb-8">Fixed prices per ring and material, in US dollars. Ring sizes are US sizes. Delivery and any promo code are added at checkout.</p>
+                <p x-show="token && bagLines.length" class="text-[13px] text-zinc-500 mb-8" x-text="bagPriceNote">Fixed prices per ring and material, in US dollars. Ring sizes are US sizes. Delivery and any promo code are added at checkout.</p>
                 <p x-show="!token" class="text-sm text-zinc-500">Sign in to see your bag.</p>
                 <div x-show="token && bagLines.length === 0" class="text-center py-14 border border-dashed border-zinc-200 rounded-xl">
                     <p class="brand-font text-xl text-zinc-800 mb-2">Your bag is empty</p>

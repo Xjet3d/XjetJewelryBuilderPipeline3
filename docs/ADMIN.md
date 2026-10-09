@@ -435,6 +435,9 @@ generation, movie and 3D request becomes a paid fal.ai call — and asks for con
 below) and is refused while generations are running. The choice survives restarts (`<data dir>/runtime.json`), exactly
 like the `/dev` page's switch. Where the configuration fixes the mode (`P3_LOCK_MODE`, always in production) the switch is
 disabled. API: `GET|PUT /api/admin/ai-mode` (`PUT {"mode": "mock"|"live", "confirmation"}`).
+The customer site's *Mock mode* banner and badges are in the page only while the mode is mock (`<!--mock-->` blocks in
+`web/index.html`, left out by `_VersionedPage` otherwise): a live page, and a search engine reading it, never carries
+that text. Pages already open show the new mode after a reload.
 
 ## Keys (Settings → Keys)
 

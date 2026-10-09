@@ -159,18 +159,18 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
         Body = f"""
       <h1>Account removed</h1>
       <p>{E(RemovedMessage(Support))}</p>
-      <a class="btn" href="{E(BasePath)}/">Back to XJET ATELIER →</a>"""
+      <a class="btn" href="{E(BasePath)}/">Back to XJet Atelier →</a>"""
     elif Status == "expired":
         Body = f"""
       <h1>Link expired</h1>
       <p>This verification link has expired. Please register again from XJet Atelier to
          receive a fresh link.</p>
-      <a class="btn" href="{E(BasePath)}/">Back to XJET ATELIER →</a>"""
+      <a class="btn" href="{E(BasePath)}/">Back to XJet Atelier →</a>"""
     else:
         Body = f"""
       <h1>Invalid link</h1>
       <p>This verification link is not valid. It may have been mistyped or already used.
          Please register again from XJet Atelier.</p>
-      <a class="btn" href="{E(BasePath)}/">Back to XJET ATELIER →</a>"""
+      <a class="btn" href="{E(BasePath)}/">Back to XJet Atelier →</a>"""
     Page = (WebDir / "verify.html").read_text(encoding="utf-8")
     return Page.replace("{{CARD_CLASS}}", "" if Ok else "bad").replace("{{BODY}}", Body).replace("{{BASE}}", BasePath)

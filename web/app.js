@@ -49,9 +49,9 @@ const MATERIAL_COPY = {
   vermeil:         { sub: 'Sterling silver · thick 14K gold plating', desc: 'Sterling silver core with thick 14K gold plating. Luxury look and feel at an accessible price point.' },
   gold_10k_yellow: { desc: '41.7% pure gold — hardest gold alloy, ideal for everyday fine jewelry.' },
   gold_10k_rose:   { desc: 'Warm blush tone with 41.7% gold content — the most durable gold colour.' },
-  gold_14k_yellow: { desc: '58.3% pure gold — perfect balance of purity and strength for fine jewellery.' },
+  gold_14k_yellow: { desc: '58.3% pure gold — perfect balance of purity and strength for fine jewelry.' },
   gold_14k_rose:   { desc: 'A warm blush alloy of gold and copper delivering a romantic tone that flatters every skin tone.' },
-  gold_18k_yellow: { desc: '75% pure gold — a rich, warm yellow prized for heirloom fine jewellery.' },
+  gold_18k_yellow: { desc: '75% pure gold — a rich, warm yellow prized for heirloom fine jewelry.' },
   gold_18k_rose:   { desc: 'A romantic blush alloy at 75% gold content — warm, refined, and timeless.' },
 };
 
@@ -67,7 +67,7 @@ const MATERIAL_INFO = {
                      durability: 'The look of gold at a fraction of the price; the plating wears gradually with heavy daily use and can be renewed.',
                      care: 'Take it off for swimming, sport and showering; keep away from perfume and lotion.' },
   gold_10k_yellow: { appearance: 'Soft, pale yellow — 41.7% gold.', durability: 'The hardest and most wear-resistant gold alloy.' },
-  gold_14k_yellow: { appearance: 'Warm classic yellow — 58.3% gold.', durability: 'The everyday fine-jewellery standard: rich colour, good hardness.' },
+  gold_14k_yellow: { appearance: 'Warm classic yellow — 58.3% gold.', durability: 'The everyday fine-jewelry standard: rich colour, good hardness.' },
   gold_18k_yellow: { appearance: 'Deep, rich yellow — 75% gold.', durability: 'The most precious colour; a little softer, for pieces worn with care.' },
   gold_10k_rose:   { appearance: 'Warm blush with a copper note — 41.7% gold.', durability: 'The most durable rose alloy.' },
   gold_14k_rose:   { appearance: 'Romantic pink-gold — 58.3% gold.', durability: 'Rich colour with everyday hardness.' },
@@ -319,6 +319,8 @@ function p3App() {
         if (target === 'live') body.confirmation = this.liveConfirmText.trim();
         this.devMode = await this.devRequest('POST', '/api/dev/mode', body);
         this.liveConfirmOpen = false; this.liveConfirmText = '';
+        // A live page carries no mock banner (the server sends it only in mock mode): reload to show it
+        if (this.devMode?.mode === 'mock' && !document.querySelector('[data-mock-banner]')) { location.reload(); return; }
         try { this.health = await this.api('GET', '/api/health', null, { noAuth: true }); } catch {}
       } catch (e) { this.devError = e.message; }
       finally { this.devBusy = false; }
@@ -876,6 +878,27 @@ function p3App() {
       const tail = ' — real XJet designs. Open one to see it large; make it yours to start from its four options.';
       if (this.nothingOnOffer) return 'Real XJet designs. Open one to see it large.';
       return (this.productsOn ? this.wording.list : this.soleProduct === 'charm' ? 'Charms' : 'Bands, signets, statement and stackable rings') + tail;
+    },
+    // The products on offer in a sentence: "rings", "charms", "rings and charms" (more: "rings, charms and pendants")
+    get productsText() {
+      const n = this.productsList.map(p => this.productPlural(p).toLowerCase());
+      return n.length ? (n.length === 1 ? n[0] : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1]) : 'jewelry';
+    },
+    // The homepage's gallery line follows the products on offer (rings alone keep their own description)
+    get homeGalleryIntro() {
+      const tail = ' — real XJet designs you can make your own, or the spark for one of yours.';
+      if (this.nothingOnOffer) return 'Real XJet designs you can make your own, or the spark for one of yours.';
+      if (this.soleProduct === 'ring') return 'Bands, signets, statement and stackable rings' + tail;
+      return this.productsText[0].toUpperCase() + this.productsText.slice(1) + tail;
+    },
+    get footerLine() { return '© 2026 XJet Ltd. Custom ' + this.productsText + ' designed with AI, produced with NanoParticle Jetting™.'; },
+    // The bag's price note names what is in the bag: ring sizes are US sizes, charm sizes millimeters
+    get bagPriceNote() {
+      const kinds = new Set((this.bagLines || []).map(l => l.product_type || 'ring'));
+      const ring = kinds.has('ring'), charm = kinds.has('charm');
+      const per = ring && charm ? 'piece' : charm ? 'charm' : 'ring';
+      const sizes = ring && charm ? 'Ring sizes are US sizes; charm sizes are in millimeters.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
+      return 'Fixed prices per ' + per + ' and material, in US dollars. ' + sizes + ' Delivery and any promo code are added at checkout.';
     },
     get composerNote() {
       if (this.nothingOnOffer) return 'Nothing is available to design right now. Please check back soon.';
