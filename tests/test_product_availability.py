@@ -103,13 +103,17 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
 async def test_the_line_under_start_designing_follows_the_products_customers_can_design(tmp_path):
     """Rings only: "Rings — the first XJet Atelier collection, …"; Charms only: "Charms — …"; both: "Rings & Charms —
     XJet Atelier collections, …". Computed on the page from the catalog's products (the availability switches), never
-    from an Admin's preview; the static text is the rings line for a page read before its script runs."""
+    from an Admin's preview. The page as served (its markup, read before the script runs) carries the line of the products
+    on offer; the template keeps the rings line."""
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         Index = (await H.Client.get("/")).text
         Bound = ('<span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span '
                  'x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span>')
-        assert Index.count(Bound) == 2 and Index.count('x-show="heroCollection.label"') == 2     # desktop and phone
+        Template = Index[Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">"):]
+        assert Template.count(Bound) == 2 and Template.count('x-show="heroCollection.label"') == 2   # desktop and phone
+        Live = Index[Index.index('data-ssr-view="home"'):Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">")]
+        assert Live.count(Bound) == 2 and Live.count('x-cloak x-show="heroCollection.label"') == 2    # hidden until the script decides
         App = (await H.Client.get("/static/app.js")).text
         Getter = App[App.index("get heroCollection()"):App.index("chooseProduct(p)")]
         assert "this.productsList.filter(p => !this.previewedProducts.includes(p))" in Getter    # customers' products only
@@ -119,7 +123,10 @@ async def test_the_line_under_start_designing_follows_the_products_customers_can
         assert "products" not in (await H.Client.get("/api/catalog")).json()                    # rings only → ['ring']
         await _Set(H, "charm", True)
         assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["ring", "charm"]
+        Live = (await H.Client.get("/")).text
+        assert 'x-text="heroCollection.label">Rings &amp; Charms</span>' in Live and "> — XJet Atelier collections, made to order in real metal.</span>" in Live
         await _Set(H, "ring", False)
         assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["charm"]
+        assert 'x-text="heroCollection.label">Charms</span>' in (await H.Client.get("/")).text
     finally:
         await H.Close()

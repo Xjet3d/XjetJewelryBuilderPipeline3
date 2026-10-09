@@ -60,11 +60,15 @@ async def test_the_main_row_brand_a_short_navigation_and_start_designing(HG):
     Index = (await H.Client.get("/")).text
     Nav, Bar = _Header(Index)
     Main = _Part(Bar, "h-nav")
-    Links = re.findall(r">([A-Za-z ]+)</button>", Main[:Main.index('<div id="about-menu"')])
+    Links = re.findall(r">([A-Za-z ]+)</(?:button|a)>", Main[:Main.index('<div id="about-menu"')])
     assert [L.strip() for L in Links] == ["How It Works", "Inspiration", "Materials"]
+    # the pages are real links (their own URL; a plain click opens them in place)
+    assert f'<a href="{H.Base}/gallery" @click="pageLink($event, \'inspiration\')"' in Main
+    assert f'<a href="{H.Base}/materials" @click="pageLink($event, \'materials\')"' in Main
     About = Main[Main.index('<div id="about-menu"'):]
-    for View, Label in (("designers", "About XJet"), ("technology", "Technology"), ("faq", "FAQ"), ("contact", "Support")):
-        assert f"navigateTo('{View}')" in About and f">{Label}</button>" in About
+    for View, Path, Label in (("designers", "about", "About XJet"), ("technology", "technology", "Technology"), ("faq", "faq", "FAQ"),
+                              ("contact", "contact", "Support")):
+        assert f"pageLink($event, '{View}')" in About and f">{Label}</a>" in About and f'href="{H.Base}/{Path}"' in About
     assert 'aria-controls="about-menu"' in Main and "@click.outside=\"aboutOpen = false\"" in Main
     Cta = _Part(Bar, "h-cta")
     assert 'x-show="!inStudio" @click="resetAIFlow()" class="btn-gold' in Cta and ">Start Designing</button>" in Cta
@@ -73,7 +77,7 @@ async def test_the_main_row_brand_a_short_navigation_and_start_designing(HG):
     # the menu panel (below 1024 px) still lists every page
     Menu = Nav[Nav.index('<div id="mobile-menu"'):]
     for View in ("inspiration", "materials", "technology", "faq", "designers", "contact"):
-        assert f"navigateTo('{View}')" in Menu, View
+        assert f"pageLink($event, '{View}')" in Menu, View
 
 
 async def test_the_account_menu_is_a_dropdown_with_sign_out_last(HG):

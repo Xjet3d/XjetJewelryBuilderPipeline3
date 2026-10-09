@@ -24,6 +24,11 @@ const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
 const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal_code', 'country'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
+// Each page's URL under the base path (p3/sitepages.py Paths): /gallery, /faq … ('' = the home page)
+const PAGE_PATHS = { home: '', inspiration: 'gallery', faq: 'faq', materials: 'materials', technology: 'technology', designers: 'about',
+                     'shipping-returns': 'shipping-returns', terms: 'terms', privacy: 'privacy', contact: 'contact' };
+// The page the server rendered: its view is in the HTML as real markup (a copy that leaves when the visitor moves on)
+const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'home';
 
 // Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
 // as proto the older selection copy still works inside a click. Returns whether the text was copied.
@@ -107,7 +112,8 @@ function p3App() {
     SUPPORT_EMAIL: (window.__p3 && window.__p3.support_email) || '',   // P3_SUPPORT_EMAIL (the server never invents one)
 
     // ── app / session ────────────────────────────────────────────────
-    view: 'home',
+    view: P3_PAGE,
+    ssrView: window.__p3?.ssr || '',          // the view the server's copy shows (p3/sitepages.py ServerView)
     health: null,
     catalog: null,
 
@@ -230,7 +236,13 @@ function p3App() {
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
-      if (PAGE_VIEWS.includes(hashView)) { this.view = hashView; if (hashView === 'materials') this.loadMaterialQuotes(); }
+      if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView);                      // an old #faq link: the page at its URL
+      else if (this.view === 'materials') this.loadMaterialQuotes();
+      // …also when such a link changes only the hash of the page already open
+      window.addEventListener('hashchange', () => {
+        const h = (location.hash || '').replace('#', '');
+        if (PAGE_VIEWS.includes(h)) this.navigateTo(h); else if (h === 'account') this.openAccountPage();
+      });
       if (hashView === 'account') this.view = 'account';          // signed out, the page offers the sign-in
       if (!this.token) return;
       this.refreshBag();
@@ -241,8 +253,8 @@ function p3App() {
         await this._afterSignIn(true);
         return;
       }
-      // A link to a page (#materials, #terms from the checkout …) wins over restoring the studio.
-      if (st.designId && STUDIO_VIEWS.includes(st.view) && !PAGE_VIEWS.includes(hashView) && hashView !== 'account') {
+      // A page's URL (/materials, /terms from the checkout …) or an old #page link wins over restoring the studio.
+      if (st.designId && STUDIO_VIEWS.includes(st.view) && P3_PAGE === 'home' && !PAGE_VIEWS.includes(hashView) && hashView !== 'account') {
         try { await this.openDesign(st.designId, { restoreView: st.view }); }
         catch { this.persist({ designId: null }); }
       }
@@ -331,15 +343,24 @@ function p3App() {
       if (this.previewOpen) this.closePreview();
       this.menuOpen = false; this.aboutOpen = false;
       this.view = v;
-      if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', v === 'home' ? location.pathname : '#' + v);
-      else if (v === 'account') history.replaceState(null, '', '#account');     // My Account → Quotes & orders (never indexed)
-      else history.replaceState(null, '', location.pathname);
+      if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', this.pageUrl(v));         // a page at its own URL
+      const titles = window.__p3?.titles || {};                                          // and its own title (p3/sitepages.py)
+      if (titles[v] || titles.home) document.title = titles[v] || titles.home;
+      else if (v === 'account') history.replaceState(null, '', BASE + '/#account');     // My Account → Quotes & orders (never indexed)
+      else history.replaceState(null, '', BASE + '/');                                  // the Design screens live at the home URL
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
       if (v === 'checkout') { this.refreshBag(); this.track('bag_viewed'); }
       if (v === 'materials') this.loadMaterialQuotes();
       if (v === 'account') { this.loadOrders(); this.loadMyQuotes(); }
+    },
+    pageUrl(v) { return BASE + '/' + (PAGE_PATHS[v] || ''); },
+    // A page link: a plain click opens the page in place; Ctrl/⌘/Shift/middle click opens its URL as the browser does
+    pageLink(e, v) {
+      if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0)) return;
+      e?.preventDefault();
+      this.navigateTo(v);
     },
     // Session analytics for the Admin (best effort; never blocks the customer).
     track(kind, designId = null) {
@@ -789,7 +810,7 @@ function p3App() {
     // Support: one address everywhere, with the right context in the subject line
     mailto(subject, body = '') {
       const q = new URLSearchParams(); q.set('subject', subject); if (body) q.set('body', body);
-      if (!this.SUPPORT_EMAIL) return '#contact';                       // no address configured: the Contact page explains
+      if (!this.SUPPORT_EMAIL) return this.pageUrl('contact');          // no address configured: the Contact page explains
       return 'mailto:' + this.SUPPORT_EMAIL + '?' + q.toString().replace(/\+/g, '%20');
     },
     get supportContext() {
@@ -797,11 +818,6 @@ function p3App() {
       if (this.order?.ref) bits.push('Order ' + this.order.ref);
       if (this.design?.title) bits.push(this.design.title);
       return bits.join(' · ');
-    },
-    get metalsFaqAnswer() {
-      const fashion = this.materialsOf('fashion').map(m => m.label).join(', ');
-      const gold = this.materialsOf('luxury').map(m => m.label.replace(' Gold', '')).join(', ');
-      return `Fashion jewelry: ${fashion}. Luxury: solid gold in ${gold} — luxury pieces can be previewed but are not yet available to order.`;
     },
 
     // ── compose / new design ──────────────────────────────────────────
@@ -904,23 +920,7 @@ function p3App() {
       if (this.nothingOnOffer) return 'Nothing is available to design right now. Please check back soon.';
       return 'XJet Atelier makes ' + this.wording.nouns + ' — describe the ' + this.wording.noun + ' you have in mind.';
     },
-    // The marketing, FAQ and terms sentences that name the product
-    get faqWhat() {
-      if (this.nothingOnOffer) return 'No product is available at the moment. Additional jewelry categories will be introduced in future updates.';
-      if (this.productsOn) return this.wording.list + ': choose one when you start a design. Additional jewelry categories will be introduced in future updates.';
-      return 'Currently, XJet Atelier supports ' + this.wording.Nouns + ' only. Additional jewelry categories will be introduced in future updates.';
-    },
-    get faqPrice() {
-      const r = this.wording.ring, c = this.wording.charm;
-      if (r && c) return 'Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the price. A charm is priced by material and size.';
-      if (c) return 'Fashion jewelry pieces are priced per piece by material and size.';
-      return 'Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.';
-    },
-    get faqUsd() {
-      const r = this.wording.ring, c = this.wording.charm;
-      const ring = 'Ring sizes are US sizes (see the size guide on the Customize screen)', charm = 'charm size is its total height in millimetres, including the loop at the top';
-      return 'Yes — all prices are in US dollars.' + (r && c ? ' ' + ring + '; a ' + charm + '.' : r ? ' ' + ring + '.' : c ? ' A ' + charm + '.' : '');
-    },
+    // The marketing and terms sentences that name the product (the FAQ is written by the server: p3/sitepages.py)
     get materialsTitle() { return 'Real metal, one fixed price per ' + this.wording.noun; },
     get materialsIntro() {
       const r = this.wording.ring, c = this.wording.charm;

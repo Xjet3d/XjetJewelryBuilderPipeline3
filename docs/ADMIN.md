@@ -439,6 +439,14 @@ The customer site's *Mock mode* banner and badges are in the page only while the
 `web/index.html`, left out by `_VersionedPage` otherwise): a live page, and a search engine reading it, never carries
 that text. Pages already open show the new mode after a reload.
 
+## Search engines (Settings → System)
+
+**Let search engines index the public pages** — off by default (every page `noindex`, `robots.txt` disallows the site);
+only the public production site (Atelier) turns it on, after a confirmation. The card shows the `robots.txt` and sitemap
+URLs and takes Google Search Console's verification code (the meta tag's `content`, written on the home page). API:
+`GET|PUT /api/admin/site-indexing` (`{"on": bool}`, `{"google_verification": "…"}`). How the pages, `robots.txt`, the
+sitemap and the structured data work, and the Search Console steps: `docs/SEO.md`.
+
 ## Keys (Settings → Keys)
 
 Two different secrets, two cards; changing one never changes the other.

@@ -161,7 +161,7 @@ async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
     taken out (a second headline, the technology name, a "Design preview" caption) and no call to action inside it."""
     H = HG
     Index = (await H.Client.get("/")).text
-    Hero = Index[Index.index('<template x-if="view === \'home\'">'):Index.index('Inspiration Gallery</span>')]
+    Hero = Index[Index.index('data-ssr-view="home"'):Index.index('Inspiration Gallery</span>')]     # the page as served
     assert "x-text=\"'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'\"" in Hero   # product-aware since 2026-10-07
     assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
     assert "Bespoke Jewelry" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero

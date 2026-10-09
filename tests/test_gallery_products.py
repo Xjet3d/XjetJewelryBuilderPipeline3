@@ -40,7 +40,7 @@ def CardBlocks(Page: str) -> list[str]:
 
 async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatches(HG):
     Page = (await HG.Client.get("/")).text
-    Cards = CardBlocks(Page)
+    Cards = list(dict.fromkeys(CardBlocks(Page)))              # the home page is served as markup and as its template
     assert len(Cards) == 3                                     # homepage strip, Gallery page, Gallery dialog
     for Card in Cards:
         # One badge for both products — no charm-only exception — shown only while products are offered
@@ -61,7 +61,7 @@ async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatche
     assert "metalFilter(galleryMetal)" in Box and "<template" not in Box.split(">", 1)[1]
     # Phones: smaller dots in the lower-left corner, just above the title bar (clear of the badge and the heart)
     assert "@media (min-width: 640px) { .metal-swatch { width: 15px; height: 15px; } }" in Page
-    assert Page.count("metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11") == 3
+    assert "".join(Cards).count("metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11") == 3
 
 
 async def test_the_metal_preview_is_visual_only(HG):

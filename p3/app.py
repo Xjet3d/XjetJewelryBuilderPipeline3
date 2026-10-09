@@ -58,6 +58,7 @@ from p3.addressing import BuildValidator
 from p3.registration import PublicOrigin, RegistrationService
 from p3 import sessions as Sessions
 from p3 import promptcheck as PromptCheck
+from p3 import sitepages as SitePages
 from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
@@ -258,11 +259,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = Immutable if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
-        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")):
+        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")) \
+                or Rel.strip("/") in SitePages.Views:
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
         H = Resp.headers
-        if Rel in ("/admin", "/admin/", "/dev", "/showcase") or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
+        if Rel in ("/admin", "/admin/", "/dev", "/showcase", "/verify") or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
             H.setdefault("X-Robots-Tag", "noindex, nofollow")       # the Admin, the tools and the API are never indexed
         H.setdefault("X-Content-Type-Options", "nosniff")
         H.setdefault("X-Frame-Options", "DENY")
@@ -292,30 +294,84 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return RequirePrincipal(Ctx, XAccessToken)
 
     # ── pages / static ───────────────────────────────────────────────────
-    # What the customer page learns from the server (window.__p3): never a secret. Pages are indexable only in
-    # production (development and staging copies stay out of search engines).
+    # What the customer page learns from the server (window.__p3): never a secret.
     # The support address the site shows: configured (P3_SUPPORT_EMAIL; required in production), else the address
     # carried over from Pipeline 2 for development copies only — never invented for production
     PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl,
                   "support_email": S.SupportEmail or ("" if S.Production else "atelier@xjet3d.com")}
-    PageRobots = "index,follow" if S.Production else "noindex"
 
-    def HomeOg(request: Request) -> str:
-        """The home page's Open Graph / Twitter tags and its canonical link: the site's name, the description of
-        the products on offer, the public origin and the first gallery design as the preview image."""
+    def Indexable() -> bool:
+        """Search engines may index the public pages: a production configuration, or the Admin's switch (Settings →
+        System → Search engines; off by default, so proto and every other copy stay out of search engines)."""
+        return S.Production or Ctx.Products.Get(SitePages.IndexKey) is True
+
+    def PageRobots() -> str:
+        return "index,follow" if Indexable() else "noindex"
+
+    def OgTags(request: Request, Title: str, Description: str, Url: str) -> str:
+        """A page's Open Graph / Twitter tags and canonical link: its title and description, the public origin, and the
+        first gallery design as the preview image."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)
-        Url = html.escape(f"{Origin}{Base}/", quote=True)
-        Description = html.escape(PageDescription(), quote=True)
+        U, D = html.escape(Url, quote=True), html.escape(Description, quote=True)
         Tiles = Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request))
         Tags = ['<meta property="og:type" content="website">', '<meta property="og:site_name" content="XJet Atelier">',
-                '<meta property="og:title" content="XJet Atelier — Custom AI Jewelry, Designed by You">',
-                f'<meta property="og:description" content="{Description}">', f'<meta property="og:url" content="{Url}">',
-                '<meta name="twitter:card" content="summary_large_image">', f'<link rel="canonical" href="{Url}">']
+                f'<meta property="og:title" content="{html.escape(Title, quote=True)}">',
+                f'<meta property="og:description" content="{D}">', f'<meta property="og:url" content="{U}">',
+                '<meta name="twitter:card" content="summary_large_image">', f'<link rel="canonical" href="{U}">']
         if Tiles:
             Image = html.escape(f"{Origin}{Media.ThumbUrl(Tiles[0]['image_url'], 800, 'jpg')}", quote=True)
             Tags += [f'<meta property="og:image" content="{Image}">', f'<meta name="twitter:image" content="{Image}">',
                      f'<meta property="og:image:alt" content="{html.escape(Tiles[0]["title"], quote=True)} — designed with XJet Atelier">']
         return "\n    ".join(Tags)
+
+    def GalleryLinks(request: Request) -> list[dict]:
+        """The gallery designs this visitor may see, each with its own page (/design/<name>)."""
+        Out = []
+        for Tile in Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True):
+            Row = Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Tile["design_id"],))
+            if Row and Row["share_slug"]:
+                Out.append({"slug": Row["share_slug"], "title": Tile["title"], "image_url": Tile["image_url"],
+                            "product_type": Tile.get("product_type") or Products.Ring})
+        return Out
+
+    def RenderPage(request: Request, View: str, Design: dict | None = None) -> str:
+        """A public page (p3/sitepages.py): index.html with the page's own title, description, canonical link, Open Graph
+        tags, robots and structured data, the FAQ, and the page itself as real markup. Design: a gallery design's own page
+        (/design/<name>) — the home page opening on that design, with the design's name as its heading."""
+        Visible = Products.VisibleProducts(Ctx, request)
+        Origin = S.PublicBaseUrl or PublicOrigin(request)
+        Home = f"{Origin}{Base}/"
+        Title, Description = SitePages.Meta(View, Ctx, Visible, PageDescription())
+        Url = Home + SitePages.Paths[View]
+        Faq = SitePages.Faq(Ctx, Visible)
+        Data = [SitePages.FaqPage(Faq)] if View == "faq" else []
+        if View == "home" and not Design:
+            Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
+        Og = OgTags(request, Title, Description, Url) if not Design else ""
+        Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
+        Html = _VersionedPage("index.html", Base, {**PageConfig, "view": View, "ssr": View, "titles": Titles}, PageRobots(),
+                              Description, Og, Mock=Modes.Mode == "mock")
+        Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
+        Before = {}
+        if View in ("home", "inspiration"):
+            Links = SitePages.DesignLinks(Base, GalleryLinks(request))
+            Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
+        if View == "materials":
+            Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
+        if Design:
+            Before['<section class="flex flex-col md:flex-row min-h-[calc(100dvh-64px)]'] = Design["block"]
+        Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
+        Html = SitePages.ServerView(Html, View, Fill, Before)
+        if Design:                                     # the design's name is the page's heading, not the site's tagline
+            Html = SitePages.DesignHeading(Html)
+        if View != "home":
+            Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{html.escape(Title, quote=False)}</title>", Html, count=1, flags=re.S)
+        if Data:
+            Html = Html.replace("</head>", "    " + SitePages.JsonLd(*Data) + "\n</head>", 1)
+        Verification = Ctx.Products.Get(SitePages.VerificationKey) if View == "home" and not Design else ""
+        if Verification and SitePages.VerificationPattern.fullmatch(Verification):    # Search Console's ownership check
+            Html = Html.replace("</head>", f'    <meta name="google-site-verification" content="{Verification}">\n</head>', 1)
+        return Html
 
     def PageDescription() -> str:
         """The page's meta description names only the products customers can design (Admin → Settings → Products)."""
@@ -326,32 +382,41 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/", include_in_schema=False)
     async def Index(request: Request):
-        return HTMLResponse(_VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), HomeOg(request),
-                                           Mock=Modes.Mode == "mock"))
+        return HTMLResponse(RenderPage(request, "home"))
+
+    # The public pages at their own URLs (/gallery, /faq, /materials, /technology, /about and the legal pages)
+    def _PageRoute(View: str):
+        async def Route(request: Request):
+            return HTMLResponse(RenderPage(request, View))
+        Route.__name__ = "Page_" + View.replace("-", "_")
+        return Route
+
+    for _View, _Path in SitePages.Paths.items():
+        if _Path:
+            App_.add_api_route("/" + _Path, _PageRoute(_View), methods=["GET"], include_in_schema=False)
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():
         return HTMLResponse(_VersionedPage("dev.html", Base))
 
     @App_.get("/robots.txt", include_in_schema=False)
-    async def Robots():
+    async def Robots(request: Request):
+        """The rules for this site's paths (with the base path) and where the sitemap is. Search engines read robots.txt
+        only at a host's root: where the site lives under a base path, the root's file must carry these lines."""
         Lines = ["User-agent: *"]
-        if S.Production:
-            Lines += ["Disallow: /admin", "Disallow: /api/", "Disallow: /verify", "Disallow: /dev", "Allow: /"]
-            if S.PublicBaseUrl:
-                Lines.append(f"Sitemap: {S.PublicBaseUrl}{Base}/sitemap.xml")
+        if Indexable():
+            Lines += [f"Disallow: {Base}{P}" for P in ("/admin", "/api/", "/verify", "/quote", "/dev", "/showcase")]
+            Lines += [f"Allow: {Base}/", f"Sitemap: {S.PublicBaseUrl or PublicOrigin(request)}{Base}/sitemap.xml"]
         else:
-            Lines.append("Disallow: /")                     # a development or staging copy is never indexed
+            Lines.append(f"Disallow: {Base}/")             # search engines kept out (Admin → Settings → System)
         return PlainTextResponse("\n".join(Lines) + "\n")
 
     @App_.get("/sitemap.xml", include_in_schema=False)
     async def Sitemap(request: Request):
+        """Every public page and every gallery design's own page — never the Admin, the API, My Account or a link."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)
-        Urls = [f"{Origin}{Base}/"]
-        for Tile in Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True):
-            Row = Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Tile["design_id"],))
-            if Row and Row["share_slug"]:
-                Urls.append(f"{Origin}{Base}/design/{Row['share_slug']}")
+        Urls = [f"{Origin}{Base}/" + P for P in SitePages.Paths.values()]
+        Urls += [f"{Origin}{Base}/design/{L['slug']}" for L in GalleryLinks(request)]
         Body_ = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
             "".join(f"  <url><loc>{html.escape(U)}</loc></url>\n" for U in Urls) + "</urlset>\n"
         return PlainTextResponse(Body_, media_type="application/xml")
@@ -366,17 +431,23 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
         the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
         that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Html = _VersionedPage("index.html", Base, PageConfig, PageRobots, PageDescription(), Mock=Modes.Mode == "mock")
-        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
         if Found is None:
+            Html = RenderPage(request, "home").replace('<meta name="robots" content="index,follow">', '<meta name="robots" content="noindex">')
+            SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
             return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
         Origin = S.PublicBaseUrl or PublicOrigin(request)        # the canonical public origin when configured
         Url = f"{Origin}{Base}/design/{Found['slug']}"
         Title = html.escape(Found["title"], quote=True)
-        Image = html.escape(f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}", quote=True)
+        ImageRaw = f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}"
+        Image = html.escape(ImageRaw, quote=True)
         Noun = "charm" if Found.get("product_type") == Products.Charm else "ring"
         Description = f"Designed with XJet Atelier — a {Noun} from the Inspiration Gallery. See it in 360°, choose your metal and make it yours."
+        Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(Description, quote=False)}</p>"
+                                       f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier">'
+                                       f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
+        Html = RenderPage(request, "home", Design={"block": Block})
+        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Tags = "\n".join([
             f'<meta property="og:type" content="website">',
             f'<meta property="og:site_name" content="XJet Atelier">',
@@ -390,6 +461,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:description" content="{Description}">',
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
+            SitePages.JsonLd(SitePages.DesignProduct(Found["title"], Url, ImageRaw, Description, Found.get("product_type") or Products.Ring)),
             f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
         ])
         # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)

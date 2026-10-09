@@ -1843,6 +1843,32 @@
         <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked">Turning mock mode off makes every generation, movie and 3D request a paid fal.ai call (you are asked to confirm). The choice survives restarts.</p>
         <p x-show="aiModeMsg" class="text-sm" role="status" :class="aiModeErr ? 'text-red-600' : 'text-emerald-700'" x-text="aiModeMsg"></p>
       </section>
+      <section class="card p-5 space-y-3" x-show="siteIndexing" aria-label="Search engines">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="lbl">Search engines</p>
+          <span class="badge" :class="siteIndexing?.indexable ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="siteIndexing?.indexable ? 'INDEXABLE' : 'NOINDEX'"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="indexing-switch-label" class="text-sm">Let search engines index the public pages:</span>
+          <button type="button" role="switch" aria-labelledby="indexing-switch-label" :aria-checked="siteIndexing?.on ? 'true' : 'false'"
+                  @click="toggleSiteIndexing()" :disabled="siteIndexingBusy || siteIndexing?.production"
+                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+                  :class="siteIndexing?.indexable ? 'bg-emerald-600' : 'bg-zinc-300'">
+            <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="siteIndexing?.indexable ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+          </button>
+          <span class="badge" :class="siteIndexing?.indexable ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="siteIndexing?.indexable ? 'ON' : 'OFF'"></span>
+        </div>
+        <p class="text-[12px] text-zinc-500" x-show="siteIndexing?.production">A production configuration always lets search engines index the public pages.</p>
+        <p class="text-[12px] text-zinc-500">Only the public production site (Atelier) turns this on; proto and test copies stay off (every page says <span class="font-mono">noindex</span>). The Admin, the API, sign-in and quote links and My Account are never indexed.
+          <span x-show="siteIndexing?.changed_at" x-text="'Last changed ' + dateTime(siteIndexing?.changed_at) + ' by ' + (siteIndexing?.changed_by || '—') + '.'"></span></p>
+        <p class="text-[12px] text-zinc-500">Robots: <a class="underline font-mono break-all" :href="siteIndexing?.robots_url" target="_blank" rel="noopener" x-text="siteIndexing?.robots_url"></a> · Sitemap: <a class="underline font-mono break-all" :href="siteIndexing?.sitemap_url" target="_blank" rel="noopener" x-text="siteIndexing?.sitemap_url"></a>. Search engines read robots.txt only at the host's root: where the site lives under a base path, the root file needs the same lines (see docs/SEO.md).</p>
+        <form class="flex flex-wrap items-center gap-2 pt-1" @submit.prevent="saveGoogleVerification()">
+          <label for="gsc-code" class="text-[12px] text-zinc-600">Google Search Console verification (the <span class="font-mono">content</span> of its meta tag; shown on the home page):</label>
+          <input id="gsc-code" class="inp !w-80 !py-1.5 font-mono !text-[12px]" x-model="gscCode" placeholder="e.g. a1B2c3… — or paste the whole tag" autocomplete="off">
+          <button type="submit" class="btn2 !py-1.5" :disabled="siteIndexingBusy || gscCode.trim() === (siteIndexing?.google_verification || '')">Save</button>
+        </form>
+        <p x-show="siteIndexingMsg" class="text-sm" role="status" :class="siteIndexingErr ? 'text-red-600' : 'text-emerald-700'" x-text="siteIndexingMsg"></p>
+      </section>
       <section class="card p-6" x-show="storage">
         <p class="lbl mb-4">3D storage · this server</p>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

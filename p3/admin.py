@@ -35,6 +35,7 @@ from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import promptcheck as PromptCheck
+from p3 import sitepages as SitePages
 from p3.accounts import AccountNotFound, DuplicateEmail, RemovedAccount
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
@@ -965,6 +966,43 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         if not isinstance(Body_.get("on"), bool):
             raise HttpError(400, "invalid_value", "on must be true or false.")
         return {"on": PromptCheck.SetEnabled(Ctx, Body_.get("product"), Body_["on"], Who.Id)}
+
+    # ── Search engines: may they index the public pages? (off by default; production always indexes) ──
+    def _IndexingState(request: Request) -> dict:
+        R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (SitePages.IndexKey,))
+        Origin = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
+        Base = Ctx.Settings.BasePath
+        On = Ctx.Products.Get(SitePages.IndexKey) is True
+        return {"on": On, "production": bool(Ctx.Settings.Production), "indexable": bool(Ctx.Settings.Production) or On,
+                "google_verification": Ctx.Products.Get(SitePages.VerificationKey) or "",
+                "changed_at": R["updated_at"] if R else None, "changed_by": R["updated_by"] if R else None,
+                "robots_url": f"{Origin}{Base}/robots.txt", "sitemap_url": f"{Origin}{Base}/sitemap.xml",
+                "pages": [f"{Origin}{Base}/" + P for P in SitePages.Paths.values()]}
+
+    @App_.get("/api/admin/site-indexing")
+    async def SiteIndexingState(request: Request, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _IndexingState(request)
+
+    @App_.put("/api/admin/site-indexing")
+    async def SetSiteIndexing(request: Request, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"on": true | false} and/or {"google_verification": "<code>" | ""} — logged with the product settings. Only the
+        public production site (Atelier) turns indexing on; the code is Search Console's meta-tag content (public)."""
+        Who = Admin(authorization)
+        if "on" not in Body_ and "google_verification" not in Body_:
+            raise HttpError(400, "invalid_value", "Nothing to change.")
+        if "on" in Body_:
+            if not isinstance(Body_.get("on"), bool):
+                raise HttpError(400, "invalid_value", "on must be true or false.")
+            Ctx.Products.Set(SitePages.IndexKey, Body_["on"], Who.Id,
+                             "search engines may index the public pages" if Body_["on"] else "search engines kept out")
+        if "google_verification" in Body_:
+            Code = str(Body_.get("google_verification") or "").strip()
+            Code = Code.split('content="', 1)[1].split('"', 1)[0] if 'content="' in Code else Code     # the whole tag pasted
+            if Code and not SitePages.VerificationPattern.fullmatch(Code):
+                raise HttpError(400, "invalid_verification", "Paste the content of Search Console's google-site-verification meta tag.")
+            Ctx.Products.Set(SitePages.VerificationKey, Code, Who.Id, "Search Console verification code " + ("set" if Code else "removed"))
+        return _IndexingState(request)
 
     # ── Products: rings and charms (customer availability per product, charm sizes) ──
     def _ProductsState() -> dict:

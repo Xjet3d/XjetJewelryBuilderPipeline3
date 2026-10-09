@@ -36,6 +36,7 @@
         body { font-family: 'Inter', sans-serif; background: #fff; color: #111; margin: 0; -webkit-tap-highlight-color: transparent; }
         h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
         [x-cloak] { display: none !important; }
+        .ssr-view { display: contents; }      /* the server's copy of the page asked for (p3/sitepages.py) */
         /* ♥ Favorites: a small heart on gallery tiles and in the lightbox (gold outline; filled when saved) */
         .fav-heart { background: rgba(255,255,255,0.88); color: #8A6420; box-shadow: 0 1px 4px rgba(0,0,0,0.08); backdrop-filter: blur(4px); }
         .fav-heart:hover { background: #fff; transform: scale(1.06); }
@@ -178,7 +179,8 @@
          on equal specificity the utilities win over the page's own rules above -->
     <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
 </head>
-<body x-data="p3App()" x-init="init()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
+<!-- Alpine calls init() itself: an x-init="init()" ran it twice (every startup request twice, timers doubled) -->
+<body x-data="p3App()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
     <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute; width:0; height:0; overflow:hidden" x-html="metalFilterDefs"></svg>
 
@@ -211,19 +213,19 @@
                 <svg x-show="!menuOpen" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
                 <svg x-show="menuOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
-            <button type="button" class="flex items-center gap-2 md:gap-3" @click="navigateTo('home')" aria-label="XJet Atelier — home">
+            <a href="{{BASE}}/" class="flex items-center gap-2 md:gap-3" @click="pageLink($event, 'home')" aria-label="XJet Atelier — home">
                 <span class="text-lg md:text-2xl font-bold tracking-[0.08em] md:tracking-[0.15em] uppercase italic brand-font text-zinc-900">XJet</span>
                 <span class="hidden md:block h-4 md:h-5 w-[1px] bg-zinc-300"></span>
                 <span class="hidden md:inline text-[12px] md:text-[12px] uppercase tracking-[0.2em] text-zinc-500 font-medium">Atelier</span>
-            </button>
+            </a>
         </div>
 
         <!-- Main navigation (from 1024 px; below that it is in the menu) · the Design screen's steps -->
         <div class="h-nav flex items-center justify-center min-w-0">
             <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-11 whitespace-nowrap text-[13px] uppercase tracking-[0.12em] font-medium text-zinc-600">
                 <button @click="scrollToHowItWorks()" class="hover:text-black transition">How It Works</button>
-                <button @click="navigateTo('inspiration')" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</button>
-                <button @click="navigateTo('materials')"   :class="view === 'materials'   ? 'text-black' : 'hover:text-black transition'">Materials</button>
+                <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</a>
+                <a href="{{BASE}}/materials" @click="pageLink($event, 'materials')"   :class="view === 'materials'   ? 'text-black' : 'hover:text-black transition'">Materials</a>
                 <!-- About: the informational pages, gathered in one small menu -->
                 <div class="relative" @click.outside="aboutOpen = false" @keydown.escape="aboutOpen = false">
                     <button type="button" @click="aboutOpen = !aboutOpen" :aria-expanded="aboutOpen" aria-haspopup="menu" aria-controls="about-menu"
@@ -234,14 +236,14 @@
                     <div id="about-menu" x-show="aboutOpen" x-cloak role="menu" aria-label="About"
                          class="absolute left-1/2 -translate-x-1/2 top-full mt-[30px] w-56 bg-white rounded-xl py-2 normal-case tracking-normal font-normal text-[14px] z-10"
                          style="border:1px solid #ECE6DA; box-shadow:0 18px 44px rgba(26,26,26,0.12);">
-                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('designers')" class="w-full block text-left px-5 py-2.5 transition"
-                                :class="view === 'designers' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">About XJet</button>
-                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('technology')" class="w-full block text-left px-5 py-2.5 transition"
-                                :class="view === 'technology' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Technology</button>
-                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('faq')" class="w-full block text-left px-5 py-2.5 transition"
-                                :class="view === 'faq' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">FAQ</button>
-                        <button type="button" role="menuitem" @click="aboutOpen = false; navigateTo('contact')" class="w-full block text-left px-5 py-2.5 transition"
-                                :class="view === 'contact' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Support</button>
+                        <a href="{{BASE}}/about" role="menuitem" @click="aboutOpen = false; pageLink($event, 'designers')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'designers' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">About XJet</a>
+                        <a href="{{BASE}}/technology" role="menuitem" @click="aboutOpen = false; pageLink($event, 'technology')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'technology' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Technology</a>
+                        <a href="{{BASE}}/faq" role="menuitem" @click="aboutOpen = false; pageLink($event, 'faq')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'faq' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">FAQ</a>
+                        <a href="{{BASE}}/contact" role="menuitem" @click="aboutOpen = false; pageLink($event, 'contact')" class="w-full block text-left px-5 py-2.5 transition"
+                                :class="view === 'contact' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">Support</a>
                     </div>
                 </div>
             </div>
@@ -334,13 +336,13 @@
         <!-- Menu panel (below 1024 px): every page, Start Designing, My Designs and Favorites, the bag, Sign in / Sign out -->
         <div id="mobile-menu" x-show="menuOpen" x-cloak class="lg:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
             <ul class="flex flex-col divide-y divide-zinc-100 text-[15px]">
-                <li><button @click="navigateTo('inspiration')" class="w-full text-left py-3 px-2 flex items-center justify-between">Inspiration Gallery <span class="text-zinc-400">→</span></button></li>
+                <li><a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="w-full text-left py-3 px-2 flex items-center justify-between">Inspiration Gallery <span class="text-zinc-400">→</span></a></li>
                 <li><button @click="scrollToHowItWorks()" class="w-full text-left py-3 px-2 flex items-center justify-between">How it works <span class="text-zinc-400">→</span></button></li>
-                <li><button @click="navigateTo('materials')" class="w-full text-left py-3 px-2 flex items-center justify-between">Materials &amp; Pricing <span class="text-zinc-400">→</span></button></li>
-                <li><button @click="navigateTo('technology')" class="w-full text-left py-3 px-2 flex items-center justify-between">Technology <span class="text-zinc-400">→</span></button></li>
-                <li><button @click="navigateTo('faq')" class="w-full text-left py-3 px-2 flex items-center justify-between">FAQ <span class="text-zinc-400">→</span></button></li>
-                <li><button @click="navigateTo('designers')" class="w-full text-left py-3 px-2 flex items-center justify-between">About XJet <span class="text-zinc-400">→</span></button></li>
-                <li><button @click="navigateTo('contact')" class="w-full text-left py-3 px-2 flex items-center justify-between">Support <span class="text-zinc-400">→</span></button></li>
+                <li><a href="{{BASE}}/materials" @click="pageLink($event, 'materials')" class="w-full text-left py-3 px-2 flex items-center justify-between">Materials &amp; Pricing <span class="text-zinc-400">→</span></a></li>
+                <li><a href="{{BASE}}/technology" @click="pageLink($event, 'technology')" class="w-full text-left py-3 px-2 flex items-center justify-between">Technology <span class="text-zinc-400">→</span></a></li>
+                <li><a href="{{BASE}}/faq" @click="pageLink($event, 'faq')" class="w-full text-left py-3 px-2 flex items-center justify-between">FAQ <span class="text-zinc-400">→</span></a></li>
+                <li><a href="{{BASE}}/about" @click="pageLink($event, 'designers')" class="w-full text-left py-3 px-2 flex items-center justify-between">About XJet <span class="text-zinc-400">→</span></a></li>
+                <li><a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="w-full text-left py-3 px-2 flex items-center justify-between">Support <span class="text-zinc-400">→</span></a></li>
             </ul>
             <div class="flex flex-col gap-2 pt-4 pb-1 px-2">
                 <button @click="resetAIFlow()" class="btn-gold w-full py-3.5">Start Designing</button>
@@ -535,10 +537,10 @@
                         <span x-text="footerLine">© 2026 XJet Ltd. Custom rings designed with AI, produced with NanoParticle Jetting™.</span>
                     </div>
                     <nav aria-label="Legal and support" class="flex flex-wrap gap-x-6 gap-y-2">
-                        <button @click="navigateTo('shipping-returns')" class="tap-lg hover:text-white transition">Shipping &amp; Returns</button>
-                        <button @click="navigateTo('terms')" class="tap-lg hover:text-white transition">Terms of Service</button>
-                        <button @click="navigateTo('privacy')" class="tap-lg hover:text-white transition">Privacy</button>
-                        <button @click="navigateTo('contact')" class="tap-lg hover:text-white transition">Contact &amp; Support</button>
+                        <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="tap-lg hover:text-white transition">Shipping &amp; Returns</a>
+                        <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-white transition">Terms of Service</a>
+                        <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-white transition">Privacy</a>
+                        <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-white transition">Contact &amp; Support</a>
                     </nav>
                 </div>
             </footer>
@@ -550,7 +552,7 @@
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
             <div class="max-w-4xl mx-auto text-center mb-16">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Gallery</span>
-                <h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>
+                <h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>
                 <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="galleryIntro"></p>
             </div>
             <div x-show="productsOn" x-cloak class="flex justify-center mb-8" role="group" aria-label="Show designs">
@@ -596,29 +598,11 @@
             <div class="max-w-3xl mx-auto">
                 <div class="text-center mb-16">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Questions</span>
-                    <h2 class="text-4xl brand-font mb-4">Frequently Asked Questions</h2>
+                    <h1 class="text-4xl brand-font mb-4">Frequently Asked Questions</h1>
                 </div>
                 <div class="space-y-6" x-data="{ open: null }">
-                    <template x-for="(q, i) in [
-                        {q:'What jewelry can I create?',         a: faqWhat},
-                        {q:'What metals are available?',         a: metalsFaqAnswer},
-                        {q:'Do I need design experience?',       a:'None at all. Just describe what you want in plain language or upload a reference photo. Our AI creates four designs for you to choose from.'},
-                        {q:'Can I see the design before I buy?', a:'Yes. You choose from four designs, refine your favourite as many times as you like, and preview the selected ' + wording.noun + ' in a 360° movie before adding it to your bag.'},
-                        {q:'How is the price calculated?',       a: faqPrice},
-                        {q:'How long does production take?',     a:'Design happens the same day. Production takes 7–10 business days. Shipping adds about 5 business days with Express or up to 14 with free Standard delivery.'},
-                        {q:'Are prices in USD?',                 a: faqUsd},
-                        {q:'What is NanoParticle Jetting™?',     a:'It is XJet\'s proprietary metal printing technology. It jets ultra-fine metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than traditional casting.'},
-                        {q:'Can I make changes?',                a:'Yes. Select any of your four designs and describe what should change — you get four new variations of that design each time.'},
-                        {q:'Who can I contact for help?',        a:'If you need assistance at any stage, reach out and a specialist will respond within one business day.'}
-                    ]" :key="i">
-                        <div class="border border-zinc-100 rounded-xl overflow-hidden">
-                            <button @click="open === i ? open = null : open = i" class="w-full flex justify-between items-center p-6 text-left hover:bg-zinc-50 transition">
-                                <span class="text-sm font-semibold text-zinc-800" x-text="q.q"></span>
-                                <svg class="w-4 h-4 text-zinc-400 shrink-0 transition-transform" :class="open === i ? 'rotate-45' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            </button>
-                            <div x-show="open === i" class="px-6 pb-6"><p class="text-sm text-zinc-500 leading-relaxed" x-text="q.a"></p></div>
-                        </div>
-                    </template>
+                    <!-- the questions and answers (p3/sitepages.py: the page and its FAQPage data) -->
+                    {{FAQ_ITEMS}}
                 </div>
                 <div class="text-center mt-16">
                     <p class="text-sm text-zinc-500 mb-6">Still have questions? Our design team is here to help.</p>
@@ -634,7 +618,7 @@
             <section class="py-20 px-8 md:px-20 bg-white border-b border-zinc-100">
                 <div class="max-w-4xl mx-auto">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">About XJet</span>
-                    <h2 class="text-4xl brand-font mb-10">The Inkjet Revolution</h2>
+                    <h1 class="text-4xl brand-font mb-10">The Inkjet Revolution</h1>
                     <div class="space-y-6 text-zinc-600 text-[15px] leading-relaxed">
                         <p>As the pioneer of 3D inkjet technologies, XJet 3D offers a disruptive digital manufacturing solution for metal and ceramic production, delivering exceptional part quality, maximum automation, and superior sustainability benefits. Our technology addresses the challenges of printing <strong class="text-zinc-900">small, complex and high-quality</strong> components at scale for premium products and luxury applications.</p>
                         <p>Powered by proprietary powderless <strong class="text-zinc-900">NanoParticle Jetting™ technology</strong>, we provide an end-to-end solution encompassing <strong class="text-zinc-900">advanced systems, specialized materials, intuitive software, and expert application development support</strong>, enabling additive manufacturing users to achieve maximum quality, convenience, and consistency.</p>
@@ -662,21 +646,41 @@
                 <div class="max-w-4xl mx-auto">
                     <h2 class="text-3xl brand-font mb-12">Fast Facts</h2>
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-8 text-center">
-                        <template x-for="f in [
-                            {icon:'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9', stat:'2014', label:'XJet Founded'},
-                            {icon:'M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z', stat:'ESG', label:'Strong Benefits'},
-                            {icon:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', stat:'Global', label:'Leading Customers'},
-                            {icon:'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stat:'80+', label:'Patents'},
-                            {icon:'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', stat:'#1', label:'Quality'}
-                        ]" :key="f.stat">
+                        <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/></svg>
+                                </div>
+                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">2014</div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">XJet Founded</div>
+                            </div>
                             <div class="flex flex-col items-center">
                                 <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="f.icon"/></svg>
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                 </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1" x-text="f.stat"></div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center" x-text="f.label"></div>
+                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">ESG</div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Strong Benefits</div>
                             </div>
-                        </template>
+                            <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                </div>
+                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">Global</div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Leading Customers</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                </div>
+                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">80+</div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Patents</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+                                </div>
+                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">#1</div>
+                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Quality</div>
+                            </div>
                     </div>
                 </div>
             </section>
@@ -688,7 +692,7 @@
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-zinc-50">
             <div class="max-w-6xl mx-auto flex flex-col md:flex-row gap-16 items-center">
                 <div class="md:w-1/2">
-                    <h2 class="text-5xl brand-font mb-8">NanoParticle Jetting™</h2>
+                    <h1 class="text-5xl brand-font mb-8">NanoParticle Jetting™</h1>
                     <p class="text-zinc-600 leading-relaxed text-lg mb-8">Unlike traditional 3D printing, NPJ uses liquid dispersion. It prints metal and soluble support simultaneously, enabling internal voids and complex lattices.</p>
                     <div class="grid grid-cols-2 gap-8">
                         <div><div class="text-3xl font-light mb-1">8μm</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Layer Thickness</div></div>
@@ -711,7 +715,7 @@
         <main class="flex-1 overflow-y-auto fade-in bg-white">
             <section class="px-6 md:px-20 pt-14 md:pt-20 pb-10 text-center">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Materials &amp; Pricing</span>
-                <h2 class="text-4xl brand-font mb-4" x-text="materialsTitle"></h2>
+                <h1 class="text-4xl brand-font mb-4" x-text="materialsTitle"></h1>
                 <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed" x-text="materialsIntro"></p>
             </section>
 
@@ -789,7 +793,7 @@
 
                 <template x-if="view === 'shipping-returns'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
-                        <h2 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h2>
+                        <h1 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h1>
                         <h3 class="text-lg font-semibold text-zinc-900">Timeline</h3>
                         <ul class="list-disc pl-5 space-y-1">
                             <li><strong>Design:</strong> same day. You choose and refine your design before anything is made.</li>
@@ -807,7 +811,7 @@
 
                 <template x-if="view === 'terms'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
-                        <h2 class="text-4xl brand-font text-zinc-900">Terms of Service</h2>
+                        <h1 class="text-4xl brand-font text-zinc-900">Terms of Service</h1>
                         <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
                         <p x-text="termsService"></p>
@@ -826,7 +830,7 @@
 
                 <template x-if="view === 'privacy'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
-                        <h2 class="text-4xl brand-font text-zinc-900">Privacy</h2>
+                        <h1 class="text-4xl brand-font text-zinc-900">Privacy</h1>
                         <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">What we collect</h3>
                         <ul class="list-disc pl-5 space-y-1">
@@ -847,7 +851,7 @@
 
                 <template x-if="view === 'contact'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
-                        <h2 class="text-4xl brand-font text-zinc-900">Contact &amp; Support</h2>
+                        <h1 class="text-4xl brand-font text-zinc-900">Contact &amp; Support</h1>
                         <p>Our design team answers within one business day.</p>
                         <div class="rounded-xl p-6" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                             <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
@@ -874,11 +878,11 @@
                 </template>
 
                 <div class="mt-12 flex flex-wrap gap-x-6 gap-y-2 text-[12px] uppercase tracking-[0.15em] text-zinc-600">
-                    <button @click="navigateTo('home')" class="tap-lg hover:text-black transition">← Home</button>
-                    <button @click="navigateTo('shipping-returns')" class="tap-lg hover:text-black transition" x-show="view !== 'shipping-returns'">Shipping &amp; Returns</button>
-                    <button @click="navigateTo('terms')" class="tap-lg hover:text-black transition" x-show="view !== 'terms'">Terms</button>
-                    <button @click="navigateTo('privacy')" class="tap-lg hover:text-black transition" x-show="view !== 'privacy'">Privacy</button>
-                    <button @click="navigateTo('contact')" class="tap-lg hover:text-black transition" x-show="view !== 'contact'">Contact</button>
+                    <a href="{{BASE}}/" @click="pageLink($event, 'home')" class="tap-lg hover:text-black transition">← Home</a>
+                    <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="tap-lg hover:text-black transition" x-show="view !== 'shipping-returns'">Shipping &amp; Returns</a>
+                    <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-black transition" x-show="view !== 'terms'">Terms</a>
+                    <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-black transition" x-show="view !== 'privacy'">Privacy</a>
+                    <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-black transition" x-show="view !== 'contact'">Contact</a>
                 </div>
             </article>
         </main>
@@ -1744,7 +1748,7 @@
                         </div>
                         <label class="flex items-start gap-3 text-[13px] text-zinc-700 cursor-pointer" :class="coProblem('terms_accepted') ? 'text-red-700' : ''">
                             <input type="checkbox" x-model="co.terms" class="mt-0.5 w-4 h-4 shrink-0" style="accent-color:#8A561B;">
-                            <span>I accept the <a href="#terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> <span x-text="'and understand that each ' + bagKind + ' is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.'"></span></span>
+                            <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> <span x-text="'and understand that each ' + bagKind + ' is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.'"></span></span>
                         </label>
                         <p class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
                         <p class="text-[12px] text-zinc-500">Questions before you order? <a :href="mailto('Question before ordering' + (coQuote?.lines?.[0]?.ring_id ? ' — ' + coQuote.lines[0].ring_id : ''))" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>

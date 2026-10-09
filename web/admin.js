@@ -210,6 +210,8 @@ function adminApp() {
     sub: 'pricing', health: null,
     adminKey: null, adminKeyCurrent: '', adminKeyNew: '', adminKeyBusy: false, adminKeyMsg: '', adminKeyErr: false,
     aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
+    siteIndexing: null, siteIndexingBusy: false, siteIndexingMsg: '', siteIndexingErr: false,   // Settings → System → Search engines
+    gscCode: '',                                 // Search Console's verification code (the meta tag's content)
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
@@ -357,6 +359,8 @@ function adminApp() {
           this.storage = await this.api('GET', '/api/admin/storage').catch(() => null);
           this.health = await this.api('GET', '/api/admin/health').catch(() => null);   // the full picture is admin-only
           this.aiMode = await this.api('GET', '/api/admin/ai-mode').catch(() => null);
+          this.siteIndexing = await this.api('GET', '/api/admin/site-indexing').catch(() => null);
+          this.gscCode = this.siteIndexing?.google_verification || '';
         }
       }
     },
@@ -1194,6 +1198,28 @@ function adminApp() {
         this.health = await this.api('GET', '/api/admin/health').catch(() => this.health);
         this.aiModeMsg = toLive ? 'Live mode is on: requests go to fal.ai and are billed.' : 'Mock mode is on: no provider is called and nothing is billed.';
       } catch (e) { this.aiModeErr = true; this.aiModeMsg = e.message; } finally { this.aiModeBusy = false; }
+    },
+
+    // ── Search engines (Settings → System): may they index the public pages? Only the public production site says yes ──
+    async toggleSiteIndexing() {
+      const on = !this.siteIndexing.on;
+      if (!await this.ask(on
+          ? { title: 'Let search engines index this site?', text: 'The public pages (home, gallery, FAQ, materials, technology, about, the legal pages and each gallery design) become indexable, robots.txt allows them and lists the sitemap. Turn this on only on the public production site (Atelier) — never on proto or a test copy. The Admin, the API, sign-in and quote links and My Account stay out.', confirmLabel: 'Allow indexing', danger: true }
+          : { title: 'Keep search engines out?', text: 'Every page says noindex and robots.txt disallows the site. Pages already indexed drop out over the following weeks.', confirmLabel: 'Keep them out', danger: true })) return;
+      this.siteIndexingBusy = true; this.siteIndexingMsg = ''; this.siteIndexingErr = false;
+      try {
+        this.siteIndexing = await this.api('PUT', '/api/admin/site-indexing', { on });
+        this.siteIndexingMsg = on ? 'Search engines may index the public pages.' : 'Search engines are kept out.';
+      } catch (e) { this.siteIndexingErr = true; this.siteIndexingMsg = e.message; } finally { this.siteIndexingBusy = false; }
+    },
+
+    async saveGoogleVerification() {
+      this.siteIndexingBusy = true; this.siteIndexingMsg = ''; this.siteIndexingErr = false;
+      try {
+        this.siteIndexing = await this.api('PUT', '/api/admin/site-indexing', { google_verification: this.gscCode.trim() });
+        this.gscCode = this.siteIndexing.google_verification || '';
+        this.siteIndexingMsg = this.gscCode ? 'Saved: the home page carries the verification tag.' : 'Removed: no verification tag on the home page.';
+      } catch (e) { this.siteIndexingErr = true; this.siteIndexingMsg = e.message; } finally { this.siteIndexingBusy = false; }
     },
 
     // ── Admin key (Settings → Keys) ────────────────────────────────────
