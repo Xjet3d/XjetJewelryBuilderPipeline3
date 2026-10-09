@@ -458,8 +458,9 @@ warning with its delivery. API: `GET|PUT /api/admin/spend-warning` (`{"threshold
 
 The rate limits count requests per visitor address (`p3/ratelimit.py` `ClientIp`): the first hop, walking from this
 server outward (the socket peer, then `X-Forwarded-For` from the right), that is not a trusted proxy — this machine
-(nginx in front of uvicorn), the addresses or ranges in `P3_TRUSTED_PROXIES` (e.g. an nginx host on the LAN) and
-Cloudflare's published edge ranges (checked 2026-10-09). An `X-Forwarded-For` a visitor writes is never believed (the
+(nginx in front of uvicorn), private networks (proto's front proxy on the LAN), the addresses or ranges in
+`P3_TRUSTED_PROXIES` (e.g. a cloud load balancer) and Cloudflare's published edge ranges (checked 2026-10-09). An
+internet visitor cannot choose the address: Cloudflare and nginx append it to the right of whatever the visitor wrote. An `X-Forwarded-For` a visitor writes is never believed (the
 first entry used to be taken as is). The card shows the caller's address as the server sees it
 (`GET /api/admin/client-ip`) — open it on a site to check the chain.
 

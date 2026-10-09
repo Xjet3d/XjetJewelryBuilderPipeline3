@@ -1875,7 +1875,7 @@
       <section class="card p-5 space-y-1" x-show="clientIp" aria-label="Your address">
         <p class="lbl">Your address, as this server sees it</p>
         <p class="text-sm"><span class="font-mono" x-text="clientIp?.address"></span><span class="text-zinc-500" x-text="clientIp?.via_cloudflare ? ' · through Cloudflare' : ''"></span></p>
-        <p class="text-[12px] text-zinc-500">The rate limits count requests per visitor address: the first hop that is not a trusted proxy (this machine, P3_TRUSTED_PROXIES, Cloudflare). An X-Forwarded-For a visitor writes is never believed. Proxies trusted: <span x-text="(clientIp?.trusted_proxies || []).join(', ')"></span>.</p>
+        <p class="text-[12px] text-zinc-500">The rate limits count requests per visitor address: the first hop that is not a trusted proxy (this machine, private networks, P3_TRUSTED_PROXIES, Cloudflare). An X-Forwarded-For a visitor writes is never believed. Proxies trusted: <span x-text="(clientIp?.trusted_proxies || []).join(', ')"></span>.</p>
       </section>
       <section class="card p-5 space-y-3" x-show="siteIndexing" aria-label="Search engines">
         <div class="flex flex-wrap items-baseline justify-between gap-3">

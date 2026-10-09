@@ -39,6 +39,10 @@ CloudflareRanges = ("173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "10
                     "162.158.0.0/15", "104.16.0.0/13", "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
                     "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32",
                     "2a06:98c0::/29", "2c0f:f248::/32")
+# Private networks (RFC 1918, link-local, IPv6 unique-local): hops inside the site's own infrastructure, such as proto's
+# front proxy on the LAN. An internet visitor cannot use them to choose a key: Cloudflare and nginx append the visitor's
+# public address to the right of whatever the visitor wrote, so the walk stops there.
+PrivateRanges = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fc00::/7", "fe80::/10")
 _Trusted: tuple | None = None
 
 
@@ -54,11 +58,13 @@ def _Networks(Text: str, What: str) -> tuple:
 
 
 def TrustedNetworks() -> tuple:
-    """The proxies whose X-Forwarded-For entries are believed: this machine (nginx in front of uvicorn), the addresses or
-    ranges in P3_TRUSTED_PROXIES (e.g. an nginx host on the LAN) and Cloudflare's edge."""
+    """The proxies whose X-Forwarded-For entries are believed: this machine (nginx in front of uvicorn), private networks
+    (a front proxy on the LAN), the addresses or ranges in P3_TRUSTED_PROXIES (e.g. a cloud load balancer) and
+    Cloudflare's edge."""
     global _Trusted
     if _Trusted is None:
         _Trusted = ((ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
+                    + _Networks(",".join(PrivateRanges), "PrivateRanges")
                     + _Networks(os.environ.get("P3_TRUSTED_PROXIES", ""), "P3_TRUSTED_PROXIES")
                     + _Networks(",".join(CloudflareRanges), "CloudflareRanges"))
     return _Trusted
@@ -66,7 +72,7 @@ def TrustedNetworks() -> tuple:
 
 def TrustedDescription() -> list[str]:
     Own = [str(N) for N in _Networks(os.environ.get("P3_TRUSTED_PROXIES", ""), "P3_TRUSTED_PROXIES")]
-    return ["127.0.0.0/8", "::1/128", *Own, f"Cloudflare ({len(CloudflareRanges)} ranges)"]
+    return ["127.0.0.0/8", "::1/128", "private networks", *Own, f"Cloudflare ({len(CloudflareRanges)} ranges)"]
 
 
 def _IsTrusted(Ip: str) -> bool:

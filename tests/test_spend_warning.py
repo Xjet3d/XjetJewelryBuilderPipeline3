@@ -110,18 +110,25 @@ def test_the_client_address_is_the_first_hop_that_is_not_a_trusted_proxy(monkeyp
     # Behind Cloudflare and nginx: a forged entry on the left is ignored, the visitor is the first untrusted hop
     assert RateLimit.ClientIp(_Req("127.0.0.1", "6.6.6.6, 198.51.100.7, 172.70.1.1")) == "198.51.100.7"
     assert RateLimit.ClientIp(_Req("127.0.0.1", "6.6.6.6, 2001:db8::1, 2606:4700::6810:1")) == "2001:db8::1"
-    # nginx alone (proto): the address nginx appended
+    # nginx alone: the address nginx appended
     assert RateLimit.ClientIp(_Req("127.0.0.1", "6.6.6.6, 203.0.113.9")) == "203.0.113.9"
+    # proto: a front proxy on the LAN, then nginx — the visitor, never the front proxy
+    assert RateLimit.ClientIp(_Req("127.0.0.1", "172.16.10.32, 172.16.10.27")) == "172.16.10.32"
+    # a production host with a private hop behind Cloudflare: still the visitor; a private address the visitor wrote is
+    # left of the visitor's own address and never reached
+    assert RateLimit.ClientIp(_Req("127.0.0.1", "10.9.9.9, 198.51.100.7, 172.70.1.1, 10.0.0.4")) == "198.51.100.7"
     # A direct visitor (no trusted proxy in between): its own address, whatever header it sends
     assert RateLimit.ClientIp(_Req("203.0.113.5", "1.2.3.4")) == "203.0.113.5"
     assert RateLimit.ClientIp(_Req("127.0.0.1")) == "127.0.0.1" and RateLimit.ClientIp(None) == "unknown"
     assert RateLimit.ClientIp(_Req("127.0.0.1", "garbage, 203.0.113.9")) == "203.0.113.9"
-    # An nginx host on the LAN is trusted only when configured
+    # A proxy on a public address (a cloud load balancer) is trusted only when configured
     monkeypatch.setattr(RateLimit, "_Trusted", None)
-    monkeypatch.setenv("P3_TRUSTED_PROXIES", "10.0.0.5, 192.168.10.0/24")
-    assert RateLimit.ClientIp(_Req("10.0.0.5", "203.0.113.9")) == "203.0.113.9"
-    assert RateLimit.ClientIp(_Req("10.0.0.6", "203.0.113.9")) == "10.0.0.6"
-    assert "192.168.10.0/24" in RateLimit.TrustedDescription()
+    assert RateLimit.ClientIp(_Req("198.51.100.20", "203.0.113.9")) == "198.51.100.20"
+    monkeypatch.setattr(RateLimit, "_Trusted", None)
+    monkeypatch.setenv("P3_TRUSTED_PROXIES", "198.51.100.20, 192.0.2.0/24")
+    assert RateLimit.ClientIp(_Req("198.51.100.20", "203.0.113.9")) == "203.0.113.9"
+    assert RateLimit.ClientIp(_Req("198.51.100.21", "203.0.113.9")) == "198.51.100.21"
+    assert "192.0.2.0/24" in RateLimit.TrustedDescription() and "private networks" in RateLimit.TrustedDescription()
     monkeypatch.setattr(RateLimit, "_Trusted", None)
 
 
