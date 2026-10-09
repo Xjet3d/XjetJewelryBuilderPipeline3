@@ -157,7 +157,9 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize,
             "prompt_check": {"ring": False, "charm": False},                          # p3/promptcheck.py: off
             "site_indexing": False,                                                  # p3/sitepages.py: search engines kept out
-            "google_site_verification": ""}                                          # Search Console's meta tag (public, not a secret)
+            "google_site_verification": "",                                          # Search Console's meta tag (public, not a secret)
+            "ai_spend_warning": {"threshold_usd": None, "to": ""},                  # p3/spendwarning.py: off
+            "ai_spend_warning_sent": {}}
 
 
 def ValidateCharmSizeNames(Raw, Sizes) -> dict:

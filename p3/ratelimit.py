@@ -2,11 +2,14 @@
 
 Paid starts (a design, a refinement, another option, a movie, a gallery start) are limited per account and per IP;
 sign-in attempts per IP; registration per IP and per email. The limits are generous for a person and tight for a
-script; a refused request answers 429 rate_limited with a Retry-After. Behind nginx the client IP is the first
-X-Forwarded-For entry (nginx sets it; deploy/production/nginx.conf), else the socket peer. Switched off by
-P3_RATE_LIMITS=false (the tests' harness runs without limits unless a test asks for them).
+script; a refused request answers 429 rate_limited with a Retry-After. The client IP is the first address in the
+proxy chain that is not a proxy we trust (ClientIp): X-Forwarded-For entries a client wrote itself are never believed.
+Switched off by P3_RATE_LIMITS=false (the tests' harness runs without limits unless a test asks for them).
 """
 
+import ipaddress
+import logging
+import os
 import time
 
 from p3.context import HttpError
@@ -28,14 +31,66 @@ class RateLimited(HttpError):
         self.RetryAfter = max(1, int(RetryAfterS))
 
 
+Logger = logging.getLogger("p3.ratelimit")
+# Cloudflare's published edge ranges (www.cloudflare.com/ips-v4 and /ips-v6, checked 2026-10-09). A request that reaches
+# the site through Cloudflare comes from one of them, and Cloudflare adds the visitor's address to X-Forwarded-For.
+CloudflareRanges = ("173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",
+                    "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17",
+                    "162.158.0.0/15", "104.16.0.0/13", "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+                    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32",
+                    "2a06:98c0::/29", "2c0f:f248::/32")
+_Trusted: tuple | None = None
+
+
+def _Networks(Text: str, What: str) -> tuple:
+    Out = []
+    for Part in (Text or "").replace(";", ",").split(","):
+        if Part.strip():
+            try:
+                Out.append(ipaddress.ip_network(Part.strip(), strict=False))
+            except ValueError:
+                Logger.warning("%s: not an address or range: %s", What, Part.strip())
+    return tuple(Out)
+
+
+def TrustedNetworks() -> tuple:
+    """The proxies whose X-Forwarded-For entries are believed: this machine (nginx in front of uvicorn), the addresses or
+    ranges in P3_TRUSTED_PROXIES (e.g. an nginx host on the LAN) and Cloudflare's edge."""
+    global _Trusted
+    if _Trusted is None:
+        _Trusted = ((ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
+                    + _Networks(os.environ.get("P3_TRUSTED_PROXIES", ""), "P3_TRUSTED_PROXIES")
+                    + _Networks(",".join(CloudflareRanges), "CloudflareRanges"))
+    return _Trusted
+
+
+def TrustedDescription() -> list[str]:
+    Own = [str(N) for N in _Networks(os.environ.get("P3_TRUSTED_PROXIES", ""), "P3_TRUSTED_PROXIES")]
+    return ["127.0.0.0/8", "::1/128", *Own, f"Cloudflare ({len(CloudflareRanges)} ranges)"]
+
+
+def _IsTrusted(Ip: str) -> bool:
+    try:
+        A = ipaddress.ip_address(Ip.strip().strip("[]"))
+    except ValueError:
+        return False
+    if A.version == 6 and A.ipv4_mapped:
+        A = A.ipv4_mapped
+    return any(A in N for N in TrustedNetworks() if N.version == A.version)
+
+
 def ClientIp(Request) -> str:
-    """The client's address as the reverse proxy saw it (the first X-Forwarded-For entry), else the socket peer."""
+    """The visitor's address: walk the chain from this server outward (the socket peer, then X-Forwarded-For from the
+    right) and take the first hop that is not a proxy we trust. Entries left of it are whatever the client wrote and are
+    never believed (the first entry used to be taken as is, so anyone could choose their own rate-limit key)."""
     if Request is None:
         return "unknown"
-    Forwarded = (Request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if Forwarded:
-        return Forwarded
-    return Request.client.host if getattr(Request, "client", None) else "unknown"
+    Peer = Request.client.host if getattr(Request, "client", None) else ""
+    Hops = [X.strip() for X in (Request.headers.get("x-forwarded-for") or "").split(",") if X.strip()] + ([Peer] if Peer else [])
+    for Ip in reversed(Hops):
+        if not _IsTrusted(Ip):
+            return Ip
+    return Hops[0] if Hops else "unknown"
 
 
 class RateLimiter:

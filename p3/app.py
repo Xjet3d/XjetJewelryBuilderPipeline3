@@ -182,6 +182,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
     Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
     Mailer = BuildMailer(S.DataDir)
+    Ctx.Mailer = Mailer
     Svc = Services(Ctx, Mailer)
     Ctx.MaterialPrices.OnSave.append(Svc.Production3D.RepriceMissing)
     Slugs = Svc.Gallery.BackfillSlugs()           # gallery designs get their share link name at publication; older ones here

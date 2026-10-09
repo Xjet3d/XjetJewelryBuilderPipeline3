@@ -290,12 +290,14 @@ async def test_session_pipeline_cost_duration_and_flags(HS):
     D = await _Session(H, Did)
     Steps = {(S["kind"], S["detail"].startswith("reused")): S for S in D["pipeline"]["steps"]}
     assert Steps[("design", False)]["cost"] == pytest.approx(0.60) and Steps[("design", False)]["requests"] == 4
-    assert Steps[("movie", False)]["cost"] == pytest.approx(6 * 0.04)                 # 6 s at 768P
+    from p3.aipricing import DefaultPriceList, Effective
+    Rate = Effective(DefaultPriceList["endpoints"][endpoints.Movie])["per_second"]["768P"]   # fal.ai's rate today (dated changes)
+    assert Steps[("movie", False)]["cost"] == pytest.approx(6 * Rate)                # 6 s at 768P
     assert Steps[("3d", False)]["cost"] == pytest.approx(90 * 0.02)                   # 2048quality, no texture/PBR
     assert Steps[("3d", True)]["cost"] == 0.0                                         # reused raw mesh
     U = next(X for X in (await H.Client.get("/api/admin/users", headers=Admin)).json()["users"]
              if X["account_id"] == D["session"]["account_id"])
-    assert D["cost"]["session"] == pytest.approx(0.60 + 0.24 + 1.80) == pytest.approx(U["ai_cost"]) and U["sessions"] == 1
+    assert D["cost"]["session"] == pytest.approx(0.60 + 6 * Rate + 1.80) == pytest.approx(U["ai_cost"]) and U["sessions"] == 1
     assert D["user"]["status"] in ("active", "unused") and D["artifacts"]["image_url"] and D["artifacts"]["movie_url"]
     assert D["last_choice"]["ring_size"] == 7.0 and D["last_choice"]["material_id"] == "silver"
     Row = next(X for X in (await H.Client.get("/api/admin/sessions", headers=Admin)).json()["sessions"] if X["session_id"] == Did)
@@ -326,6 +328,18 @@ async def test_ai_prices_refresh_and_edit(HS, monkeypatch):
     assert "test-key" not in json.dumps(R)
     Bad = await H.Client.put("/api/admin/ai-prices", json={"prices": {"endpoints": {"x": {"per_image": -1}}}}, headers=Admin)
     assert Bad.status_code == 400
+    # A dated change (a promotional rate's end): checked, kept, and applied from its day on
+    for Sched in ({"per_second": {"480P": 1}}, {"from": "15 Oct", "per_second": {"480P": 1}}, {"from": "2026-10-15", "per_second": {"480P": -1}}):
+        Doc = {"endpoints": {endpoints.Movie: {"unit": "second", "per_second": {"480P": 0.03}, "scheduled": Sched}}}
+        assert (await H.Client.put("/api/admin/ai-prices", json={"prices": Doc}, headers=Admin)).status_code == 400, Sched
+    E = {"unit": "second", "per_second": {"480P": 0.03, "1080P": 0.096}, "scheduled": {"from": "2026-10-15", "per_second": {"480P": 0.05, "1080P": 0.16}}}
+    assert aipricing.Effective(E, "2026-10-14")["per_second"]["1080P"] == 0.096 and aipricing.Effective(E, "2026-10-15")["per_second"]["1080P"] == 0.16
+    assert "scheduled" not in aipricing.Effective(E, "2026-10-16")
+    Saved = (await H.Client.put("/api/admin/ai-prices", json={"prices": {"endpoints": {endpoints.Movie: E}}}, headers=Admin)).json()
+    assert Saved["endpoints"][endpoints.Movie]["scheduled"]["from"] == "2026-10-15"
+    # The code's list: fal.ai's documentation of the movie model (checked 2026-10-09), 6 s at 1080P per movie
+    M = aipricing.DefaultPriceList["endpoints"][endpoints.Movie]
+    assert M["per_second"] == {"480P": 0.03, "768P": 0.048, "1080P": 0.096} and M["scheduled"] == {"from": "2026-10-15", "per_second": {"480P": 0.05, "768P": 0.08, "1080P": 0.16}}
     assert (await H.Client.get("/api/admin/ai-prices")).status_code == 403
 
 

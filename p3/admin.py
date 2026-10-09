@@ -36,6 +36,8 @@ from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
+from p3 import spendwarning as SpendWarning
+from p3 import ratelimit as RateLimit
 from p3.accounts import AccountNotFound, DuplicateEmail, RemovedAccount
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
@@ -966,6 +968,27 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         if not isinstance(Body_.get("on"), bool):
             raise HttpError(400, "invalid_value", "on must be true or false.")
         return {"on": PromptCheck.SetEnabled(Ctx, Body_.get("product"), Body_["on"], Who.Id)}
+
+    # ── AI spend warning: an email once a day past a threshold (never a cap: nothing is stopped) ──
+    @App_.get("/api/admin/spend-warning")
+    async def SpendWarningState(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return SpendWarning.State(Ctx)
+
+    @App_.put("/api/admin/spend-warning")
+    async def SetSpendWarning(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"threshold_usd": 50 | null, "to": "address"} — logged with the product settings."""
+        Who = Admin(authorization)
+        return SpendWarning.Configure(Ctx, Body_.get("threshold_usd"), Body_.get("to"), Who.Id)
+
+    # ── the caller's address as the rate limits see it (behind Cloudflare and nginx: the visitor, not a proxy) ──
+    @App_.get("/api/admin/client-ip")
+    async def ClientAddress(request: Request, authorization: str | None = Header(None)):
+        Admin(authorization)
+        H = request.headers
+        return {"address": RateLimit.ClientIp(request), "peer": request.client.host if request.client else None,
+                "x_forwarded_for": H.get("x-forwarded-for"), "cf_connecting_ip": H.get("cf-connecting-ip"),
+                "via_cloudflare": bool(H.get("cf-ray")), "trusted_proxies": RateLimit.TrustedDescription()}
 
     # ── Search engines: may they index the public pages? (off by default; production always indexes) ──
     def _IndexingState(request: Request) -> dict:

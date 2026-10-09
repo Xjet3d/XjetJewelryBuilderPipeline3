@@ -439,6 +439,24 @@ The customer site's *Mock mode* banner and badges are in the page only while the
 `web/index.html`, left out by `_VersionedPage` otherwise): a live page, and a search engine reading it, never carries
 that text. Pages already open show the new mode after a reload.
 
+## AI spend warning (Settings → System)
+
+An email, once a day, when the day's estimated live AI spend (UTC day; the list prices in *AI prices*) passes a
+threshold: `p3/spendwarning.py`, checked after every recorded live submission, sent on a background thread. It never
+stops, slows or refuses a request — the hard cap is the separate `P3_DAILY_AI_SPEND_CAP_USD` and is not changed by it.
+The threshold and the address are Admin settings in the database (not in the code); the card shows today's estimate,
+the threshold, the cap if any, the mail mode (an `outbox` site keeps the email instead of delivering it) and the latest
+warning with its delivery. API: `GET|PUT /api/admin/spend-warning` (`{"threshold_usd": 50 | null, "to": "…"}`).
+
+## Your address (Settings → System)
+
+The rate limits count requests per visitor address (`p3/ratelimit.py` `ClientIp`): the first hop, walking from this
+server outward (the socket peer, then `X-Forwarded-For` from the right), that is not a trusted proxy — this machine
+(nginx in front of uvicorn), the addresses or ranges in `P3_TRUSTED_PROXIES` (e.g. an nginx host on the LAN) and
+Cloudflare's published edge ranges (checked 2026-10-09). An `X-Forwarded-For` a visitor writes is never believed (the
+first entry used to be taken as is). The card shows the caller's address as the server sees it
+(`GET /api/admin/client-ip`) — open it on a site to check the chain.
+
 ## Search engines (Settings → System)
 
 **Let search engines index the public pages** — off by default (every page `noindex`, `robots.txt` disallows the site);
@@ -577,7 +595,12 @@ above, unchanged. The Charm table is completely separate:
   - movie: per second by resolution × the movie's duration (taken from the request's recorded configuration version);
   - Hi3D: credits × $0.02, where credits = geometry (90 at 2048quality, 440 at 2048master) + texture 10 and PBR 5 when enabled.
 - **What is counted.** Each provider submission recorded for a job, so retries are included. Mock requests cost $0.
-- **Estimates, not invoices.** Account discounts, promotions and unlisted surcharges are not reflected. fal.ai labels the minimax per-second rates as launch prices (50% off until 30 Sep 2026); check them.
+- **Estimates, not invoices.** Account discounts and unlisted surcharges are not reflected.
+- **Dated changes.** An entry may carry `scheduled: {"from": "YYYY-MM-DD", …prices}`: from that UTC day on the
+  estimates use those prices (a promotional rate's end). The Admin shows both. The movie's rates follow fal.ai's
+  documentation of `minimax/h3-max/camera-controls` (checked 2026-10-09): $0.03 / $0.048 / $0.096 per second
+  (480P / 768P / 1080P), promotional (40% off) until 15 Oct 2026, then $0.05 / $0.08 / $0.16. See
+  `docs/MOVIE-PRICING-2026-10-09.md`.
 
 **Session detail now shows:**
 - user status (active, exhausted, inactive, removed…);

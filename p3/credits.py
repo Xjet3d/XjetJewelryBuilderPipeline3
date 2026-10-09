@@ -179,6 +179,8 @@ def RecordUsage(Ctx: Context, AccountId: str | None, Kind: str, RefId: str, Endp
         return
     Ctx.Accounts.RecordUsage(AccountId, Kind, 1, RefId, Provider=Ctx.Provider.Name, Endpoint=Endpoint,
                              CostUsd=Estimate(Ctx, Endpoint, Params), CostSource=CostSource, Internal=Internal)
+    from p3 import spendwarning as SpendWarning      # the day's estimate against the Admin's warning threshold
+    SpendWarning.Check(Ctx)
 
 
 def Status(Ctx: Context) -> dict:

@@ -1843,6 +1843,28 @@
         <p class="text-[12px] text-zinc-500" x-show="!aiMode?.locked">Turning mock mode off makes every generation, movie and 3D request a paid fal.ai call (you are asked to confirm). The choice survives restarts.</p>
         <p x-show="aiModeMsg" class="text-sm" role="status" :class="aiModeErr ? 'text-red-600' : 'text-emerald-700'" x-text="aiModeMsg"></p>
       </section>
+      <section class="card p-5 space-y-3" x-show="spendWarning" aria-label="AI spend warning">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <p class="lbl">AI spend warning</p>
+          <span class="badge" :class="spendWarning?.threshold_usd ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="spendWarning?.threshold_usd ? 'ON' : 'OFF'"></span>
+        </div>
+        <p class="text-sm">Today (<span x-text="spendWarning?.day"></span>, UTC), estimated: <strong class="tabular-nums" x-text="money(spendWarning?.spend_today_usd || 0)"></strong>
+          <span x-show="spendWarning?.threshold_usd" x-text="' of the $' + (spendWarning?.threshold_usd || 0).toFixed(2) + ' warning threshold'"></span>
+          <span x-show="!spendWarning?.live" class="text-zinc-500"> · mock mode: nothing is spent</span></p>
+        <form class="flex flex-wrap items-end gap-3" @submit.prevent="saveSpendWarning()">
+          <label class="text-[12px] text-zinc-600">Warn at (USD a day)<input class="inp !w-32 !py-1.5 mt-1 block" type="number" min="1" step="1" x-model="swThreshold" placeholder="off"></label>
+          <label class="text-[12px] text-zinc-600">Send to<input class="inp !w-72 !py-1.5 mt-1 block" type="email" x-model="swTo" placeholder="name@example.com" autocomplete="off"></label>
+          <button type="submit" class="btn2 !py-1.5" :disabled="swBusy">Save</button>
+        </form>
+        <p class="text-[12px] text-zinc-500">One email a day, sent when the day’s estimated live AI spend (list prices in AI prices) passes the threshold. It never stops or slows a request<span x-text="spendWarning?.cap_usd ? '; the separate hard cap (P3_DAILY_AI_SPEND_CAP_USD) is $' + spendWarning.cap_usd.toFixed(2) : '; no hard cap is configured'"></span>. Mail: <span class="font-mono" x-text="spendWarning?.mail_mode || '—'"></span><span x-show="spendWarning?.mail_mode === 'outbox'"> (kept in the outbox, not delivered)</span>.</p>
+        <p x-show="spendWarning?.last?.day" class="text-[12px] text-zinc-600" x-text="'Last warning: ' + dateTime(spendWarning?.last?.at) + ' — ' + money(spendWarning?.last?.spend_usd || 0) + ' to ' + (spendWarning?.last?.to || '') + ' · ' + (spendWarning?.last?.delivery || '')"></p>
+        <p x-show="swMsg" class="text-sm" role="status" :class="swErr ? 'text-red-600' : 'text-emerald-700'" x-text="swMsg"></p>
+      </section>
+      <section class="card p-5 space-y-1" x-show="clientIp" aria-label="Your address">
+        <p class="lbl">Your address, as this server sees it</p>
+        <p class="text-sm"><span class="font-mono" x-text="clientIp?.address"></span><span class="text-zinc-500" x-text="clientIp?.via_cloudflare ? ' · through Cloudflare' : ''"></span></p>
+        <p class="text-[12px] text-zinc-500">The rate limits count requests per visitor address: the first hop that is not a trusted proxy (this machine, P3_TRUSTED_PROXIES, Cloudflare). An X-Forwarded-For a visitor writes is never believed. Proxies trusted: <span x-text="(clientIp?.trusted_proxies || []).join(', ')"></span>.</p>
+      </section>
       <section class="card p-5 space-y-3" x-show="siteIndexing" aria-label="Search engines">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <p class="lbl">Search engines</p>
@@ -1983,7 +2005,7 @@
             <button class="btn" :disabled="productsBusy" @click="saveTariff()">Save tariff</button>
           </div>
         </template>
-        <p class="text-[12px] text-zinc-600">AI spend today (estimate at list prices, live requests): <strong x-text="'$' + (credits.spend_today_usd || 0).toFixed(2)"></strong><span x-text="credits.daily_cap_usd ? ' of the $' + credits.daily_cap_usd.toFixed(2) + ' daily cap — paid submissions stop at the cap' : ' — no daily cap is configured (P3_DAILY_AI_SPEND_CAP_USD)'"></span></p>
+        <p class="text-[12px] text-zinc-600">AI spend today (estimate at list prices, live requests): <strong x-text="'$' + (credits.spend_today_usd || 0).toFixed(2)"></strong><span x-text="credits.daily_cap_usd ? ' of the $' + credits.daily_cap_usd.toFixed(2) + ' daily cap — paid submissions stop at the cap' : ' — no daily cap is configured (P3_DAILY_AI_SPEND_CAP_USD)'"></span><span class="text-zinc-500"> · the email warning: Settings → System</span></p>
         <p x-show="tariffMsg" class="text-sm" :class="tariffErr ? 'text-red-600' : 'text-emerald-700'" x-text="tariffMsg"></p>
       </div>
       </template>

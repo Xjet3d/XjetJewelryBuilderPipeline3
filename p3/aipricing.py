@@ -14,6 +14,8 @@ resolution surcharges not listed here are not reflected. Mock jobs cost $0.
 """
 
 import json
+import re
+from datetime import datetime, timezone
 
 import httpx
 
@@ -24,15 +26,16 @@ PricingApi = "https://api.fal.ai/v1/models/pricing"
 
 DefaultPriceList = {
     "currency": "USD",
-    "source": "fal.ai pricing API + model pages, 2026-10-01",
+    "source": "fal.ai pricing API + model pages, 2026-10-01; the movie: fal.ai model documentation, 2026-10-09",
     "endpoints": {
         endpoints.ImageGenerate: {"unit": "image", "per_image": 0.15,
                                   "note": "Per generated image; P3 requests one 1K image per request."},
         endpoints.ImageEdit: {"unit": "image", "per_image": 0.15,
                               "note": "Per generated image; P3 requests one 1K image per request."},
-        endpoints.Movie: {"unit": "second", "per_second": {"480P": 0.025, "768P": 0.04, "1080P": 0.08},
-                          "note": "Per second of video by resolution. fal.ai lists these as launch rates "
-                                  "(50% off until 30 Sep 2026); check the current rate on fal.ai."},
+        endpoints.Movie: {"unit": "second", "per_second": {"480P": 0.03, "768P": 0.048, "1080P": 0.096},
+                          "scheduled": {"from": "2026-10-15", "per_second": {"480P": 0.05, "768P": 0.08, "1080P": 0.16}},
+                          "note": "Per second of video by resolution (fal.ai's documentation of this model, checked "
+                                  "2026-10-09): promotional rates, 40% off, until 15 Oct 2026; then the scheduled list rates."},
         endpoints.Mesh: {"unit": "credit", "per_credit": 0.02,
                          "credits": {"geometry": {"2048quality": 90, "2048master": 440}, "texture": 10, "pbr": 5},
                          "note": "Credits = geometry (by resolution) + texture (if enabled) + PBR (if enabled); "
@@ -62,27 +65,45 @@ def _Num(V, What: str) -> float:
     return float(V)
 
 
+def _ValidateEntry(Ep: str, P: dict) -> None:
+    for K in ("per_image", "per_credit", "per_request"):
+        if K in P:
+            _Num(P[K], f"{Ep} {K}")
+    if "per_second" in P:
+        if not isinstance(P["per_second"], dict):
+            raise PriceError(f"{Ep} per_second must map resolution → price.")
+        for R, V in P["per_second"].items():
+            _Num(V, f"{Ep} per_second[{R}]")
+    if "credits" in P:
+        C = P["credits"]
+        _Num(C.get("texture", 0), f"{Ep} credits.texture")
+        _Num(C.get("pbr", 0), f"{Ep} credits.pbr")
+        for R, V in (C.get("geometry") or {}).items():
+            _Num(V, f"{Ep} credits.geometry[{R}]")
+
+
 def ValidatePriceList(Doc: dict) -> dict:
     if not isinstance(Doc, dict) or not isinstance(Doc.get("endpoints"), dict):
         raise PriceError("The price list must have an 'endpoints' object.")
     for Ep, P in Doc["endpoints"].items():
         if not isinstance(P, dict):
             raise PriceError(f"{Ep}: must be an object.")
-        for K in ("per_image", "per_credit", "per_request"):
-            if K in P:
-                _Num(P[K], f"{Ep} {K}")
-        if "per_second" in P:
-            if not isinstance(P["per_second"], dict):
-                raise PriceError(f"{Ep} per_second must map resolution → price.")
-            for R, V in P["per_second"].items():
-                _Num(V, f"{Ep} per_second[{R}]")
-        if "credits" in P:
-            C = P["credits"]
-            _Num(C.get("texture", 0), f"{Ep} credits.texture")
-            _Num(C.get("pbr", 0), f"{Ep} credits.pbr")
-            for R, V in (C.get("geometry") or {}).items():
-                _Num(V, f"{Ep} credits.geometry[{R}]")
+        _ValidateEntry(Ep, P)
+        if "scheduled" in P:                     # a dated change: these prices apply from that UTC day on
+            Sc = P["scheduled"]
+            if not isinstance(Sc, dict) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(Sc.get("from") or "")):
+                raise PriceError(f"{Ep} scheduled must have a 'from' date (YYYY-MM-DD) and the prices that apply from it.")
+            _ValidateEntry(f"{Ep} scheduled", Sc)
     return Doc
+
+
+def Effective(P: dict, Day: str | None = None) -> dict:
+    """An entry's prices on a UTC day: a scheduled change applies from its date (e.g. when a promotional rate ends)."""
+    Sc = P.get("scheduled")
+    Day = Day or datetime.now(timezone.utc).date().isoformat()
+    if isinstance(Sc, dict) and Sc.get("from") and Day >= Sc["from"]:
+        return {**{K: V for K, V in P.items() if K != "scheduled"}, **{K: V for K, V in Sc.items() if K != "from"}}
+    return P
 
 
 class PriceBook:
@@ -149,6 +170,7 @@ class PriceBook:
         Params = Params or {}
         if P is None:
             return {"cost": None, "basis": "no price for this endpoint"}
+        P = Effective(P)
         if "per_image" in P:
             return {"cost": P["per_image"], "basis": f"1 image × ${P['per_image']}"}
         if "per_second" in P:

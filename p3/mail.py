@@ -250,6 +250,22 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
         <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
 
 
+def SpendWarningEmail(Spend: float, Threshold: float, Day: str, Site: str, AdminUrl: str = "",
+                      Cap: float | None = None) -> tuple[str, str]:
+    """The daily AI spend warning (p3/spendwarning.py): what the day's estimate is and that nothing was stopped."""
+    CapLine = (f"The hard daily cap (P3_DAILY_AI_SPEND_CAP_USD) is {_Money(Cap)}: paid requests stop there."
+               if Cap else "No hard daily cap is configured on this site.")
+    return (f"AI spend today passed {_Money(Threshold)} — {Site}", _Layout("AI spend warning", f"""\
+        <p style="margin:0 0 16px;">The estimated AI spend on <strong>{_Esc(Site)}</strong> today ({_Esc(Day)}, UTC) has
+           reached <strong>{_Money(Spend)}</strong>, past the warning threshold of {_Money(Threshold)}.</p>
+        <p style="margin:0 0 16px;">Customer requests continue as usual: this warning does not stop or slow anything.
+           {_Esc(CapLine)}</p>
+        <p style="margin:0 0 24px;color:#6F6F6F;font-size:13px;">The estimate uses the list prices in Admin → AI prices;
+           fal.ai's invoice is the reference. You get at most one warning a day; the threshold is in Admin → Settings →
+           System.</p>
+        {_Button(AdminUrl, "Open the Admin dashboard") if AdminUrl else ""}"""))
+
+
 class OutboxMailer:
     Mode = "outbox"
 

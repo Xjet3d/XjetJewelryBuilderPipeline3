@@ -212,6 +212,8 @@ function adminApp() {
     aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
     siteIndexing: null, siteIndexingBusy: false, siteIndexingMsg: '', siteIndexingErr: false,   // Settings → System → Search engines
     gscCode: '',                                 // Search Console's verification code (the meta tag's content)
+    spendWarning: null, swThreshold: '', swTo: '', swBusy: false, swMsg: '', swErr: false,   // Settings → System → AI spend warning
+    clientIp: null,                              // the caller's address as the rate limits see it
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
@@ -361,6 +363,9 @@ function adminApp() {
           this.aiMode = await this.api('GET', '/api/admin/ai-mode').catch(() => null);
           this.siteIndexing = await this.api('GET', '/api/admin/site-indexing').catch(() => null);
           this.gscCode = this.siteIndexing?.google_verification || '';
+          this.spendWarning = await this.api('GET', '/api/admin/spend-warning').catch(() => null);
+          this.swThreshold = this.spendWarning?.threshold_usd ?? ''; this.swTo = this.spendWarning?.to || '';
+          this.clientIp = await this.api('GET', '/api/admin/client-ip').catch(() => null);
         }
       }
     },
@@ -1213,6 +1218,18 @@ function adminApp() {
       } catch (e) { this.siteIndexingErr = true; this.siteIndexingMsg = e.message; } finally { this.siteIndexingBusy = false; }
     },
 
+    async saveSpendWarning() {
+      const t = String(this.swThreshold ?? '').trim();
+      if (t && !await this.ask({ title: 'Warn about AI spend at $' + Number(t).toFixed(2) + ' a day?',
+          text: 'One email a day to ' + (this.swTo.trim() || '—') + ' when the day’s estimated AI spend passes this amount. Nothing is stopped or slowed: customer requests continue.',
+          confirmLabel: 'Save the warning' })) return;
+      this.swBusy = true; this.swMsg = ''; this.swErr = false;
+      try {
+        this.spendWarning = await this.api('PUT', '/api/admin/spend-warning', { threshold_usd: t === '' ? null : Number(t), to: this.swTo.trim() });
+        this.swThreshold = this.spendWarning.threshold_usd ?? ''; this.swTo = this.spendWarning.to || '';
+        this.swMsg = this.spendWarning.threshold_usd ? 'Saved: a warning at $' + this.spendWarning.threshold_usd.toFixed(2) + ' a day.' : 'The warning is off.';
+      } catch (e) { this.swErr = true; this.swMsg = e.message; } finally { this.swBusy = false; }
+    },
     async saveGoogleVerification() {
       this.siteIndexingBusy = true; this.siteIndexingMsg = ''; this.siteIndexingErr = false;
       try {
@@ -1421,7 +1438,8 @@ function adminApp() {
     },
     priceRate(p) {
       if (p.per_image != null) return '$' + p.per_image + ' / image';
-      if (p.per_second) return Object.entries(p.per_second).map(([r, v]) => r + ' $' + v + '/s').join(' · ');
+      if (p.per_second) return Object.entries(p.per_second).map(([r, v]) => r + ' $' + v + '/s').join(' · ')
+        + (p.scheduled?.per_second ? ' — from ' + p.scheduled.from + ': ' + Object.entries(p.scheduled.per_second).map(([r, v]) => r + ' $' + v + '/s').join(' · ') : '');
       if (p.per_credit != null) return '$' + p.per_credit + ' / credit · ' + Object.entries(p.credits?.geometry || {}).map(([r, v]) => r + ' ' + v).join(', ') + ' cr (+texture ' + (p.credits?.texture ?? 0) + ', PBR ' + (p.credits?.pbr ?? 0) + ')';
       if (p.per_request != null) return '$' + p.per_request + ' / request';
       return '—';
