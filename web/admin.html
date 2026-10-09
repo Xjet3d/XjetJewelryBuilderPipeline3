@@ -63,7 +63,7 @@
     <div class="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center p-4" @click.self="answer(false)" @keydown.escape.window="answer(false)">
       <div id="admin-dialog" class="card p-6 w-full max-w-md space-y-4" role="alertdialog" aria-modal="true" aria-labelledby="admin-dialog-title">
         <p id="admin-dialog-title" class="text-base font-semibold" :class="dialog.danger ? 'text-red-700' : 'text-zinc-900'" x-text="dialog.title"></p>
-        <p x-show="dialog.text" class="text-sm text-zinc-700 leading-relaxed" x-text="dialog.text"></p>
+        <p x-show="dialog.text" class="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap max-h-[42vh] overflow-y-auto" x-text="dialog.text"></p>
         <input x-show="dialog.copy" class="inp font-mono text-xs" :value="dialog.copy" readonly @focus="$event.target.select()" aria-label="Link">
         <template x-if="dialog?.choices"><div class="space-y-1.5" role="radiogroup">
           <template x-for="c in (dialog?.choices || [])" :key="c.value">
@@ -229,7 +229,11 @@
             </tr>
             </tbody>
           </template>
-          <tbody x-show="!filtered.length"><tr><td colspan="10" class="text-center text-zinc-500 !py-10">No users.</td></tr></tbody>
+          <tbody x-show="!filtered.length"><tr><td colspan="10" class="text-center text-zinc-500 !py-10">
+            <span x-show="usersState === 'loading'">Loading…</span>
+            <span x-show="usersState === 'loaded'" x-text="search.trim() ? 'No user matches “' + search.trim() + '”.' : 'No users.'"></span>
+            <span x-show="usersState === 'failed'" class="text-red-600" x-text="'The users could not be loaded: ' + usersMsg"></span>
+            <button x-show="usersState === 'failed'" class="underline ml-2" @click="load()">Try again</button></td></tr></tbody>
       </table>
       </div>
     </section>
@@ -239,6 +243,7 @@
   <main x-show="ok && tab === 'users' && userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
     <p class="text-xs uppercase tracking-widest text-zinc-500"><a href="#/users" class="hover:text-black">Users</a> / <span x-text="d?.user.name || userId"></span></p>
     <p x-show="detailError" class="text-sm text-red-600" x-text="detailError"></p>
+    <p x-show="!d && !detailError" class="text-sm text-zinc-500" role="status">Loading…</p>
 
     <template x-if="d">
     <div class="space-y-8">
@@ -504,6 +509,10 @@
   </main>
 
   <main x-show="ok && tab === 'dashboard'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+    <p x-show="!dash && dashState !== 'failed'" class="text-sm text-zinc-500" role="status">Loading the dashboard…</p>
+    <div x-show="dashState === 'failed'" class="card p-5 text-sm" role="alert">
+      <span class="text-red-600" x-text="(dash ? 'The dashboard could not be refreshed: ' : 'The dashboard could not be loaded: ') + dashMsg"></span>
+      <button class="underline ml-2" @click="loadDashboard()">Try again</button></div>
     <template x-if="dash">
     <div class="space-y-8">
       <!-- Time range: all-time numbers alone are hard to read -->
@@ -810,6 +819,7 @@
   <!-- ══════════════════════════ Session detail ══════════════════════════ -->
   <main x-show="ok && tab === 'sessions' && sessionId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <p x-show="sdError" class="text-sm text-red-600" role="alert" x-text="sdError"></p>
+    <p x-show="!sd && !sdError" class="text-sm text-zinc-500" role="status">Loading…</p>
     <template x-if="sd">
     <div class="space-y-6">
       <!-- Sticky operational header: who · which ring · where they are · the daily actions. Sections below are anchors. -->
@@ -1437,6 +1447,7 @@
   <main x-show="ok && tab === 'orders' && quoteId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <p class="text-xs uppercase tracking-widest text-zinc-500"><a href="#/orders/quotes" class="hover:text-black">Quote requests</a> / <span x-text="qd?.ref || 'Quote request'"></span></p>
     <p x-show="qdError" class="text-sm text-red-600" role="alert" x-text="qdError"></p>
+    <p x-show="!qd && !qdError" class="text-sm text-zinc-500" role="status">Loading…</p>
     <template x-if="qd">
     <div class="space-y-6">
       <section class="card p-6 space-y-4">
@@ -1549,6 +1560,7 @@
   <main x-show="ok && tab === 'orders' && orderId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <p class="text-xs uppercase tracking-widest text-zinc-500"><a href="#/orders" class="hover:text-black">Orders</a> / <span x-text="od?.ref || orderId"></span></p>
     <p x-show="odError" class="text-sm text-red-600" role="alert" x-text="odError"></p>
+    <p x-show="!od && !odError" class="text-sm text-zinc-500" role="status">Loading…</p>
     <template x-if="od">
     <div class="space-y-6">
       <!-- Header + the operational actions -->
@@ -1736,7 +1748,7 @@
               </td>
             </tr>
           </template>
-          <tr x-show="!promos.length"><td colspan="6" class="text-center text-zinc-500 !py-8">No promo codes yet.</td></tr>
+          <tr x-show="!promos.length && promosState !== 'failed'"><td colspan="6" class="text-center text-zinc-500 !py-8" x-text="promosState === 'loading' ? 'Loading…' : 'No promo codes yet.'"></td></tr>
         </tbody>
       </table>
       </div>

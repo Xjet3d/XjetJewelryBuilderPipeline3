@@ -421,8 +421,19 @@ function adminApp() {
     },
     // The credits tariff: what one piece of work costs a customer (p3/credits.py)
     editTariff() { this.tariffEdit = { ...(this.credits?.tariff || {}) }; this.tariffMsg = ''; },
+    // Before a live change: what changes, old → new, one line each; nothing changed → nothing to save. Resolves true to go on.
+    async confirmChanges(lines, title, text, confirmLabel) {
+      if (!lines.length) { this.notify('Nothing changed — nothing to save.'); return false; }
+      return await this.ask({ title, text: lines.slice(0, 14).join('\n') + (lines.length > 14 ? '\n… and ' + (lines.length - 14) + ' more' : '') + '\n\n' + text,
+                              confirmLabel, cancelLabel: 'Keep editing', danger: true });
+    },
+    fmtVal(v, money = true) { return v === '' || v == null ? '—' : (money ? '$' + Number(v).toFixed(2) : String(Number(v))); },
     async saveTariff() {
       if (!this.tariffEdit) return;
+      const was = this.credits?.tariff || {};
+      const lines = (this.credits?.kinds || []).filter(k => Number(this.tariffEdit[k.id] ?? 0) !== Number(was[k.id] ?? 0))
+        .map(k => k.label + ': ' + (was[k.id] ?? 0) + ' → ' + (this.tariffEdit[k.id] ?? 0) + ' credit' + (Number(this.tariffEdit[k.id]) === 1 ? '' : 's'));
+      if (!await this.confirmChanges(lines, 'Change what customers pay in credits?', 'Every customer’s next request is counted with the new tariff. Requests already made are not recounted.', 'Save the tariff')) return;
       this.productsBusy = true; this.tariffMsg = ''; this.tariffErr = false;
       try {
         this.credits = await this.api('PUT', '/api/admin/credits/tariff', { tariff: this.tariffEdit });
@@ -641,9 +652,11 @@ function adminApp() {
     },
 
     // ── promo codes ─────────────────────────────────────────────────────
+    promosState: 'idle',
     async loadPromos() {
-      this.promoMsg = '';
-      try { this.promos = (await this.api('GET', '/api/admin/promo-codes')).promo_codes; } catch (e) { this.promoMsg = e.message; this.promoErr = true; }
+      this.promoMsg = ''; this.promosState = 'loading';
+      try { this.promos = (await this.api('GET', '/api/admin/promo-codes')).promo_codes; this.promosState = 'loaded'; }
+      catch (e) { this.promoMsg = e.message; this.promoErr = true; this.promosState = 'failed'; }
     },
     newPromo() { this.promoEdit = { id: null, code: '', kind: 'percent', value: 10, starts_at: '', ends_at: '', usage_limit: '', materials: [], min_subtotal: '', note: '', active: true }; this.promoMsg = ''; },
     editPromo(p) {
@@ -676,9 +689,13 @@ function adminApp() {
     },
 
     // ── list ───────────────────────────────────────────────────────────
+    usersState: 'idle', usersMsg: '',              // loading · loaded · failed: "No users" only once the list is known
     async load() {
-      const r = await this.api('GET', '/api/admin/users' + (this.showRemoved ? '?include_removed=true' : ''));
-      this.users = r.users;
+      this.usersState = 'loading'; this.usersMsg = '';
+      try {
+        const r = await this.api('GET', '/api/admin/users' + (this.showRemoved ? '?include_removed=true' : ''));
+        this.users = r.users; this.usersState = 'loaded';
+      } catch (e) { this.usersState = 'failed'; this.usersMsg = e.message; }
     },
     get filtered() {
       const q = this.search.trim().toLowerCase();
@@ -741,8 +758,12 @@ function adminApp() {
     },
 
     // ── dashboard ──────────────────────────────────────────────────────
+    dashState: 'idle', dashMsg: '',
     async loadDashboard() {
-      this.dash = await this.api('GET', '/api/admin/dashboard' + (this.dashDays ? '?days=' + this.dashDays : '')).catch(() => null);
+      this.dashState = 'loading'; this.dashMsg = '';
+      this.dash = await this.api('GET', '/api/admin/dashboard' + (this.dashDays ? '?days=' + this.dashDays : ''))
+        .then(d => { this.dashState = 'loaded'; return d; })
+        .catch(e => { this.dashState = 'failed'; this.dashMsg = e.message; return this.dash; });   // a failed refresh keeps what was shown
       this.attention = this.dash?.needs_attention || null;
       if (!this.galleryItems.length) this.loadGallery().catch(() => {});       // top designs
     },
@@ -1143,6 +1164,7 @@ function adminApp() {
     // ── detail ─────────────────────────────────────────────────────────
     async loadDetail() {
       this.detailError = '';
+      if (this.d && this.d.user?.account_id !== this.userId) this.d = null;      // never another user's page under this address
       try { this.d = await this.api('GET', '/api/admin/users/' + encodeURIComponent(this.userId)); }
       catch (e) { this.d = null; this.detailError = e.message; }
     },
@@ -1585,6 +1607,14 @@ function adminApp() {
         density_g_cm3: r.density_g_cm3 ?? '', price_per_g: r.price_per_g ?? '', cost_per_g: r.cost_per_g ?? '', fixed_price: r.fixed_price ?? '' }));
     },
     async saveMaterialPrices() {
+      const was = Object.fromEntries((this.mprices?.rows || []).map(r => [r.id, r]));
+      const names = { fixed_price: ['fixed price', true], price_per_g: ['price per g', true], cost_per_g: ['cost per g', true], density_g_cm3: ['density g/cm³', false] };
+      const lines = [];
+      for (const r of this.mpEdit || []) for (const [k, [label, money]] of Object.entries(names)) {
+        const a = was[r.id]?.[k] ?? '', b = r[k] ?? '';
+        if (String(a === '' ? '' : Number(a)) !== String(b === '' ? '' : Number(b))) lines.push(r.label + ' — ' + label + ': ' + this.fmtVal(a, money) + ' → ' + this.fmtVal(b, money));
+      }
+      if (!await this.confirmChanges(lines, 'Change the website’s prices now?', 'The website and new 3D calculations and quote suggestions use them at once. Orders already placed keep their prices.', 'Save the prices')) return;
       this.mpBusy = true; this.mpMsg = ''; this.mpErr = false;
       try {
         const materials = Object.fromEntries(this.mpEdit.map(r => [r.id,
@@ -1605,6 +1635,20 @@ function adminApp() {
         fixed: Object.fromEntries(this.charmSizeCols().map(s => [this.sizeKey(s), r.fixed_prices?.[this.sizeKey(s)] ?? ''])) }));
     },
     async saveCharmPrices() {
+      const was = Object.fromEntries((this.cprices?.rows || []).map(r => [r.id, r]));
+      const lines = [];
+      for (const r of this.cpEdit || []) {
+        const w = was[r.id] || {};
+        for (const [k, label] of [['price_per_g', 'price per g'], ['cost_per_g', 'cost per g']]) {
+          const a = w[k] ?? '', b = r[k] ?? '';
+          if (String(a === '' ? '' : Number(a)) !== String(b === '' ? '' : Number(b))) lines.push(r.label + ' — ' + label + ': ' + this.fmtVal(a) + ' → ' + this.fmtVal(b));
+        }
+        for (const [size, b] of Object.entries(r.fixed || {})) {
+          const a = w.fixed_prices?.[size] ?? '';
+          if (String(a === '' ? '' : Number(a)) !== String(b === '' ? '' : Number(b))) lines.push(r.label + ' ' + size + ' mm: ' + this.fmtVal(a) + ' → ' + this.fmtVal(b));
+        }
+      }
+      if (!await this.confirmChanges(lines, 'Change the charm prices on the website now?', 'Charm prices and quotes use them at once; ring prices are unchanged. Orders already placed keep their prices.', 'Save the charm prices')) return;
       this.cpBusy = true; this.cpMsg = ''; this.cpErr = false;
       try {
         const n = v => (v === '' || v == null) ? null : Number(v);
