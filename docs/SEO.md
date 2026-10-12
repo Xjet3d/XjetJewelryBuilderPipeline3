@@ -151,28 +151,27 @@ curl -sI https://xjetatelier.xjet3d.com/JewelryB2C2/ | grep -i robots    [x-robo
 curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/ | grep -i robots    [nothing: P3 stays indexable]
 ```
 
-## Google Search Console — manual steps (someone with the Google account)
+## Google Search Console — the Atelier property (set up 2026-10-12)
 
-Search engines are ON on Atelier (2026-10-12). `xjet3d.com` carries two `google-site-verification` TXT records
-(`Yx1ON8…`, `-QFs6h…`; `xjetatelier.xjet3d.com` has none): the DNS method of a Search Console **Domain property**, so XJet
-very likely already has one — it covers `https://xjetatelier.xjet3d.com/…` without any change on our side. (The
-domain's mail is Microsoft 365 — MX `xjet3d-com.mail.protection.outlook.com` — so the records are not a Google
-Workspace sign-up.) Only the Google accounts that added those records can confirm it or add you.
-
-1. Open [Search Console](https://search.google.com/search-console) with your XJet Google account and look for a property
-   named `xjet3d.com` (Domain). Not there: ask marketing / IT who owns the `xjet3d.com` Domain property to add you as an
-   **Owner** or **Full user** (*Settings → Users and permissions*). With access, go to step 3.
-2. Only if no Domain property exists (or nobody can add you): *Add property → URL prefix* →
-   `https://xjetatelier.xjet3d.com/JewelryB2C3/` → method **HTML tag** → paste the tag (or its `content`) into Atelier
-   Admin → Settings → System → *Google Search Console verification* → Save → **Verify**. (A new Domain property would
-   need a DNS TXT record in Cloudflare instead.) The Admin field is needed only for this route.
-3. **Sitemaps** (in the property) → submit `https://xjetatelier.xjet3d.com/JewelryB2C3/sitemap.xml`.
-4. **URL Inspection** → each of these → *Test live URL* → *Request indexing*:
-   `https://xjetatelier.xjet3d.com/JewelryB2C3/`, `…/gallery`, `…/faq`, `…/materials`, `…/technology`, `…/about`
-   and two designs from the sitemap (e.g. `…/design/serpent-scale`).
-5. After a few days: **Pages** (indexed / not indexed and why), **Sitemaps** (read, URLs discovered), **Enhancements**
-   (FAQ — Google shows FAQ rich results only for a few authoritative sites; Product snippets report missing offers by
-   design), **Core Web Vitals** once there is field data.
+- **Property:** URL prefix `https://xjetatelier.xjet3d.com/JewelryB2C3/`, owned by XJet's "XJET NPJ" Google
+  account (the verified Owner of the URL-prefix property `https://xjet3d.com/`). That account has no
+  access to a Domain property `xjet3d.com` (Search Console: "you don't have access to this property"), and
+  `https://xjet3d.com/` does not cover the `xjetatelier` host — hence a property of Atelier's own.
+- **Verification:** HTML tag. Its `content` is saved in Atelier Admin → Settings → System → *Google Search Console
+  verification*, and the home page `https://xjetatelier.xjet3d.com/JewelryB2C3/` carries
+  `<meta name="google-site-verification" content="…">`. **Keep it** — clearing the field (or a new Atelier database)
+  makes the property unverified. A second method can be added in Search Console → Settings → Ownership verification.
+- **Sitemap:** `https://xjetatelier.xjet3d.com/JewelryB2C3/sitemap.xml` submitted on 2026-10-12 (status "Couldn't
+  fetch" right after submission, while Googlebot's live tests of the pages passed — re-check after a day or two).
+- **Request indexing:** done 2026-10-12 for `…/JewelryB2C3/`, `/gallery`, `/faq`, `/materials`, `/technology`, `/about`
+  and `/design/serpent-scale`; `/design/aurora-line` hit "Something went wrong — try again in a few hours" twice (it is
+  in the sitemap anyway). Re-requesting a URL does not move it up the queue.
+- **Next:** after a few days, **Pages** (indexed / not indexed and why), **Sitemaps** (read, URLs discovered),
+  **Enhancements** (FAQ — Google shows FAQ rich results only for a few authoritative sites; Product snippets report
+  missing offers by design), **Core Web Vitals** once there is field data.
+- `xjet3d.com` carries two `google-site-verification` TXT records (`Yx1ON8…`, `-QFs6h…`) — another account's
+  verification (mail is Microsoft 365, so not a Workspace sign-up). If that Domain property is ever found, its owner
+  can add the XJET NPJ account; nothing depends on it.
 
 Keep proto's switch OFF; never add proto to Search Console.
 
