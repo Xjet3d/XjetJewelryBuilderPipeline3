@@ -31,6 +31,14 @@ const STEPS = {
   admin_3d_requested: ['Admin: 3D requested', 'bg-green-100 text-green-700'],
   admin_3d_measured: ['Admin: 3D measured', 'bg-green-100 text-green-700'],
   admin_3d_new_model_override: ['Admin: NEW Hi3D model (override)', 'bg-red-100 text-red-700'],
+  // 3D versions and external parts (docs/EXTERNAL-PARTS.md)
+  external_part: ['External part', 'bg-teal-50 text-teal-800'],
+  admin_external_design_added: ['Admin: external part added', 'bg-teal-50 text-teal-800'],
+  admin_session_created: ['Admin: session', 'bg-zinc-100 text-zinc-600'],
+  admin_3d_version_added: ['Admin: 3D version added', 'bg-green-100 text-green-700'],
+  admin_3d_version_activated: ['Admin: active 3D version', 'bg-green-100 text-green-700'],
+  admin_3d_version_archived: ['Admin: 3D version archived', 'bg-zinc-200 text-zinc-600'],
+  admin_3d_version_restored: ['Admin: 3D version restored', 'bg-zinc-100 text-zinc-600'],
 };
 const THREE_D = {
   requested: ['Requested', 'bg-zinc-100 text-zinc-600'], generating: ['Hi3D running', 'bg-sky-100 text-sky-800'],
@@ -187,6 +195,8 @@ function adminApp() {
     // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
     dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
+    // External parts and 3D versions (docs/EXTERNAL-PARTS.md): the Add External Part dialog, an explicit session (S-1001)
+    xp: null, sc: null, scError: '', newSession: null, containers: [],
     get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProduct: 'ring',                              // AI models & prompts: which product's configuration is shown (Ring | Charm)
@@ -798,6 +808,7 @@ function adminApp() {
       try {
         const r = await this.api('GET', '/api/admin/sessions' + (this.sMock ? '?include_mock=true' : ''));
         this.sessions = r.sessions; this.idleMinutes = r.idle_minutes; this.mockSessions = r.mock_sessions; this.retired = r.retired || [];
+        this.containers = r.containers || [];                 // sessions made in the Admin (S-1001 …)
         this.sessionsState = 'loaded';
       } catch (e) { this.sessionsState = 'failed'; this.fail(e); }
       if (this.sAttention || !this.attention) this.attention = await this.api('GET', '/api/admin/attention').catch(() => null);
@@ -940,6 +951,8 @@ function adminApp() {
       } finally { this.rename.busy = false; }
     },
     async loadSession() {
+      if (this.sessionId.startsWith('ses_')) return this.loadContainer();
+      this.sc = null;
       this.sdError = ''; this.g3.error = '';
       if (!this.sessions.length) this.loadSessions().catch(() => {});       // for Previous / Next when opened from a link
       try {
@@ -955,16 +968,20 @@ function adminApp() {
         const latest = sd.three_d.find(t => this.previewReady(t));       // visual only: also for "needs review"
         const sid = sd.session.session_id;                               // still this session when the viewer starts
         if (latest && this.viewer3d.id !== latest.id) setTimeout(() => { if (this.sd?.session.session_id === sid) this.show3d(latest); }, 50);
-        if (!latest) this.clear3d();
+        // No result to show yet: the active version's own light preview (an uploaded part is measured before any result)
+        const active = !latest && (sd.versions || []).find(v => v.state === 'active' && v.preview_ready);
+        if (active && this.viewer3d.id !== 'version:' + active.id) setTimeout(() => { if (this.sd?.session.session_id === sid) this.viewVersion(active, false); }, 50);
+        if (!latest && !active) this.clear3d();
         await this.$nextTick();                 // the <option>s must exist before the selects get their value
         await new Promise(r => setTimeout(r));  // (a freshly created detail block renders its options a tick later)
         this.g3.size = size; this.g3.material = material;
         this.poll3d();
+        this.pollVersions();
       } catch (e) { this.sd = null; this.sdError = e.message; }
     },
     // 3D sizes: a ring's US size, a charm's height in mm
     size3dLabel(size) { return this.isCharm(this.sd?.session) ? size + ' mm' : 'US ' + size; },
-    default3dSize() { return this.isCharm(this.sd?.session) ? this.sd.catalog.charm_default_size : 10; },
+    default3dSize() { return this.sd?.three_d_defaults?.own_size ?? (this.isCharm(this.sd?.session) ? this.sd.catalog.charm_default_size : 10); },
     charm3dSizes() {
       const s = [...(this.sd?.catalog?.charm_sizes || [])];
       for (const v of [this.g3.size, this.sd?.three_d_defaults?.customer_size]) if (v != null && !s.includes(v)) s.push(v);   // e.g. a size no longer offered
@@ -1163,6 +1180,204 @@ function adminApp() {
         this.downloadNote = `Downloading ${(r.bytes / 1e6).toFixed(0)} MB — see your browser's downloads.`;
         setTimeout(() => { this.downloadNote = ''; }, 6000);
       } catch (e) { this.notify('Download failed: ' + e.message, 'error'); }
+    },
+
+    // ── external parts and 3D versions (docs/EXTERNAL-PARTS.md) ─────────
+    // A large STL goes up in pieces straight to the server's disk (never held in memory there or here); a piece that
+    // fails is sent again, and the server says where to continue.
+    async uploadFile(file, onProgress) {
+      const u = await this.api('POST', '/api/admin/uploads', { filename: file.name, bytes: file.size });
+      let off = 0, tries = 0;
+      while (off < file.size) {
+        let r, d;
+        try {
+          r = await fetch(BASE + `/api/admin/uploads/${encodeURIComponent(u.id)}?offset=${off}`, { method: 'PUT',
+            headers: { ...this.authHeaders(), 'Content-Type': 'application/octet-stream' }, body: file.slice(off, off + u.chunk_bytes) });
+          d = await r.json().catch(() => ({}));
+        } catch (e) { if (++tries > 3) throw e; await new Promise(x => setTimeout(x, 1000 * tries)); continue; }
+        if (!r.ok) {
+          if (d?.error?.code === 'offset_mismatch' && d.error.received != null) { off = d.error.received; continue; }
+          if (r.status >= 500 && ++tries <= 3) { await new Promise(x => setTimeout(x, 1000 * tries)); continue; }
+          throw new Error(d?.error?.message || 'Upload failed (' + r.status + ')');
+        }
+        tries = 0; off = d.received; onProgress?.(off / file.size);
+      }
+      return this.api('POST', `/api/admin/uploads/${encodeURIComponent(u.id)}/complete`);
+    },
+    // Add External Part: as a new design in a session, or as a new 3D version of an existing design (or of an order line)
+    openPart(ctx) {
+      this.xp = { kind: ctx.kind, sessionKey: ctx.sessionKey || '', sessionRef: ctx.sessionRef || '', designs: ctx.designs || [],
+                  allowNew: ctx.allowNew !== false, line: ctx.line || null,
+                  target: ctx.kind === 'line' ? 'existing' : (ctx.target || 'new'),
+                  designId: ctx.designId || (ctx.designs || [])[0]?.id || '', options: ctx.options || [], candidate: ctx.candidate || '',
+                  // an order line's revised STL is that order's own by default; a design's new version becomes its active one
+                  file: null, title: '', product: ctx.product || 'ring', tool: '', note: '', scaling: 'exact', activate: ctx.kind !== 'line',
+                  busy: false, progress: 0, error: '', uploadId: '', force: false };
+    },
+    // From a design's session page: its session's designs (this one first) and the option of its active version
+    openPartForDesign() {
+      const sd = this.sd, g = sd.session_group, own = { id: sd.session.design_id, title: sd.session.title, ring_id: sd.session.ring_id };
+      const designs = [own, ...((g?.designs || []).filter(d => d.id !== own.id))];
+      const opts = (sd.three_d_defaults.options || []).map(o => ({ id: o.id, label: o.ring_id + (o.selected ? ' · selected' : '') }));
+      const sel = opts.find(o => o.label.endsWith('selected')) || opts[0];
+      this.openPart({ kind: 'design', sessionKey: g ? g.id : sd.session.design_id, sessionRef: g?.ref || '', designs, designId: own.id,
+                      target: 'existing', allowNew: !sd.session.shared, options: opts, product: sd.session.product_type,
+                      candidate: sd.three_d_defaults.existing_model?.candidate_id || sel?.id || '' });
+    },
+    async submitPart() {
+      const x = this.xp; if (!x || x.busy) return;
+      if (!x.file && !x.uploadId) { x.error = 'Choose the STL file.'; return; }
+      if (x.kind !== 'line' && x.target === 'new' && x.title.trim().length < 2) { x.error = 'Give the part a name (2–60 characters).'; return; }
+      if (x.kind !== 'line' && x.target === 'existing' && !x.designId) { x.error = 'Choose the design it is a new version of.'; return; }
+      x.busy = true; x.error = '';
+      try {
+        if (!x.uploadId) x.uploadId = (await this.uploadFile(x.file, p => { x.progress = p; })).id;
+        let go = null;
+        if (x.kind === 'line') {
+          const r = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(x.line.id)}/3d-upload`,
+                                   { upload_id: x.uploadId, scaling: x.scaling, source_tool: x.tool, note: x.note, activate: x.activate });
+          this.notify(`${r.version.label} uploaded for ${this.od.ref} · ${x.line.ring_id} — measuring now`);
+        } else if (x.target === 'new') {
+          const r = await this.api('POST', `/api/admin/sessions/${encodeURIComponent(x.sessionKey)}/external-designs`,
+                                   { upload_id: x.uploadId, product_type: x.product, title: x.title.trim(), source_tool: x.tool, note: x.note,
+                                     scaling: x.scaling, force: x.force });
+          this.notify(`${x.title.trim()} added to session ${r.session.ref} — measuring now`);
+          go = '#/sessions/' + encodeURIComponent(r.design_id);
+        } else {
+          const own = x.designId === this.sd?.session.design_id;
+          const r = await this.api('POST', `/api/admin/designs/${encodeURIComponent(x.designId)}/versions`,
+                                   { upload_id: x.uploadId, candidate_id: own ? (x.candidate || null) : null,
+                                     scaling: x.scaling, source_tool: x.tool, note: x.note, activate: x.activate });
+          this.notify(`${r.label} added — measuring now`);
+          if (!own) go = '#/sessions/' + encodeURIComponent(x.designId);
+        }
+        x.uploadId = '';                                   // used: nothing to delete
+        this.xp = null;
+        if (go) this.go(go); else await this.refreshAfterPart();
+      } catch (e) {
+        if (e.code === 'duplicate_title' && this.xp === x) {
+          x.busy = false;
+          if (await this.ask({ title: 'Use this name anyway?', text: e.message, confirmLabel: 'Use it anyway' })) { x.force = true; return this.submitPart(); }
+          return;
+        }
+        x.error = e.message;
+      } finally { if (this.xp === x) x.busy = false; }
+    },
+    closePart() {
+      const x = this.xp; this.xp = null;                // an upload that was not used is deleted now (not after a day)
+      if (x?.uploadId) this.api('DELETE', '/api/admin/uploads/' + encodeURIComponent(x.uploadId)).catch(() => {});
+    },
+    async refreshAfterPart() {
+      if (this.tab === 'orders' && this.orderId) await this.loadOrder();
+      else if (this.tab === 'sessions' && this.sessionId) await this.loadSession();
+    },
+    // A version still being measured (or an external design's picture still being rendered): look again shortly
+    pollVersions() {
+      clearTimeout(this._pollVersions);
+      const sid = this.sessionId;
+      if (this._pvSid !== sid) { this._pvSid = sid; this._pvLeft = 60; }        // at most ~3 minutes of looking per page
+      const sd = this.sd;
+      const busy = (sd?.versions || []).some(v => ['queued', 'measuring'].includes(v.measure?.status) || (sd.external && v.state === 'active' && !v.preview_ready))
+                   || (sd?.external && (sd.session.thumbnail_url || '').includes('/placeholder.png'));   // the render follows the preview
+      if (busy && this._pvLeft-- > 0) this._pollVersions = setTimeout(() => { if (this.sessionId === sid && this.tab === 'sessions') this.loadSession(); }, document.hidden ? 10000 : 3000);
+    },
+    versionMeasure(v) {
+      const m = v.measure || {}, mm = m.units === 'mm';
+      if (m.status === 'queued') return 'Measurement queued…';
+      if (m.status === 'measuring') return 'Measuring…';
+      if (m.status === 'failed') return 'Measurement failed: ' + (m.error || '');
+      if (m.status !== 'measured') return '—';
+      const f = x => x == null ? '—' : Number(x).toFixed(mm ? 2 : 3);
+      const parts = [f(m.x) + ' × ' + f(m.y) + ' × ' + f(m.z) + (mm ? ' mm' : ' (model units — sized on use)')];
+      if (m.height != null && mm) parts.push('height ' + f(m.height) + ' mm incl. loop');
+      if (m.inner_diameter != null && mm) parts.push('inner Ø ' + f(m.inner_diameter) + ' mm' + (m.us_size != null ? ' ≈ US ' + m.us_size : ''));
+      if (m.bore_ok === false) parts.push('no ring bore found');
+      if (m.volume != null && mm) parts.push((m.volume / 1000).toFixed(3) + ' cc');
+      return parts.join(' · ');
+    },
+    async versionAction(v, action) {
+      const text = {
+        activate: ['Make ' + v.label + ' the active version?', 'New 3D results and order preparation use it from now on. Existing results, and order lines already produced from another version, keep theirs.', 'Make active'],
+        archive: ['Archive ' + v.label + '?', 'It is hidden from the version choices. Its file, measurements and results stay, and it can be restored.', 'Archive'] }[action];
+      if (text && !await this.ask({ title: text[0], text: text[1], confirmLabel: text[2] })) return;
+      try { await this.api('POST', `/api/admin/versions/${encodeURIComponent(v.id)}/${action}`, {}); await this.loadSession(); }
+      catch (e) { this.fail(e); }
+    },
+    viewVersion(v, scroll = true) {
+      this.show3d({ id: 'version:' + v.id, preview_api: `/api/admin/versions/${encodeURIComponent(v.id)}/preview`,
+                    viewer_label: (v.ring_id ? v.ring_id + ' · ' : '') + v.label, material_id: this.sd?.three_d_defaults?.material_id || '' });
+      if (scroll) this.$refs.viewer?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    },
+    async downloadVersion(v) {
+      try {
+        const r = await this.api('POST', `/api/admin/versions/${encodeURIComponent(v.id)}/download-link`);
+        const a = Object.assign(document.createElement('a'), { href: r.url });
+        document.body.appendChild(a); a.click(); a.remove();
+        this.downloadNote = `Downloading ${v.label} (${this.gb(r.bytes)}) — see your browser's downloads.`;
+        setTimeout(() => { this.downloadNote = ''; }, 6000);
+      } catch (e) { this.notify('Download failed: ' + e.message, 'error'); }
+    },
+    versionStateClass(s) { return { active: 'bg-emerald-100 text-emerald-800', superseded: 'bg-zinc-100 text-zinc-600', archived: 'bg-zinc-200 text-zinc-500' }[s] || 'bg-zinc-100'; },
+    // An explicit session (S-1001): 0, 1 or many designs
+    async loadContainer() {
+      this.scError = ''; this.sd = null;
+      try { this.sc = (await this.api('GET', '/api/admin/sessions/' + encodeURIComponent(this.sessionId))).container; }
+      catch (e) { this.sc = null; this.scError = e.message; }
+    },
+    openPartForContainer() {
+      const c = this.sc;
+      this.openPart({ kind: 'session', sessionKey: c.id, sessionRef: c.ref, designs: c.designs.map(d => ({ id: d.id, title: d.title, ring_id: d.ring_id })),
+                      target: 'new' });
+    },
+    async openNewSession() {
+      this.newSession = { owner: '', title: '', busy: false, error: '', users: [], q: '' };
+      try { this.newSession.users = (await this.api('GET', '/api/admin/users')).users || []; } catch (e) { this.newSession.error = e.message; }
+    },
+    newSessionUsers() {
+      const n = this.newSession, q = (n?.q || '').trim().toLowerCase();
+      return (n?.users || []).filter(u => u.status !== 'removed' && (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))).slice(0, 50);
+    },
+    async createSession() {
+      const n = this.newSession; if (!n || n.busy) return;
+      if (!n.owner) { n.error = 'Choose whose session it is.'; return; }
+      n.busy = true; n.error = '';
+      try {
+        const s = await this.api('POST', '/api/admin/sessions', { owner_account_id: n.owner, title: n.title });
+        this.newSession = null;
+        this.notify('Session ' + s.ref + ' created — add its first part');
+        this.go('#/sessions/' + encodeURIComponent(s.id));
+      } catch (e) { n.error = e.message; } finally { if (this.newSession === n) n.busy = false; }
+    },
+    // One line of an order's history (the 3D events name the line and the 3D version)
+    orderEventText(e) {
+      const d = e.data || {}, line = (this.od?.lines || []).find(l => l.id === d.line_id), who = line ? line.ring_id + ' · ' : '';
+      const v = n => n ? 'v' + n : 'a 3D version';
+      return { placed: 'Order placed', status: 'Status → ' + this.orderStatusLabel(d.to), payment: 'Payment → ' + this.payLabel(d.to) + (d.manual ? ' (manual)' : ''),
+               note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed',
+               '3d_prepared': '3D prepared · ' + who + v(d.version_no),
+               '3d_pinned': '3D pinned · ' + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
+               '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
+               '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s active version' : ' · this order only') }[e.kind] || e.kind;
+    },
+    // An order line: produce it from another version of its option (explicit; recorded in the order history)
+    async useLineVersion(l) {
+      const now = l.three_d_version?.mesh_id;
+      const choices = (l.three_d_versions || []).filter(v => v.mesh_id !== now);
+      if (!choices.length) { this.notify(`${l.ring_id} has no other 3D version — upload a revised STL instead.`, 'error'); return; }
+      const prod = ['production', 'qc', 'shipped', 'completed'].includes(this.od.status);
+      const r = await this.ask({ title: `Produce ${l.ring_id} from another 3D version?`,
+        text: `It is produced from ${l.three_d_version?.label || '—'} now. The change is recorded in the order history.` + (prod ? ` ${this.od.ref} is already ${this.od.status_label.toLowerCase()} — say why.` : ''),
+        choices: choices.map(v => ({ value: v.mesh_id, label: v.label + (v.active ? ' · the design’s active version' : '') })),
+        input: { label: prod ? 'Why (required)' : 'Note (optional)', value: '', max: 300 }, confirmLabel: 'Use this version' });
+      if (!r) return;
+      try {
+        await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(l.id)}/3d-version`, { mesh_id: r.choice, note: r.value || '' });
+        await this.loadOrder();
+        this.notify(`${l.ring_id} is produced from ${(choices.find(v => v.mesh_id === r.choice) || {}).label} — preparing its STL`);
+      } catch (e) { this.fail(e); }
+    },
+    openPartForLine(l) {
+      this.openPart({ kind: 'line', line: l, product: l.product_type, designId: l.design_id });
     },
 
     // ── detail ─────────────────────────────────────────────────────────
@@ -1753,10 +1968,10 @@ function adminApp() {
       if (!window.THREE || !THREE.STLLoader || !THREE.OrbitControls) { this.viewer3d.error = '3D viewer library not loaded'; return; }
       this.clear3d();
       const renderer = this.glRenderer();                // null when the browser cannot start WebGL
-      this.viewer3d = { id: t.id, label: (t.ring_id ? t.ring_id + ' · ' : '') + (t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label, loading: true, error: '',
+      this.viewer3d = { id: t.id, label: t.viewer_label || ((t.ring_id ? t.ring_id + ' · ' : '') + (t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label), loading: true, error: '',
                         note: renderer ? '' : 'Basic 3D view (WebGL is off in this browser) · drag to rotate' };
       try {
-        const r = await fetch(BASE + `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`, { headers: this.authHeaders() });   // light, visual only
+        const r = await fetch(BASE + (t.preview_api || `/api/admin/3d/${encodeURIComponent(t.id)}/stl/preview`), { headers: this.authHeaders() });   // light, visual only
         if (!r.ok) throw new Error('Preview download failed (' + r.status + ')');
         const buf = await r.arrayBuffer();
         if (this.viewer3d.id !== t.id) return;        // another model was opened meanwhile
@@ -1904,6 +2119,12 @@ function adminApp() {
       if (e.kind === 'admin_3d_bore_fixed') return 'Bore made round: ×' + (d.scale_major || 0).toFixed(3) + ' / ×' + (d.scale_minor || 0).toFixed(3) + (d.inner_diameter_mm ? ' · inner Ø ' + d.inner_diameter_mm.toFixed(2) + ' mm' : '') + (d.roundness != null ? ' · deviation ' + (d.roundness * 100).toFixed(1) + '%' : '') + (d.weight_g != null ? ' · ' + d.weight_g + ' g' : '') + (d.status === 'needs_review' ? ' · still needs review' : '');
       if (e.kind === 'admin_3d_accepted') return 'Accepted for production as measured by ' + (d.by || 'admin') + (d.reasons ? ' — ' + d.reasons : '') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
+      if (e.kind === 'external_part') return e.text || 'Uploaded STL';
+      if (e.kind === 'admin_external_design_added') return `Added to session ${d.session_ref || ''} from ${d.filename || 'an uploaded STL'}` + (d.source_tool ? ' (' + d.source_tool + ')' : '') + (d.scaling === 'exact' ? ' · used exactly as uploaded' : ' · scalable master') + (d.by ? ' — ' + d.by : '');
+      if (e.kind === 'admin_session_created') return `Session ${d.session_ref || ''}` + (d.from_design ? ' made from this design to hold another design' : '') + (d.title ? ' · ' + d.title : '') + (d.by ? ' — ' + d.by : '');
+      if (e.kind === 'admin_3d_version_added') return `v${d.version_no} · ` + (d.source === 'external' ? `External${d.source_tool ? ' · ' + d.source_tool : ''} · ${d.filename || ''} · ${d.scaling === 'exact' ? 'used exactly as uploaded' : 'scalable master'}` + (d.parent_version_no ? ` · revises v${d.parent_version_no}` : '') : 'Hi3D model') + (d.active ? ' · now active' : ' · kept beside the active version') + (d.order_ref ? ' · for ' + d.order_ref : '') + (d.note ? ' · ' + d.note : '') + (d.by && d.by !== 'hi3d' ? ' — ' + d.by : '');
+      if (e.kind === 'admin_3d_version_activated') return `${d.label || 'v' + d.version_no} is the active version` + (d.from_version_no ? ` (was v${d.from_version_no})` : '') + (d.note ? ' · ' + d.note : '') + (d.by ? ' — ' + d.by : '');
+      if (e.kind === 'admin_3d_version_archived' || e.kind === 'admin_3d_version_restored') return (d.label || 'v' + d.version_no) + (e.kind.endsWith('archived') ? ' archived (its file stays)' : ' restored') + (d.by ? ' — ' + d.by : '');
       // The size in the product's own unit: the row's product (Dashboard activity), else the open session's
       const charm = e.product_type ? e.product_type === 'charm' : this.isCharm(this.sd?.session);
       if (e.kind.startsWith('admin_3d')) return [d.production_size && (charm ? d.production_size + ' mm' : 'US ' + d.production_size), d.material_id && this.materialLabel(d.material_id),
