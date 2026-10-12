@@ -128,8 +128,9 @@ curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/ | grep -i robots    [nothin
 
 Search engines are ON on Atelier (2026-10-12). `xjet3d.com` carries two `google-site-verification` TXT records
 (`Yx1ON8…`, `-QFs6h…`; `xjetatelier.xjet3d.com` has none): the DNS method of a Search Console **Domain property**, so XJet
-very likely already has one — it covers `https://xjetatelier.xjet3d.com/…` without any change on our side. Only the
-Google accounts that added those records can confirm it or add you.
+very likely already has one — it covers `https://xjetatelier.xjet3d.com/…` without any change on our side. (The
+domain's mail is Microsoft 365 — MX `xjet3d-com.mail.protection.outlook.com` — so the records are not a Google
+Workspace sign-up.) Only the Google accounts that added those records can confirm it or add you.
 
 1. Open [Search Console](https://search.google.com/search-console) with your XJet Google account and look for a property
    named `xjet3d.com` (Domain). Not there: ask marketing / IT who owns the `xjet3d.com` Domain property to add you as an
