@@ -108,7 +108,7 @@ def _Esc(Tok: str) -> str:
 
 def test_built_stylesheet_covers_every_class_in_the_pages():
     Css = (Web / "vendor" / "tailwind.css").read_text(encoding="utf-8")
-    Own = (Web / "styles.css").read_text(encoding="utf-8")
+    Own = (Web / "styles.css").read_text(encoding="utf-8") + (Web / "showcase.css").read_text(encoding="utf-8")
     Missing = []
     for Name in ("index.html", "admin.html", "dev.html"):
         Html = (Web / Name).read_text(encoding="utf-8")
