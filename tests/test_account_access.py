@@ -130,7 +130,7 @@ async def test_restore_brings_back_the_same_account_with_its_history_and_activat
     assert Restored["account_id"] == Acc and Restored["status"] == "inactive"
     assert (await _SignIn(H, Code)).status_code == 403
     R = await H.Client.post("/api/register", json={"Name": "", "Email": Email}, headers=Anon)
-    assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage()}
+    assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage("atelier@xjet3d.com")}
 
     # Activate: its own code works again, and e-mail sign-in sends that same code
     await _Act(H, Acc, "activate")
@@ -175,7 +175,7 @@ async def test_email_sign_in_sends_an_admin_created_customer_their_code_and_a_sw
     # Switched off by XJet: no dead code by e-mail either, and no new account
     await _Act(H, Acc, "deactivate")
     R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)
-    assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage()}
+    assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage("atelier@xjet3d.com")}
     assert len(_Mail(H)) == Sent + 1 and len(_Accounts(H, "dana@example.com")) == 1
     # A new address still registers as before (verification link)
     R = await H.Client.post("/api/register", json={"Name": "New", "Email": "new@example.com"}, headers=Anon)
