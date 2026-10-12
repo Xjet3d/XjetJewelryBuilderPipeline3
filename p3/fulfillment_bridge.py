@@ -186,6 +186,8 @@ class FulfillmentBridge:
         if self.Enabled and not Ctx.Db.One("SELECT 1 AS x FROM product_settings WHERE key = ?", (EnvironmentKey,)):
             # The environment's identity, generated once and kept with the data: never a hostname
             Ctx.Products.Set(EnvironmentKey, "atelier-" + secrets.token_hex(5), "system", "Fulfillment integration: this environment's id")
+        from p3.fulfillment_notifications import NotificationService
+        self.Notifications = NotificationService(Ctx, self)      # Batch 8: the customer notifications derived from the events (off by default)
 
     @property
     def Enabled(self) -> bool:
@@ -210,7 +212,7 @@ class FulfillmentBridge:
     def Identity(self) -> dict:
         return {"contract_version": ContractVersion, "environment_id": self.EnvironmentId(), "site": {"env": self.Ctx.Settings.Env,
                 "base_path": self.Ctx.Settings.BasePath or "/"},
-                "capabilities": ["changes", "requests", "events", "assets.image", "assets.production_stl", "commands", "release_checks"], "server_now": Now()}
+                "capabilities": ["changes", "requests", "events", "assets.image", "assets.production_stl", "commands", "release_checks", "shipping_checks"], "server_now": Now()}
 
     # ── enrollment ───────────────────────────────────────────────────────
     def Enrollment(self, EntityType: str, EntityId: str) -> dict | None:
@@ -651,12 +653,45 @@ class FulfillmentBridge:
         else:
             Conn.execute("INSERT INTO fulfillment_projection (entity_type, entity_id, aggregate_version, state_json, last_event_id, last_event_at, updated_at) "
                          "VALUES (?,?,?,?,?,?,?)", (EntityType, EntityId, int(E["aggregate_version"]), Dumps(State), E["event_id"], E["occurred_at"], T))
-        Data = {"event_type": E["event_type"], "summary": Summary, "event_id": E["event_id"]}
+        Data = {"event_type": E["event_type"], "summary": Summary, "event_id": E["event_id"], "at": E["occurred_at"]}
         if EntityType == "order":
             Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)", (EntityId, "fulfillment", Dumps(Data), "fulfillment", T))
+            self.Notifications.Intend(Conn, EntityId, E, Public, T)       # a milestone becomes one intent per scope, in this transaction (C09)
         else:
             OrdersModule.QuoteEvent(Conn, EntityId, "fulfillment", Data, "fulfillment")
         return "applied"
+
+    # ── what the customer sees in My Account (spec §24.1, C08) ───────────
+    CustomerLabels = {"fulfillment.request_enrolled": "Received for production review", "fulfillment.review_approved": "Approved for production",
+                      "fulfillment.review_changes_required": "Changes required", "fulfillment.review_cannot_produce": "Changes required",
+                      "fulfillment.production_started": "In production", "fulfillment.production_completed": "Quality check",
+                      "fulfillment.shipment_packed": "Ready to ship", "fulfillment.shipment_shipped": "Shipped", "fulfillment.shipment_delivered": "Delivered",
+                      "fulfillment.cancellation_accepted": "Cancelled"}
+
+    def CustomerView(self, OrderId: str) -> dict | None:
+        """The order's Fulfillment stage, each part's stage, the parcels with their tracking, and a timeline of the
+        milestones that concern the customer — from the projection (customer-safe by contract) and the fixed labels
+        above; never an internal note, a queue, a cost, a reason code or a file link. None when the order is not with
+        Fulfillment, so nothing changes for the others."""
+        if not self.Enabled:
+            return None
+        E = self.Enrollment("order", OrderId)
+        if not (E and E["state"] == "enrolled"):
+            return None
+        Proj = self.Projection("order", OrderId) or {}
+        Parts = [{"display_no": P.get("display_no"), "stage": P.get("customer_stage")} for P in (Proj.get("parts") or []) if isinstance(P, dict)]
+        Message = next((P["review"].get("customer_message") for P in (Proj.get("parts") or []) if isinstance(P, dict) and isinstance(P.get("review"), dict)
+                        and P["review"].get("decision") in ("changes_required", "cannot_produce") and P["review"].get("customer_message")), None)
+        Shipments = [{K: S.get(K) for K in ("display_no", "state", "carrier", "tracking_no", "tracking_url", "shipped_at", "delivered_at", "alternative_delivery")}
+                     for S in (Proj.get("shipments") or []) if isinstance(S, dict)]
+        Timeline, Last = [], None
+        for R in self.Ctx.Db.All("SELECT data_json, created_at FROM order_events WHERE order_id = ? AND kind = 'fulfillment' ORDER BY id", (OrderId,)):
+            D = json.loads(R["data_json"] or "{}")
+            Label = self.CustomerLabels.get(D.get("event_type"))
+            if Label and Label != Last:
+                Timeline.append({"at": D.get("at") or R["created_at"], "label": Label, "status": D.get("event_type")})
+                Last = Label
+        return {"stage": Proj.get("customer_status"), "parts": Parts, "shipments": Shipments, "timeline": Timeline, "message": Message}
 
     def _ProjectStatus(self, Conn, OrderId: str, Target: str, T: str) -> None:
         """Fulfillment's progress written into the order's status (D-4): production → qc → shipped → completed, forward
@@ -700,7 +735,8 @@ class FulfillmentBridge:
         Pull = self.LastPull()
         return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and not (E and E["state"] == "enrolled"),
                 "ineligible_reason": Why, "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
-                "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions)}
+                "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions),
+                "notifications": self.Notifications.List(OrderId=Id, Limit=20)}
 
     def Summary(self, EntityType: str, EntityId: str) -> dict | None:
         """One list row's Fulfillment column: the stage, the worst review state, the first blocker, pending commands and
@@ -816,6 +852,29 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
     async def OrderFulfillment(OrderId: str, authorization: str | None = Header(None)):
         Admin(authorization)
         return Bridge.AdminState("order", OrderId)
+
+    # ── the customer notifications derived from the events (Batch 8): what was intended, what was sent, what is unknown ──
+    @App_.get("/api/admin/fulfillment/notifications")
+    async def Notifications(state: str | None = None, order_id: str | None = None, authorization: str | None = Header(None)):
+        Admin(authorization)
+        N = Bridge.Notifications
+        return {"enabled": N.Enabled, "recipient_override": Ctx.Settings.FulfillmentNotificationRecipient, "window_s": Ctx.Settings.FulfillmentNotificationWindowS,
+                "counts": N.Counts(), "intents": N.List(state or None, order_id or None)}
+
+    @App_.post("/api/admin/fulfillment/notifications/dispatch")
+    async def DispatchNotifications(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Bridge.Notifications.Dispatch()
+
+    @App_.post("/api/admin/fulfillment/notifications/{IntentId}/retry")
+    async def RetryNotification(IntentId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Bridge.Notifications.Retry(IntentId, Who.Id, str(Body_.get("note") or ""))
+
+    @App_.post("/api/admin/fulfillment/notifications/{IntentId}/resolve")
+    async def ResolveNotification(IntentId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Bridge.Notifications.Resolve(IntentId, Who.Id, str(Body_.get("note") or ""))
 
     @App_.post("/api/admin/orders/{OrderId}/fulfillment/enroll")
     async def EnrollOrder(OrderId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):

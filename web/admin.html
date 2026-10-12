@@ -1681,6 +1681,11 @@
                 <span x-show="s.alternative_delivery" class="text-zinc-500"> · alternative delivery</span>
                 <span class="text-zinc-500" x-text="(s.shipped_at ? ' · shipped ' + dateTime(s.shipped_at) : '') + (s.delivered_at ? ' · delivered ' + dateTime(s.delivered_at) + (s.delivery_source ? ' (' + s.delivery_source.replace('_', ' ') + ')' : '') : '')"></span></p>
             </template>
+            <!-- The customer emails derived from the milestones (Batch 8): intended, sent, suppressed while sending is off, or flagged when the outcome is unknown -->
+            <template x-for="n in (of.notifications || [])" :key="n.id">
+              <p class="text-[12px] text-zinc-500"><span class="badge" :class="n.state === 'unknown' || n.state === 'failed' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-600'" x-text="'email · ' + n.state"></span>
+                <span x-text="' ' + n.label + (n.sent_to ? ' · to ' + n.sent_to : '') + ' · ' + dateTime(n.sent_at || n.created_at) + (n.last_error ? ' · ' + n.last_error : '') + (n.state === 'suppressed' ? ' · sending is off' : '')"></span></p>
+            </template>
             <!-- The parts Fulfillment made of this order: the review decision with its reason and the customer-facing message, the file, the quantities, the blockers -->
             <table x-show="(of.projection?.parts || []).length" class="w-full text-[12px]">
               <thead><tr><th>Part</th><th>Stage</th><th>Review</th><th>File</th><th>Quantities</th><th>Blockers</th></tr></thead>

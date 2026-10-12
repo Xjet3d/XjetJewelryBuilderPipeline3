@@ -92,6 +92,7 @@ class OrderService:
         self.Mailer = Mailer
         self.Production = Production          # Production3D: the STL for an ordered line at its size/material
         self.StatusGuard = None               # the Fulfillment bridge: an enrolled order's production statuses are not set here
+        self.FulfillmentView = None           # the Fulfillment bridge: what the customer sees of an enrolled order (stage, parcels, timeline)
 
     # ── checkout: what the customer sees before ordering ─────────────────
     def CheckoutInfo(self, Who: Principal) -> dict:
@@ -389,6 +390,11 @@ class OrderService:
         J["status_history"] = History
         Quote = self.Ctx.Db.One("SELECT request_no FROM quote_requests WHERE order_id = ?", (O["id"],))
         J["quote_ref"] = QuoteRef(Quote["request_no"]) if Quote else None
+        # With Fulfillment (docs/FULFILLMENT.md, Batch 8): the stage, the parcels and the milestones of an enrolled order; nothing for the others
+        View = self.FulfillmentView(O["id"]) if self.FulfillmentView is not None else None
+        if View:
+            J["fulfillment"] = View
+            J["fulfillment_stage"] = View.get("stage")
         return J
 
     def ListQuotes(self, Who: Principal) -> list[dict]:

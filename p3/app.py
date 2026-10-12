@@ -5,6 +5,7 @@ With P3_BASE_PATH=/JewelryB2C3 every page, API, static file and asset is served
 under that prefix (the deployment layout behind proto/tron); without it, at "/".
 """
 
+import asyncio
 import html
 import json
 import logging
@@ -214,7 +215,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         _App.state.Reconciliation = Summary
         if Migrated:
             Logger.warning("Account migration on startup: %s", Migrated)
+        # Fulfillment customer notifications (Batch 8): the dispatcher runs only while sending is on; off by default
+        NotifyTask = asyncio.create_task(Bridge.Notifications.Loop()) if Bridge.Notifications.Enabled else None
+        if NotifyTask:
+            Logger.warning("Fulfillment customer notifications are ON%s", f" — every message goes to {S.FulfillmentNotificationRecipient}" if S.FulfillmentNotificationRecipient else "")
         yield
+        if NotifyTask:
+            NotifyTask.cancel()
         await Ctx.Runner.Shutdown()
 
     # With a base path the routes live on an inner app mounted at Base; Starlette does not run a
@@ -572,6 +579,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # action works only with P3_FULFILLMENT_INTEGRATION on; an enrolled order's production statuses belong to Fulfillment
     Bridge = FulfillmentBridge(Ctx, Svc.Orders, Svc.Production3D)
     Svc.Orders.StatusGuard = Bridge.GuardStatusChange
+    Svc.Orders.FulfillmentView = Bridge.CustomerView
     App_.state.Bridge = Bridge
     RegisterBridge(App_, Ctx, Bridge)
 

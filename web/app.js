@@ -1730,6 +1730,12 @@ function p3App() {
     },
     quoteChip(q) { return this.statusChipStyle(q.offer_expired ? 'expired' : q.status === 'approved' ? 'done' : ['rejected', 'closed'].includes(q.status) ? 'ended' : 'progress'); },
     orderChip(o) { return this.statusChipStyle(o.status === 'completed' || o.status === 'shipped' ? 'done' : o.status === 'cancelled' ? 'ended' : 'progress'); },
+    // The order's history with the production milestones merged in (an order with the workshop), oldest first
+    orderHistory(o) {
+      const h = (o.status_history || []).map(x => ({ at: x.at, label: x.label }));
+      const f = ((o.fulfillment && o.fulfillment.timeline) || []).map(x => ({ at: x.at, label: x.label }));
+      return h.concat(f).sort((a, b) => ((a.at || '') < (b.at || '') ? -1 : (a.at || '') > (b.at || '') ? 1 : 0));
+    },
     historyDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; },
     orderDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; },
 

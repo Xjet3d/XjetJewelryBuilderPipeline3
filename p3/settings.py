@@ -70,6 +70,11 @@ class Settings:
     # ── the Atelier ↔ Fulfillment integration (docs/FULFILLMENT.md); off by default: nothing of it exists then ──
     FulfillmentIntegration: bool = False      # P3_FULFILLMENT_INTEGRATION: the bridge routes, the Admin action, the triggers
     FulfillmentServiceKey: str | None = None  # P3_FULFILLMENT_SERVICE_KEY: the credential Fulfillment presents (never the Admin key)
+    # Customer notifications derived from Fulfillment's events (Batch 8): intents are always recorded; sending is OFF by
+    # default and, when on, goes to the test recipient when one is set (never to customers until the owner activates it)
+    FulfillmentCustomerNotifications: bool = False   # P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS
+    FulfillmentNotificationRecipient: str | None = None   # P3_FULFILLMENT_NOTIFICATION_RECIPIENT: every customer email goes here instead (testing / initial activation)
+    FulfillmentNotificationWindowS: int = 120    # P3_FULFILLMENT_NOTIFICATION_WINDOW_S: parts of one order that reach a milestone together make one email
 
     @property
     def Production(self) -> bool:
@@ -152,6 +157,9 @@ def LoadSettings(**Overrides) -> Settings:
         ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip() or Support,
         FulfillmentIntegration=_Bool("P3_FULFILLMENT_INTEGRATION"),
         FulfillmentServiceKey=os.environ.get("P3_FULFILLMENT_SERVICE_KEY") or None,
+        FulfillmentCustomerNotifications=_Bool("P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS"),
+        FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
+        FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
@@ -192,6 +200,14 @@ def ValidateFulfillment(S: Settings) -> list[str]:
         P.append(f"P3_FULFILLMENT_SERVICE_KEY must be a random secret of at least {Min} characters (no spaces)")
     if Key and Key in (S.AdminKey, S.SigningSecret):
         P.append("P3_FULFILLMENT_SERVICE_KEY must differ from P3_ADMIN_KEY and P3_SIGNING_SECRET")
+    R = S.FulfillmentNotificationRecipient or ""
+    if R and ("@" not in R or any(C.isspace() for C in R)):
+        P.append("P3_FULFILLMENT_NOTIFICATION_RECIPIENT must be one email address (the test recipient of every Fulfillment customer notification)")
+    if S.FulfillmentCustomerNotifications and S.Production and not R:
+        P.append("P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS=true in production needs the owner's explicit activation: set P3_FULFILLMENT_NOTIFICATION_RECIPIENT "
+                 "for the test phase, or remove this check with the approved deployment change")
+    if S.FulfillmentNotificationWindowS < 0 or S.FulfillmentNotificationWindowS > 3600:
+        P.append("P3_FULFILLMENT_NOTIFICATION_WINDOW_S is between 0 and 3600 seconds")
     return P
 
 

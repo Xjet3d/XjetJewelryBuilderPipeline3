@@ -25,6 +25,15 @@ Logger = logging.getLogger("p3.mail")
 _Font = "font-family:Helvetica,Arial,sans-serif;"
 
 
+class MailNotAccepted(Exception):
+    """The relay never took the message (no connection, refused before the data was sent): a retry cannot duplicate it."""
+
+
+class MailOutcomeUnknown(Exception):
+    """The connection broke after the data may have been handed over: the relay may have accepted the message. A blind
+    retry could send it twice; the caller records the outcome as unknown and lets a person decide."""
+
+
 def _Greeting(Name: str) -> str:
     Name = (Name or "").strip()
     return f"Hi {html.escape(Name)}," if Name else "Hello,"
@@ -330,15 +339,29 @@ class SmtpMailer:
         Msg["Auto-Submitted"] = "auto-generated"
         Msg.set_content("This email requires an HTML-capable mail client.")
         Msg.add_alternative(HtmlBody, subtype="html")
-        Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
+        # Before the message data leaves (resolving, connecting, the greeting) a failure is a known non-delivery; once
+        # send_message has started, a broken connection leaves the outcome unknown (spec §24.3) — the two are told apart
+        Phase = "connect"
         try:
+            Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
             with smtplib.SMTP(Host, self.Port, timeout=30) as Smtp:      # relay whitelists the IP: no auth/TLS
+                Phase = "send"
                 Refused = Smtp.send_message(Msg)
-        except Exception as E:
+        except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as E:   # the relay answered: the message was not taken
             if self.Record:
                 self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp FAILED: {type(E).__name__}: {E}")
-            raise
-        Verdict = f"smtp refused: {Refused}" if Refused else f"smtp accepted by {self.Server}:{self.Port}"
+            raise MailNotAccepted(f"{type(E).__name__}: {E}") from E
+        except Exception as E:
+            if self.Record:
+                self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp FAILED ({Phase}): {type(E).__name__}: {E}")
+            if Phase == "connect":
+                raise MailNotAccepted(f"{type(E).__name__}: {E}") from E
+            raise MailOutcomeUnknown(f"{type(E).__name__}: {E}") from E
+        if Refused:
+            if self.Record:
+                self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp refused: {Refused}")
+            raise MailNotAccepted(f"recipients refused: {Refused}")
+        Verdict = f"smtp accepted by {self.Server}:{self.Port}"
         if self.Record:
             self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict)
         Logger.info("SMTP mail to %s: %s — %s", To, Subject, Verdict)
@@ -349,6 +372,58 @@ class SmtpMailer:
 
     def Get(self, Id: str) -> dict | None:
         return self.Record.Get(Id) if self.Record else None
+
+
+# ── the customer notifications of the Fulfillment milestones (Batch 8, spec §24.2): one message per order milestone,
+#    built from the customer-safe projection only — never an internal note, a queue, a cost or a file link ──
+FulfillmentSubjects = {"review_approved": "approved for production", "changes_required": "a change is needed", "cannot_produce": "we need to talk about your design",
+                       "production_started": "in production", "shipped": "on its way", "delivered": "delivered"}
+
+
+def FulfillmentEmail(Milestone: str, Order: dict, View: dict, Payload: dict, AccountUrl: str = "") -> tuple[str, str]:
+    """Order: the customer's view of the order (ref, customer, lines, payment); View: the Fulfillment projection as the
+    customer sees it (stage, parts, shipments, message); Payload: the intent's own facts (the review's message, the
+    parcel). Returns (subject, html)."""
+    C = Order.get("customer") or {}
+    Items = ", ".join(L["title"] for L in Order.get("lines") or []) or "your order"
+    Ref = Order["ref"]
+    Parts = "".join(f"<li>{_Esc(P.get('display_no') or '')}: {_Esc(P.get('stage') or '')}</li>" for P in (View or {}).get("parts") or [] if P.get("stage"))
+    Stages = f'<ul style="margin:0 0 12px;padding-left:18px;">{Parts}</ul>' if Parts and len((View or {}).get("parts") or []) > 1 else ""
+    Button = _Button(_Esc(AccountUrl), "View your order") if AccountUrl else ""
+    Foot = f'<p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Ref)}</p>'
+    if Milestone == "review_approved":
+        Pay = ("" if Order.get("payment_status") == "paid" else
+               '<p style="margin:0 0 12px;">Production starts once your payment is confirmed — nothing happens to your card or account until then.</p>')
+        Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">We reviewed <strong>{_Esc(Items)}</strong> '
+                f'(order {_Esc(Ref)}) for production and approved it.</p>{Pay}{Stages}{Button}{Foot}')
+        return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("Approved for production", Body)
+    if Milestone in ("changes_required", "cannot_produce"):
+        Msg = (Payload.get("review") or {}).get("customer_message") or (View or {}).get("message") or ""
+        Quote = f'<blockquote style="margin:0 0 12px;padding:10px 14px;background:#FFFFFF;border-left:3px solid #C9A96E;">{_Esc(Msg)}</blockquote>' if Msg else ""
+        Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">While preparing <strong>{_Esc(Items)}</strong> '
+                f'(order {_Esc(Ref)}) for production we found something to settle with you before we go ahead:</p>{Quote}'
+                f'<p style="margin:0 0 12px;">Reply to this email and we will sort it out together.</p>{Button}{Foot}')
+        return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("A change is needed", Body)
+    if Milestone == "production_started":
+        Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;"><strong>{_Esc(Items)}</strong> (order {_Esc(Ref)}) '
+                f'is in production. We will write again when it ships.</p>{Stages}{Button}{Foot}')
+        return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("In production", Body)
+    S = Payload.get("shipment") or {}
+    Pieces = ", ".join(f"{I.get('part')} ×{I.get('quantity')}" for I in S.get("items") or []) or Items
+    if Milestone == "shipped":
+        if S.get("tracking_url"):
+            Track = (f'<p style="margin:0 0 12px;">Carrier: <strong>{_Esc(S.get("carrier") or "")}</strong> · tracking number <strong>{_Esc(S.get("tracking_no") or "")}</strong></p>'
+                     + _Button(_Esc(S["tracking_url"]), "Track the parcel"))
+        elif S.get("alternative_delivery"):
+            Track = '<p style="margin:0 0 12px;">It is delivered as agreed with you, without a carrier tracking link.</p>'
+        else:
+            Track = ""
+        Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">Parcel <strong>{_Esc(S.get("display_no") or "")}</strong> '
+                f'of order {_Esc(Ref)} is on its way: {_Esc(Pieces)}.</p>{Track}{Button}{Foot}')
+        return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("Your order is on its way", Body)
+    Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">Parcel <strong>{_Esc(S.get("display_no") or "")}</strong> '
+            f'of order {_Esc(Ref)} was delivered: {_Esc(Pieces)}. We hope you love it.</p>{Button}{Foot}')
+    return f"Order {Ref} — {FulfillmentSubjects.get(Milestone, Milestone)}", _Layout("Delivered", Body)
 
 
 def BuildMailer(DataDir: Path):
