@@ -265,7 +265,8 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
 - **Links.** The session page lists the journey's quote requests and orders; a quote links to its session and, once
   approved, its order; an order made from a quote links back to it.
 - **Every detail.** The customer (name, email, phone), the design (image, Ring/Charm ID, session link), material, size,
-  quantity and message; where the request notification went (`P3_STAFF_NOTIFY_EMAILS`, or none configured), whether
+  quantity and message; where the request notification went (`P3_STAFF_NOTIFY_EMAILS`: unset = the support inbox atelier@xjet3d.com, `none` =
+  nobody, as on proto), whether
   the customer's confirmation was sent, and the address the quote goes to (the customer's email). The customer's
   request dialog says the same address.
 - **Price suggestion.** When the design has a measured 3D model, its weight at the requested size in the requested
@@ -463,6 +464,15 @@ server outward (the socket peer, then `X-Forwarded-For` from the right), that is
 internet visitor cannot choose the address: Cloudflare and nginx append it to the right of whatever the visitor wrote. An `X-Forwarded-For` a visitor writes is never believed (the
 first entry used to be taken as is). The card shows the caller's address as the server sees it
 (`GET /api/admin/client-ip`) — open it on a site to check the chain.
+
+## Customer email (Settings → System)
+
+Read-only: where this site's customer mail goes. Unless the server's configuration names other addresses, everything
+goes to the shared inbox **atelier@xjet3d.com** (confirmed 2026-10-12): the Contact page and Contact Us links
+(`P3_SUPPORT_EMAIL`), the `Reply-To` of every email the site sends (`MAIL_REPLY_TO`, else the support address; mail is
+sent from no-reply@) and the "Questions? Email …" line in the emails. The team's notifications about new orders,
+quote requests and quote decisions go to `P3_STAFF_NOTIFY_EMAILS` — unset means the support address, `none` means
+nobody (proto sets `none`, so its test requests never reach the inbox). API: `GET /api/admin/mail-addresses`.
 
 ## Search engines (Settings → System)
 

@@ -1872,6 +1872,13 @@
         <p x-show="spendWarning?.last?.day" class="text-[12px] text-zinc-600" x-text="'Last warning: ' + dateTime(spendWarning?.last?.at) + ' — ' + money(spendWarning?.last?.spend_usd || 0) + ' to ' + (spendWarning?.last?.to || '') + ' · ' + (spendWarning?.last?.delivery || '')"></p>
         <p x-show="swMsg" class="text-sm" role="status" :class="swErr ? 'text-red-600' : 'text-emerald-700'" x-text="swMsg"></p>
       </section>
+      <section class="card p-5 space-y-1" x-show="mailAddresses" aria-label="Customer email">
+        <p class="lbl">Customer email</p>
+        <p class="text-sm">Contact Us and the support address: <span class="font-mono" x-text="mailAddresses?.support_email"></span></p>
+        <p class="text-sm">Replies to our emails go to: <span class="font-mono" x-text="mailAddresses?.reply_to"></span></p>
+        <p class="text-sm">New quote requests and orders are announced to: <span class="font-mono" x-text="(mailAddresses?.team || []).join(', ') || 'nobody (switched off on this site)'"></span></p>
+        <p class="text-[12px] text-zinc-500">Sent from <span class="font-mono" x-text="mailAddresses?.sender"></span> · mail <span class="font-mono" x-text="mailAddresses?.mail_mode"></span><span x-show="mailAddresses?.mail_mode === 'outbox'"> (kept in the outbox, not delivered)</span>. Set by the server's configuration (P3_SUPPORT_EMAIL, MAIL_REPLY_TO, P3_STAFF_NOTIFY_EMAILS); where unset, the shared inbox atelier@xjet3d.com.</p>
+      </section>
       <section class="card p-5 space-y-1" x-show="clientIp" aria-label="Your address">
         <p class="lbl">Your address, as this server sees it</p>
         <p class="text-sm"><span class="font-mono" x-text="clientIp?.address"></span><span class="text-zinc-500" x-text="clientIp?.via_cloudflare ? ' · through Cloudflare' : ''"></span></p>

@@ -23,8 +23,9 @@ def test_production_refuses_development_defaults_and_accepts_a_complete_configur
         LoadSettings(Env="production", DataDir=tmp_path, **Dev)
     Msg = str(E.value)
     for Needle in ("P3_PROVIDER", "P3_PUBLIC_BASE_URL", "P3_ADMIN_HOST", "P3_BASE_PATH", "P3_ADMIN_KEY", "P3_SIGNING_SECRET",
-                   "P3_ALLOW_UNAPPROVED_PRICING", "P3_MAIL_MODE", "P3_DAILY_AI_SPEND_CAP_USD", "P3_SUPPORT_EMAIL"):
+                   "P3_ALLOW_UNAPPROVED_PRICING", "P3_MAIL_MODE", "P3_DAILY_AI_SPEND_CAP_USD"):
         assert Needle in Msg, Needle
+    assert "P3_SUPPORT_EMAIL" not in Msg                 # unset, production names the shared inbox atelier@xjet3d.com
     S = LoadSettings(Env="production", DataDir=tmp_path, **Good)
     assert S.Production and S.LockMode and not S.DevTools and ValidateProduction(S) == []
     # The same host for both sites, the admin key as signing secret, or data inside the checkout are refused too

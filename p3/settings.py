@@ -13,6 +13,11 @@ RepoRoot  = Path(__file__).resolve().parent.parent
 ConfigDir = RepoRoot / "config"
 WebDir    = RepoRoot / "web"
 
+# The shared inbox the business confirmed on 2026-10-12. Unless configured otherwise it is the support address the site
+# and the emails name (P3_SUPPORT_EMAIL), the Reply-To of every email (MAIL_REPLY_TO) and the recipient of the team's
+# notifications about new orders and quote requests (P3_STAFF_NOTIFY_EMAILS; "none" switches them off, as on proto).
+DefaultSupportEmail = "atelier@xjet3d.com"
+
 
 def _Bool(Name: str, Default: bool = False) -> bool:
     Raw = os.environ.get(Name)
@@ -56,11 +61,12 @@ class Settings:
     DailyAiSpendCapUsd: float | None = None   # P3_DAILY_AI_SPEND_CAP_USD: paid submissions stop when the day's estimate reaches it
     RateLimits: bool = True          # P3_RATE_LIMITS: per-IP / per-account abuse protection (tests switch it off)
     NoDevTools: bool = False         # P3_NO_DEV_TOOLS: hide the developer tools outside production too (staging)
-    SupportEmail: str = ""           # P3_SUPPORT_EMAIL: the address the site and the emails name for questions (never invented)
+    SupportEmail: str = DefaultSupportEmail   # P3_SUPPORT_EMAIL: the address the site and the emails name for questions
     AdminKeyFromAdmin: bool = False  # the Admin key was changed in Admin → Settings → Keys (p3/adminkey.py); never in production
     FalKeyFromAdmin: bool = False    # the key was saved in Admin → Settings → System (p3/falkey.py); never in production
-    StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated)
-    ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail; without it the mail says how to get in touch
+    StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated;
+                                     # unset = the support address, "none" = nobody)
+    ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail (unset = the support address)
 
     @property
     def Production(self) -> bool:
@@ -103,8 +109,17 @@ def NormalizeBasePath(Raw: str | None) -> str:
     return Value
 
 
+def StaffRecipients(Raw: str, Support: str) -> tuple:
+    """P3_STAFF_NOTIFY_EMAILS: a comma-separated list; unset means the support address; "none" (or "off") means nobody."""
+    Raw = (Raw or "").strip()
+    if Raw.lower() in ("none", "off"):
+        return ()
+    return tuple(A.strip() for A in Raw.split(",") if A.strip()) or ((Support,) if Support else ())
+
+
 def LoadSettings(**Overrides) -> Settings:
     _LoadDotEnv(RepoRoot / ".env")
+    Support = os.environ.get("P3_SUPPORT_EMAIL", "").strip() or DefaultSupportEmail
     ProfilePath = Path(os.environ.get("P3_PRICING_PROFILE", ConfigDir / "pricing_profile.json"))
     if not ProfilePath.is_absolute():
         ProfilePath = (RepoRoot / ProfilePath).resolve()
@@ -129,9 +144,9 @@ def LoadSettings(**Overrides) -> Settings:
         DailyAiSpendCapUsd=float(os.environ["P3_DAILY_AI_SPEND_CAP_USD"]) if os.environ.get("P3_DAILY_AI_SPEND_CAP_USD") else None,
         RateLimits=_Bool("P3_RATE_LIMITS", True),
         NoDevTools=_Bool("P3_NO_DEV_TOOLS"),
-        SupportEmail=os.environ.get("P3_SUPPORT_EMAIL", "").strip(),
-        StaffNotifyEmails=tuple(A.strip() for A in os.environ.get("P3_STAFF_NOTIFY_EMAILS", "").split(",") if A.strip()),
-        ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip(),
+        SupportEmail=Support,
+        StaffNotifyEmails=StaffRecipients(os.environ.get("P3_STAFF_NOTIFY_EMAILS", ""), Support),
+        ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip() or Support,
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
@@ -183,7 +198,7 @@ def ValidateProduction(S: Settings) -> list[str]:
     if S.DailyAiSpendCapUsd is None or S.DailyAiSpendCapUsd <= 0:
         P.append("P3_DAILY_AI_SPEND_CAP_USD must be set (the day's paid AI submissions stop at this estimate)")
     if "@" not in S.SupportEmail:
-        P.append("P3_SUPPORT_EMAIL must be the confirmed support address the site and the emails name (none is invented)")
+        P.append("P3_SUPPORT_EMAIL must be an email address (unset, the site uses the shared inbox " + DefaultSupportEmail + ")")
     try:
         if S.DataDir.is_relative_to(RepoRoot):
             P.append(f"P3_DATA_DIR must be outside the code checkout ({RepoRoot}); e.g. /srv/atelier/data")

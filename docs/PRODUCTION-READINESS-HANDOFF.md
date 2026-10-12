@@ -101,12 +101,12 @@ payment decision (reservation model is truthful today — see F).
 - Orders carry `confirmation_email` = `sent` (left through SMTP) / `pending` / `failed` / `not_sent` (outbox mode) /
   `not_configured`; quote requests carry `email_status`. The confirmation page, the toast and the quote dialog say
   exactly that. **Never "a confirmation has been sent" unless it was.**
-- Emails never say "reply to this email" at a no-reply address: they name `MAIL_REPLY_TO` / `P3_SUPPORT_EMAIL` or
-  "use the Contact page"; `Reply-To` is `MAIL_REPLY_TO` when configured.
-- `P3_STAFF_NOTIFY_EMAILS`: staff are emailed about new orders and quote requests (events `staff_notified` /
-  `staff_notify_failed`); nothing is sent or invented when empty.
-- The support address on the site comes from `P3_SUPPORT_EMAIL` (required in production; the Pipeline 2 address
-  `atelier@xjet3d.com` remains the development fallback only — **confirm it**, section J).
+- Customer mail goes to the shared inbox **atelier@xjet3d.com** (confirmed by the business 2026-10-12) unless configured
+  otherwise: the Contact page and Contact Us (`P3_SUPPORT_EMAIL`), the `Reply-To` of every email (`MAIL_REPLY_TO`, else
+  the support address) and the emails' "Questions? Email …" line. Mail is sent from no-reply@ but replies reach the inbox.
+- `P3_STAFF_NOTIFY_EMAILS`: the team is emailed about new orders, quote requests and quote decisions (events
+  `staff_notified` / `staff_notify_failed`); unset means the support address, `none` switches it off (proto). Admin →
+  Settings → System → *Customer email* shows the addresses a site uses.
 - A double click adds one bag line. Production / QC / shipped / completed need every line's 3D result for the ordered
   size and material to be complete (measured and unflagged, or accepted by the Admin); an exception needs a note and is
   recorded as one. The STL is prepared from the **ordered option** only (`model_of_other_option` otherwise).
@@ -146,9 +146,9 @@ payment decision (reservation model is truthful today — see F).
 | `P3_MAIL_MODE` | `smtp` in production (`outbox` sends nothing) | **Required** | `smtp` | no | — |
 | `SMTP_SERVER` / `SMTP_PORT` / `SMTP_PREFER_IPV4` | The relay | **Required** (server) | `<relay>` / `25` / `true` | no | Microsoft 365 relay (as P2) |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender | **Required** | `no-reply@xjet3d.com` / `XJet Atelier` | no | — |
-| `MAIL_REPLY_TO` | Where replies go (a read mailbox) | Recommended | `atelier@…` | no | — |
-| `P3_SUPPORT_EMAIL` | The support address shown on the site and in emails | **Required** | `<confirmed address>` | no | — |
-| `P3_STAFF_NOTIFY_EMAILS` | Recipients of new-order / quote-request notes | Optional | `orders@…,sales@…` | no | — |
+| `MAIL_REPLY_TO` | Where replies go (a read mailbox) | Optional | unset = the support address | no | — |
+| `P3_SUPPORT_EMAIL` | The support address shown on the site and in emails | Optional | unset = `atelier@xjet3d.com` | no | — |
+| `P3_STAFF_NOTIFY_EMAILS` | Recipients of new-order / quote-request notes | Optional | unset = the support address; `none` = nobody | no | — |
 | `P3_RATE_LIMITS` | Per-IP / per-account request limits | Optional | `true` | no | — |
 | `P3_LOCK_MODE` / `P3_NO_DEV_TOOLS` | Implied by production | Optional | `true` | no | — |
 | `P3_ACCOUNT_PROVIDER` | `local` (only one exists) | Optional | `local` | no | — |
@@ -238,7 +238,8 @@ guide table headers; a skip-to-content link. An external audit is advised.
 7. Generate `P3_ADMIN_KEY` and `P3_SIGNING_SECRET` (two different random strings, 24+ chars). Keep them in the company's password manager.
 8. Create a **dedicated fal.ai key with a spending limit** for production; set `FAL_KEY` and `P3_DAILY_AI_SPEND_CAP_USD`.
 9. Configure the mail relay (`SMTP_*`, `MAIL_FROM`, `MAIL_REPLY_TO`), ask IT to allow the host's IP on the relay; set `P3_MAIL_MODE=smtp`.
-10. Confirm the support address with the business; set `P3_SUPPORT_EMAIL`; set `P3_STAFF_NOTIFY_EMAILS`.
+10. The support address is the shared inbox atelier@xjet3d.com (confirmed 2026-10-12); set `P3_SUPPORT_EMAIL` /
+    `P3_STAFF_NOTIFY_EMAILS` only to use other addresses.
 11. Decide the production data (section G); for a fresh start leave `/srv/atelier/data` empty.
 12. Install `xjet-atelier.service`; start it; read the journal — it lists anything still missing and refuses to start until fixed.
 13. Sign in to the Admin on the admin host; in Settings → Pricing & Materials approve the price profile; check the charm prices; in Settings → Products set Rings/Charms availability and the credits tariff; in AI models & prompts check the active versions.

@@ -214,6 +214,7 @@ function adminApp() {
     gscCode: '',                                 // Search Console's verification code (the meta tag's content)
     spendWarning: null, swThreshold: '', swTo: '', swBusy: false, swMsg: '', swErr: false,   // Settings → System → AI spend warning
     clientIp: null,                              // the caller's address as the rate limits see it
+    mailAddresses: null,                         // where customer mail goes on this site (read-only)
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
@@ -366,6 +367,7 @@ function adminApp() {
           this.spendWarning = await this.api('GET', '/api/admin/spend-warning').catch(() => null);
           this.swThreshold = this.spendWarning?.threshold_usd ?? ''; this.swTo = this.spendWarning?.to || '';
           this.clientIp = await this.api('GET', '/api/admin/client-ip').catch(() => null);
+          this.mailAddresses = await this.api('GET', '/api/admin/mail-addresses').catch(() => null);
         }
       }
     },

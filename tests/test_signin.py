@@ -192,13 +192,15 @@ def test_smtp_mailer_matches_pipeline2_and_records_delivery(tmp_path, monkeypatc
     monkeypatch.setattr(mail.smtplib, "SMTP", FakeSmtp)
     monkeypatch.setattr(mail.socket, "getaddrinfo", lambda *A: [(None, None, None, None, ("52.0.0.1", 0))])
     monkeypatch.setenv("P3_MAIL_MODE", "smtp")
+    monkeypatch.delenv("MAIL_REPLY_TO", raising=False)
+    monkeypatch.delenv("P3_SUPPORT_EMAIL", raising=False)
     M = mail.BuildMailer(tmp_path)
     Subject, Body = mail.TokenEmail("Dana", "GMXDYR", "http://proto/JewelryB2C3/#token=GMXDYR")
     M.Send("dana@example.com", Subject, Body)
     Msg = Sent[0]["msg"]
     assert (Sent[0]["host"], Sent[0]["port"]) == ("52.0.0.1", 25)                 # IPv4-preferred relay, port 25
     assert Msg["From"] == "XJet Atelier <no-reply@xjet3d.com>" and Msg["To"] == "dana@example.com"
-    assert Msg["Reply-To"] == "no-reply@xjet3d.com" and Msg["Auto-Submitted"] == "auto-generated"
+    assert Msg["Reply-To"] == "atelier@xjet3d.com" and Msg["Auto-Submitted"] == "auto-generated"   # replies reach the inbox
     assert Msg["Subject"] == "Your XJet Atelier sign-in code"
     Rec = M.List()[0]
     assert Rec["delivery"].startswith("smtp accepted") and "GMXDYR" in Rec["html"]

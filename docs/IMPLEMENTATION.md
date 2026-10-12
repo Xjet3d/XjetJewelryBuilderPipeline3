@@ -241,7 +241,7 @@ At the product owner's request, the customer UI was rebuilt to look like P2. The
 - Terms "Orders" → states that ordering is not yet available
 - Privacy → references access tokens instead of email registration
 - The **Customer Reviews section** (three named five-star testimonials) was **not carried over**, because it presents testimonials as genuine and they could not be verified. Restore it only with real, attributable reviews.
-- `SUPPORT_EMAIL` stays `atelier@xjet3d.com`, which P2 marks "TODO confirm".
+- `SUPPORT_EMAIL` is `atelier@xjet3d.com` (P2 marked it "TODO confirm"; the business confirmed the inbox on 2026-10-12).
 
 **Not ported** (not relevant to P3 or requiring separate decisions):
 - choice/signature collections, AI-configure and debug steps, and the dev picker shortcuts

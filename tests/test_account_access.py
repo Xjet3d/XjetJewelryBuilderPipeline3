@@ -64,13 +64,13 @@ async def test_removed_then_registering_again_sends_no_dead_code_and_says_to_con
     Sent = len(_Mail(H))
     R = await H.Client.post("/api/register", json={"Name": "Yakir Tubul", "Email": "YAKA@example.com"}, headers=Anon)
     assert R.status_code == 403 and R.json()["error"] == {
-        "code": "account_removed", "message": "This account was removed. Please contact XJet to restore access."}
+        "code": "account_removed", "message": "This account was removed. Please contact XJet at atelier@xjet3d.com to restore access."}
     assert len(_Mail(H)) == Sent                                       # nothing e-mailed: no dead code
     assert [A["account_id"] for A in _Accounts(H, Email)] == [Acc]     # and no second account
     assert (await _SignIn(H, Code)).status_code == 403                 # the old code stays off
     assert "register_blocked" in _Events(H, Acc)                       # the Admin sees the attempt on the account
     Page = (await H.Client.get(f"/verify?token={Secret}", headers=Anon)).text   # an old e-mail's link: nothing comes back on
-    assert "Account removed" in Page and "contact XJet to restore access" in Page and 'class="token"' not in Page
+    assert "Account removed" in Page and "contact XJet at atelier@xjet3d.com to restore access" in Page and 'class="token"' not in Page
     assert RemovedMessage("help@xjet3d.com") == "This account was removed. Please contact XJet at help@xjet3d.com to restore access."
 
 

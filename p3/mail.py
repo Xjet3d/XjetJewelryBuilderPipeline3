@@ -161,10 +161,17 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
            {ContactLine(Order['ref'])}</p>"""))
 
 
+def ContactAddress() -> str:
+    """Where customers write and where replies go: MAIL_REPLY_TO, else P3_SUPPORT_EMAIL, else the shared inbox."""
+    from p3.settings import DefaultSupportEmail
+    return (os.environ.get("MAIL_REPLY_TO", "").strip() or os.environ.get("P3_SUPPORT_EMAIL", "").strip()
+            or DefaultSupportEmail)
+
+
 def ContactLine(Ref: str) -> str:
-    """How a customer gets in touch about an order or a request: the configured address — never "reply to this
-    email" when the mail comes from a no-reply address, and never an invented address."""
-    Address = (os.environ.get("MAIL_REPLY_TO") or os.environ.get("P3_SUPPORT_EMAIL") or "").strip()
+    """How a customer gets in touch about an order or a request: the support inbox (ContactAddress), which is also the
+    Reply-To of every email we send."""
+    Address = ContactAddress()
     if Address:
         return f"Questions? Email {_Esc(Address)} and quote {_Esc(Ref)}."
     return f"Questions? Use the Contact page on the site and quote {_Esc(Ref)}."
@@ -310,9 +317,8 @@ class SmtpMailer:
         self.PreferIpv4 = os.environ.get("SMTP_PREFER_IPV4", "true").lower() in ("1", "true", "yes")
         self.From = os.environ.get("MAIL_FROM", "no-reply@xjet3d.com")
         self.FromName = os.environ.get("MAIL_FROM_NAME", "XJet Atelier")
-        # Replies go to a read mailbox when one is configured (MAIL_REPLY_TO); else the no-reply address, and the mail
-        # itself says how to get in touch (ContactLine) — it never asks for a reply to a no-reply address
-        self.ReplyTo = os.environ.get("MAIL_REPLY_TO", "").strip() or f"no-reply@{self.From.split('@', 1)[1]}"
+        # Replies reach the support inbox (MAIL_REPLY_TO, else P3_SUPPORT_EMAIL, else the shared inbox), never no-reply
+        self.ReplyTo = ContactAddress()
 
     def Send(self, To: str, Subject: str, HtmlBody: str) -> str:
         Msg = EmailMessage()

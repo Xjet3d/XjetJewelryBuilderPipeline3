@@ -301,10 +301,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── pages / static ───────────────────────────────────────────────────
     # What the customer page learns from the server (window.__p3): never a secret.
-    # The support address the site shows: configured (P3_SUPPORT_EMAIL; required in production), else the address
-    # carried over from Pipeline 2 for development copies only — never invented for production
+    # The support address the site shows (Contact page, Contact Us links): P3_SUPPORT_EMAIL, else the shared inbox
     PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl,
-                  "support_email": S.SupportEmail or ("" if S.Production else "atelier@xjet3d.com")}
+                  "support_email": S.SupportEmail}
 
     def Indexable() -> bool:
         """Search engines may index the public pages: a production configuration, or the Admin's switch (Settings →

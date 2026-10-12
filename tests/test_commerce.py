@@ -94,17 +94,18 @@ async def test_staff_are_told_about_new_orders_and_quote_requests_when_recipient
         await H.Close()
 
 
-def test_the_emails_say_how_to_get_in_touch_and_never_ask_for_a_reply_to_no_reply(monkeypatch):
+def test_the_emails_name_the_support_inbox_and_replies_reach_it(monkeypatch):
     monkeypatch.delenv("MAIL_REPLY_TO", raising=False)
     monkeypatch.delenv("P3_SUPPORT_EMAIL", raising=False)
-    assert Mail.ContactLine("ORD-1") == "Questions? Use the Contact page on the site and quote ORD-1."
+    # Nothing configured: the shared inbox, in the text and as the Reply-To (never no-reply)
+    assert Mail.ContactLine("ORD-1") == "Questions? Email atelier@xjet3d.com and quote ORD-1."
+    assert Mail.SmtpMailer().ReplyTo == "atelier@xjet3d.com"
     monkeypatch.setenv("P3_SUPPORT_EMAIL", "help@example.com")
     assert Mail.ContactLine("ORD-1") == "Questions? Email help@example.com and quote ORD-1."
-    monkeypatch.setenv("MAIL_REPLY_TO", "atelier@example.com")
-    assert "atelier@example.com" in Mail.ContactLine("Q-1")
-    assert Mail.SmtpMailer().ReplyTo == "atelier@example.com"
-    monkeypatch.delenv("MAIL_REPLY_TO")
-    assert Mail.SmtpMailer().ReplyTo.startswith("no-reply@")
+    assert Mail.SmtpMailer().ReplyTo == "help@example.com"
+    monkeypatch.setenv("MAIL_REPLY_TO", "replies@example.com")
+    assert "replies@example.com" in Mail.ContactLine("Q-1")
+    assert Mail.SmtpMailer().ReplyTo == "replies@example.com"
     Order = {"ref": "ORD-9", "customer": {"first_name": "Dana"}, "lines": [], "subtotal": 0, "discount": 0, "shipping": 0, "total": 0,
              "currency": "USD", "address_lines": ["x"], "payment_label": "Payment pending", "payment_message": "",
              "shipping_label": "Standard delivery", "shipping_eta": "", "promo_code": None}
@@ -118,7 +119,7 @@ async def test_a_double_click_adds_one_bag_line_and_the_support_address_is_never
         Again = (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})).json()
         assert len(Again["lines"]) == 1
         Page = (await H.Client.get("/")).text
-        assert '"support_email": "atelier@xjet3d.com"' in Page                 # development: the Pipeline 2 address
+        assert '"support_email": "atelier@xjet3d.com"' in Page                 # nothing configured: the shared inbox
     finally:
         await H.Close()
     H = Harness(tmp_path / "b", AdminKey=AdminKey, SupportEmail="help@example.com")

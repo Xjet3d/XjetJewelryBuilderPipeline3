@@ -990,6 +990,21 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 "x_forwarded_for": H.get("x-forwarded-for"), "cf_connecting_ip": H.get("cf-connecting-ip"),
                 "via_cloudflare": bool(H.get("cf-ray")), "trusted_proxies": RateLimit.TrustedDescription()}
 
+    # ── where customer mail goes on this site (read-only: set by the environment, else the shared inbox) ──
+    @App_.get("/api/admin/mail-addresses")
+    async def MailAddresses(authorization: str | None = Header(None)):
+        Admin(authorization)
+        import os
+        from p3.mail import ContactAddress
+        S = Ctx.Settings
+        Staff = os.environ.get("P3_STAFF_NOTIFY_EMAILS", "").strip()
+        return {"support_email": S.SupportEmail, "support_source": "P3_SUPPORT_EMAIL" if os.environ.get("P3_SUPPORT_EMAIL", "").strip() else "default",
+                "reply_to": ContactAddress(), "reply_to_source": "MAIL_REPLY_TO" if os.environ.get("MAIL_REPLY_TO", "").strip()
+                else "P3_SUPPORT_EMAIL" if os.environ.get("P3_SUPPORT_EMAIL", "").strip() else "default",
+                "team": list(S.StaffNotifyEmails), "team_source": "off" if Staff.lower() in ("none", "off") else
+                "P3_STAFF_NOTIFY_EMAILS" if Staff else "default",
+                "sender": os.environ.get("MAIL_FROM", "no-reply@xjet3d.com"), "mail_mode": S.MailMode}
+
     # ── Search engines: may they index the public pages? (off by default; production always indexes) ──
     def _IndexingState(request: Request) -> dict:
         R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (SitePages.IndexKey,))
