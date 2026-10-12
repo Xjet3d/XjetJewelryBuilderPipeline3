@@ -260,7 +260,7 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
 def SpendWarningEmail(Spend: float, Threshold: float, Day: str, Site: str, AdminUrl: str = "",
                       Cap: float | None = None) -> tuple[str, str]:
     """The daily AI spend warning (p3/spendwarning.py): what the day's estimate is and that nothing was stopped."""
-    CapLine = (f"The hard daily cap (P3_DAILY_AI_SPEND_CAP_USD) is {_Money(Cap)}: paid requests stop there."
+    CapLine = (f"The hard daily cap is {_Money(Cap)}: paid requests stop there."
                if Cap else "No hard daily cap is configured on this site.")
     return (f"AI spend today passed {_Money(Threshold)} — {Site}", _Layout("AI spend warning", f"""\
         <p style="margin:0 0 16px;">The estimated AI spend on <strong>{_Esc(Site)}</strong> today ({_Esc(Day)}, UTC) has

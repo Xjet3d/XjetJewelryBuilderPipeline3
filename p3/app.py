@@ -555,7 +555,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "pricing_profile": Ctx.Pricing.ProfileVersion,
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
-                "daily_ai_spend_cap_usd": S.DailyAiSpendCapUsd,
+                "daily_ai_spend_cap_usd": Credits.DailyCap(Ctx),
                 "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
                                                                           "minimax-camera", "hi3d")},
                 "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",

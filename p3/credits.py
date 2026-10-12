@@ -35,6 +35,8 @@ TariffKey = "credit_tariff"              # stored with the product settings (Adm
 TariffMax = 100
 SpendCapCode = "spend_cap_reached"
 SpendCapCustomerText = "AI generation is paused for today. Please try again tomorrow."
+CapKey = "ai_daily_spend_cap"            # Admin → Settings → System: {"cap_usd": 50.0}; none: P3_DAILY_AI_SPEND_CAP_USD
+MaxCap = 10000.0
 CostSource = "estimate: fal.ai list price (Admin → Pricing → AI prices)"
 
 
@@ -151,10 +153,41 @@ def SpendToday(Ctx: Context) -> float:
     return float(Ctx.Accounts.SpendSince(Today())) + float(getattr(Ctx, "SpendInFlight", 0.0) or 0.0)
 
 
+def CapState(Ctx: Context) -> dict:
+    """The day's hard cap on paid AI submissions: the Admin's amount (Settings → System) when one is set, else the
+    server's P3_DAILY_AI_SPEND_CAP_USD; neither: no cap."""
+    Store = getattr(Ctx, "Products", None)
+    Own = (Store.Get(CapKey) or {}).get("cap_usd") if Store is not None else None
+    Own = float(Own) if isinstance(Own, (int, float)) and not isinstance(Own, bool) and Own > 0 else None
+    Server = Ctx.Settings.DailyAiSpendCapUsd
+    return {"cap_usd": Own if Own is not None else Server, "own_cap_usd": Own, "server_cap_usd": Server}
+
+
+def DailyCap(Ctx: Context) -> float | None:
+    return CapState(Ctx)["cap_usd"]
+
+
+def ConfigureCap(Ctx: Context, Cap, By: str) -> dict:
+    """Admin → Settings → System: the hard cap in USD per day, or empty to go back to the server's
+    (P3_DAILY_AI_SPEND_CAP_USD). Logged with the product settings."""
+    if Cap in (None, ""):
+        Value = None
+    else:
+        try:
+            Value = round(float(Cap), 2)
+        except (TypeError, ValueError):
+            raise HttpError(400, "invalid_cap", "The cap is an amount in US dollars per day.") from None
+        if not 1 <= Value <= MaxCap:
+            raise HttpError(400, "invalid_cap", f"The cap must be between $1 and ${MaxCap:,.0f} per day.")
+    Ctx.Products.Set(CapKey, {"cap_usd": Value}, By,
+                     f"AI spend hard cap at ${Value:,.2f} a day" if Value is not None else "AI spend hard cap: the server's")
+    return CapState(Ctx)
+
+
 def CheckSpendCap(Ctx: Context, Endpoint: str, Params: dict | None) -> float:
     """Before a paid submission: the day's estimated spend plus this request must stay within the cap. The request's
     estimate joins the in-flight tally (so concurrent submissions count each other) until SubmitDone()."""
-    Cap = Ctx.Settings.DailyAiSpendCapUsd
+    Cap = DailyCap(Ctx)
     if not Cap or Ctx.Provider.Name == "mock":
         return 0.0
     Est = Estimate(Ctx, Endpoint, Params) or 0.0
@@ -186,5 +219,5 @@ def RecordUsage(Ctx: Context, AccountId: str | None, Kind: str, RefId: str, Endp
 def Status(Ctx: Context) -> dict:
     """For the Admin: the tariff, the defaults and the day's spend against the cap."""
     return {"tariff": Tariff(Ctx), "default_tariff": dict(DefaultTariff), "kinds": [{"id": K, "label": Labels[K]} for K in Kinds],
-            "spend_today_usd": round(SpendToday(Ctx), 4), "daily_cap_usd": Ctx.Settings.DailyAiSpendCapUsd,
+            "spend_today_usd": round(SpendToday(Ctx), 4), "daily_cap_usd": DailyCap(Ctx),
             "provider": Ctx.Provider.Name, "cost_source": CostSource}

@@ -450,10 +450,16 @@ that text. Pages already open show the new mode after a reload.
 
 An email, once a day, when the day's estimated live AI spend (UTC day; the list prices in *AI prices*) passes a
 threshold: `p3/spendwarning.py`, checked after every recorded live submission, sent on a background thread. It never
-stops, slows or refuses a request — the hard cap is the separate `P3_DAILY_AI_SPEND_CAP_USD` and is not changed by it.
+stops, slows or refuses a request — the hard cap (below) does.
 The threshold and the address are Admin settings in the database (not in the code); the card shows today's estimate,
 the threshold, the cap if any, the mail mode (an `outbox` site keeps the email instead of delivering it) and the latest
 warning with its delivery. API: `GET|PUT /api/admin/spend-warning` (`{"threshold_usd": 50 | null, "to": "…"}`).
+
+**Hard cap** (same card): paid AI submissions stop for the day when the estimate reaches it (`p3/credits.py`
+`DailyCap`). The amount set here wins; empty, the server's `P3_DAILY_AI_SPEND_CAP_USD` applies (a production
+configuration still requires that server value), and neither means no cap. $1–$10,000 a day, confirmed before it is
+saved and logged with the product settings; the card says when the warning is at or above the cap (it could never be
+sent). API: `PUT /api/admin/spend-cap` (`{"cap_usd": 50 | null}`).
 
 ## Your address (Settings → System)
 
@@ -571,7 +577,7 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   and 3D models are never charged. The Users page shows each customer's used / reserved / remaining credits
   ("Credits allowance" when creating or editing).
 - **AI spend today** — the estimated list-price cost of the day's live submissions (every submission is recorded with
-  its estimate) against the daily cap `P3_DAILY_AI_SPEND_CAP_USD`; at the cap, paid submissions stop with
+  its estimate) against the daily cap (Settings → System, else `P3_DAILY_AI_SPEND_CAP_USD`); at the cap, paid submissions stop with
   `spend_cap_reached` (the customer reads "AI generation is paused for today") until the next UTC day.
 - **Request limits** (`p3/ratelimit.py`, `P3_RATE_LIMITS`): paid starts per account and per IP, sign-in attempts per
   IP, registrations per IP and per email; a refused request answers 429 with a Retry-After.

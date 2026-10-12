@@ -22,6 +22,33 @@ def _Spend(H, Usd):
                                CostUsd=Usd, CostSource="test", Internal=False)
 
 
+async def test_the_hard_cap_is_set_in_the_admin_and_is_the_one_that_stops_paid_requests(tmp_path):
+    from p3 import credits as Credits
+    H = Harness(tmp_path, AdminKey=AdminKey, DailyAiSpendCapUsd=20.0)
+    try:
+        St = (await H.Client.get("/api/admin/spend-warning", headers=Admin)).json()
+        assert (St["cap_usd"], St["own_cap_usd"], St["server_cap_usd"]) == (20.0, None, 20.0)        # the server's
+        for Body in ({"cap_usd": 0.5}, {"cap_usd": "x"}, {"cap_usd": 10001}):
+            R = await H.Client.put("/api/admin/spend-cap", json=Body, headers=Admin)
+            assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_cap", Body
+        assert (await H.Client.put("/api/admin/spend-cap", json={"cap_usd": 50})).status_code in (401, 403)   # Admin only
+        St = (await H.Client.put("/api/admin/spend-cap", json={"cap_usd": 50}, headers=Admin)).json()
+        assert (St["cap_usd"], St["own_cap_usd"], St["server_cap_usd"]) == (50.0, 50.0, 20.0) and Credits.DailyCap(H.Ctx) == 50.0
+        assert (await H.Client.get("/api/admin/credits", headers=Admin)).json()["daily_cap_usd"] == 50.0
+        assert (await H.Client.get("/api/admin/health", headers=Admin)).json()["daily_ai_spend_cap_usd"] == 50.0
+        assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM product_settings_log WHERE key = 'ai_daily_spend_cap'")["n"] == 1
+        St = (await H.Client.put("/api/admin/spend-cap", json={"cap_usd": None}, headers=Admin)).json()
+        assert (St["cap_usd"], St["own_cap_usd"]) == (20.0, None)                                       # back to the server's
+        # The Admin's amount is the cap in force: $1 with $0.90 already spent refuses the next paid image
+        H.Provider.Name = "fal"                 # accounted as live (list price $0.15 an image); nothing real is called
+        _Spend(H, 0.9)
+        await H.Client.put("/api/admin/spend-cap", json={"cap_usd": 1}, headers=Admin)
+        Batch = await H.NewDesign("Band")
+        assert {C["error_code"] for C in Batch["candidates"]} == {"spend_cap_reached"} and not H.Provider.Submissions
+    finally:
+        await H.Close()
+
+
 async def test_the_warning_is_set_in_the_admin_and_sent_once_a_day(HW, monkeypatch):
     H = HW
     St = (await H.Client.get("/api/admin/spend-warning", headers=Admin)).json()

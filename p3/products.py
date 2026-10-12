@@ -159,6 +159,7 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "site_indexing": False,                                                  # p3/sitepages.py: search engines kept out
             "google_site_verification": "",                                          # Search Console's meta tag (public, not a secret)
             "ai_spend_warning": {"threshold_usd": None, "to": ""},                  # p3/spendwarning.py: off
+            "ai_daily_spend_cap": {"cap_usd": None},                               # p3/credits.py: the server's cap
             "ai_spend_warning_sent": {}}
 
 

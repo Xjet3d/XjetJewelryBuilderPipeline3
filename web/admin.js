@@ -213,6 +213,7 @@ function adminApp() {
     siteIndexing: null, siteIndexingBusy: false, siteIndexingMsg: '', siteIndexingErr: false,   // Settings → System → Search engines
     gscCode: '',                                 // Search Console's verification code (the meta tag's content)
     spendWarning: null, swThreshold: '', swTo: '', swBusy: false, swMsg: '', swErr: false,   // Settings → System → AI spend warning
+    scCap: '', scBusy: false, scMsg: '', scErr: false,                                     // … and the hard cap beside it
     clientIp: null,                              // the caller's address as the rate limits see it
     mailAddresses: null,                         // where customer mail goes on this site (read-only)
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
@@ -366,6 +367,7 @@ function adminApp() {
           this.gscCode = this.siteIndexing?.google_verification || '';
           this.spendWarning = await this.api('GET', '/api/admin/spend-warning').catch(() => null);
           this.swThreshold = this.spendWarning?.threshold_usd ?? ''; this.swTo = this.spendWarning?.to || '';
+          this.scCap = this.spendWarning?.own_cap_usd ?? '';
           this.clientIp = await this.api('GET', '/api/admin/client-ip').catch(() => null);
           this.mailAddresses = await this.api('GET', '/api/admin/mail-addresses').catch(() => null);
         }
@@ -1253,6 +1255,22 @@ function adminApp() {
         this.swThreshold = this.spendWarning.threshold_usd ?? ''; this.swTo = this.spendWarning.to || '';
         this.swMsg = this.spendWarning.threshold_usd ? 'Saved: a warning at $' + this.spendWarning.threshold_usd.toFixed(2) + ' a day.' : 'The warning is off.';
       } catch (e) { this.swErr = true; this.swMsg = e.message; } finally { this.swBusy = false; }
+    },
+    async saveSpendCap() {
+      const c = String(this.scCap ?? '').trim(), server = this.spendWarning?.server_cap_usd;
+      if (!await this.ask(c
+          ? { title: 'Stop paid AI requests at $' + Number(c).toFixed(2) + ' a day?',
+              text: 'When the day’s estimated AI spend (UTC day) reaches this amount, new designs, refinements, movies and 3D files are refused until the next day; customers read “AI generation is paused for today”.',
+              confirmLabel: 'Save the cap' }
+          : { title: 'Use the server’s cap?',
+              text: server ? 'Paid AI requests stop at the server’s $' + server.toFixed(2) + ' a day (P3_DAILY_AI_SPEND_CAP_USD).' : 'The server sets no cap: paid AI requests will not be stopped.',
+              confirmLabel: 'Use the server’s cap' })) return;
+      this.scBusy = true; this.scMsg = ''; this.scErr = false;
+      try {
+        this.spendWarning = await this.api('PUT', '/api/admin/spend-cap', { cap_usd: c === '' ? null : Number(c) });
+        this.scCap = this.spendWarning.own_cap_usd ?? '';
+        this.scMsg = this.spendWarning.cap_usd ? 'Saved: paid AI requests stop at $' + this.spendWarning.cap_usd.toFixed(2) + ' a day.' : 'No hard cap: nothing is stopped.';
+      } catch (e) { this.scErr = true; this.scMsg = e.message; } finally { this.scBusy = false; }
     },
     async saveGoogleVerification() {
       this.siteIndexingBusy = true; this.siteIndexingMsg = ''; this.siteIndexingErr = false;

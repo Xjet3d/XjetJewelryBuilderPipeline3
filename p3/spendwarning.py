@@ -3,8 +3,8 @@
 Admin → Settings → System → AI spend warning keeps the threshold (USD per UTC day) and the address to tell, in the
 database (never in the code). After every recorded live submission (p3/credits.py RecordUsage) the day's estimate is
 compared with the threshold; the first submission that crosses it sends the warning, once per day, on a background
-thread. It never stops, slows or refuses a request: the hard cap is a separate configuration (P3_DAILY_AI_SPEND_CAP_USD)
-and is not changed here. The estimate uses the list prices in Admin → AI prices; fal.ai's invoice is the reference."""
+thread. It never stops, slows or refuses a request: the hard cap is separate (p3/credits.py DailyCap: the Admin's amount,
+else the server's P3_DAILY_AI_SPEND_CAP_USD) and is not changed here. The estimate uses the list prices in Admin → AI prices; fal.ai's invoice is the reference."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def Config(Ctx: Context) -> dict:
 def State(Ctx: Context) -> dict:
     """For the Admin: the threshold, the address, the day's estimate, the cap (if any) and the latest warning."""
     return {**Config(Ctx), "spend_today_usd": round(Credits.SpendToday(Ctx), 4), "day": Credits.Today(),
-            "cap_usd": Ctx.Settings.DailyAiSpendCapUsd, "last": Ctx.Products.Get(SentKey) or None,
+            **Credits.CapState(Ctx), "last": Ctx.Products.Get(SentKey) or None,
             "mail_mode": getattr(getattr(Ctx, "Mailer", None), "Mode", None), "live": Ctx.Provider.Name != "mock"}
 
 
@@ -96,7 +96,7 @@ def _Deliver(Ctx: Context, Sent: dict) -> None:
     from p3.mail import SpendWarningEmail
     Site, AdminUrl = _Site(Ctx)
     Subject, Html = SpendWarningEmail(Sent["spend_usd"], Sent["threshold_usd"], Sent["day"], Site, AdminUrl,
-                                      Ctx.Settings.DailyAiSpendCapUsd)
+                                      Credits.DailyCap(Ctx))
     try:
         Ctx.Mailer.Send(Sent["to"], Subject, Html)
         Delivery = "sent (" + str(getattr(Ctx.Mailer, "Mode", "mail")) + ")"

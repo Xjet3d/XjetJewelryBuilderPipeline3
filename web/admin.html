@@ -1868,7 +1868,13 @@
           <label class="text-[12px] text-zinc-600">Send to<input class="inp !w-72 !py-1.5 mt-1 block" type="email" x-model="swTo" placeholder="name@example.com" autocomplete="off"></label>
           <button type="submit" class="btn2 !py-1.5" :disabled="swBusy">Save</button>
         </form>
-        <p class="text-[12px] text-zinc-500">One email a day, sent when the day’s estimated live AI spend (list prices in AI prices) passes the threshold. It never stops or slows a request<span x-text="spendWarning?.cap_usd ? '; the separate hard cap (P3_DAILY_AI_SPEND_CAP_USD) is $' + spendWarning.cap_usd.toFixed(2) : '; no hard cap is configured'"></span>. Mail: <span class="font-mono" x-text="spendWarning?.mail_mode || '—'"></span><span x-show="spendWarning?.mail_mode === 'outbox'"> (kept in the outbox, not delivered)</span>.</p>
+        <p class="text-[12px] text-zinc-500">One email a day, sent when the day’s estimated live AI spend (list prices in AI prices) passes the threshold. It never stops or slows a request; the hard cap below does. Mail: <span class="font-mono" x-text="spendWarning?.mail_mode || '—'"></span><span x-show="spendWarning?.mail_mode === 'outbox'"> (kept in the outbox, not delivered)</span>.</p>
+        <form class="flex flex-wrap items-end gap-3 pt-2" @submit.prevent="saveSpendCap()">
+          <label class="text-[12px] text-zinc-600">Hard cap (USD a day)<input class="inp !w-32 !py-1.5 mt-1 block" type="number" min="1" step="1" x-model="scCap" :placeholder="spendWarning?.server_cap_usd ? 'server: ' + spendWarning.server_cap_usd : 'none'"></label>
+          <button type="submit" class="btn2 !py-1.5" :disabled="scBusy">Save</button>
+        </form>
+        <p class="text-[12px] text-zinc-500" x-text="(spendWarning?.cap_usd ? 'Paid AI requests stop for the day at $' + spendWarning.cap_usd.toFixed(2) + (spendWarning?.own_cap_usd ? ' (set here' + (spendWarning?.server_cap_usd ? '; the server’s P3_DAILY_AI_SPEND_CAP_USD is $' + spendWarning.server_cap_usd.toFixed(2) : '') + ').' : ' (the server’s P3_DAILY_AI_SPEND_CAP_USD; set an amount here to change it).') : 'No hard cap: paid AI requests are never stopped.') + (spendWarning?.threshold_usd && spendWarning?.cap_usd && spendWarning.threshold_usd >= spendWarning.cap_usd ? ' The warning is at or above the cap, so it can never be sent.' : '')"></p>
+        <p x-show="scMsg" class="text-sm" role="status" :class="scErr ? 'text-red-600' : 'text-emerald-700'" x-text="scMsg"></p>
         <p x-show="spendWarning?.last?.day" class="text-[12px] text-zinc-600" x-text="'Last warning: ' + dateTime(spendWarning?.last?.at) + ' — ' + money(spendWarning?.last?.spend_usd || 0) + ' to ' + (spendWarning?.last?.to || '') + ' · ' + (spendWarning?.last?.delivery || '')"></p>
         <p x-show="swMsg" class="text-sm" role="status" :class="swErr ? 'text-red-600' : 'text-emerald-700'" x-text="swMsg"></p>
       </section>

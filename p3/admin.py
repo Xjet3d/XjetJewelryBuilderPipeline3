@@ -981,6 +981,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Who = Admin(authorization)
         return SpendWarning.Configure(Ctx, Body_.get("threshold_usd"), Body_.get("to"), Who.Id)
 
+    # ── the hard cap: paid AI submissions stop for the day at this estimate (p3/credits.py DailyCap) ──
+    @App_.put("/api/admin/spend-cap")
+    async def SetSpendCap(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"cap_usd": 50 | null} — null goes back to the server's P3_DAILY_AI_SPEND_CAP_USD. Logged with the product
+        settings. Answers the AI spend card's state."""
+        Who = Admin(authorization)
+        Credits.ConfigureCap(Ctx, Body_.get("cap_usd"), Who.Id)
+        return SpendWarning.State(Ctx)
+
     # ── the caller's address as the rate limits see it (behind Cloudflare and nginx: the visitor, not a proxy) ──
     @App_.get("/api/admin/client-ip")
     async def ClientAddress(request: Request, authorization: str | None = Header(None)):
