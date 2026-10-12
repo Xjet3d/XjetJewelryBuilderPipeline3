@@ -457,7 +457,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Hit = SitemapCache.get(Key)
         if Hit and time.monotonic() - Hit[0] < 60:
             return PlainTextResponse(Hit[1], media_type="application/xml")
-        Entries = [("/" + P, SitePages.PageFingerprint(RenderPage(request, View), View), None) for View, P in SitePages.Paths.items()]
+        Entries = [("/" + P, SitePages.PageFingerprint(RenderPage(request, View), View, Origin), None)
+                   for View, P in SitePages.Paths.items()]
         for L in GalleryLinks(request):
             Row = Ctx.Db.One("SELECT g.created_at FROM gallery_items g JOIN designs d ON d.id = g.design_id WHERE d.share_slug = ?",
                              (L["slug"],))

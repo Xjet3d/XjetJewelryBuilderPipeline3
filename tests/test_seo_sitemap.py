@@ -23,9 +23,9 @@ async def _Publish(H, Prompt):
     return B["design_id"], (await H.Client.get(f"/api/gallery/{R.json()['id']}/share")).json()
 
 
-async def _Map(H) -> dict:
+async def _Map(H, Headers: dict | None = None) -> dict:
     P3App.SitemapCache.clear()                                    # the sitemap is rebuilt at most once a minute
-    R = await H.Client.get("/sitemap.xml")
+    R = await H.Client.get("/sitemap.xml", headers=Headers)
     assert R.status_code == 200 and R.headers["content-type"].startswith("application/xml")
     Root_ = ET.fromstring(R.text)                                 # valid XML, the sitemap namespace
     return {U.find("s:loc", Ns).text: U.find("s:lastmod", Ns).text for U in Root_.findall("s:url", Ns)}
@@ -55,6 +55,20 @@ async def test_lastmod_is_the_date_each_pages_own_content_last_changed(tmp_path)
         Moved = {U for U, V in Map.items() if V != "2020-01-01T00:00:00+00:00"}
         assert Moved == {Design1, f"{Base}/", f"{Base}/gallery"}, Moved
         assert Design2 not in Moved and f"{Base}/faq" not in Moved and f"{Base}/terms" not in Moved
+    finally:
+        await H.Close()
+
+
+async def test_a_date_does_not_move_with_the_address_the_pages_are_read_at(tmp_path):
+    H = Harness(tmp_path, AdminKey=AdminKey)                      # no public base URL: a page names the address it is read at
+    try:
+        await _Publish(H, "A slim band")
+        await _Map(H)
+        H.Ctx.Db.Execute("UPDATE page_lastmod SET changed_at = ?", (Old,))
+        Stale = {"2020-01-01T00:00:00+00:00"}
+        Other = await _Map(H, {"host": "proto.example"})          # the same pages at another address (http://proto, https://tron)
+        assert set(Other.values()) == Stale and all(U.startswith("http://proto.example/") for U in Other)
+        assert set((await _Map(H)).values()) == Stale
     finally:
         await H.Close()
 

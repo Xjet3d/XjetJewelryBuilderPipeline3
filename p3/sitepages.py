@@ -368,11 +368,13 @@ def _LiveCopy(Html: str, View: str) -> str:
     return Html[Start:]
 
 
-def PageFingerprint(Html: str, View: str) -> str:
+def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:
     """What a public page says of its own: title, description, canonical, structured data and the page's live copy — not
-    the shared shell, the other pages' templates or the asset versions, so a release that leaves the page alone leaves
-    its date alone."""
+    the shared shell, the other pages' templates, the asset versions or the address it was read at (Origin), so a release
+    that leaves the page alone leaves its date alone."""
     Text = "\n".join(M.group(0) for M in _HeadParts.finditer(Html)) + "\n" + _LiveCopy(Html, View)
+    if Origin:
+        Text = Text.replace(Origin, "")
     return hashlib.sha256(" ".join(_AssetVersion.sub("", Text).split()).encode("utf-8")).hexdigest()
 
 
