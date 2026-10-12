@@ -200,7 +200,7 @@ function adminApp() {
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
-    oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false,
+    oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
     oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
     qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
     quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
@@ -498,12 +498,26 @@ function adminApp() {
       return l.title + (o.lines.length > 1 ? ' +' + (o.lines.length - 1) : '');
     },
     async loadOrder() {
-      this.odError = ''; this.oPay.open = false; this.oNote = '';
+      this.odError = ''; this.oPay.open = false; this.oNote = ''; this.of = null;
       try {
         this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.orderId));
         if (!this.ordersMeta.statuses.length) { const r = await this.api('GET', '/api/admin/orders'); this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses }; }
         this.oStatusForm = { status: this.od.status, note: '' };
+        // The Fulfillment hand-over and its progress (docs/FULFILLMENT.md); {enabled: false} where the integration is off
+        this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment').catch(() => null);
       } catch (e) { this.od = null; this.odError = e.message; }
+    },
+    // Send to Fulfillment: an explicit, confirmed hand-over. From then on production, QC and shipping are recorded there.
+    async sendToFulfillment() {
+      if (!this.od || !this.of || !this.of.eligible) return;
+      const r = await this.ask({ title: 'Send ' + this.od.ref + ' to Fulfillment?',
+        text: 'Fulfillment takes over the operational review and the manufacturing of this order. Production, QC and shipping are then recorded there and shown here as its progress; payment, notes and cancellation stay here. This cannot be undone from this page.',
+        confirmLabel: 'Send to Fulfillment', cancelLabel: 'Not now',
+        input: { label: 'Note for the operations team (optional — not a signature)', value: '', placeholder: 'For example: rush, or a detail to check', max: 500 } });
+      if (!r) return;
+      this.odBusy = true; this.odError = '';
+      try { this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/fulfillment/enroll`, { note: (r.value || '').trim() }); this.toast(this.od.ref + ' is with Fulfillment.'); await this.loadOrder(); }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;

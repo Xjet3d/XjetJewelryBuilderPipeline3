@@ -67,6 +67,9 @@ class Settings:
     StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated;
                                      # unset = the support address, "none" = nobody)
     ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail (unset = the support address)
+    # ── the Atelier ↔ Fulfillment integration (docs/FULFILLMENT.md); off by default: nothing of it exists then ──
+    FulfillmentIntegration: bool = False      # P3_FULFILLMENT_INTEGRATION: the bridge routes, the Admin action, the triggers
+    FulfillmentServiceKey: str | None = None  # P3_FULFILLMENT_SERVICE_KEY: the credential Fulfillment presents (never the Admin key)
 
     @property
     def Production(self) -> bool:
@@ -147,6 +150,8 @@ def LoadSettings(**Overrides) -> Settings:
         SupportEmail=Support,
         StaffNotifyEmails=StaffRecipients(os.environ.get("P3_STAFF_NOTIFY_EMAILS", ""), Support),
         ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip() or Support,
+        FulfillmentIntegration=_Bool("P3_FULFILLMENT_INTEGRATION"),
+        FulfillmentServiceKey=os.environ.get("P3_FULFILLMENT_SERVICE_KEY") or None,
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
@@ -170,7 +175,24 @@ def LoadSettings(**Overrides) -> Settings:
         Problems = ValidateProduction(S)
         if Problems:
             raise ValueError("P3_ENV=production refuses to start with development defaults:\n  - " + "\n  - ".join(Problems))
+    Problems = ValidateFulfillment(S)
+    if Problems:
+        raise ValueError("P3_FULFILLMENT_INTEGRATION=on refuses to start:\n  - " + "\n  - ".join(Problems))
     return S
+
+
+def ValidateFulfillment(S: Settings) -> list[str]:
+    """With the integration on, the service credential must exist, be long enough and be its own secret."""
+    if not S.FulfillmentIntegration:
+        return []
+    P = []
+    Min = 24 if S.Production else 16
+    Key = S.FulfillmentServiceKey or ""
+    if len(Key) < Min or any(C.isspace() for C in Key):
+        P.append(f"P3_FULFILLMENT_SERVICE_KEY must be a random secret of at least {Min} characters (no spaces)")
+    if Key and Key in (S.AdminKey, S.SigningSecret):
+        P.append("P3_FULFILLMENT_SERVICE_KEY must differ from P3_ADMIN_KEY and P3_SIGNING_SECRET")
+    return P
 
 
 def ValidateProduction(S: Settings) -> list[str]:

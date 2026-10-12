@@ -51,6 +51,7 @@ from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
 from p3.gallery import GalleryService
+from p3.fulfillment_bridge import FulfillmentBridge, RegisterBridge
 from p3.mail import BuildMailer
 from p3.orders import OrderService
 from p3.promos import PromoService
@@ -254,9 +255,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         with P3_ADMIN_HOST the Admin page, its API and the dev API answer on that host alone — the public customer
         host does not have them."""
         Rel = _Rel(Req)
-        IsAdmin = Rel in AdminPaths or Rel.startswith(("/api/admin/", "/api/dev/"))
+        IsIntegration = Rel.startswith("/api/integrations/")
+        IsAdmin = Rel in AdminPaths or Rel.startswith(("/api/admin/", "/api/dev/")) or IsIntegration
         IsDev = Rel in DevPaths or Rel.startswith("/api/dev/")
         if IsDev and not S.DevTools:
+            return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
+        if IsIntegration and not S.FulfillmentIntegration:      # off: the integration API does not exist
             return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
         if Rel in ApiDocs and Indexable():
             return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
@@ -548,6 +552,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     def HealthDetails() -> dict:
         """The full picture — provider, mode, pricing posture, model configuration versions: Admin only."""
         return {"ok": True, "env": S.Env, "provider": Ctx.Provider.Name, "mode": Modes.Mode, "mode_source": Modes.Source,
+                "fulfillment_integration": S.FulfillmentIntegration,
                 "ai_spend_today_usd": round(Credits.SpendToday(Ctx), 4),
                 "gallery_sync": GallerySyncLastRun(Ctx.Db),        # the latest import of another site's gallery
                 "mode_locked": S.LockMode, "base_path": Base or "/", "admin_host": S.AdminHost or None,
@@ -563,6 +568,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, Ctx.AiPrices, Svc.Gallery,
                   Svc.Orders, Svc.Promos, HealthDetails=HealthDetails, Quotes=Svc.Quotes)
+    # The Atelier ↔ Fulfillment bridge (docs/FULFILLMENT.md): tables and triggers exist, routes answer and the Admin
+    # action works only with P3_FULFILLMENT_INTEGRATION on; an enrolled order's production statuses belong to Fulfillment
+    Bridge = FulfillmentBridge(Ctx, Svc.Orders, Svc.Production3D)
+    Svc.Orders.StatusGuard = Bridge.GuardStatusChange
+    App_.state.Bridge = Bridge
+    RegisterBridge(App_, Ctx, Bridge)
 
     # ── derived media: thumbnails and movie posters, made on first request and cached (p3/media.py) ──
     @App_.get("/thumb/{Rel:path}", include_in_schema=False)

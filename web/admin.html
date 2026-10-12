@@ -1618,6 +1618,35 @@
         </div>
       </section>
 
+      <!-- Fulfillment: the hand-over to the manufacturing application and its progress (docs/FULFILLMENT.md) -->
+      <section class="card p-6 space-y-3" x-show="of && of.enabled" x-cloak>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3"><p class="lbl">Fulfillment</p>
+            <span x-show="of?.enrolled" class="badge bg-emerald-100 text-emerald-800">With Fulfillment</span>
+            <span x-show="of?.enrolled && of?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
+            <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not sent</span></div>
+          <button x-show="of?.eligible" class="btn !py-1.5" :disabled="odBusy" @click="sendToFulfillment()">Send to Fulfillment</button>
+          <p x-show="!of?.enrolled && !of?.eligible && of?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent: ' + of.ineligible_reason + '.'"></p>
+        </div>
+        <template x-if="of?.enrolled">
+          <div class="text-[13px] text-zinc-700 space-y-1">
+            <p>Sent <span x-text="dateTime(of.enrollment.enrolled_at)"></span> · through <span x-text="of.enrollment.enrolled_by === 'developer-key' ? 'Admin shared-key access' : of.enrollment.enrolled_by"></span>
+              <span x-show="of.enrollment.note" x-text="' · note: ' + of.enrollment.note"></span>
+              <span x-show="of.enrollment.inherited_from" class="text-zinc-500"> · inherited from the quote request</span>
+              · source version <span class="font-mono" x-text="of.enrollment.source_version"></span>
+              <span x-show="of.last_pull_at" class="text-zinc-500" x-text="' · last read by Fulfillment ' + dateTime(of.last_pull_at)"></span></p>
+            <p x-show="of.projection" class="text-zinc-800"><span class="font-medium" x-text="of.projection?.customer_status || of.projection?.last_event_type || ''"></span>
+              <span x-show="of.projection?.summary" x-text="' — ' + of.projection.summary"></span>
+              <span class="text-zinc-500" x-text="of.projection?.last_event_at ? ' · ' + dateTime(of.projection.last_event_at) : ''"></span></p>
+            <ul x-show="(of.projection?.parts || []).length" class="pl-4 list-disc text-[12px] text-zinc-600">
+              <template x-for="p in (of.projection?.parts || [])" :key="p.display_no"><li><span class="font-mono" x-text="p.display_no"></span> <span x-text="p.summary || ''"></span><span x-show="p.file_state" class="text-zinc-500" x-text="' · file ' + p.file_state"></span></li></template>
+            </ul>
+            <p x-show="!of.projection" class="text-zinc-500">No progress received yet.</p>
+            <p class="text-[12px] text-zinc-500">Production, QC, shipping and completion are recorded in Fulfillment and reach this page as its progress; the status select above no longer accepts them for this order.</p>
+          </div>
+        </template>
+      </section>
+
       <!-- Lines: what to make -->
       <section class="card">
         <div class="px-6 py-4 border-b border-zinc-100 flex items-center gap-3"><p class="lbl" x-text="(orderProducts(od).length > 1 ? 'Rings and charms' : pPlural(orderProducts(od)[0])) + ' to make (' + od.count + ')'"></p>

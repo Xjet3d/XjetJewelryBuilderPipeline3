@@ -91,6 +91,7 @@ class OrderService:
         self.Validator = Validator or Addressing.NoValidator()
         self.Mailer = Mailer
         self.Production = Production          # Production3D: the STL for an ordered line at its size/material
+        self.StatusGuard = None               # the Fulfillment bridge: an enrolled order's production statuses are not set here
 
     # ── checkout: what the customer sees before ordering ─────────────────
     def CheckoutInfo(self, Who: Principal) -> dict:
@@ -668,6 +669,8 @@ class OrderService:
             raise HttpError(400, "invalid_status", "Unknown order status.")
         if O["status"] == "completed" and Status != "completed":
             raise HttpError(409, "order_completed", "A completed order cannot change status.")
+        if self.StatusGuard is not None:
+            self.StatusGuard(O, Status)           # with Fulfillment: production / QC / shipping are recorded there (docs/FULFILLMENT.md)
         if Status in ProductionStatuses:
             Unresolved = [L for L in O["lines"] if not (L.get("three_d_match") and L.get("three_d_state") == "complete")]
             if Unresolved and not Force:

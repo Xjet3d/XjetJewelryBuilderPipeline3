@@ -43,9 +43,22 @@ Fulfillment never writes to `pipeline3.db`; Pipeline 3 never writes to Fulfillme
   milestone + revision/shipment, and only when `P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS` is on (off by default; a test
   recipient first). Fulfillment sends no email.
 
-The contract (schemas and examples) is maintained in the Fulfillment repository under
-`contracts/atelier-integration/v1/`; this repository keeps fixture copies under `tests/fixtures/fulfillment/` and the
-contract version string both sides check.
+The contract (endpoints, snapshot, events, errors) is maintained in the Fulfillment repository under
+`contracts/atelier-integration/v1/`. Both sides check the contract version string (`atelier-fulfillment/v1`);
+`tests/test_fulfillment_bridge.py` here asserts the shapes this side serves and accepts; and the Fulfillment
+repository's `tests/test_contract_p3.py` runs the real Pipeline 3 application against the real Fulfillment application
+in one process (mock AI provider, no network) — it needs this checkout (`FULFILLMENT_P3_PATH`) and this repository's
+virtual environment.
+
+## Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `P3_FULFILLMENT_INTEGRATION` | `false` | Turns the integration on: the service API answers, the Admin's *Send to Fulfillment* works, enrolled orders are owned by Fulfillment. Off: the integration routes answer 404, no bridge table is written, nothing changes for anyone. |
+| `P3_FULFILLMENT_SERVICE_KEY` | unset | The service credential Fulfillment presents (`Authorization: Bearer …`): 16+ characters in development, 24+ in production, no spaces, different from the Admin key and the signing secret. Required when the integration is on; never the Admin key. |
+
+The environment id Fulfillment pins (`EXPECTED_ATELIER_ENVIRONMENT_ID` there) is generated once per data directory
+(`product_settings.fulfillment_environment_id`, `atelier-` + 10 hex characters) and shown by `GET …/v1/identity`.
 
 ## Rules on this branch
 
@@ -62,8 +75,8 @@ contract version string both sides check.
 | Batch | On this side |
 |---|---|
 | 0 | This document and the README link |
-| 3 | Bridge tables, triggers, identity / changes / requests / assets / events endpoints, the service key, the flag, a minimal *Send to Fulfillment* |
-| 4 | Release checks, commands with their Admin state, the ownership guard, Orders / Quotes / order-detail changes, the status projection, `fulfillment_stage` in My Account |
+| 3 | **Done 2026-10-12.** `p3/fulfillment_bridge.py`: the bridge tables and triggers (commercial changes and 3D results of enrolled records fill the outbox in the same transaction), the identity / changes / requests / assets (line image, production STL with its SHA-256) / events endpoints, the service key and the flag, the Admin's *Send to Fulfillment* with the order's Fulfillment card and projection, the ownership guard (production / qc / shipped / completed refused on enrolled orders; the projection's own writes create no change), the quote → order continuation (the order inherits the quote's enrollment) |
+| 4 | Release checks, commands with their Admin state, Orders / Quotes list columns and filters, the status projection into the order status, `fulfillment_stage` in My Account |
 | 7 | Shipping checks (the authoritative address and its version) |
 | 8 | Notification intents, templates, deduplication, outbox-first dispatch, the notifications flag |
 | 9 | Regression of the whole suite with the flag off and on |
