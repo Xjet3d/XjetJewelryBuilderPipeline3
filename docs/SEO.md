@@ -184,6 +184,32 @@ curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/sitemap.xml
 curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/faq | grep -E '<title>|name="robots"|rel="canonical"|<h1|ld\+json'
 ```
 
+## Core Web Vitals
+
+Lab measurements (no field data until Search Console has traffic): the local Chrome, headless, a throw-away profile,
+cold cache; phone = 412x823 with Lighthouse's applied mobile throttling (Slow 4G, 4x CPU), desktop = 1366x800 without
+throttling; at least 12 s after the load event (a large image can finish late).
+
+A design page (`/design/<name>`) opens the homepage with the design in the Inspiration Gallery lightbox. Before
+2026-10-12 a phone saw the dialog grow by about 350 px when the picture arrived (CLS 0.42) and the picture was the
+950 KB original PNG (LCP about 12.7 s). Since then (53d3aa6, 6ff4c97, ae44f06):
+
+- the lightbox picture holds its square from the first paint (`.gallery-shot`, the size it had once loaded);
+- it is a thumbnail (`srcset` 320/800/1024 — 45 KB at 800 px, like the gallery cards), fetched with high priority and
+  preloaded from the design page's head with the same `srcset` and `sizes` (`p3/sitepages.py` `LightboxPreload`);
+- the homepage story's stage keeps its room from the first paint (`sc-stage` in the markup);
+- the crawler-only copy of the picture is `loading="lazy"` (hidden, so never fetched by a browser);
+- the homepage story waits while the lightbox covers it (as the hero rotation does) and resumes when it closes, unless
+  the visitor prefers reduced motion.
+
+| Design page | Phone LCP | Phone CLS | Desktop LCP | Desktop CLS |
+|---|---|---|---|---|
+| Before (Atelier) | 12.7–13.0 s | 0.42 | 0.66–0.74 s | 0.02 |
+| After (proto) | 3.7–3.8 s | 0.04 | about 1.0 s | 0.02 |
+
+The look is unchanged (same sizes and positions). Proto paints about a second later than Atelier (no CDN), so Atelier's
+figures are lower.
+
 ## Future recommendations — recorded, not implemented (2026-10-12)
 
 Decided later, each with its own approval:
@@ -198,3 +224,12 @@ Decided later, each with its own approval:
 - Reviews and review structured data, only from real, attributable reviews.
 - Multilingual SEO with `hreflang`, when a target market justifies it.
 - A Google Business Profile, only if there is a customer-facing location.
+
+Technical follow-ups, found while measuring (pre-existing, not changed):
+
+- Phones: before the scripts start, the header shows the Design screen's steps (Design · Customize · Bag · Checkout),
+  so it is 100 px tall until Alpine hides them (73 px) and the page moves up 27 px. Measured on proto as CLS 0.04 on
+  every page; on Atelier it fell outside what the browser counted. Cloaking those steps until the scripts start would
+  remove it.
+- The homepage story reveals larger pictures as it plays; a lab run with no interaction can then report the homepage's
+  LCP late (about 14 s on proto). Real visitors' first tap or scroll ends LCP; worth a look if field data shows it.
