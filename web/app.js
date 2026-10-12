@@ -447,6 +447,7 @@ function p3App() {
     },
     openGallery(g) {
       this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetal[g.id] || ''; this.shareUrl = ''; this.shareCopied = false;
+      this._pauseStory();
       // The share link is fetched as the preview opens, so Share / Copy link act at once inside the tap (browsers
       // only allow the share sheet and copying during the click itself)
       this.shareInfo = null;
@@ -518,7 +519,19 @@ function p3App() {
     _setPendingFav(id) { try { id ? localStorage.setItem(FAV_KEY, id) : localStorage.removeItem(FAV_KEY); } catch {} },
     closeGallery() {
       this.galleryItem = null; this.galleryBusy = false;
+      this._resumeStory();
       if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // after a shared link's preview
+    },
+    // The homepage story (showcase.js) waits while the lightbox covers it, as the hero rotation does: nothing animates under
+    // the dialog, and a design page's story does not reach its larger pictures behind it. It resumes only if this paused it.
+    _story() { const el = document.querySelector('[data-testid="hero-showcase"] .sc-stage'); return el && el._sc; },
+    _pauseStory() {
+      const sc = this._story();
+      if (sc && sc.state().playing) { sc.pause(); this._storyPaused = sc; }
+    },
+    _resumeStory() {
+      const sc = this._storyPaused; this._storyPaused = null;
+      if (sc && sc === this._story()) sc.play();
     },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
     _setPendingGallery(id) { try { id ? localStorage.setItem(GALLERY_KEY, id) : localStorage.removeItem(GALLERY_KEY); } catch {} },

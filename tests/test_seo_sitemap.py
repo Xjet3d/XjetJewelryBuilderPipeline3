@@ -153,6 +153,18 @@ def test_the_lightbox_picture_and_the_story_keep_their_room_from_the_first_paint
     assert re.search(r'<div class="sc-stage" role="img"[^>]*\n\s*x-init="\$nextTick\(\(\) => window\.P3Showcase', Page)
 
 
+def test_the_story_waits_while_the_lightbox_covers_it():
+    """Design pages on a phone (LCP): the homepage story under the dialog does not play on to its larger pictures."""
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    Open = Js[Js.index("    openGallery(g) {"):Js.index("    metalLabel(id)")]
+    Close = Js[Js.index("    closeGallery() {"):Js.index("    _pendingGallery()")]
+    assert "this._pauseStory();" in Open and "this._resumeStory();" in Close
+    assert "if (sc && sc.state().playing) { sc.pause(); this._storyPaused = sc; }" in Js        # only a playing story
+    assert "if (sc && sc === this._story()) sc.play();" in Js                                   # only the one it paused
+    Engine = (WebDir / "showcase.js").read_text(encoding="utf-8")
+    assert "play() { playing = true; last = null; }," in Engine and "pause() { playing = false; if (D) render(T); }," in Engine
+
+
 async def test_a_design_page_preloads_its_lightbox_picture_and_its_crawler_picture_waits(tmp_path):
     from p3 import sitepages as SitePages
     H = Harness(tmp_path, AdminKey=AdminKey)
