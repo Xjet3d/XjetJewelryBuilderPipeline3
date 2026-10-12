@@ -112,8 +112,19 @@ def RevokeAll(Ctx: Context) -> int:
     return Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = ? WHERE revoked_at IS NULL", (Now(),))
 
 
+def BrowserScheme(Req: Request) -> str:
+    """The scheme the visitor's browser used. Proto's front proxy passes it as X-Forwarded-Scheme: it reaches tron over
+    HTTPS, and tron's nginx rewrites X-Forwarded-Proto to its own scheme, so that header would say https even for a
+    visitor on http://proto. Elsewhere (Atelier, tron directly) the nearest proxy's X-Forwarded-Proto or the connection."""
+    Outer = (Req.headers.get("x-forwarded-scheme") or "").strip().lower()
+    if Outer in ("http", "https"):
+        return Outer
+    Proto = (Req.headers.get("x-forwarded-proto") or "").strip().lower()
+    return "https" if Proto == "https" or Req.url.scheme == "https" else "http"
+
+
 def Secure(Req: Request) -> bool:
-    return Req.url.scheme == "https" or (Req.headers.get("x-forwarded-proto") or "").lower() == "https"
+    return BrowserScheme(Req) == "https"
 
 
 def SetCookie(Resp: JSONResponse, Req: Request, BasePath: str, Token: str | None) -> None:

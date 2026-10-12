@@ -59,6 +59,7 @@ from p3.registration import PublicOrigin, RegistrationService
 from p3 import sessions as Sessions
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
+from p3 import adminauth as AdminAuth
 from p3.usage import BackfillUsageAnnotations
 from p3.modes import DefaultFactories, ModeManager, ResolveStartupMode
 from p3.movies import MovieService
@@ -277,7 +278,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         H.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
         H.setdefault("Content-Security-Policy", ContentSecurityPolicy)
-        if Req.url.scheme == "https" or (Req.headers.get("x-forwarded-proto") or "").lower() == "https":
+        if AdminAuth.BrowserScheme(Req) == "https":                       # the visitor's scheme (behind proto too)
             H.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return Resp
 
