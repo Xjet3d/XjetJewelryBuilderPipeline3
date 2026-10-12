@@ -159,8 +159,9 @@ def test_the_story_waits_while_the_lightbox_covers_it():
     Open = Js[Js.index("    openGallery(g) {"):Js.index("    metalLabel(id)")]
     Close = Js[Js.index("    closeGallery() {"):Js.index("    _pendingGallery()")]
     assert "this._pauseStory();" in Open and "this._resumeStory();" in Close
-    assert "if (sc && sc.state().playing) { sc.pause(); this._storyPaused = sc; }" in Js        # only a playing story
+    assert "if (sc && sc.state().playing) { sc.pause(); PAUSED_STORY = sc; }" in Js             # only a playing story
     assert "if (sc && sc === this._story()) sc.play();" in Js                                   # only the one it paused
+    assert "\nlet PAUSED_STORY = null;" in Js            # outside Alpine: a reactive proxy would break that identity check
     Engine = (WebDir / "showcase.js").read_text(encoding="utf-8")
     assert "play() { playing = true; last = null; }," in Engine and "pause() { playing = false; if (D) render(T); }," in Engine
 

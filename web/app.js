@@ -18,6 +18,9 @@ const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
 const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
 const GALLERY_KEY = 'p3_gallery_pending' + (BASE ? ':' + BASE : '');   // the gallery design chosen before signing in
 const FAV_KEY = 'p3_fav_pending' + (BASE ? ':' + BASE : '');           // the gallery design ♥-ed before signing in
+// The homepage story the gallery lightbox paused (showcase.js controller) — kept outside Alpine, whose reactive proxy
+// would wrap it and break the check that it is still the story on the page
+let PAUSED_STORY = null;
 // Studio screens: Design · Customize · Bag ('checkout', historical name) · Checkout steps ('order') · Confirmation
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout', 'order', 'confirmation'];
 const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
@@ -527,10 +530,10 @@ function p3App() {
     _story() { const el = document.querySelector('[data-testid="hero-showcase"] .sc-stage'); return el && el._sc; },
     _pauseStory() {
       const sc = this._story();
-      if (sc && sc.state().playing) { sc.pause(); this._storyPaused = sc; }
+      if (sc && sc.state().playing) { sc.pause(); PAUSED_STORY = sc; }
     },
     _resumeStory() {
-      const sc = this._storyPaused; this._storyPaused = null;
+      const sc = PAUSED_STORY; PAUSED_STORY = null;
       if (sc && sc === this._story()) sc.play();
     },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
