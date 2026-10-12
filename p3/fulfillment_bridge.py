@@ -388,6 +388,28 @@ class FulfillmentBridge:
         return {"contract_version": ContractVersion, "environment_id": self.EnvironmentId(), "check_id": "chk_" + secrets.token_hex(8), "checked_at": T,
                 "ok": all(X["ok"] for X in Out), "items": Out}
 
+    # ── the live shipping check at packing time (spec §23, C05) ──────────
+    def ShippingChecks(self, Body: dict) -> dict:
+        """The authoritative delivery address and its version for an enrolled order, with the order's state, read
+        now: Fulfillment packs against the snapshot this answers and keeps it. Nothing is changed here."""
+        OrderId = str(Body.get("order_id") or "") if isinstance(Body, dict) else ""
+        Base = {"contract_version": ContractVersion, "environment_id": self.EnvironmentId(), "check_id": "shk_" + secrets.token_hex(8), "checked_at": Now(), "order_id": OrderId}
+        if not OrderId or not self.IsEnrolled("order", OrderId):
+            return {**Base, "ok": False, "blockers": [{"code": "ORDER_NOT_FOUND", "text": "No such enrolled order."}]}
+        O = self._Order(OrderId)
+        E = self.Enrollment("order", OrderId)
+        B = []
+        if O["status"] == "cancelled":
+            B.append({"code": "ORDER_CANCELLED", "text": "The order is cancelled."})
+        if O["payment_status"] != "paid":
+            B.append({"code": "PAYMENT_PENDING", "text": f"Payment is {O['payment_status']}."})
+        Address = O["address"]
+        return {**Base, "ok": not B, "blockers": B, "order_ref": O["ref"], "address": Address, "address_lines": O["address_lines"],
+                "address_version": _Sha(Dumps(Address))[:16], "address_validation": O["address_validation"], "shipping_method": O["shipping_method"],
+                "shipping_label": O.get("shipping_label"), "order_status": O["status"],
+                "payment": {"status": O["payment_status"], "basis": "paid" if O["payment_status"] == "paid" else None},
+                "cancellation": {"state": "cancelled" if O["status"] == "cancelled" else "none"}, "source_version": E["source_version"]}
+
     # ── the changes feed ─────────────────────────────────────────────────
     def Changes(self, Cursor: int, Limit: int) -> dict:
         Limit = max(1, min(int(Limit), MaxChanges))
@@ -617,7 +639,7 @@ class FulfillmentBridge:
             return "ignored_stale"
         Versions[Agg] = int(E["aggregate_version"])
         Public = E.get("public_payload") if isinstance(E.get("public_payload"), dict) else {}
-        State.update({K: V for K, V in Public.items() if K in ("customer_status", "summary", "parts", "review_status", "blockers", "file_state", "shipment",
+        State.update({K: V for K, V in Public.items() if K in ("customer_status", "summary", "parts", "review_status", "blockers", "file_state", "shipment", "shipments",
                                                                  "order_status", "review", "commercial_action_pending", "commercial_action")})
         State.update({"aggregate_versions": Versions, "last_event_type": E["event_type"], "last_event_at": E["occurred_at"], "last_received_at": T})
         if EntityType == "order" and Public.get("order_status") in ProjectionStatuses:
@@ -762,6 +784,11 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
     async def ReleaseChecks(Body_: dict = Body(...), authorization: str | None = Header(None)):
         Service(authorization)
         return Bridge.ReleaseChecks(Body_)
+
+    @App_.post(Prefix + "/shipping-checks")
+    async def ShippingChecks(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Service(authorization)
+        return Bridge.ShippingChecks(Body_)
 
     @App_.get(Prefix + "/assets/image/{DesignId}/{CandidateId}")
     async def Image(DesignId: str, CandidateId: str, authorization: str | None = Header(None)):

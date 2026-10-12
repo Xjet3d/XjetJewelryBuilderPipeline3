@@ -1672,6 +1672,15 @@
               <span x-show="of.projection?.summary" x-text="' — ' + of.projection.summary"></span>
               <span class="text-zinc-500" x-text="of.projection?.last_event_at ? ' · ' + dateTime(of.projection.last_event_at) : ''"></span>
               <span x-show="of.projection?.commercial_action_pending" class="badge bg-amber-100 text-amber-800 ml-2">Commercial action pending in Fulfillment</span></p>
+            <!-- The parcels Fulfillment packed and handed over: identifiers, state, carrier and tracking as recorded there (Batch 7) -->
+            <template x-for="s in (of.projection?.shipments || [])" :key="s.display_no">
+              <p class="text-zinc-700"><span class="font-mono" x-text="s.display_no"></span> <span class="badge bg-zinc-100 text-zinc-600" x-text="s.state.toLowerCase()"></span>
+                <span x-text="' ' + s.units + ' unit(s): ' + (s.items || []).map(i => i.part + ' ×' + i.quantity).join(', ')"></span>
+                <span x-show="s.carrier" x-text="' · ' + s.carrier + ' ' + (s.tracking_no || '')"></span>
+                <a x-show="s.tracking_url" class="underline text-zinc-500" :href="s.tracking_url" target="_blank" rel="noopener noreferrer">tracking</a>
+                <span x-show="s.alternative_delivery" class="text-zinc-500"> · alternative delivery</span>
+                <span class="text-zinc-500" x-text="(s.shipped_at ? ' · shipped ' + dateTime(s.shipped_at) : '') + (s.delivered_at ? ' · delivered ' + dateTime(s.delivered_at) + (s.delivery_source ? ' (' + s.delivery_source.replace('_', ' ') + ')' : '') : '')"></span></p>
+            </template>
             <!-- The parts Fulfillment made of this order: the review decision with its reason and the customer-facing message, the file, the quantities, the blockers -->
             <table x-show="(of.projection?.parts || []).length" class="w-full text-[12px]">
               <thead><tr><th>Part</th><th>Stage</th><th>Review</th><th>File</th><th>Quantities</th><th>Blockers</th></tr></thead>

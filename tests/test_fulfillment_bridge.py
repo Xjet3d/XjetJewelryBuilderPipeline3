@@ -316,6 +316,39 @@ async def test_release_checks_answer_payment_cancellation_and_quantity_live(tmp_
         await H.Close()
 
 
+async def test_shipping_checks_answer_the_authoritative_address_and_its_version_live(tmp_path):
+    """Batch 7 (spec §23, C05): Fulfillment packs against the address Atelier holds now; a changed address has a new version."""
+    H = _On(tmp_path)
+    try:
+        _Did, O = await _Placed(H, Qty=1)
+        Url = Prefix + "/shipping-checks"
+        assert (await H.Client.post(Url, json={"order_id": O["id"]})).status_code == 403
+        R = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
+        assert R["ok"] is False and R["blockers"][0]["code"] == "ORDER_NOT_FOUND" and "address" not in R                # not enrolled: nothing is told
+        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        Snap = (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).json()
+        R = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
+        assert R["ok"] is False and [B["code"] for B in R["blockers"]] == ["PAYMENT_PENDING"]
+        assert R["address"] == Snap["order"]["address"] and R["address_version"] == Snap["order"]["address_version"] and len(R["address_version"]) == 16
+        assert R["order_ref"] == O["ref"] and R["check_id"].startswith("shk_") and R["source_version"] == Snap["source_version"] and R["cancellation"]["state"] == "none"
+        await H.Client.post(f"/api/admin/orders/{O['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)
+        R = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
+        assert R["ok"] is True and R["payment"] == {"status": "paid", "basis": "paid"} and R["blockers"] == []
+        # The customer's address changed (as a change of the stored shipping data): a new version, the new address, and the feed knows too
+        Shipping = json.loads(H.Ctx.Db.One("SELECT shipping_json FROM orders WHERE id = ?", (O["id"],))["shipping_json"])
+        Shipping.update({"line1": "5 Herzl St", "city": "Haifa"})
+        H.Ctx.Db.Execute("UPDATE orders SET shipping_json = ?, updated_at = ? WHERE id = ?", (json.dumps(Shipping), Now(), O["id"]))
+        R2 = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
+        assert R2["address_version"] != R["address_version"] and R2["address"]["city"] == "Haifa"
+        assert (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"][-1]["reason"] == "address"
+        await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "cancelled", "note": "changed their mind"}, headers=Admin)
+        R = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
+        assert [B["code"] for B in R["blockers"]] == ["ORDER_CANCELLED"] and R["cancellation"]["state"] == "cancelled"
+        assert (await H.Client.post(Url, json={}, headers=Service)).json()["blockers"][0]["code"] == "ORDER_NOT_FOUND"
+    finally:
+        await H.Close()
+
+
 async def test_d07_a_command_stays_pending_until_fulfillment_answers_and_a_repeated_click_makes_one(tmp_path):
     H = _On(tmp_path)
     try:
