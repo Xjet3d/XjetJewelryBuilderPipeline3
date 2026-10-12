@@ -431,7 +431,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     def PageDates(Entries: list[tuple[str, str, str | None]]) -> dict:
         """(path, fingerprint, first date) → the date each page's own content last changed (page_lastmod). A new page
         starts at its first date (a gallery design: when it was published here) or now; a page whose fingerprint
-        changed moves to now; an unchanged page keeps its date."""
+        changed moves to now; an unchanged page keeps its date — and so does one whose stored fingerprint was made
+        another way (SitePages.FingerprintVersion): only the record is renewed."""
         Known = {R["path"]: R for R in Ctx.Db.All("SELECT path, fingerprint, changed_at FROM page_lastmod")}
         Out = {}
         for Path_, Print, First in Entries:
@@ -440,6 +441,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 At = First or Now()
                 Ctx.Db.Execute("INSERT OR IGNORE INTO page_lastmod (path, fingerprint, changed_at) VALUES (?,?,?)",
                                (Path_, Print, At))
+            elif not R["fingerprint"].startswith(SitePages.FingerprintVersion + ":"):
+                At = R["changed_at"]
+                Ctx.Db.Execute("UPDATE page_lastmod SET fingerprint = ? WHERE path = ?", (Print, Path_))
             elif R["fingerprint"] != Print:
                 At = Now()
                 Ctx.Db.Execute("UPDATE page_lastmod SET fingerprint = ?, changed_at = ? WHERE path = ?", (Print, At, Path_))

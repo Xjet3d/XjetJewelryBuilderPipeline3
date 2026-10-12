@@ -352,6 +352,27 @@ def DesignProduct(Title: str, Url: str, Image: str, Description: str, Product: s
 _AssetVersion = re.compile(r"\?v=\d+")
 _HeadParts = re.compile(r'<title>.*?</title>|<meta name="description"[^>]*>|<link rel="canonical"[^>]*>|'
                         r'<script type="application/ld\+json">.*?</script>', re.S)
+# How fingerprints are made: a stored one of another version is re-recorded without moving the page's date (app.py PageDates)
+FingerprintVersion = "v2"
+_Tag = re.compile(r"<[^>]+>")
+_Href = re.compile(r'(?<![:\w-])href="([^"]*)"')
+_Img = re.compile(r"<img\b[^>]*>", re.I)
+_Src = re.compile(r'(?<![:\w-])src="([^"]*)"')
+_Alt = re.compile(r'(?<![:\w-])alt="([^"]*)"')
+
+
+def _AttrOf(Pattern: re.Pattern, Tag: str) -> str:
+    M = Pattern.search(Tag)
+    return M.group(1) if M else ""
+
+
+def _Readable(Markup: str) -> str:
+    """What a reader gets from markup: its text, the links' targets and the pictures (address, alt) — not the classes,
+    styles or script bindings around them, so restyling a page is not a change of its content."""
+    Text = " ".join(html.unescape(_Tag.sub(" ", Markup)).split())
+    Links = " ".join(_Href.findall(Markup))
+    Pictures = " ".join(f"{_AttrOf(_Src, I)}|{_AttrOf(_Alt, I)}" for I in _Img.findall(Markup))
+    return "\n".join((Text, Links, Pictures))
 
 
 def _LiveCopy(Html: str, View: str) -> str:
@@ -369,19 +390,20 @@ def _LiveCopy(Html: str, View: str) -> str:
 
 
 def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:
-    """What a public page says of its own: title, description, canonical, structured data and the page's live copy — not
-    the shared shell, the other pages' templates, the asset versions or the address it was read at (Origin), so a release
-    that leaves the page alone leaves its date alone."""
-    Text = "\n".join(M.group(0) for M in _HeadParts.finditer(Html)) + "\n" + _LiveCopy(Html, View)
+    """What a public page says of its own: title, description, canonical, structured data and what a reader gets from the
+    page's live copy (_Readable) — not the shared shell, the other pages' templates, the markup's classes, the asset
+    versions or the address it was read at (Origin), so a release that leaves the page's content alone leaves its date
+    alone."""
+    Text = "\n".join(M.group(0) for M in _HeadParts.finditer(Html)) + "\n" + _Readable(_LiveCopy(Html, View))
     if Origin:
         Text = Text.replace(Origin, "")
-    return hashlib.sha256(" ".join(_AssetVersion.sub("", Text).split()).encode("utf-8")).hexdigest()
+    return f"{FingerprintVersion}:" + hashlib.sha256(" ".join(_AssetVersion.sub("", Text).split()).encode("utf-8")).hexdigest()
 
 
 def DesignFingerprint(Link: dict) -> str:
     """A gallery design's own page: its name, image, product and address (the rest is the home page around it)."""
     Own = {K: Link.get(K) for K in ("slug", "title", "image_url", "product_type")}
-    return hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"{FingerprintVersion}:" + hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def W3cDate(Value: str) -> str:

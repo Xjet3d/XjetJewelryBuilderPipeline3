@@ -59,6 +59,34 @@ async def test_lastmod_is_the_date_each_pages_own_content_last_changed(tmp_path)
         await H.Close()
 
 
+def test_a_date_follows_what_a_reader_gets_not_the_markup():
+    from p3 import sitepages as SitePages
+    Page = ('<title>T</title><div class="ssr-view" data-ssr-view="faq"><p class="a">Hello <b>world</b></p>'
+            '<a href="/faq#x">More</a><img src="/i.png" alt="A ring" :alt="g.title"></div>')
+    Print = SitePages.PageFingerprint(Page, "faq")
+    assert Print.startswith(SitePages.FingerprintVersion + ":")
+    Restyled = Page.replace('class="a"', 'class="b text-sm"').replace("<b>world</b>", '<strong class="x">world</strong>')
+    assert SitePages.PageFingerprint(Restyled.replace(':alt="g.title"', ':alt="g.name"'), "faq") == Print   # styling only
+    for Changed in (Page.replace("Hello", "Hi"), Page.replace("/faq#x", "/gallery"), Page.replace("A ring", "A charm"),
+                    Page.replace("/i.png", "/j.png"), Page.replace("<title>T</title>", "<title>U</title>")):
+        assert SitePages.PageFingerprint(Changed, "faq") != Print, Changed
+
+
+async def test_a_fingerprint_made_another_way_is_renewed_without_moving_the_date(tmp_path):
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        await _Publish(H, "A slim band")
+        await _Map(H)
+        H.Ctx.Db.Execute("UPDATE page_lastmod SET changed_at = ?, fingerprint = 'made-the-old-way'", (Old,))
+        Stale = {"2020-01-01T00:00:00+00:00"}
+        assert set((await _Map(H)).values()) == Stale                       # the pages did not change: no date moves
+        Rows = H.Ctx.Db.All("SELECT fingerprint FROM page_lastmod")
+        assert Rows and all(R["fingerprint"].startswith("v2:") for R in Rows)  # the records are renewed
+        assert set((await _Map(H)).values()) == Stale
+    finally:
+        await H.Close()
+
+
 async def test_a_date_does_not_move_with_the_address_the_pages_are_read_at(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)                      # no public base URL: a page names the address it is read at
     try:
