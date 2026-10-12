@@ -132,7 +132,7 @@ async def test_hidden_charms_never_reach_the_customer_site(HC):
     assert [T["product_type"] for T in Tiles] == ["ring", "charm"]
     assert (await H.Client.get(f"/api/gallery/{CharmItem['id']}/share", headers=Customer)).status_code == 200
     Page = (await H.Client.get(f"/design/{Slug}", headers=Customer)).text
-    assert "a charm from the Inspiration Gallery" in Page
+    assert "a charm designed with XJet Atelier, from the Inspiration Gallery" in Page
     assert Cid in [D["id"] for D in (await H.Client.get("/api/designs")).json()["designs"]]
     assert (await H.Design(Cid))["product_type"] == "charm"
 
