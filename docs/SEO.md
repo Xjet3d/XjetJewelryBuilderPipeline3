@@ -50,10 +50,13 @@ always `noindex`.
 ## The sitemap's `<lastmod>`
 
 Every URL carries the date its own content last changed (`page_lastmod`): a fingerprint of the page's title,
-description, canonical link, structured data and its own markup — for a gallery design, its name, image, product and
-address (`p3/sitepages.py` `PageFingerprint` / `DesignFingerprint`). A date moves only when that page changes — a
-release that leaves the page alone leaves its date alone, and nothing is dated by the request. A new design starts at
-its publication date in the gallery. The sitemap is rebuilt at most once a minute.
+description, canonical link, structured data and what a reader gets from the page itself — its text, the links'
+targets and the pictures (address, alt), not its markup, so restyling a page is not a change — and, for a gallery
+design, its name, image, product and address (`p3/sitepages.py` `PageFingerprint` / `DesignFingerprint`). A date moves
+only when that page's content changes; nothing is dated by the request or by the address the sitemap is read at. A new
+design starts at its publication date in the gallery; the site's own pages started at the first sitemap build after
+2026-10-12 10:55 UTC (no earlier record of their content exists). Fingerprints carry a version: a record made another
+way is renewed without moving its date. The sitemap is rebuilt at most once a minute.
 
 ## Structured data (JSON-LD) — only what is true
 
@@ -67,10 +70,38 @@ the Product data is valid without them, it is simply not eligible for that rich 
 
 ## Atelier host and Cloudflare — changes outside the P3 repository
 
-These four need the Atelier host's nginx (root via SSH on the host — not reachable from the P3 tools) or the Cloudflare
-account of `xjet3d.com` (DNS is on Cloudflare: `earl` / `rosemary.ns.cloudflare.com`). Approved 2026-10-12; the owner of
-that access applies them. The `server` block is the one that serves `xjetatelier.xjet3d.com` on port 443 (it holds
-`location /JewelryB2C2/` and the root redirect); test with `nginx -t` before `systemctl reload nginx`.
+Four approved items (2026-10-12) live outside this repository: the root `robots.txt`, a permanent root redirect, plain
+HTTP → HTTPS, and `noindex` on Pipeline 2. Where they are controlled (found 2026-10-12):
+
+- **Cloudflare**, zone `xjet3d.com` (name servers `earl` / `rosemary.ns.cloudflare.com`; the account uses single
+  sign-on). `xjetatelier.xjet3d.com` is proxied: its address is Cloudflare's, so the origin is reachable only through
+  Cloudflare. **All four can be done here**, as rules scoped to this host — the only place that can fix plain HTTP
+  (Cloudflare 523: it cannot reach the origin on port 80, so the request never gets to nginx). Needs a Cloudflare login
+  that may edit the zone's Rules (account Administrator, or Domain Administrator for `xjet3d.com`).
+- **nginx on the Atelier origin server** (Ubuntu, nginx 1.24, Let's Encrypt): the site file
+  `/etc/nginx/sites-available/jewelry-b2c` (root-owned; `sudo`, `nginx -t`, `systemctl reload nginx`). It was written
+  by Pipeline 2's `nginx-install.sh` and `fix-nginx-hardening.sh` (repository `Xjet3d/XjetJewelryBuilder`, branch
+  `Deploy`; Pipeline 2 runs from `/home/dov/git/XjetJewelryBuilder` on port 5001), then edited by hand: the live root
+  redirect goes to `/JewelryB2C3/`, the Pipeline 3 location proxies to `127.0.0.1:8340`, and `/JewelryB2C2/` has no
+  basic auth — none of which is in Git. Needs SSH to the origin's real address (the `atelier` alias in `~/.ssh/config`
+  points at `xjetatelier.xjet3d.com`, which is Cloudflare: port 22 unreachable) and `sudo` on that server. nginx can do
+  items 1, 2 and 4, not 3.
+
+**Recommended: four Cloudflare rules** (*Rules* in the `xjet3d.com` zone; each scoped to the host, so no other
+`xjet3d.com` site changes). Single Redirects run in order and the first match wins, so the root rule comes first.
+
+| # | Kind | When (expression) | Then |
+|---|---|---|---|
+| 1 | URL Rewrite (*Transform Rules → Rewrite URL*) | `(http.host eq "xjetatelier.xjet3d.com" and http.request.uri.path eq "/robots.txt")` | Path → static `/JewelryB2C3/robots.txt`; query unchanged |
+| 2 | Single Redirect | `(http.host eq "xjetatelier.xjet3d.com" and http.request.uri.path eq "/")` | static `https://xjetatelier.xjet3d.com/JewelryB2C3/`, **301**, preserve query string |
+| 3 | Single Redirect (after 2) | `(http.host eq "xjetatelier.xjet3d.com" and not ssl)` | dynamic `concat("https://", http.host, http.request.uri.path)`, **301**, preserve query string |
+| 4 | Response Header Transform (*Modify Response Header*) | `(http.host eq "xjetatelier.xjet3d.com" and starts_with(http.request.uri.path, "/JewelryB2C2"))` | set static `X-Robots-Tag` = `noindex` |
+
+Rule 1 makes the visitor's `/robots.txt` P3's own file (it follows the Search engines switch: with it ON, `Disallow:
+/JewelryB2C3/api/`, `Allow: /JewelryB2C3/` and the sitemap). If `starts_with()` is not offered, `http.request.uri.path
+wildcard "/JewelryB2C2*"` is the same. Pipeline 2 stays available: no redirect, no deletion.
+
+**The nginx alternatives** (items 1, 2 and 4 only), in the `server { listen 443 … }` block of `jewelry-b2c`:
 
 **1. Root `robots.txt`** — one source of truth, P3's own file (it follows the Search engines switch):
 
@@ -89,24 +120,20 @@ its `noindex` must stay readable).
 **2. Root redirect permanent** — the root `/` answers nginx's own `302 Found` today; make it `301`:
 
 ```nginx
-location = / { return 301 /JewelryB2C3/; }      # replaces the current 302 to /JewelryB2C3/
+location = / { return 301 /JewelryB2C3/$is_args$args; }      # replaces the current 302 to /JewelryB2C3/
 ```
 
-`/JewelryB2C3/` answers 200, so there is no loop. If the current rule is a `rewrite … redirect`, use `… permanent`.
+`/JewelryB2C3/` answers 200, so there is no loop; a query string is kept. If the current rule is a `rewrite …
+redirect`, use `… permanent`.
 
-**3. Plain HTTP → HTTPS** — `http://…` answers Cloudflare **523** (Cloudflare cannot reach the origin on port 80).
-Safest fix, at Cloudflare and for this host only: *Rules → Redirect Rules → Create rule* — when *Hostname equals
-xjetatelier.xjet3d.com* **and** *SSL/HTTPS is off* → *Dynamic redirect* to
-`concat("https://", http.host, http.request.uri.path)`, status **301**, *Preserve query string* on. (The zone-wide
-*Always Use HTTPS* switch does the same for every proxied `xjet3d.com` host — use it only if that is intended for all
-of them.)
+**3. Plain HTTP → HTTPS** — Cloudflare only (rule 3 above): nginx never sees these requests. (The zone-wide *Always Use
+HTTPS* switch does the same for every proxied `xjet3d.com` host — use it only if that is intended for all of them.)
 
-**4. Pipeline 2 not indexable** — every answer under `/JewelryB2C2/` gets `X-Robots-Tag: noindex`. Either at Cloudflare
-(*Rules → Transform Rules → Modify Response Header*: when *URI Path starts with /JewelryB2C2/* → *Set static*
-`X-Robots-Tag` = `noindex, nofollow`), or in nginx inside `location /JewelryB2C2/ { … }`:
+**4. Pipeline 2 not indexable** — every answer under `/JewelryB2C2/` gets `X-Robots-Tag: noindex` (rule 4 above), or in
+nginx inside `location /JewelryB2C2/ { … }`:
 
 ```nginx
-add_header X-Robots-Tag "noindex, nofollow" always;
+add_header X-Robots-Tag "noindex" always;
 ```
 
 nginx caveat: a location with its own `add_header` stops inheriting the server-level `add_header` lines — repeat the
@@ -120,7 +147,7 @@ curl -s  https://xjetatelier.xjet3d.com/robots.txt                       [the fo
 curl -sI https://xjetatelier.xjet3d.com/                                 [301, location: /JewelryB2C3/]
 curl -sI http://xjetatelier.xjet3d.com/JewelryB2C3/faq                   [301 to https://…/JewelryB2C3/faq]
 curl -sI http://xjetatelier.xjet3d.com/                                  [301 to https://xjetatelier.xjet3d.com/]
-curl -sI https://xjetatelier.xjet3d.com/JewelryB2C2/ | grep -i robots    [x-robots-tag: noindex, nofollow]
+curl -sI https://xjetatelier.xjet3d.com/JewelryB2C2/ | grep -i robots    [x-robots-tag: noindex]
 curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/ | grep -i robots    [nothing: P3 stays indexable]
 ```
 
