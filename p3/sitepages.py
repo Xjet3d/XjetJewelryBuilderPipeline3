@@ -18,6 +18,7 @@ import html
 import json
 import re
 
+from p3 import media as Media
 from p3 import products as Products
 
 IndexKey = "site_indexing"                    # Admin → Settings → System → Search engines (product_settings)
@@ -294,6 +295,19 @@ def DesignHeading(Html: str) -> str:
     Html = "".join(Out) + Html[I:]
     return Html.replace('<h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>',
                         '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>')
+
+
+# The Inspiration Gallery lightbox's picture (index.html, class gallery-shot): its sizes attribute, which a design page's
+# preload repeats so the browser fetches the same thumbnail once
+LightboxSizes = "(min-width: 768px) 490px, 85vw"
+
+
+def LightboxPreload(ImageUrl: str) -> str:
+    """A design page's head: the lightbox picture it opens with, fetched with the stylesheets instead of after the scripts —
+    the same thumbnails as the page's srcsetFor() (app.js), so the browser picks the same one."""
+    Set = ", ".join(f"{E(Media.ThumbUrl(ImageUrl, W))} {W}w" for W in Media.Widths)
+    return (f'<link rel="preload" as="image" href="{E(Media.ThumbUrl(ImageUrl, 800))}" imagesrcset="{Set}" '
+            f'imagesizes="{LightboxSizes}" fetchpriority="high">')
 
 
 def CrawlerBlock(Inner: str) -> str:

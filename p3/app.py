@@ -504,7 +504,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Related = " · ".join(f'<a href="{html.escape(Base, quote=True)}/design/{html.escape(L["slug"], quote=True)}">'
                              f'{html.escape(L["title"], quote=False)}</a>' for L in Others)
         Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"
-                                       f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier">'
+                                       f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier" loading="lazy">'
                                        + (f"<p>More designs: {Related}</p>" if Related else "")
                                        + f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
         Html = RenderPage(request, "home", Design={"block": Block})
@@ -522,6 +522,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:description" content="{Description}">',
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
+            SitePages.LightboxPreload(Found["image_url"]),
             SitePages.JsonLd(SitePages.DesignProduct(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
             f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
         ])

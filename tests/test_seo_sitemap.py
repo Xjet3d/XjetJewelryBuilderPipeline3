@@ -141,6 +141,36 @@ async def test_the_gallery_description_reads_well():
     assert SitePages.Words(("charm",))["stext"] == "charm" and SitePages.Words(())["stext"] == "jewelry"
 
 
+def test_the_lightbox_picture_and_the_story_keep_their_room_from_the_first_paint():
+    """Design pages on a phone (CLS): nothing below moves when the story starts or the design's picture arrives."""
+    from p3 import sitepages as SitePages
+    Page = (WebDir / "index.html").read_text(encoding="utf-8")
+    Img = re.search(r'<img :srcset="srcsetFor\(galleryItem\.image_url\)"[^>]*>', Page).group(0)
+    assert f'sizes="{SitePages.LightboxSizes}"' in Img and 'width="1024" height="1024"' in Img and 'fetchpriority="high"' in Img
+    assert 'class="gallery-shot ' in Img and ":src=\"thumb(galleryItem.image_url, 800)\"" in Img   # a thumbnail, not the original
+    assert ".gallery-shot { width: 100%; max-width: 42vh; height: auto; aspect-ratio: 1 / 1; }" in Page
+    assert "@media (min-width: 768px) { .gallery-shot { max-width: 72vh; } }" in Page
+    assert re.search(r'<div class="sc-stage" role="img"[^>]*\n\s*x-init="\$nextTick\(\(\) => window\.P3Showcase', Page)
+
+
+async def test_a_design_page_preloads_its_lightbox_picture_and_its_crawler_picture_waits(tmp_path):
+    from p3 import sitepages as SitePages
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        _D, S1 = await _Publish(H, "A slim band")
+        Page = (await H.Client.get(f"/design/{S1['slug']}")).text
+        Item = next(T for T in (await H.Client.get("/api/gallery")).json()["items"] if T["title"] == S1["title"])
+        Thumb = Item["image_url"].replace("/assets/", "/thumb/", 1)              # app.js thumb() / srcsetFor()
+        Set = f"{Thumb}?w=320 320w, {Thumb}?w=800 800w, {Thumb}?w=1024 1024w"
+        assert (f'<link rel="preload" as="image" href="{Thumb}?w=800" imagesrcset="{Set}" '
+                f'imagesizes="{SitePages.LightboxSizes}" fetchpriority="high">') in Page
+        Crawler = re.search(r"<div data-ssr-fallback[^>]*>.*?</div>", Page, re.S).group(0)
+        assert re.search(r'<img src="[^"]+" alt="[^"]+" loading="lazy">', Crawler)        # hidden: never fetched by a browser
+        assert "loading=\"lazy\"" not in Page.split("<body", 1)[0]                           # the preload itself is not lazy
+    finally:
+        await H.Close()
+
+
 def test_public_images_carry_descriptive_alt_text():
     Page = (WebDir / "index.html").read_text(encoding="utf-8")
     Ink = re.search(r'<img src="\{\{BASE\}\}/static/images/Ink\.JPG" alt="([^"]*)"', Page).group(1)
