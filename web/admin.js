@@ -199,8 +199,9 @@ function adminApp() {
     sizesEdit: null, sizeAdd: '', sizeAddName: '', sizeNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
-    orders: [], ordersMeta: { statuses: [], payment_statuses: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
-    oq: '', oStatus: '', oPayment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
+    orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
+    oq: '', oStatus: '', oPayment: '', oFulfillment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
+    qf: null, cmdForm: null,                     // a quote request's Fulfillment state; a request to Fulfillment being written
     oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
     qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
     quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
@@ -384,11 +385,54 @@ function adminApp() {
         if (this.oPayment) q.set('payment', this.oPayment);
         if (this.oq.trim()) q.set('q', this.oq.trim());
         if (this.oProduct) q.set('product', this.oProduct);
+        if (this.oFulfillment) q.set('fulfillment', this.oFulfillment);
         const r = await this.api('GET', '/api/admin/orders?' + q);
         this.orders = r.orders; this.oTotal = r.total; this.oOffset = r.offset; this.quoteCounts = r.quote_counts || {};
-        this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses };
+        this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses, fulfillment_filters: r.fulfillment_filters || [] };
       } catch (e) { this.ordersMsg = e.message; }
       finally { this.ordersLoading = false; }
+    },
+    // ── the Fulfillment state on lists and detail pages (docs/FULFILLMENT.md) ──
+    get fulfillmentOn() { return (this.ordersMeta.fulfillment_filters || []).length > 0; },
+    fReview(s) { return { not_started: 'Review not started', in_review: 'In review', changes_required: 'Changes required', approved: 'Approved', cannot_produce: 'Cannot produce' }[s] || (s || '—'); },
+    fBlocker(code) {
+      return { PAYMENT_PENDING: 'payment pending', REVISION_NOT_APPROVED: 'revision not approved', PRODUCTION_FILE_NOT_READY: 'production file missing', PROFILE_MISSING: 'material profile missing',
+               PROFILE_INCOMPLETE: 'material profile incomplete', PROFILE_NOT_APPROVED: 'material profile not approved', HOLD_BLOCKS_RELEASE: 'on hold', CANCELLED: 'cancelled',
+               CANCELLATION_PENDING: 'cancellation pending' }[code] || String(code || '').toLowerCase().replace(/_/g, ' ');
+    },
+    fulfillmentLine(f) {
+      if (!f) return '';
+      const bits = [];
+      if (f.review_status) bits.push(this.fReview(f.review_status).toLowerCase());
+      if (f.blocker) bits.push(this.fBlocker(f.blocker));
+      if (f.pending_commands) bits.push(f.pending_commands + ' request' + (f.pending_commands === 1 ? '' : 's') + ' pending');
+      if (f.commercial_action_pending) bits.push('commercial action pending');
+      if (f.awaiting_sync) bits.push('awaiting synchronization');
+      return bits.join(' · ');
+    },
+    cmdStateClass(s) { return { pending: 'bg-amber-100 text-amber-800', applied: 'bg-emerald-100 text-emerald-800', rejected: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100 text-zinc-600'; },
+    requestCancellation(line) { this.cmdForm = { line_id: line.id, item: line.title + (line.ring_id ? ' · ' + line.ring_id : ''), max: line.quantity, quantity: '', reason: '' }; },
+    // A request to Fulfillment: stored here, delivered through its own connection, Pending until it answers (never shown as done before)
+    async sendCommand() {
+      const f = this.cmdForm; if (!this.od || !f || !f.reason.trim()) return;
+      const body = { action: 'cancel_line', line_id: f.line_id, reason: f.reason.trim(), expected_version: this.of?.enrollment?.source_version };
+      if (f.quantity) body.quantity = Number(f.quantity);
+      this.odBusy = true; this.odError = '';
+      try {
+        const c = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/fulfillment/commands`, body);
+        this.cmdForm = null; this.toast(c.state === 'pending' ? 'Request sent to Fulfillment — pending until it answers.' : 'Request ' + c.state + '.');
+        this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment');
+      } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    async sendQuoteToFulfillment() {
+      if (!this.qd || !this.qf || !this.qf.eligible) return;
+      const r = await this.ask({ title: 'Send ' + this.qd.ref + ' to Fulfillment?',
+        text: 'Fulfillment reviews the piece operationally before the quote is answered; when the customer approves the quote, the order continues as the same requirement there. Payment, the quote itself and the customer emails stay here.',
+        confirmLabel: 'Send to Fulfillment', cancelLabel: 'Not now', input: { label: 'Note for the operations team (optional — not a signature)', value: '', placeholder: 'For example: a detail to check', max: 500 } });
+      if (!r) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qf = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/fulfillment/enroll`, { note: (r.value || '').trim() }); this.toast(this.qd.ref + ' is with Fulfillment.'); await this.loadQuote(true); }
+      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
     },
     // The quote request inbox: one page, searched and filtered on the server; counts per status for the filter and badge
     async loadQuoteInbox(offset = 0) {
@@ -501,8 +545,8 @@ function adminApp() {
       this.odError = ''; this.oPay.open = false; this.oNote = ''; this.of = null;
       try {
         this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.orderId));
-        if (!this.ordersMeta.statuses.length) { const r = await this.api('GET', '/api/admin/orders'); this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses }; }
-        this.oStatusForm = { status: this.od.status, note: '' };
+        if (!this.ordersMeta.statuses.length) { const r = await this.api('GET', '/api/admin/orders'); this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses, fulfillment_filters: r.fulfillment_filters || [] }; }
+        this.oStatusForm = { status: this.od.status, note: '' }; this.cmdForm = null;
         // The Fulfillment hand-over and its progress (docs/FULFILLMENT.md); {enabled: false} where the integration is off
         this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment').catch(() => null);
       } catch (e) { this.od = null; this.odError = e.message; }
@@ -561,6 +605,8 @@ function adminApp() {
         const same = keepDraft && this.qd && this.qd.id === fresh.id;
         this.qd = fresh;
         if (!same) this.qResetForm();
+        // The Fulfillment hand-over of the request (docs/FULFILLMENT.md); {enabled: false} where the integration is off
+        this.qf = await this.api('GET', '/api/admin/quote-requests/' + encodeURIComponent(fresh.id) + '/fulfillment').catch(() => null);
       } catch (e) { this.qd = null; this.qdError = e.message; }
     },
     get qDirty() { return !!(this.qd && this.qd.can_send && this.qSnapshot) && JSON.stringify(this.qForm) !== this.qSnapshot; },

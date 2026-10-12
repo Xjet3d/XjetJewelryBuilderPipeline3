@@ -651,16 +651,23 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")
-    async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None,
-                          product: str | None = None, offset: int = 0, limit: int = 50, authorization: str | None = Header(None)):
-        """One page of orders (search and filters in SQL, `total` = every match), and the quote requests per status."""
+    async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None, product: str | None = None,
+                          fulfillment: str | None = None, offset: int = 0, limit: int = 50, authorization: str | None = Header(None)):
+        """One page of orders (search and filters in SQL, `total` = every match), and the quote requests per status. With the
+        Fulfillment integration on, each row carries its Fulfillment state and `fulfillment=` filters by it (docs/FULFILLMENT.md)."""
         Admin(authorization)
         Limit, Offset = max(1, min(int(limit), 200)), max(0, int(offset))
-        return {"orders": Orders.AdminList(status or None, payment or None, q or None, Limit, Product=product or None, Offset=Offset),
-                "total": Orders.AdminCount(status or None, payment or None, q or None, Product=product or None),
+        Bridge = getattr(App_.state, "Bridge", None)
+        Live = Bridge is not None and Bridge.Enabled
+        Ids = Bridge.FilterIds(fulfillment) if Live and fulfillment else None
+        Rows = Orders.AdminList(status or None, payment or None, q or None, Limit, Product=product or None, Offset=Offset, Ids=Ids)
+        if Live:
+            Bridge.Decorate(Rows, "order")
+        return {"orders": Rows, "total": Orders.AdminCount(status or None, payment or None, q or None, Product=product or None, Ids=Ids),
                 "offset": Offset, "limit": Limit,
                 "statuses": [{"id": S, "label": OrdersModule.StatusLabels[S]} for S in OrdersModule.StatusOrder + ["cancelled"]],
                 "payment_statuses": [{"id": S, "label": PaymentsModule.Labels[S]} for S in PaymentsModule.Statuses],
+                "fulfillment_filters": [{"id": K, "label": V} for K, V in Bridge.FilterLabels().items()] if Live else [],
                 "quote_counts": Orders.QuoteCounts()}
 
     @App_.get("/api/admin/quote-requests")
@@ -669,8 +676,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         """The quote request inbox: one page (search and status in SQL, `total` = every match) and the count per status."""
         Admin(authorization)
         Limit, Offset = max(1, min(int(limit), 200)), max(0, int(offset))
-        return {"quote_requests": Orders.AdminQuoteRequests(status or None, q or None, Limit, Offset),
-                "total": Orders.AdminQuoteCount(status or None, q or None), "offset": Offset, "limit": Limit,
+        Rows = Orders.AdminQuoteRequests(status or None, q or None, Limit, Offset)
+        Bridge = getattr(App_.state, "Bridge", None)
+        if Bridge is not None and Bridge.Enabled:
+            Bridge.Decorate(Rows, "quote_request")
+        return {"quote_requests": Rows, "total": Orders.AdminQuoteCount(status or None, q or None), "offset": Offset, "limit": Limit,
                 "counts": Orders.QuoteCounts()}
 
     @App_.get("/api/admin/orders/{OrderId}")

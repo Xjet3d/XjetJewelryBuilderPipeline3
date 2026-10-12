@@ -579,10 +579,14 @@ class OrderService:
 
     @staticmethod
     def _AdminWhere(Status: str | None, Payment: str | None, Query: str | None, Product: str | None,
-                    OpenOnly: bool = False) -> tuple[str, list]:
-        """The Admin's order filters in SQL: status, payment, product, still open, and the search box — Order ID,
-        customer name or email, promo code, a line's design name, Ring / Charm ID or design id."""
+                    OpenOnly: bool = False, Ids: list[str] | None = None) -> tuple[str, list]:
+        """The Admin's order filters in SQL: status, payment, product, still open, a set of ids (the Fulfillment
+        filter), and the search box — Order ID, customer name or email, promo code, a line's design name, Ring /
+        Charm ID or design id."""
         Where, Params = [], []
+        if Ids is not None:
+            Where.append("o.id IN (" + ",".join("?" * len(Ids)) + ")" if Ids else "0")
+            Params += list(Ids)
         if Product:
             Where.append("EXISTS (SELECT 1 FROM order_lines l WHERE l.order_id = o.id AND l.product_type = ?)")
             Params.append(Products.Normalize(Product))
@@ -604,9 +608,9 @@ class OrderService:
         return (" WHERE " + " AND ".join(Where)) if Where else "", Params
 
     def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int | None = 50,
-                  Product: str | None = None, Offset: int = 0, OpenOnly: bool = False) -> list[dict]:
+                  Product: str | None = None, Offset: int = 0, OpenOnly: bool = False, Ids: list[str] | None = None) -> list[dict]:
         """One page of orders, newest first (Limit None: every match)."""
-        Where, Params = self._AdminWhere(Status, Payment, Query, Product, OpenOnly)
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product, OpenOnly, Ids)
         Page = " LIMIT ? OFFSET ?" if Limit is not None else ""
         Rows = self.Ctx.Db.All("SELECT o.* FROM orders o" + Where + " ORDER BY o.created_at DESC" + Page,
                                (*Params, *((Limit, max(0, Offset)) if Limit is not None else ())))
@@ -623,8 +627,8 @@ class OrderService:
         return Out
 
     def AdminCount(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None,
-                   Product: str | None = None) -> int:
-        Where, Params = self._AdminWhere(Status, Payment, Query, Product)
+                   Product: str | None = None, Ids: list[str] | None = None) -> int:
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product, Ids=Ids)
         return self.Ctx.Db.One("SELECT COUNT(*) AS n FROM orders o" + Where, tuple(Params))["n"]
 
     def AdminGet(self, OrderId: str) -> dict:

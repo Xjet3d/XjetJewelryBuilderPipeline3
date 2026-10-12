@@ -1318,8 +1318,12 @@
             <option value="">Any payment</option>
             <template x-for="s in ordersMeta.payment_statuses" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
           </select>
+          <select x-show="fulfillmentOn" class="inp !w-auto !py-1.5" x-model="oFulfillment" @change="loadOrders()" aria-label="Fulfillment state">
+            <option value="">Fulfillment: any</option>
+            <template x-for="f in (ordersMeta.fulfillment_filters || [])" :key="f.id"><option :value="f.id" x-text="f.label"></option></template>
+          </select>
           <button type="submit" class="btn2 !py-1.5">Search</button>
-          <button type="button" x-show="oq || oStatus || oPayment || oProduct" class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="oq = ''; oStatus = ''; oPayment = ''; oProduct = ''; loadOrders()">Clear</button>
+          <button type="button" x-show="oq || oStatus || oPayment || oProduct || oFulfillment" class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="oq = ''; oStatus = ''; oPayment = ''; oProduct = ''; oFulfillment = ''; loadOrders()">Clear</button>
         </form>
       </div>
       <!-- Phones: one card per order (identity · status · customer · total · next action) -->
@@ -1334,6 +1338,7 @@
               <span class="badge" :class="orderStatusClass(o.status)" x-text="orderStatusLabel(o.status)"></span>
               <span class="badge" :class="payClass(o.payment_status)" x-text="payLabel(o.payment_status)"></span>
               <span x-show="o.three_d_state" class="badge" :class="prodClass(o.three_d_state)" x-text="o.three_d_state === 'review_required' ? '3D review' : '3D ' + prodLabel(o.three_d_state).toLowerCase()"></span>
+              <span x-show="o.fulfillment" class="badge bg-emerald-100 text-emerald-800" x-text="o.fulfillment?.customer_status || 'With Fulfillment'"></span>
               <span class="text-[12px] text-zinc-500 ml-auto" x-text="ago(o.created_at)"></span>
             </p>
           </li>
@@ -1341,7 +1346,7 @@
       </ul>
       <div class="table-wrap hidden md:block">
       <table class="w-full sticky-head" aria-label="Orders">
-        <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th class="text-right">Total</th><th>Payment</th><th>Address</th><th>3D</th><th>Status</th></tr></thead>
+        <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th class="text-right">Total</th><th>Payment</th><th>Address</th><th>3D</th><th>Status</th><th x-show="fulfillmentOn">Fulfillment</th></tr></thead>
         <tbody>
           <template x-for="o in orders" :key="o.id">
             <tr class="row-link align-top" @click="go('#/orders/' + encodeURIComponent(o.id))" tabindex="0" @keydown.enter="go('#/orders/' + encodeURIComponent(o.id))" :aria-label="'Open order ' + o.ref">
@@ -1359,12 +1364,17 @@
               <td><span class="badge" :class="addrClass(o.address_validation)" x-text="o.address_validation"></span></td>
               <td><span x-show="o.three_d_state" class="badge" :class="prodClass(o.three_d_state)" x-text="o.three_d_state === 'review_required' ? 'Review required' : prodLabel(o.three_d_state)"></span><span x-show="!o.three_d_state" class="text-zinc-300">—</span></td>
               <td><span class="badge" :class="orderStatusClass(o.status)" x-text="orderStatusLabel(o.status)"></span></td>
+              <td x-show="fulfillmentOn" class="max-w-[260px]">
+                <template x-if="o.fulfillment"><div>
+                  <span class="badge bg-emerald-100 text-emerald-800" x-text="o.fulfillment.customer_status || 'With Fulfillment'"></span>
+                  <p class="text-[11px] text-zinc-500 mt-1" x-text="fulfillmentLine(o.fulfillment)"></p></div></template>
+                <span x-show="!o.fulfillment" class="text-zinc-300">—</span></td>
             </tr>
           </template>
-          <tr x-show="!orders.length && !ordersLoading"><td colspan="8" class="text-center text-zinc-500 !py-10">
-            <span x-show="oq || oStatus || oPayment || oProduct" x-text="'No orders match' + (oq ? ' “' + oq + '”' : '') + (oProduct ? ' (' + pPlural(oProduct) + ' only)' : '') + '.'"></span>
-            <span x-show="!(oq || oStatus || oPayment || oProduct)">No orders yet.</span></td></tr>
-          <tr x-show="ordersLoading"><td colspan="8" class="text-center text-zinc-500 !py-10">Loading…</td></tr>
+          <tr x-show="!orders.length && !ordersLoading"><td colspan="9" class="text-center text-zinc-500 !py-10">
+            <span x-show="oq || oStatus || oPayment || oProduct || oFulfillment" x-text="'No orders match' + (oq ? ' “' + oq + '”' : '') + (oProduct ? ' (' + pPlural(oProduct) + ' only)' : '') + '.'"></span>
+            <span x-show="!(oq || oStatus || oPayment || oProduct || oFulfillment)">No orders yet.</span></td></tr>
+          <tr x-show="ordersLoading"><td colspan="9" class="text-center text-zinc-500 !py-10">Loading…</td></tr>
         </tbody>
       </table>
       </div>
@@ -1403,6 +1413,7 @@
               <span class="badge" :class="quoteStatusClass(q.status)" x-text="quoteStatusLabel(q.status)"></span>
               <span x-show="q.offer_expired" class="badge bg-red-100 text-red-700">Quote expired</span>
               <span x-show="q.order_ref" class="badge bg-zinc-900 text-white" x-text="q.order_ref"></span>
+              <span x-show="q.fulfillment" class="badge bg-emerald-100 text-emerald-800" x-text="q.fulfillment?.review_status ? fReview(q.fulfillment.review_status) : 'With Fulfillment'"></span>
               <span class="text-[12px] text-zinc-500 ml-auto" x-text="ago(q.created_at)"></span>
             </p>
           </li>
@@ -1410,7 +1421,7 @@
       </ul>
       <div class="table-wrap hidden md:block">
       <table class="w-full sticky-head" aria-label="Quote requests">
-        <thead><tr><th>Request</th><th>Customer</th><th>Design</th><th>Received</th><th>Status</th><th class="text-right">Quote</th><th>Valid until</th><th>Order</th></tr></thead>
+        <thead><tr><th>Request</th><th>Customer</th><th>Design</th><th>Received</th><th>Status</th><th class="text-right">Quote</th><th>Valid until</th><th>Order</th><th x-show="fulfillmentOn">Fulfillment</th></tr></thead>
         <tbody>
           <template x-for="q in quoteRequests" :key="q.id">
             <tr class="align-top row-link" @click="go('#/orders/quote/' + encodeURIComponent(q.id))" tabindex="0" @keydown.enter="go('#/orders/quote/' + encodeURIComponent(q.id))" :aria-label="'Open quote request ' + q.ref">
@@ -1425,6 +1436,11 @@
               <td class="whitespace-nowrap"><span x-show="q.offer" x-text="q.offer?.valid_until || ''"></span><span x-show="!q.offer" class="text-zinc-400">—</span>
                 <span x-show="q.offer_expired" class="badge bg-red-100 text-red-700 ml-1">Expired</span></td>
               <td><a x-show="q.order_ref" class="underline font-mono" :href="'#/orders/' + encodeURIComponent(q.order_id || '')" @click.stop x-text="q.order_ref"></a><span x-show="!q.order_ref" class="text-zinc-400">—</span></td>
+              <td x-show="fulfillmentOn" class="max-w-[260px]">
+                <template x-if="q.fulfillment"><div>
+                  <span class="badge bg-emerald-100 text-emerald-800" x-text="q.fulfillment.review_status ? fReview(q.fulfillment.review_status) : 'With Fulfillment'"></span>
+                  <p class="text-[11px] text-zinc-500 mt-1" x-text="[(q.fulfillment.parts || []).map(p => p.summary).join('; '), q.fulfillment.commercial_action_pending ? 'commercial action pending' : '', q.fulfillment.awaiting_sync ? 'awaiting synchronization' : ''].filter(Boolean).join(' · ')"></p></div></template>
+                <span x-show="!q.fulfillment" class="text-zinc-300">—</span></td>
             </tr>
           </template>
           <tr x-show="!quoteRequests.length && !qiLoading && !qiMsg"><td colspan="8" class="text-center text-zinc-500 !py-10">
@@ -1490,6 +1506,31 @@
             <p x-show="qd.message" class="text-zinc-700 whitespace-pre-wrap" x-text="'Message: ' + qd.message"></p>
           </div>
         </div>
+      </section>
+
+      <!-- Fulfillment: the operational review of the piece before and after it becomes an order (docs/FULFILLMENT.md) -->
+      <section class="card p-6 space-y-3" x-show="qf && qf.enabled" x-cloak>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3"><p class="lbl">Fulfillment</p>
+            <span x-show="qf?.enrolled" class="badge bg-emerald-100 text-emerald-800">With Fulfillment</span>
+            <span x-show="qf?.enrolled && qf?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
+            <span x-show="!qf?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not sent</span></div>
+          <button x-show="qf?.eligible" class="btn !py-1.5" :disabled="qdBusy" @click="sendQuoteToFulfillment()">Send to Fulfillment</button>
+          <p x-show="!qf?.enrolled && !qf?.eligible && qf?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent: ' + qf.ineligible_reason + '.'"></p>
+        </div>
+        <template x-if="qf?.enrolled">
+          <div class="text-[13px] text-zinc-700 space-y-2">
+            <p>Sent <span x-text="dateTime(qf.enrollment.enrolled_at)"></span> · through <span x-text="qf.enrollment.enrolled_by === 'developer-key' ? 'Admin shared-key access' : qf.enrollment.enrolled_by"></span><span x-show="qf.enrollment.note" x-text="' · note: ' + qf.enrollment.note"></span>
+              <span x-show="qd.order_ref" x-text="' · continues as order ' + qd.order_ref"></span></p>
+            <template x-for="p in ((qf.order_projection || qf.projection)?.parts || [])" :key="p.display_no">
+              <p><span class="font-mono" x-text="p.display_no"></span> · <span x-text="fReview(p.review_status)"></span><span x-show="p.review?.reason" x-text="' (' + p.review.reason + ')'"></span>
+                <span x-show="p.review?.customer_message" class="block text-zinc-500" x-text="'To the customer: ' + p.review.customer_message"></span>
+                <span class="block text-zinc-500" x-text="(p.summary || '') + ' · file ' + (p.file_state || '—') + ((p.blockers || []).length ? ' · ' + p.blockers.map(b => fBlocker(b)).join(', ') : '')"></span></p>
+            </template>
+            <p x-show="(qf.order_projection || qf.projection)?.commercial_action_pending" class="text-amber-800">Commercial action pending in Fulfillment (a cost exception or a paid order that cannot be produced).</p>
+            <p x-show="!(qf.order_projection || qf.projection)" class="text-zinc-500">No review received yet.</p>
+          </div>
+        </template>
       </section>
 
       <section class="card p-6 space-y-4" aria-label="The quote">
@@ -1629,7 +1670,7 @@
           <p x-show="!of?.enrolled && !of?.eligible && of?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent: ' + of.ineligible_reason + '.'"></p>
         </div>
         <template x-if="of?.enrolled">
-          <div class="text-[13px] text-zinc-700 space-y-1">
+          <div class="text-[13px] text-zinc-700 space-y-2">
             <p>Sent <span x-text="dateTime(of.enrollment.enrolled_at)"></span> · through <span x-text="of.enrollment.enrolled_by === 'developer-key' ? 'Admin shared-key access' : of.enrollment.enrolled_by"></span>
               <span x-show="of.enrollment.note" x-text="' · note: ' + of.enrollment.note"></span>
               <span x-show="of.enrollment.inherited_from" class="text-zinc-500"> · inherited from the quote request</span>
@@ -1637,12 +1678,41 @@
               <span x-show="of.last_pull_at" class="text-zinc-500" x-text="' · last read by Fulfillment ' + dateTime(of.last_pull_at)"></span></p>
             <p x-show="of.projection" class="text-zinc-800"><span class="font-medium" x-text="of.projection?.customer_status || of.projection?.last_event_type || ''"></span>
               <span x-show="of.projection?.summary" x-text="' — ' + of.projection.summary"></span>
-              <span class="text-zinc-500" x-text="of.projection?.last_event_at ? ' · ' + dateTime(of.projection.last_event_at) : ''"></span></p>
-            <ul x-show="(of.projection?.parts || []).length" class="pl-4 list-disc text-[12px] text-zinc-600">
-              <template x-for="p in (of.projection?.parts || [])" :key="p.display_no"><li><span class="font-mono" x-text="p.display_no"></span> <span x-text="p.summary || ''"></span><span x-show="p.file_state" class="text-zinc-500" x-text="' · file ' + p.file_state"></span></li></template>
-            </ul>
+              <span class="text-zinc-500" x-text="of.projection?.last_event_at ? ' · ' + dateTime(of.projection.last_event_at) : ''"></span>
+              <span x-show="of.projection?.commercial_action_pending" class="badge bg-amber-100 text-amber-800 ml-2">Commercial action pending in Fulfillment</span></p>
+            <!-- The parts Fulfillment made of this order: the review decision with its reason and the customer-facing message, the file, the quantities, the blockers -->
+            <table x-show="(of.projection?.parts || []).length" class="w-full text-[12px]">
+              <thead><tr><th>Part</th><th>Stage</th><th>Review</th><th>File</th><th>Quantities</th><th>Blockers</th></tr></thead>
+              <tbody><template x-for="p in (of.projection?.parts || [])" :key="p.display_no"><tr class="align-top">
+                <td class="font-mono" x-text="p.display_no"></td><td x-text="p.customer_stage || p.status || ''"></td>
+                <td><span x-text="fReview(p.review_status)"></span><span x-show="p.review?.reason" class="block text-zinc-500" x-text="p.review.reason"></span>
+                  <span x-show="p.review?.customer_message" class="block text-zinc-500" x-text="'To the customer: ' + p.review.customer_message"></span></td>
+                <td x-text="p.file_state || '—'"></td><td x-text="p.summary || ''"></td>
+                <td x-text="(p.blockers || []).map(b => fBlocker(b)).join(', ') || '—'"></td>
+              </tr></template></tbody>
+            </table>
             <p x-show="!of.projection" class="text-zinc-500">No progress received yet.</p>
-            <p class="text-[12px] text-zinc-500">Production, QC, shipping and completion are recorded in Fulfillment and reach this page as its progress; the status select above no longer accepts them for this order.</p>
+            <!-- Requests to Fulfillment (commands): Pending until Fulfillment answers; never shown as done before it does -->
+            <div x-show="(of.commands || []).length" class="space-y-1">
+              <p class="lbl">Requests to Fulfillment</p>
+              <template x-for="c in (of.commands || [])" :key="c.id">
+                <p><span class="badge" :class="cmdStateClass(c.state)" x-text="c.state"></span>
+                  <span x-text="' ' + c.action.replace('_', ' ') + ' · ' + (c.payload.item_ref || '') + ' · ' + (c.payload.quantity ? c.payload.quantity + ' unit(s)' : 'the whole line') + ' · ' + c.payload.reason + ' · ' + dateTime(c.created_at) + ' · ' + (c.actor === 'developer-key' ? 'Admin shared-key access' : c.actor)"></span>
+                  <span x-show="c.state !== 'pending'" class="text-zinc-500" x-text="' → ' + (c.result.result || c.state) + (c.result.reason ? ': ' + c.result.reason : '')"></span></p>
+              </template>
+            </div>
+            <template x-if="cmdForm">
+              <form class="border border-zinc-200 p-3 bg-zinc-50 space-y-2" @submit.prevent="sendCommand()">
+                <p class="font-medium" x-text="'Request cancellation · ' + cmdForm.item"></p>
+                <div class="flex flex-wrap gap-3 items-end">
+                  <label class="text-[12px] text-zinc-500">Units (empty: all <span x-text="cmdForm.max"></span>)<input type="number" min="1" :max="cmdForm.max" class="inp !py-1.5 !w-auto block" x-model="cmdForm.quantity"></label>
+                  <label class="text-[12px] text-zinc-500 flex-1">Reason (required, kept with the order)<input class="inp !py-1.5 block" x-model="cmdForm.reason" maxlength="500"></label>
+                </div>
+                <p class="text-[12px] text-zinc-500">Fulfillment decides: before work started the quantity is cancelled; after, Operations decides what stops; shipped units need commercial handling. No money moves here — a refund is recorded under Payment.</p>
+                <div class="flex gap-2"><button type="submit" class="btn !py-1.5" :disabled="odBusy || !cmdForm.reason.trim()">Send the request</button><button type="button" class="btn2 !py-1.5" @click="cmdForm = null">Cancel</button></div>
+              </form>
+            </template>
+            <p class="text-[12px] text-zinc-500">Production, QC, shipping and completion are recorded in Fulfillment and reach this page as its progress; the status select above no longer accepts them for this order. A cancellation of part of a line is requested from the line below.</p>
           </div>
         </template>
       </section>
@@ -1675,7 +1745,8 @@
                   <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :class="l.three_d_state === 'review_required' ? 'text-amber-800' : ''" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)" x-text="l.three_d_state === 'review_required' ? 'Download STL · not reviewed' : 'Download STL'"></button>
                   <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
                   <a x-show="!l.has_model" class="text-xs uppercase tracking-widest underline" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Generate 3D on the session</a>
-                  <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p></td>
+                  <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p>
+                  <button x-show="of?.enrolled && od.status !== 'cancelled'" class="text-xs uppercase tracking-widest underline text-zinc-500 hover:text-black block mt-1 ml-auto" @click="requestCancellation(l)">Request cancellation…</button></td>
               </tr>
             </template>
           </tbody>

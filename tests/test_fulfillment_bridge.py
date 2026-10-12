@@ -53,6 +53,11 @@ async def test_off_by_default_nothing_of_the_integration_exists(tmp_path):
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_outbox")["n"] == 0
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_enrollments")["n"] == 0
         assert (await H.Client.get("/api/admin/health", headers=Admin)).json()["fulfillment_integration"] is False
+        L = (await H.Client.get("/api/admin/orders?fulfillment=enrolled", headers=Admin)).json()      # the lists know nothing of it
+        assert L["total"] == 1 and "fulfillment" not in L["orders"][0] and L["fulfillment_filters"] == []
+        assert (await H.Client.post(Prefix + "/release-checks", json={"items": [{"line_id": "x", "quantity": 1}]}, headers=Service)).status_code == 404
+        R = await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/commands", json={"action": "cancel_line", "line_id": "x", "reason": "r"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "fulfillment_disabled"
     finally:
         await H.Close()
 
@@ -286,5 +291,131 @@ async def test_a_quote_request_is_the_same_requirement_before_and_after_it_becom
         _B2, Q2 = await _Request(H, Prompt="Another signet")
         assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)).json()["error"]["code"] == "already_enrolled"
         assert (await H.Client.post(f"/api/admin/quote-requests/{Q2['id']}/fulfillment/enroll", headers=Admin)).json()["enrolled"]
+    finally:
+        await H.Close()
+
+
+async def test_release_checks_answer_payment_cancellation_and_quantity_live(tmp_path):
+    H = _On(tmp_path)
+    try:
+        _Did, O = await _Placed(H, Qty=2)
+        LineId = H.Svc.Orders.AdminGet(O["id"])["lines"][0]["id"]
+        Url = Prefix + "/release-checks"
+        assert (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}]})).status_code == 403
+        R = await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}]}, headers=Service)
+        assert R.status_code == 200 and R.json()["items"][0]["blockers"][0]["code"] == "LINE_NOT_FOUND"        # not enrolled: nothing is told
+        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        R = (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}]}, headers=Service)).json()
+        assert R["ok"] is False and [B["code"] for B in R["items"][0]["blockers"]] == ["PAYMENT_PENDING"] and R["items"][0]["source_version"] == 1
+        assert R["check_id"].startswith("chk_") and R["checked_at"] and R["environment_id"]
+        await H.Client.post(f"/api/admin/orders/{O['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)
+        R = (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}, {"line_id": LineId, "quantity": 3}, {"line_id": "nope", "quantity": 1}]},
+                                 headers=Service)).json()
+        assert R["ok"] is False and R["items"][0]["ok"] and R["items"][0]["payment"] == {"status": "paid", "basis": "paid"} and R["items"][0]["source_version"] == 3
+        assert [B["code"] for B in R["items"][1]["blockers"]] == ["QUANTITY_EXCEEDS_ORDER"] and [B["code"] for B in R["items"][2]["blockers"]] == ["LINE_NOT_FOUND"]
+        await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "cancelled", "note": "changed their mind"}, headers=Admin)
+        R = (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 1}]}, headers=Service)).json()
+        assert [B["code"] for B in R["items"][0]["blockers"]] == ["ORDER_CANCELLED"]
+        assert (await H.Client.post(Url, json={"items": []}, headers=Service)).status_code == 400
+    finally:
+        await H.Close()
+
+
+async def test_d07_a_command_stays_pending_until_fulfillment_answers_and_a_repeated_click_makes_one(tmp_path):
+    H = _On(tmp_path)
+    try:
+        _Did, O = await _Placed(H, Qty=2)
+        LineId = H.Svc.Orders.AdminGet(O["id"])["lines"][0]["id"]
+        Url = f"/api/admin/orders/{O['id']}/fulfillment/commands"
+        R = await H.Client.post(Url, json={"action": "cancel_line", "line_id": LineId, "quantity": 1, "reason": "one ring fewer"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "not_enrolled"
+        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        for Bad, Code in (({"action": "cancel_line", "line_id": LineId, "quantity": 1}, "reason_required"),
+                          ({"action": "cancel_line", "line_id": "x", "reason": "r"}, "line_not_found"),
+                          ({"action": "cancel_line", "line_id": LineId, "quantity": 5, "reason": "r"}, "invalid_quantity"),
+                          ({"action": "expedite", "line_id": LineId, "reason": "r"}, "invalid_action")):
+            R = await H.Client.post(Url, json=Bad, headers=Admin)
+            assert R.json()["error"]["code"] == Code, Bad
+        R = await H.Client.post(Url, json={"action": "cancel_line", "line_id": LineId, "quantity": 1, "reason": "one ring fewer"}, headers=Admin)
+        assert R.status_code == 200, R.text
+        Cmd = R.json()
+        assert Cmd["state"] == "pending" and Cmd["id"].startswith("cmd_") and Cmd["actor"] == "developer-key" and Cmd["delegated_permission"] == "decide_cancellation"
+        assert Cmd["payload"]["quantity"] == 1 and Cmd["payload"]["line_id"] == LineId and Cmd["expected_version"] == 1 and Cmd["decided_at"] is None
+        Again = (await H.Client.post(Url, json={"action": "cancel_line", "line_id": LineId, "quantity": 2, "reason": "again"}, headers=Admin)).json()
+        assert Again["id"] == Cmd["id"] and Again["payload"]["quantity"] == 1                   # a repeated click: the same pending request
+        State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=Admin)).json()
+        assert [C["state"] for C in State["commands"]] == ["pending"] and State["awaiting_sync"] and State["command_actions"] == ["cancel_line"]
+        # The feed carries it with its payload; Fulfillment answers with an event; the first answer stands
+        C = (await H.Client.get(Prefix + "/changes?cursor=1", headers=Service)).json()["changes"]
+        assert [(X["kind"], X["reason"]) for X in C] == [("command", "cancel_line")] and C[0]["payload"]["command_id"] == Cmd["id"] and C[0]["payload"]["reason"] == "one ring fewer"
+        E = _Event("evt-c1", O["id"], 2, Type="fulfillment.command_applied",
+                   command={"command_id": Cmd["id"], "action": "cancel_line", "result": "partially_accepted", "reason": None, "part": "MP-10001-01"})
+        assert (await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)).json()["results"][0]["status"] == "applied"
+        Cmd = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment/commands", headers=Admin)).json()["commands"][0]
+        assert Cmd["state"] == "applied" and Cmd["result"]["result"] == "partially_accepted" and Cmd["decided_at"]
+        E2 = _Event("evt-c2", O["id"], 3, Type="fulfillment.command_rejected", command={"command_id": Cmd["id"], "result": "rejected", "reason": "late"})
+        await H.Client.post(Prefix + "/events", json={"events": [E2]}, headers=Service)
+        assert (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment/commands", headers=Admin)).json()["commands"][0]["state"] == "applied"
+        Hist = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["events"]
+        assert any(X["kind"] == "fulfillment" and X["data"].get("action") == "command_outcome" and X["data"]["state"] == "applied" for X in Hist)
+        # A new request for the same line is possible once the first is answered
+        assert (await H.Client.post(Url, json={"action": "cancel_line", "line_id": LineId, "reason": "the rest too"}, headers=Admin)).json()["id"] != Cmd["id"]
+    finally:
+        await H.Close()
+
+
+async def test_the_projection_moves_the_order_status_forward_only_and_never_loops(tmp_path):
+    H = _On(tmp_path)
+    try:
+        _Did, O = await _Placed(H)
+        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        await H.Client.post(f"/api/admin/orders/{O['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)
+        Before = H.Ctx.Db.One("SELECT MAX(seq) AS s FROM fulfillment_outbox")["s"]
+
+        async def Post(Id, Version, Status):
+            E = _Event(Id, O["id"], Version, Type="fulfillment.request_updated", order_status=Status)
+            return (await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)).json()["results"][0]["status"]
+
+        assert await Post("evt-p1", 2, "production") == "applied"
+        Od = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
+        assert Od["status"] == "production" and any(E["kind"] == "status" and E["by"] == "fulfillment" and E["data"]["to"] == "production" for E in Od["events"])
+        assert H.Ctx.Db.One("SELECT MAX(seq) AS s FROM fulfillment_outbox")["s"] == Before            # the projection's status is no commercial change
+        await Post("evt-p2", 3, "qc")
+        assert H.Svc.Orders.AdminGet(O["id"])["status"] == "qc"
+        await Post("evt-p3", 4, "production")                                                         # never a step back
+        assert H.Svc.Orders.AdminGet(O["id"])["status"] == "qc"
+        assert await Post("evt-p4", 1, "shipped") == "accepted"                                       # stale: ignored
+        assert H.Svc.Orders.AdminGet(O["id"])["status"] == "qc"
+        await H.Client.post(f"/api/admin/orders/{O['id']}/status", json={"status": "cancelled", "note": "x"}, headers=Admin)
+        await Post("evt-p5", 5, "shipped")
+        assert H.Svc.Orders.AdminGet(O["id"])["status"] == "cancelled"                                # a cancelled order is left alone
+    finally:
+        await H.Close()
+
+
+async def test_the_lists_carry_the_fulfillment_state_and_filter_by_it(tmp_path):
+    H = _On(tmp_path)
+    try:
+        _D1, O1 = await _Placed(H, "Band one", Click="c1")
+        _D2, O2 = await _Placed(H, "Band two", Click="c2")
+        await H.Client.post(f"/api/admin/orders/{O2['id']}/fulfillment/enroll", headers=Admin)
+        E = _Event("evt-l1", O2["id"], 1, parts=[{"display_no": "MP-10002-01", "status": "awaiting_review", "review_status": "in_review", "summary": "0/2 passed QC",
+                                                  "file_state": "unavailable", "blockers": ["PAYMENT_PENDING", "REVISION_NOT_APPROVED"]}], commercial_action_pending=False)
+        await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)
+        L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
+        ById = {X["id"]: X for X in L["orders"]}
+        assert ById[O1["id"]]["fulfillment"] is None
+        F = ById[O2["id"]]["fulfillment"]
+        assert F["enrolled"] and F["customer_status"] == "UNDER_REVIEW" and F["review_status"] == "in_review" and F["blocker"] == "PAYMENT_PENDING" and F["pending_commands"] == 0
+        assert F["parts"][0]["display_no"] == "MP-10002-01" and {X["id"] for X in L["fulfillment_filters"]} >= {"enrolled", "review", "blocked", "shipped"}
+        for Filter, Expected in (("enrolled", [O2["id"]]), ("review", [O2["id"]]), ("shipped", []), ("blocked", []), ("commercial_action", [])):
+            R = (await H.Client.get(f"/api/admin/orders?fulfillment={Filter}", headers=Admin)).json()
+            assert [X["id"] for X in R["orders"]] == Expected and R["total"] == len(Expected), Filter
+        assert (await H.Client.get("/api/admin/orders?fulfillment=nope", headers=Admin)).status_code == 400
+        # The quote inbox: an enrolled request carries its state too
+        _B, Q = await _Request(H)
+        await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)
+        Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
+        assert Rows[0]["id"] == Q["id"] and Rows[0]["fulfillment"]["enrolled"] and Rows[0]["fulfillment"]["customer_status"] is None
     finally:
         await H.Close()

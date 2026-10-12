@@ -33,10 +33,12 @@ Fulfillment never writes to `pipeline3.db`; Pipeline 3 never writes to Fulfillme
 - **Change capture.** Additive tables (`fulfillment_enrollments`, `fulfillment_outbox`, `fulfillment_commands`,
   `fulfillment_inbox`, `fulfillment_projection`, `notification_intents`); the outbox is filled by database triggers on
   changes to enrolled orders and lines, so a change and its event are one transaction.
-- **Admin.** Orders and Quotes gain a Fulfillment state, review status, blockers, quantities, last synchronisation,
-  filters, an internal link, *Send to Fulfillment*, and cancellation / change requests through commands that show
-  `Pending`, `Applied` or `Rejected`. The Fulfillment tab of an order shows parts, revision, quantities, QC, holds,
-  shipments and history. Review actions themselves live in Fulfillment.
+- **Admin.** Orders and Quotes gain a Fulfillment state (the customer stage, the review decision with its reason and
+  customer-facing message, the first blocker, pending requests, commercial action pending, awaiting synchronisation),
+  a Fulfillment filter, *Send to Fulfillment*, and cancellation requests for a line through commands that show
+  `Pending`, `Applied` or `Rejected` with the reason — never shown as done before Fulfillment answered. The order
+  page's Fulfillment card shows the parts (stage, review, file, quantities, blockers) and the requests; QC, holds and
+  shipments join it in later batches. Review actions themselves live in Fulfillment (no second interface).
 - **My Account.** A customer-facing `fulfillment_stage` and timeline derived from events, never internal notes.
 - **Notifications.** Customer emails for review approved, changes required, cannot produce, production started,
   shipped and delivered are created and sent only by Pipeline 3 from `notification_intents`, deduplicated by order +
@@ -76,7 +78,8 @@ The environment id Fulfillment pins (`EXPECTED_ATELIER_ENVIRONMENT_ID` there) is
 |---|---|
 | 0 | This document and the README link |
 | 3 | **Done 2026-10-12.** `p3/fulfillment_bridge.py`: the bridge tables and triggers (commercial changes and 3D results of enrolled records fill the outbox in the same transaction), the identity / changes / requests / assets (line image, production STL with its SHA-256) / events endpoints, the service key and the flag, the Admin's *Send to Fulfillment* with the order's Fulfillment card and projection, the ownership guard (production / qc / shipped / completed refused on enrolled orders; the projection's own writes create no change), the quote → order continuation (the order inherits the quote's enrollment) |
-| 4 | Release checks, commands with their Admin state, Orders / Quotes list columns and filters, the status projection into the order status, `fulfillment_stage` in My Account |
+| 4 | **Done 2026-10-13.** `POST …/v1/release-checks` (payment, cancellation, quantity read live for the exact lines and quantities); commands (`fulfillment_commands`, the Admin's *Request cancellation* on a line of an enrolled order → `cancel_line` in the feed with its payload → Pending until Fulfillment's `command_applied` / `command_rejected` event, the first answer stands, a repeated click is the same request); the projection writes Fulfillment's `order_status` into the order (production → qc → shipped → completed, forward only, never on a cancelled or completed order, no change goes back out); the Orders list's *Fulfillment* column and filter (`?fulfillment=enrolled|review|changes|blocked|in_progress|ready_to_ship|shipped|commercial_action|awaiting_sync`), the quote inbox's column, the order page's parts table (stage, review decision with its reason and customer-facing message, file, quantities, blockers) and requests, the quote page's Fulfillment card with *Send to Fulfillment* |
+| 8 | (also) `fulfillment_stage` and the timeline in My Account |
 | 7 | Shipping checks (the authoritative address and its version) |
 | 8 | Notification intents, templates, deduplication, outbox-first dispatch, the notifications flag |
 | 9 | Regression of the whole suite with the flag off and on |
