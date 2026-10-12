@@ -240,6 +240,9 @@ class OrderService:
         Promo = Q["promo"]
         PromoSnapshot = {**{K: Promo[K] for K in ("code", "kind", "value", "discount", "label")}, "original_amount": Q["subtotal"],
                          "final_amount": round(Q["subtotal"] - Promo["discount"], 2)} if Promo else None
+        # Each line is pinned to the 3D version its option is made from right now (the design's current one — LIFO or the
+        # Admin's choice); a later version never changes it. A design without a model yet is pinned when it is prepared.
+        Pins = {L["bag_line_id"]: (Versions.MeshFor(Db, L["design_id"], L["candidate_id"]) or {}).get("id") for L in Q["lines"]}
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
@@ -254,14 +257,14 @@ class OrderService:
             for N, L in enumerate(Q["lines"], start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
-                             "line_total, currency, pricing_version, image_path, purchase_json) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, N, L["design_id"], L["candidate_id"], L["bag_line_id"], L["customization_id"],
                               L["title"], L["ring_id"], L["product_type"], L["material_id"], L["material_label"],
                               L["ring_size"] if L["product_type"] == Products.Ring else None,
                               L["charm_size"] if L["product_type"] == Products.Charm else None, L["quantity"],
                               L["unit_price"], L["line_total"], L["currency"], L["pricing_version"], L["image_path"],
-                              Dumps(PurchaseSnapshot(L))))
+                              Dumps(PurchaseSnapshot(L)), Pins.get(L["bag_line_id"])))
                 Conn.execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (L["bag_line_id"], Who.AccountId))
             if Promo:
                 self.Promos.Redeem(Conn, Promo["promo_id"])
@@ -525,9 +528,10 @@ class OrderService:
         ordered material. A result for another size or material is never offered as the line's file —
         it is reported as `latest` so the admin sees what exists and can prepare the right one.
 
-        Once prepared, a line is pinned to its result and that result's 3D version (order_lines.three_d_id / mesh_id): a
-        later active version, or a newer result, never changes it — only an explicit "Use another version" (UseVersion).
-        Until then it follows the design: the version its STL would be prepared from (p3/versions.py MeshFor)."""
+        A line is pinned to the 3D version current when it was ordered (order_lines.mesh_id; the normal order flow), then to
+        the result it is produced from (three_d_id): a later version, or a newer result, never changes it — only an explicit
+        "Use another version" (UseVersion). A line ordered before its design had a model follows the design (the version
+        its STL would be prepared from, p3/versions.py MeshFor) until it is prepared or the order is released."""
         from p3.production3d import ProductionState
         Db = self.Ctx.Db
         Rows = Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, s.mesh_id, s.accepted_at, r.integrity "
@@ -554,13 +558,15 @@ class OrderService:
         Model = Versions.ActiveMesh(Db, L["design_id"])
         Chosen = Match or Pending
         Active = Model["id"] if Model else None
-        Choices = Db.All("SELECT * FROM meshes WHERE candidate_id = ? AND status = 'ready' AND (archived_at IS NULL OR id = ?) "
-                         "ORDER BY COALESCE(version_no, 0) DESC", (L.get("candidate_id"), Version["id"] if Version else ""))
+        Choices = Db.All("SELECT m.* FROM meshes m WHERE m.candidate_id = ? AND m.status = 'ready' AND (m.id = ? OR (m.archived_at IS NULL "
+                         "AND NOT EXISTS (SELECT 1 FROM raw_geometry r WHERE r.mesh_id = m.id AND r.status = 'failed'))) "
+                         "ORDER BY COALESCE(m.version_no, 0) DESC", (L.get("candidate_id"), Version["id"] if Version else ""))
         return {"three_d_id": Chosen["id"] if Chosen else None,
                 "three_d_status": Chosen["status"] if Chosen else None,
                 "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"], bool(Chosen["accepted_at"])) if Chosen else None,
                 "three_d_match": bool(Match),
-                "three_d_pinned": bool(Pin),
+                "three_d_pinned": bool(Pin),                           # its result (prepared, or released with the order)
+                "three_d_version_pinned": bool(Pin or L.get("pinned_mesh_id")),   # its version (from the moment it was ordered)
                 # the 3D version the line is (or would be) produced from, and the versions of the ordered option to choose from
                 "three_d_version": Versions.Brief(Version, Active),
                 "three_d_versions": [Versions.Brief(M, Active) for M in Choices],
@@ -920,6 +926,7 @@ class OrderService:
         OrderId, T = NewId("ord"), Now()
         Total = round(Line["line_total"] + Ship["price"], 2)
         Notes = f"From quote {Ref} (version {Offer['version']})." + (f" Customer's note: {Note}" if Note else "")
+        Pin = (Versions.MeshFor(Db, Q["design_id"], Q["candidate_id"]) or {}).get("id")     # the 3D version current now
         try:
             with Db.Transaction() as Conn:
                 Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
@@ -933,12 +940,12 @@ class OrderService:
                               TermsVersion, T, Rid, Notes, T, T))
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
-                             "line_total, currency, pricing_version, image_path, purchase_json) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, 1, Line["design_id"], Line["candidate_id"], None, None, Line["title"],
                               Line["ring_id"], Product, Line["material_id"], Line["material_label"], Line["ring_size"],
                               Line["charm_size"], Qty, Unit, Line["line_total"], Line["currency"], Line["pricing_version"],
-                              Img["asset_path"] if Img else None, Dumps(Snapshot)))
+                              Img["asset_path"] if Img else None, Dumps(Snapshot), Pin))
                 Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                              (OrderId, "placed", Dumps({"total": Total, "lines": 1, "from_quote": Ref, "version": Offer["version"]}),
                               "customer", T))

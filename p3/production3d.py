@@ -141,6 +141,7 @@ class Production3D:
         self.Meshes = Meshes
         self.Queue = Queue
         self.OnPreview = []         # callbacks(mesh_id) once a model's light preview exists (p3/versions.py: an external design's picture)
+        self.OnMeasureFailed = []   # callbacks(mesh_id) when a model's file cannot be measured (p3/versions.py: never the current version)
         Meshes.OnReady.append(self._MeshFinished)
         Queue.Handlers.update({"measure": self._Measured, "preview": self._Previewed, "integrity": self._Integrity,
                                "fix_bore": self._BoreFixed})
@@ -374,6 +375,11 @@ class Production3D:
             Db.Execute("UPDATE raw_geometry SET status = 'failed', error = ?, updated_at = ? WHERE mesh_id = ?", (Error, T, MeshId))
             for R in self._WaitingFor(MeshId):
                 self._Fail(R["id"], f"Geometry: {Error}. The Hi3D model was kept — a retry costs no Hi3D credits.")
+            for Fn in self.OnMeasureFailed:
+                try:
+                    Fn(MeshId)
+                except Exception:  # noqa: BLE001
+                    Logger.exception("Measure-failed hook failed for %s", MeshId)
             return
         Raw = Result["raw"]
         Old = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))

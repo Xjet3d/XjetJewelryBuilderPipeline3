@@ -407,8 +407,8 @@ class ImageService:
         """The customer's own design, or a shared XJet master design they started from the gallery (of a product
         this browser can see: a charm is not found on a ring-only site)."""
         D = self.Ctx.Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        if D is not None and ((D.get("product_type") or "ring") not in Visible or D.get("origin") == "external"):
-            D = None                                 # an external part is Admin-only for now (docs/EXTERNAL-PARTS.md)
+        if D is not None and (D.get("product_type") or "ring") not in Visible:
+            D = None
         Own = D is not None and D["owner_account_id"] == Who.AccountId and not D.get("removed_at")
         Linked = D is not None and not Own and self.Ctx.Db.One(
             "SELECT 1 AS x FROM gallery_uses WHERE design_id = ? AND owner_account_id = ? AND removed_at IS NULL",

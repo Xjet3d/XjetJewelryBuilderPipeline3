@@ -34,6 +34,7 @@ from p3 import payments as PaymentsModule
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
+from p3 import uploads as UploadsModule
 from p3 import versions as VersionsModule
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
@@ -511,7 +512,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     @App_.get("/api/admin/session")
     async def AdminSession(authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return {"ok": True, "admin": Who.Id, "method": Who.Method, "mode": Ctx.Provider.Name}
+        return {"ok": True, "admin": Who.Id, "method": Who.Method, "mode": Ctx.Provider.Name,
+                "max_upload_bytes": UploadsModule.MaxBytes()}         # Add External Part: the largest STL accepted
 
     @App_.get("/api/admin/health")
     async def AdminHealth(authorization: str | None = Header(None)):
@@ -527,7 +529,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Token = AdminAuth.Login(Ctx, str(Body_.get("key") or ""), Req.headers.get("user-agent"))
         if Token is None:
             raise HttpError(403, "developer_auth_required", "The admin key was not accepted.")
-        Resp = JSONResponse({"ok": True, "mode": Ctx.Provider.Name, "remembered": True, "days": AdminAuth.SessionDays})
+        Resp = JSONResponse({"ok": True, "mode": Ctx.Provider.Name, "remembered": True, "days": AdminAuth.SessionDays,
+                             "max_upload_bytes": UploadsModule.MaxBytes()})
         AdminAuth.SetCookie(Resp, Req, Ctx.Settings.BasePath, Token)
         return Resp
 
@@ -756,7 +759,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return {"sessions": Sessions.Summaries(Ctx, IncludeMock=include_mock), "idle_minutes": Sessions.IdleMinutes,
                 "mock_sessions": len(Sessions.MockDesignIds(Ctx)), "include_mock": include_mock,
                 "retired": RingIds.Retired(Ctx.Db),
-                # sessions made in the Admin (S-1001 …): 0, 1 or many designs each (docs/EXTERNAL-PARTS.md)
+                # sessions holding several designs (S-1001 …): a website session that got a second design (docs/EXTERNAL-PARTS.md)
                 "containers": Versions.Containers() if Versions else []}
 
     @App_.get("/api/admin/sessions/{DesignId}")
@@ -951,16 +954,11 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             return Versions.Restore(MeshId, Who.Id)
         raise HttpError(404, "unknown_action", "Unknown action.")  # after the specific /versions/… routes
 
-    @App_.post("/api/admin/sessions")
-    async def CreateSessionGroup(Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """An empty session for an existing account (Case D starts here; its first design is added next)."""
-        Who = Admin(authorization)
-        return Versions.CreateSession(str(Body_.get("owner_account_id") or ""), str(Body_.get("title") or ""), Who.Id)
-
     @App_.post("/api/admin/sessions/{SessionKey}/external-designs")
     async def AddExternalDesign(SessionKey: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """An uploaded part becomes a new design in a session (Cases A, B, D): an explicit session (ses_…), or the session of
-        the design it is added next to (that design's session becomes explicit)."""
+        """An uploaded part becomes a new design in an existing session (sessions start on the website; the Admin never makes
+        one): an explicit session (ses_…), or the session of the design it is added next to — also a session with no
+        finished part yet (that design's session becomes explicit)."""
         Who = Admin(authorization)
         return Versions.AddExternalDesign(SessionKey, str(Body_.get("upload_id") or ""), Who.Id, str(Body_.get("product_type") or "ring"),
                                           str(Body_.get("title") or ""), str(Body_.get("scaling") or "exact"),

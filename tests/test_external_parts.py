@@ -1,8 +1,10 @@
-"""External parts and 3D versions (docs/EXTERNAL-PARTS.md): Session → Design → 3D version.
+"""External parts and 3D versions (docs/EXTERNAL-PARTS.md): Session → Part/Design → 3D version.
 
-An STL made outside Atelier arrives in pieces straight to disk, becomes a numbered 3D version of a design (or a new design
-in a session), is measured once like a Hi3D model, and is used exactly as uploaded or as a scalable master. Order lines
-are pinned to the version they are produced from; nothing is ever deleted."""
+An STL made outside Atelier arrives in pieces straight to disk (≤ 300 MB), becomes a numbered 3D version of a design (or
+a new design of an existing session) — a permanent asset of the part — is measured once like a Hi3D model, and is used
+exactly as uploaded or as a scalable master. The newest usable version is the one in use (LIFO); an Admin may choose
+another. Order lines are pinned to the version in use when ordered; nothing is ever deleted; customers never get a 3D
+file. Decisions of 2026-10-12."""
 
 import hashlib
 import io
@@ -13,6 +15,7 @@ import pytest
 
 from p3 import uploads as UploadsModule
 from p3.db import Database
+from p3.providers import endpoints
 from p3.geometry import MeasureRaw, UsSizeToInnerDiameterMm, WritePreview
 from tests.conftest import Harness
 from tests.test_orders import Address, Customer
@@ -100,6 +103,14 @@ async def test_a_chunked_upload_is_written_to_disk_checked_and_hashed(HE, monkey
     for Body, Status, Code in Bad:
         R = await H.Client.post("/api/admin/uploads", json=Body, headers=Admin)
         assert (R.status_code, R.json()["error"]["code"]) == (Status, Code)
+    # 300 MB is the largest STL accepted (P3_MAX_UPLOAD_MB may set another)
+    assert UploadsModule.MaxBytes() == 300_000_000
+    R = await H.Client.post("/api/admin/uploads", json={"filename": "big.stl", "bytes": 300_000_001}, headers=Admin)
+    assert (R.status_code, R.json()["error"]["code"]) == (413, "file_too_large")
+    assert (await H.Client.post("/api/admin/uploads", json={"filename": "big.stl", "bytes": 312_400_000}, headers=Admin)).json()[
+        "error"]["message"] == "The file is 312.4 MB; the largest accepted is 300 MB."
+    Ok = (await H.Client.post("/api/admin/uploads", json={"filename": "max.stl", "bytes": 300_000_000}, headers=Admin)).json()
+    assert Ok["status"] == "receiving" and (await H.Client.delete(f"/api/admin/uploads/{Ok['id']}", headers=Admin)).json()["status"] == "cancelled"
     monkeypatch.setenv("P3_MAX_UPLOAD_MB", "0.001")
     R = await H.Client.post("/api/admin/uploads", json={"filename": "big.stl", "bytes": 5000}, headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (413, "file_too_large")
@@ -134,7 +145,7 @@ async def test_a_chunked_upload_is_written_to_disk_checked_and_hashed(HE, monkey
     R = await H.Client.post(f"/api/admin/uploads/{J['id']}/complete", headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (422, "not_an_stl")
     assert not (H.Settings.DevDir / f"uploads/{J['id']}.part").exists()
-    # An upload nobody used is deleted after a day (the row stays, expired)
+    # An upload never attached to a part is removed after a day (the row stays, expired)
     H.Ctx.Db.Execute("UPDATE uploads SET updated_at = '2020-01-01T00:00:00.000+00:00' WHERE id = ?", (A["id"],))
     assert H.Svc.Uploads.Cleanup() == 1
     assert H.Ctx.Db.One("SELECT status FROM uploads WHERE id = ?", (A["id"],))["status"] == "expired"
@@ -142,7 +153,7 @@ async def test_a_chunked_upload_is_written_to_disk_checked_and_hashed(HE, monkey
 
 
 # ── Case C: an external revision of an existing design ───────────────────────
-async def test_an_external_revision_becomes_the_active_version_and_every_older_one_is_kept(HE):
+async def test_an_external_revision_is_the_newest_version_in_use_and_every_older_one_is_kept(HE):
     H = HE
     B, Did = await ModelledRing(H)
     V = (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"]
@@ -199,21 +210,62 @@ async def test_an_external_revision_becomes_the_active_version_and_every_older_o
     assert "_v2_raw.stl" in File.headers["content-disposition"] and File.content == Torus(10, 2.0)
 
 
-async def test_a_new_hi3d_model_never_displaces_an_active_external_part(HE):
+async def test_lifo_the_newest_version_is_in_use_and_an_admin_can_choose_another(HE):
     H = HE
-    B, Did = await ModelledRing(H)
+    B, Did = await ModelledRing(H)                                                         # v1 Hi3D
     U = await Upload(H, Torus(Us7))
     V2 = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U["id"]}, headers=Admin)).json()
     await H.Idle()
-    assert (V2["scaling"], V2["state"]) == ("exact", "active")                         # external parts are exact by default
-    Other = B["candidates"][1]["id"]
-    R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": Other, "override": Phrase}, headers=Admin)
+    assert (V2["scaling"], V2["state"], V2["newest"]) == ("exact", "active", True)             # external parts are exact by default
+    # A newer Hi3D model (of another option) is now the newest: it is the one in use — last in, first out
+    R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"candidate_id": B["candidates"][1]["id"], "override": Phrase},
+                            headers=Admin)
     assert R.status_code == 200, R.text
     await H.Idle()
     V = (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()
-    assert [(X["version_no"], X["source"], X["state"]) for X in V["versions"]] == \
-        [(3, "hi3d", "superseded"), (2, "external", "active"), (1, "hi3d", "superseded")]
-    assert V["active_mesh_id"] == V2["id"]
+    assert [(X["version_no"], X["source"], X["state"], X["newest"]) for X in V["versions"]] == \
+        [(3, "hi3d", "active", True), (2, "external", "superseded", False), (1, "hi3d", "superseded", False)]
+    # The Admin chooses an older version: it is used (new results, new orders) until a newer version arrives
+    V = (await H.Client.post(f"/api/admin/versions/{V2['id']}/activate", headers=Admin)).json()
+    assert V["active_mesh_id"] == V2["id"] and [X["state"] for X in V["versions"]] == ["superseded", "active", "superseded"]
+    assert (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()["mesh_id"] == V2["id"]
+    await H.Idle()
+    U4 = await Upload(H, Torus(Us7 + 0.5))
+    V4 = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U4["id"]}, headers=Admin)).json()
+    assert (V4["version_no"], V4["state"]) == (4, "active")                                    # LIFO again
+    await H.Idle()
+    assert [X["version_no"] for X in (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"]] == [4, 3, 2, 1]
+    # A version whose file cannot be measured is never the one in use: the newest usable version takes its place
+    H.Svc.Production3D._Measured({"mesh_id": V4["id"], "created_at": "", "started_at": ""}, None, "Unreadable mesh")
+    V = (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()
+    assert {X["version_no"]: X["state"] for X in V["versions"]} == {4: "unusable", 3: "active", 2: "superseded", 1: "superseded"}
+    R = await H.Client.post(f"/api/admin/versions/{V4['id']}/activate", headers=Admin)
+    assert (R.status_code, R.json()["error"]["code"]) == (409, "version_unusable")
+    assert "admin_3d_version_activated" in [E["kind"] for E in (await Session(H, Did))["timeline"]]
+
+
+async def test_an_attached_stl_is_a_permanent_asset_of_its_part(HE):
+    H = HE
+    B, Did = await ModelledRing(H)
+    U = await Upload(H, Torus(Us7), "keep.stl")
+    V = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U["id"]}, headers=Admin)).json()
+    await H.Idle()
+    File = H.Settings.DevDir / f"meshes/{V['id']}/original.stl"
+    Data = File.read_bytes()
+    # Far past the day after which an unattached upload is removed: the attached file stays with the part
+    H.Ctx.Db.Execute("UPDATE uploads SET updated_at = '2020-01-01T00:00:00.000+00:00'")
+    assert H.Svc.Uploads.Cleanup() == 0 and File.read_bytes() == Data
+    assert H.Ctx.Db.One("SELECT status, used_by FROM uploads WHERE id = ?", (U["id"],)) == {"status": "used", "used_by": V["id"]}
+    # Another version in use, this one archived (hidden from the choices): its file still stays; restored, it is listed again
+    V1 = next(X for X in (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"] if X["version_no"] == 1)
+    await H.Client.post(f"/api/admin/versions/{V1['id']}/activate", headers=Admin)
+    await H.Client.post(f"/api/admin/versions/{V['id']}/archive", headers=Admin)
+    H.Svc.Production3D.Queue.CleanupExports()
+    assert File.read_bytes() == Data
+    assert (await H.Client.post(f"/api/admin/versions/{V['id']}/restore", headers=Admin)).status_code == 200
+    Link = (await H.Client.post(f"/api/admin/versions/{V['id']}/download-link", headers=Admin)).json()
+    Got = await H.Client.get(Link["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert Got.content == Data and Got.headers["content-disposition"].endswith('_R-1001-A_v2.stl"')
 
 
 # ── exact: used as uploaded, checked against the size ────────────────────────
@@ -262,10 +314,9 @@ async def test_an_exact_charm_is_checked_by_its_total_height_and_an_ascii_part_i
                                headers=Admin)).status_code == 200
     import trimesh
     Ascii = trimesh.load(io.BytesIO(CharmStl()), file_type="stl").export(file_type="stl_ascii").encode("ascii")
-    S = (await H.Client.post("/api/admin/sessions", json={"owner_account_id": H.Who.AccountId, "title": "Workshop parts"},
-                             headers=Admin)).json()
+    Moon = (await H.NewDesign("A crescent moon charm with a small star", product="charm"))["design_id"]   # an existing session
     U = await Upload(H, Ascii, "Moon charm.stl")
-    R = await H.Client.post(f"/api/admin/sessions/{S['id']}/external-designs",
+    R = await H.Client.post(f"/api/admin/sessions/{Moon}/external-designs",
                             json={"upload_id": U["id"], "product_type": "charm", "title": "Moon Workshop", "source_tool": "Blender"},
                             headers=Admin)
     assert R.status_code == 200, R.text
@@ -277,6 +328,11 @@ async def test_an_exact_charm_is_checked_by_its_total_height_and_an_ascii_part_i
     Raw = H.Ctx.Db.One("SELECT sha256, bytes FROM raw_geometry WHERE mesh_id = ?", (Mid,))
     Bin = (H.Settings.DevDir / M["stl_path"]).read_bytes()
     assert Raw == {"sha256": hashlib.sha256(Bin).hexdigest(), "bytes": len(Bin)} and len(Bin) < len(Ascii) / 3
+    # The same geometry: every vertex of the ASCII file, in order, as the float32 a binary STL stores
+    import re
+    Want = np.array([float(X) for V in re.findall(rb"vertex\s+(\S+)\s+(\S+)\s+(\S+)", Ascii) for X in V], dtype=np.float32)
+    Got = np.frombuffer(Bin[84:], dtype=np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")]))["v"].reshape(-1)
+    assert len(Want) == len(Got) and np.array_equal(Want, Got)
     V = (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"][0]
     assert V["file"]["uploaded_format"] == "ascii" and V["file"]["uploaded_sha256"] == hashlib.sha256(Ascii).hexdigest()
     Height = V["measure"]["height"]
@@ -290,61 +346,64 @@ async def test_an_exact_charm_is_checked_by_its_total_height_and_an_ascii_part_i
     assert [R["code"] for R in Rows[T25["id"]]["review"]] == ["exact_size"] and "25 mm" in Rows[T25["id"]]["review"][0]["text"]
 
 
-# ── Sessions with 0, 1 or many designs: new external designs (Cases A, B, D) ─
-async def test_external_designs_live_in_sessions_of_zero_one_or_many_designs(HE):
+# ── Sessions start on the website; an external part joins an existing one ─────
+async def test_external_parts_join_existing_sessions_and_are_ordinary_parts_of_them(HE):
     H = HE
-    R = await H.Client.post("/api/admin/sessions", json={"owner_account_id": "acct_nobody", "title": "x"}, headers=Admin)
-    assert (R.status_code, R.json()["error"]["code"]) == (404, "account_not_found")
-    S = (await H.Client.post("/api/admin/sessions", json={"owner_account_id": H.Who.AccountId, "title": "Bridal set"}, headers=Admin)).json()
-    assert (S["ref"], S["design_count"], S["origin"]) == ("S-1001", 0, "admin")
-    L = (await H.Client.get("/api/admin/sessions", headers=Admin)).json()
-    assert [C["ref"] for C in L["containers"]] == ["S-1001"]
-    assert (await Session(H, S["id"]))["container"]["journeys"] == []                        # Case D: an empty session
-    # Case A: the first part in an empty session
+    assert (await H.Client.post("/api/admin/sessions", json={"owner_account_id": H.Who.AccountId}, headers=Admin)).status_code in (404, 405)
+    # A session with no finished part yet (every image failed): the part is attached to it as a new design
+    H.Provider.Script(endpoints.ImageGenerate, "fail", "fail", "fail", "fail")
+    Empty = (await H.NewDesign("A band that did not come out"))["design_id"]
     U = await Upload(H, Torus(Us7), "band.stl")
-    A = (await H.Client.post(f"/api/admin/sessions/{S['id']}/external-designs",
+    R = await H.Client.post(f"/api/admin/designs/{Empty}/versions", json={"upload_id": U["id"]}, headers=Admin)
+    assert (R.status_code, R.json()["error"]["code"]) == (409, "no_option")              # no finished part to add a version to
+    A = (await H.Client.post(f"/api/admin/sessions/{Empty}/external-designs",
                              json={"upload_id": U["id"], "product_type": "ring", "title": "Bridal Band", "source_tool": "Rhino"},
                              headers=Admin)).json()
-    assert A["session"]["design_count"] == 1 and A["version"]["label"] == "v1 · External · Rhino · exact"
+    assert (A["session"]["ref"], A["session"]["origin"], A["session"]["design_count"]) == ("S-1001", "design", 2)
+    assert A["version"]["label"] == "v1 · External · Rhino · exact" and A["version"]["state"] == "active"
     Did = A["design_id"]
     Placeholder = H.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (A["version"]["candidate_id"],))["asset_path"]
     assert Placeholder.endswith("/external/placeholder.png")
     await H.Idle()
     D = await Session(H, Did)
     assert D["external"] and D["session"]["origin"] == "external" and D["session"]["path"] == "External part"
-    assert D["session"]["ring_id"] == "R-1001" and D["session_group"]["ref"] == "S-1001"
-    assert D["session"]["thumbnail_url"].endswith(f"/external/render-{A['version']['id']}.png")          # the 3D render
-    Png = H.AssetBytes(D["session"]["thumbnail_url"])
+    assert D["session"]["ring_id"] == "R-1002" and D["session_group"]["ref"] == "S-1001"
+    assert (await Session(H, Empty))["session_group"]["id"] == A["session"]["id"]
+    assert D["session"]["thumbnail_url"].endswith(f"/designs/{Did}/external/v1.png")                     # the 3D render
     from PIL import Image
-    Img = Image.open(io.BytesIO(Png))
+    Img = Image.open(io.BytesIO(H.AssetBytes(D["session"]["thumbnail_url"])))
     assert Img.size == (1024, 1024) and len(set(Img.convert("L").getdata())) > 20                       # shaded, not blank
     Steps = D["pipeline"]["steps"]
     assert Steps[0]["kind"] == "external" and Steps[0]["cost"] == 0.0 and D["pipeline"]["total_cost"] == 0.0
     assert [E["kind"] for E in D["timeline"]][:2] == ["started", "external_part"]
-    # Case B: another independent design next to it
+    # Another independent design of the same session (Case B); a name already used needs confirming
     U2 = await Upload(H, Torus(Us7 + 1), "band2.stl")
-    R = await H.Client.post(f"/api/admin/sessions/{S['id']}/external-designs",
+    R = await H.Client.post(f"/api/admin/sessions/{A['session']['id']}/external-designs",
                             json={"upload_id": U2["id"], "product_type": "ring", "title": "bridal band"}, headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (409, "duplicate_title")
-    B2 = (await H.Client.post(f"/api/admin/sessions/{S['id']}/external-designs",
+    B2 = (await H.Client.post(f"/api/admin/sessions/{A['session']['id']}/external-designs",
                               json={"upload_id": U2["id"], "product_type": "ring", "title": "Bridal Band Wide"}, headers=Admin)).json()
-    C = (await Session(H, S["id"]))["container"]
-    assert C["design_count"] == 2 and {J["design_id"] for J in C["journeys"]} == {Did, B2["design_id"]}
-    assert all(J["active_version"]["source"] == "external" for J in C["journeys"])
-    # Next to a design made in the customer flow: its journey becomes an explicit session holding both
-    Ai = (await H.NewDesign("A twisted rope band"))["design_id"]
-    U3 = await Upload(H, Torus(Us7), "matching.stl")
-    R = (await H.Client.post(f"/api/admin/sessions/{Ai}/external-designs",
-                             json={"upload_id": U3["id"], "product_type": "ring", "title": "Rope Match"}, headers=Admin)).json()
-    assert R["session"]["origin"] == "design" and R["session"]["design_count"] == 2 and R["session"]["ref"] == "S-1002"
-    assert (await Session(H, Ai))["session_group"]["id"] == R["session"]["id"]
+    C = (await Session(H, A["session"]["id"]))["container"]
+    assert C["design_count"] == 3 and {J["design_id"] for J in C["journeys"]} == {Empty, Did, B2["design_id"]}
+    assert [C2["ref"] for C2 in (await H.Client.get("/api/admin/sessions", headers=Admin)).json()["containers"]] == ["S-1001"]
     U4 = await Upload(H, Torus(Us7), "x.stl")
     R = await H.Client.post("/api/admin/sessions/use_123/external-designs", json={"upload_id": U4["id"], "title": "Xx"}, headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (409, "shared_design")
-    # Admin-only for now: not in the customer's My Designs, not openable there, not in the gallery
-    Mine = [X["id"] for X in (await H.Client.get("/api/designs")).json()["designs"]]
-    assert Did not in Mine and Ai in Mine
-    assert (await H.Client.get(f"/api/designs/{Did}")).status_code == 404
+    # An ordinary part of its session: the owner sees and opens it — with nothing of the 3D file in what they get
+    Mine = (await H.Client.get("/api/designs")).json()
+    assert Did in [X["id"] for X in Mine["designs"]]
+    Mine2 = (await H.Client.get(f"/api/designs/{Did}")).json()
+    assert Mine2["title"] == "Bridal Band"
+    Text = json.dumps(Mine) + json.dumps(Mine2)
+    for Internal in (".stl", "/meshes/", "mesh_", "band.stl", "Rhino", "/api/admin/"):
+        assert Internal not in Text, Internal
+    # Every 3D file stays with the Admin: the version's file and preview refuse anyone else
+    import httpx
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test" + H.Base,
+                                 headers={"X-Access-Token": H.Token}) as Customer_:
+        for Path_ in (f"/api/admin/versions/{A['version']['id']}/download", f"/api/admin/versions/{A['version']['id']}/preview",
+                      f"/api/admin/designs/{Did}/versions"):
+            assert (await Customer_.get(Path_)).status_code in (401, 403), Path_
     R = await H.Client.post("/api/admin/gallery", json={"design_id": Did}, headers=Admin)
     assert R.status_code == 409 and R.json()["error"]["code"] == "external_part"
 
@@ -356,14 +415,14 @@ async def test_an_order_line_keeps_its_version_and_a_revised_stl_for_it_becomes_
     Did = B["design_id"]
     assert (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).status_code == 200      # Hi3D: v1
     await H.Idle()
-    L = await OrderLine(H, O)
-    assert not L["three_d_pinned"] and L["three_d_version"]["version_no"] == 1
+    L = await OrderLine(H, O)                       # ordered before the design had a model: it follows the design until prepared
+    assert not L["three_d_pinned"] and not L["three_d_version_pinned"] and L["three_d_version"]["version_no"] == 1
     R = (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{L['id']}/3d", headers=Admin)).json()
     await H.Idle()
     L = await OrderLine(H, O)
     assert L["three_d_pinned"] and L["three_d_match"] and L["three_d_version"]["version_no"] == 1 and L["three_d_state"] == "complete"
     V1, First = L["three_d_version"]["mesh_id"], L["three_d_id"]
-    # A new active version of the design never changes the line
+    # A newer version of the design (now the one in use) never changes the line
     U = await Upload(H, Torus(Us7), "rev2.stl")
     V2 = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U["id"]}, headers=Admin)).json()
     await H.Idle()
@@ -378,17 +437,17 @@ async def test_an_order_line_keeps_its_version_and_a_revised_stl_for_it_becomes_
     assert R.status_code == 200 and R.json()["changed"]
     L = await OrderLine(H, O)
     assert L["three_d_version"]["mesh_id"] == V2["id"] and L["three_d_match"] and L["three_d_pinned"]
-    # A revised STL uploaded for this order only: a new version of the ordered option; the design keeps its active version
+    # A revised STL for this line: a new version of the ordered option — the newest, so also the design's one in use (LIFO)
     U3 = await Upload(H, Torus(Us7 + 0.1, 1.6), "ORD fix.stl")
     R = await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{L['id']}/3d-upload",
-                            json={"upload_id": U3["id"], "scaling": "exact", "source_tool": "Rhino", "activate": False}, headers=Admin)
+                            json={"upload_id": U3["id"], "scaling": "exact", "source_tool": "Rhino"}, headers=Admin)
     assert R.status_code == 200, R.text
     V3 = R.json()["version"]
-    assert (V3["version_no"], V3["state"], V3["parent"]["version_no"]) == (3, "superseded", 2)
+    assert (V3["version_no"], V3["state"], V3["parent"]["version_no"]) == (3, "active", 2)
     await H.Idle()
     L = await OrderLine(H, O)
-    assert L["three_d_version"]["mesh_id"] == V3["id"] and L["three_d_state"] == "complete"
-    assert (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["active_mesh_id"] == V2["id"]
+    assert L["three_d_version"]["mesh_id"] == V3["id"] and L["three_d_state"] == "complete" and L["three_d_version_pinned"]
+    assert (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["active_mesh_id"] == V3["id"]
     Od = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
     Kinds = [E["kind"] for E in Od["events"]]
     assert Kinds.count("3d_version_changed") == 2 and "3d_version_uploaded" in Kinds and "3d_pinned" in Kinds   # prepared: the match pinned
@@ -400,6 +459,39 @@ async def test_an_order_line_keeps_its_version_and_a_revised_stl_for_it_becomes_
     assert R.status_code == 200, R.text
     R = await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{L['id']}/3d-version", json={"mesh_id": V1}, headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (400, "note_required")
+
+
+async def test_a_new_order_line_is_pinned_to_the_version_in_use(HE):
+    H = HE
+    B, Did = await ModelledRing(H, "A wave band")                                          # v1 Hi3D (of option A)
+    U = await Upload(H, Torus(Us7))
+    V2 = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U["id"]}, headers=Admin)).json()
+    await H.Idle()
+    V1 = next(X for X in (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"] if X["version_no"] == 1)
+    await H.Client.post(f"/api/admin/versions/{V1['id']}/activate", headers=Admin)          # the Admin's choice: v1 is in use
+    # The customer orders it (the normal order flow): the line is pinned to the version in use
+    Cus = (await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": B["candidates"][0]["id"]})).json()
+    await H.Idle()
+    await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7, "material_id": "silver"})
+    await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})
+    O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "shipping_method": "standard",
+                                                  "terms_accepted": True, "client_request_id": "c-wave"})).json()
+    assert H.Ctx.Db.One("SELECT mesh_id FROM order_lines WHERE order_id = ?", (O["id"],))["mesh_id"] == V1["id"]
+    L = await OrderLine(H, O)
+    assert L["three_d_version_pinned"] and not L["three_d_pinned"] and L["three_d_version"]["mesh_id"] == V1["id"]
+    # A newer version afterwards is the design's one in use — the order keeps its own
+    U3 = await Upload(H, Torus(Us7 + 0.2))
+    V3 = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U3["id"]}, headers=Admin)).json()
+    await H.Idle()
+    assert V3["state"] == "active"
+    L = await OrderLine(H, O)
+    assert L["three_d_version"]["mesh_id"] == V1["id"] and {V["version_no"] for V in L["three_d_versions"]} == {1, 2, 3}
+    R = (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{L['id']}/3d", headers=Admin)).json()
+    await H.Idle()
+    assert H.Ctx.Db.One("SELECT mesh_id FROM session_3d WHERE id = ?", (R["three_d_id"],))["mesh_id"] == V1["id"]
+    L = await OrderLine(H, O)
+    assert L["three_d_pinned"] and L["three_d_match"] and L["three_d_version"]["label"] == "v1 · Hi3D"
+    assert V2["id"] not in (L["three_d_id"], L["three_d_version"]["mesh_id"])
 
 
 async def test_a_line_that_follows_its_design_is_pinned_when_released(HE):

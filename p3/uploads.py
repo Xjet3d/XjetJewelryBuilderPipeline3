@@ -6,8 +6,9 @@
   DELETE /api/admin/uploads/{id}                                   → cancelled, the partial file deleted
 
 Each piece (at most ChunkBytes) is written straight to disk at its offset, so a 300 MB file is never held in memory and
-every request stays under the reverse proxies' body limit (20 MB). A finished upload is kept until it is used: using it
-MOVES the file into place (no copy, the same disk). An upload nobody used is deleted after MaxAgeS.
+every request stays under the reverse proxies' body limit (20 MB). A finished upload is kept until it is attached: that
+MOVES the file into place (no copy, the same disk) and from then on it is a permanent asset of its part (p3/versions.py)
+— never deleted. Only an upload that was never attached (abandoned, or its dialog cancelled) is removed, after MaxAgeS.
 """
 
 import hashlib
@@ -23,16 +24,16 @@ from p3.db import NewId, Now
 Logger = logging.getLogger("p3.uploads")
 ChunkBytes = 8 * 1024 * 1024
 MaxAgeS = 24 * 3600
-DefaultMaxMb = 600
+DefaultMaxMb = 300                       # decision of 2026-10-12
 Extensions = (".stl",)
 
 
 def MaxBytes() -> int:
-    """P3_MAX_UPLOAD_MB (default 600 MB): the largest file the Admin accepts."""
+    """P3_MAX_UPLOAD_MB (default 300 MB, decimal — the MB every size is shown in): the largest file the Admin accepts."""
     try:
-        return int(float(os.environ.get("P3_MAX_UPLOAD_MB", DefaultMaxMb)) * 1024 * 1024)
+        return int(float(os.environ.get("P3_MAX_UPLOAD_MB", DefaultMaxMb)) * 1_000_000)
     except ValueError:
-        return DefaultMaxMb * 1024 * 1024
+        return DefaultMaxMb * 1_000_000
 
 
 def InspectStl(PathObj: Path) -> tuple[str, int | None]:
@@ -88,7 +89,7 @@ class UploadService:
         if Size < 84:
             raise HttpError(400, "invalid_size", "This file is too small to be an STL.")
         if Size > MaxBytes():
-            raise HttpError(413, "file_too_large", f"The file is {Size / 1e6:.0f} MB; the largest accepted is {MaxBytes() / 1e6:.0f} MB.")
+            raise HttpError(413, "file_too_large", f"The file is {Size / 1e6:.1f} MB; the largest accepted is {MaxBytes() / 1e6:g} MB.")
         Uid, T = NewId("upl"), Now()
         Rel = f"uploads/{Uid}.part"
         self._Dir().mkdir(parents=True, exist_ok=True)
@@ -176,7 +177,8 @@ class UploadService:
         return self.ToJson(self._Require(UploadId))
 
     def Cleanup(self) -> int:
-        """Delete the files of uploads nobody used within MaxAgeS (the rows stay, as expired)."""
+        """Delete the files of uploads never attached within MaxAgeS (the rows stay, as expired). An attached upload ('used')
+        is its part's file now and is never touched here."""
         Before = (datetime.now(timezone.utc) - timedelta(seconds=MaxAgeS)).isoformat(timespec="milliseconds")
         N = 0
         for U in self.Ctx.Db.All("SELECT * FROM uploads WHERE status IN ('receiving', 'complete') AND updated_at < ?", (Before,)):

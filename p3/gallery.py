@@ -214,7 +214,7 @@ class GalleryService:
         D = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
         if D is None:
             raise HttpError(404, "design_not_found", "Design not found.")
-        if D.get("origin") == "external":           # docs/EXTERNAL-PARTS.md: Admin-only until customers are shown external parts
+        if D.get("origin") == "external":           # an external part belongs to its session's owner (docs/EXTERNAL-PARTS.md)
             raise HttpError(409, "external_part", "An external part is not shown in the Inspiration Gallery.")
         OwnerKind = (OwnerKind or "xjet").strip().lower()
         if OwnerKind not in ("xjet", "customer"):

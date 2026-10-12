@@ -88,11 +88,11 @@
         <div x-show="xp.kind !== 'line'" class="space-y-2" role="radiogroup" aria-label="Where the part goes">
           <label x-show="xp.allowNew" class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-target" value="new" x-model="xp.target">
             <span><strong>Add as a new Design</strong><span class="block text-[12px] text-zinc-500">An independent design in this session, with its own ID. Nothing else changes.</span></span></label>
-          <label x-show="xp.designs.length" class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-target" value="existing" x-model="xp.target">
-            <span><strong>Update an existing Design</strong><span class="block text-[12px] text-zinc-500">A new 3D version of the design. Its earlier versions are kept.</span></span></label>
+          <label x-show="xp.designs.length" class="flex items-start gap-2 text-sm" :class="xp.canUpdate ? 'cursor-pointer' : 'opacity-50'"><input type="radio" class="mt-1" name="xp-target" value="existing" x-model="xp.target" :disabled="!xp.canUpdate">
+            <span><strong>Update an existing Design</strong><span class="block text-[12px] text-zinc-500" x-text="xp.canUpdate ? 'A new 3D version of the design. Its earlier versions are kept.' : 'This session has no finished part yet to add a version to — add the part as a new design of the session.'"></span></span></label>
         </div>
         <p x-show="xp.kind === 'line'" class="text-[13px] text-zinc-700" x-text="'A new 3D version of ' + (xp.line?.title || '') + ' (' + (xp.line?.ring_id || '') + '), revising ' + (xp.line?.three_d_version?.label || 'its current model') + '. This order line is then produced from it; the change is recorded in the order history.'"></p>
-        <label class="block"><span class="lbl block mb-1">STL file</span>
+        <label class="block"><span class="lbl block mb-1" x-text="'STL file · up to ' + Math.round(maxUpload / 1e6) + ' MB'"></span>
           <input type="file" accept=".stl" class="block w-full text-sm" :disabled="xp.busy" @change="if (xp.uploadId) { api('DELETE', '/api/admin/uploads/' + encodeURIComponent(xp.uploadId)).catch(() => {}); xp.uploadId = ''; } xp.file = $event.target.files[0] || null"></label>
         <template x-if="xp.kind !== 'line' && xp.target === 'new'">
           <div class="grid grid-cols-[1fr_auto] gap-3">
@@ -116,8 +116,7 @@
           <label class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-scaling" value="scalable" x-model="xp.scaling">
             <span><strong>Use as scalable master</strong><span class="block text-[12px] text-zinc-500">Sized like a Hi3D model: a ring by its inner diameter, a charm by its total height (loop included).</span></span></label>
         </div>
-        <label x-show="xp.kind === 'line' || xp.target === 'existing'" class="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" class="mt-1" x-model="xp.activate">
-          <span x-text="xp.kind === 'line' ? 'Also make it the design’s active version (otherwise only this order uses it)' : 'Make it the design’s active version'"></span></label>
+        <p x-show="xp.kind === 'line' || xp.target === 'existing'" class="text-[12px] text-zinc-600">The newest version becomes the one used (last in, first out); every earlier version is kept, and another one can be chosen at any time on the design’s page.</p>
         <label class="block"><span class="lbl block mb-1">Note (optional)</span><textarea class="inp" rows="2" x-model="xp.note" maxlength="300" placeholder="What changed"></textarea></label>
         <div x-show="xp.busy" class="space-y-1" aria-live="polite">
           <div class="h-2 bg-zinc-100 overflow-hidden"><div class="h-2 bg-zinc-900 transition-all" :style="'width:' + Math.round((xp.progress || 0) * 100) + '%'"></div></div>
@@ -128,23 +127,6 @@
           <button class="btn2" :disabled="xp.busy" @click="closePart()">Cancel</button>
           <button class="btn px-4 py-2 disabled:opacity-40" :disabled="xp.busy || (!xp.file && !xp.uploadId)" @click="submitPart()" x-text="xp.busy ? 'Working…' : (xp.kind === 'line' ? 'Upload and use for this line' : xp.target === 'new' ? 'Upload and add the design' : 'Upload the new version')"></button>
         </div>
-      </div>
-    </div>
-  </template>
-  <!-- New session: an account's session for designs made in the Admin (empty at first) -->
-  <template x-if="newSession">
-    <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" @click.self="newSession = null" @keydown.escape.window="newSession = null">
-      <div class="card p-6 w-full max-w-lg space-y-4" role="dialog" aria-modal="true" aria-labelledby="ns-title">
-        <p id="ns-title" class="text-base font-semibold">New session</p>
-        <p class="text-[13px] text-zinc-600">A session holds designs for one account — a customer, or XJet's own team account. It starts empty; add external parts to it next.</p>
-        <label class="block"><span class="lbl block mb-1">Whose session</span><input class="inp" x-model="newSession.q" placeholder="Search by name or email"></label>
-        <select class="inp" size="6" x-model="newSession.owner" aria-label="Account">
-          <template x-for="u in newSessionUsers()" :key="u.account_id"><option :value="u.account_id" x-text="(u.name || '—') + ' · ' + (u.email || u.account_id)"></option></template>
-        </select>
-        <label class="block"><span class="lbl block mb-1">Title (optional)</span><input class="inp" x-model="newSession.title" maxlength="80" placeholder="For example: Bridal set"></label>
-        <p x-show="newSession.error" class="text-sm text-red-600" role="alert" x-text="newSession.error"></p>
-        <div class="flex gap-3 justify-end"><button class="btn2" @click="newSession = null">Cancel</button>
-          <button class="btn px-4 py-2 disabled:opacity-40" :disabled="newSession.busy || !newSession.owner" @click="createSession()">Create session</button></div>
       </div>
     </div>
   </template>
@@ -770,8 +752,6 @@
       <div class="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
         <div class="flex items-center gap-3">
           <p class="lbl">Sessions (<span x-text="sessionsFiltered.length"></span><span x-show="sessionsFiltered.length !== sessions.length" x-text="' of ' + sessions.length"></span>)</p>
-          <!-- A session made here holds 0, 1 or many designs (external parts) for one account (docs/EXTERNAL-PARTS.md) -->
-          <button class="btn2 !py-1 !px-2.5 !text-[12px]" @click="openNewSession()">New session…</button>
           <!-- The fastest way to know what needs a human: 3D to review / failed, failed generations -->
           <button @click="sAttention = !sAttention; saveFilters()" class="badge !py-1 !px-2.5 transition" :class="sAttention ? 'bg-amber-600 text-white' : (attentionCount ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-zinc-100 text-zinc-500')" :aria-pressed="sAttention" title="3D to review or failed, failed generations">
             Needs attention <span x-text="attentionCount"></span></button>
@@ -965,6 +945,7 @@
           </div>
           <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button x-show="!noImage()" class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
+            <button x-show="noImage()" class="btn2 !py-1.5" @click="openPartForDesign()" title="Attach an STL made outside Atelier to this session">Add External Part…</button>
             <button x-show="!noImage()" class="btn2 !py-1.5" :class="stlNotReviewed(journeyResult()) ? '!text-amber-800 !border-amber-400' : ''" :disabled="!journeyResult()" @click="safeExportStl(journeyResult())" :title="journeyResult() ? 'Scaled STL for this journey (' + (journeyResult().size_label || 'US ' + journeyResult().production_size) + ' · ' + journeyResult().material_label + ')' + (stlNotReviewed(journeyResult()) ? ' — not reviewed: not for production' : '') : 'No 3D result for this journey’s size and material yet — recalculate the geometry first'" x-text="stlNotReviewed(journeyResult()) ? 'Download STL · not reviewed' : 'Download STL'"></button>
             <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
             <button x-show="!noImage() && !sd.external" class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
@@ -1133,14 +1114,15 @@
         <div x-show="(sd.versions || []).length" class="border border-zinc-200">
           <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-zinc-50 border-b border-zinc-200">
             <p class="lbl" x-text="'3D versions (' + (sd.versions || []).length + ')'"></p>
-            <p class="text-[12px] text-zinc-500">New results and order preparation use the active version. Order lines keep the version they were prepared from.</p>
+            <p class="text-[12px] text-zinc-500" x-text="(sd.versions || []).some(v => v.state === 'active' && !v.newest) ? 'An Admin chose the version in use; a newer version exists. New orders and results use the version in use; order lines keep the version they were ordered with.' : 'The newest version is used (last in, first out). New orders and results use it; order lines keep the version they were ordered with.'"></p>
           </div>
           <ul class="divide-y divide-zinc-100">
             <template x-for="v in (sd.versions || [])" :key="v.id">
               <li class="px-4 py-3 flex flex-wrap items-start gap-x-5 gap-y-2" :class="v.state === 'archived' ? 'opacity-60' : ''">
                 <div class="w-[170px] shrink-0 space-y-0.5">
                   <p class="flex items-center gap-2"><span class="font-mono text-sm font-semibold" x-text="'v' + v.version_no"></span>
-                    <span class="badge" :class="versionStateClass(v.state)" x-text="{ active: 'Active', superseded: 'Superseded', archived: 'Archived' }[v.state]"></span></p>
+                    <span class="badge" :class="versionStateClass(v.state)" x-text="{ active: 'In use', superseded: 'Earlier', archived: 'Archived', unusable: 'Not usable' }[v.state]"></span>
+                    <span x-show="v.newest" class="badge bg-zinc-100 text-zinc-600">Newest</span></p>
                   <p class="text-[12px] text-zinc-700" x-text="v.source === 'external' ? 'External' + (v.source_tool ? ' · ' + v.source_tool : '') : 'Hi3D model'"></p>
                   <p class="text-[11px]" :class="v.scaling === 'exact' ? 'text-sky-800' : 'text-zinc-500'" x-text="v.scaling === 'exact' ? 'Used exactly as uploaded (mm)' : 'Scalable master'"></p>
                   <p class="text-[11px] text-zinc-500 font-mono" x-text="v.ring_id"></p>
@@ -1156,7 +1138,7 @@
                 <div class="flex flex-wrap gap-3 text-xs uppercase tracking-widest">
                   <button x-show="v.preview_ready" class="underline" @click="viewVersion(v)">View 3D</button>
                   <button class="underline" @click="downloadVersion(v)">Download file</button>
-                  <button x-show="v.state === 'superseded'" class="underline" @click="versionAction(v, 'activate')" x-text="'Make active'"></button>
+                  <button x-show="v.state === 'superseded'" class="underline" @click="versionAction(v, 'activate')">Use this version</button>
                   <button x-show="v.state === 'superseded'" class="underline text-zinc-500" @click="versionAction(v, 'archive')">Archive</button>
                   <button x-show="v.state === 'archived'" class="underline" @click="versionAction(v, 'restore')">Restore</button>
                 </div>
@@ -1811,9 +1793,9 @@
                   <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line)'"></p>
                   <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id && !l.three_d_version" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p>
                   <!-- The 3D version the line is produced from (pinned once prepared: a later version never changes it) -->
-                  <p x-show="l.three_d_version" class="text-[11px] mt-1" :class="l.three_d_pinned ? 'text-zinc-700' : 'text-zinc-500'"
-                     :title="l.three_d_pinned ? 'Pinned: this line keeps this geometry whatever version the design uses later' : 'Not prepared yet: it follows the design’s version until its STL is prepared'"
-                     x-text="(l.three_d_pinned ? '3D version: ' : 'Will use: ') + (l.three_d_version?.label || '') + (l.three_d_pinned ? ' · pinned' : '')"></p>
+                  <p x-show="l.three_d_version" class="text-[11px] mt-1" :class="l.three_d_version_pinned ? 'text-zinc-700' : 'text-zinc-500'"
+                     :title="l.three_d_version_pinned ? 'Pinned: this line keeps this geometry whatever version the design uses later' : 'Ordered before the design had a 3D model: it follows the design’s version until its STL is prepared'"
+                     x-text="(l.three_d_version_pinned ? '3D version: ' : 'Will use: ') + (l.three_d_version?.label || '') + (l.three_d_version_pinned ? ' · pinned' : '')"></p>
                   <p class="flex flex-wrap gap-x-3 mt-0.5 text-[11px] uppercase tracking-widest">
                     <button x-show="(l.three_d_versions || []).length > 1" class="underline text-zinc-600 hover:text-black" @click="useLineVersion(l)">Use another version…</button>
                     <button class="underline text-zinc-600 hover:text-black" @click="openPartForLine(l)">Upload revised STL…</button></p></td>

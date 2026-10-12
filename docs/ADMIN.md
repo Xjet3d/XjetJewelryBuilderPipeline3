@@ -190,29 +190,30 @@ ring path above is unchanged.
 
 ### 3D versions and external parts
 
-Design document: `docs/EXTERNAL-PARTS.md` (`p3/versions.py`, `p3/uploads.py`, `p3/render3d.py`).
+Design document: `docs/EXTERNAL-PARTS.md` (`p3/versions.py`, `p3/uploads.py`, `p3/render3d.py`); decisions of 2026-10-12.
 
-- **Session → Design → 3D version.** Every model of a design is a numbered version: Hi3D models (v1, v2 …) and STLs
-  made outside Atelier (*External · Rhino*). The session page lists them under **3D versions** with the file, who and
-  when, the version it revises, the measurement (X × Y × Z, inner Ø and the US size it is, or a charm's height) and
-  where it is used (results, orders). **Make active** switches (rollback = activating an older one); **Archive** hides
-  a version (never the active one) and keeps its file; **Restore** brings it back. **View 3D** shows a version's own
-  light preview; **Download file** its STL.
-- **Add External Part…** (session page, an explicit session's page): upload an STL in 8 MB pieces (a 300 MB file is
-  fine; nothing is held in memory) and choose **Add as a new Design** (a design of its own in the session, picture =
-  a render of the part) or **Update an existing Design** (a new version; earlier versions stay). *How it is used*:
-  **Use exactly as uploaded** (default: the file is the production part in mm — each size is checked against it, ±0.15 mm
-  inner diameter / ±0.5 mm charm height, otherwise *review required*; the STL download is the file itself) or **Use as
-  scalable master** (sized like a Hi3D model).
-- **Sessions → New session…**: an empty session for an account (a customer, or XJet's team account), numbered S-1001 …;
-  it can hold 0, 1 or many designs. A design made in the customer flow is a session of its own until a part is added
-  next to it.
-- **Orders:** each line shows the 3D version it is produced from (*pinned* once prepared — a later active version never
-  changes it), **Use another version…** (logged; a reason is required from *In production* on) and **Upload revised
-  STL…** (a new version of the ordered option, used for that line; *Also make it the design's active version* is off
-  by default).
-- External designs are Admin-only for now: not in the customer's My Designs, not openable on the customer site, not in
-  the Inspiration Gallery.
+- **Session → Part/Design → 3D version.** Every model of a design is a numbered version: Hi3D models and STLs made
+  outside Atelier (*External · Rhino*). The session page lists them under **3D versions** with the file, who and when,
+  the version it revises, the measurement (X × Y × Z, inner Ø and the US size it is, or a charm's height) and where it is
+  used (results, orders). **The newest version is in use** (last in, first out); **Use this version** chooses another
+  (rollback = choosing an older one); **Archive** hides a version (never the one in use) and keeps its file;
+  **Restore** brings it back. **View 3D** shows a version's own light preview; **Download file** its STL. A version
+  whose file cannot be measured is *Not usable* and never in use.
+- **Add External Part…** (in a session page's 3D section; in the header of a session with no finished part yet):
+  upload an STL of up to **300 MB** in 8 MB pieces (nothing is held in memory) and choose **Add as a new Design** (a
+  design of its own in this session — picture = a render of the part) or **Update an existing Design** (a new version;
+  earlier versions stay). *How it is used*: **Use exactly as uploaded** (default: the file is the production part in mm
+  — each size is checked against it, ±0.15 mm inner diameter / ±0.5 mm charm height, otherwise *review required*; the
+  STL download is the file itself) or **Use as scalable master** (sized like a Hi3D model). An attached STL stays with
+  its part for good; only an upload that was never attached is removed.
+- **Sessions start on the website**; the Admin does not create them. When a design is added to a session, the session
+  holds several designs and gets a number (S-1001 …), shown above the Sessions list and on its designs.
+- **External designs are ordinary parts of their session**: their owner sees them in My Designs and can order them;
+  STL files are never shown to customers. They are not offered in the Inspiration Gallery.
+- **Orders:** a line is pinned to the 3D version in use when it is ordered (shown as *3D version: v2 · … · pinned*;
+  a later version never changes it), then to the result it is produced from. **Use another version…** (logged; a
+  reason is required from *In production* on) and **Upload revised STL…** (a new version of the ordered option — the
+  newest, so also the design's version in use — and the line uses it).
 
 ## Working in the Admin
 

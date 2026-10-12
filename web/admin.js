@@ -34,9 +34,9 @@ const STEPS = {
   // 3D versions and external parts (docs/EXTERNAL-PARTS.md)
   external_part: ['External part', 'bg-teal-50 text-teal-800'],
   admin_external_design_added: ['Admin: external part added', 'bg-teal-50 text-teal-800'],
-  admin_session_created: ['Admin: session', 'bg-zinc-100 text-zinc-600'],
-  admin_3d_version_added: ['Admin: 3D version added', 'bg-green-100 text-green-700'],
-  admin_3d_version_activated: ['Admin: active 3D version', 'bg-green-100 text-green-700'],
+  admin_session_created: ['Admin: session holds several designs', 'bg-zinc-100 text-zinc-600'],
+  admin_3d_version_added: ['3D version added', 'bg-green-100 text-green-700'],
+  admin_3d_version_activated: ['3D version in use', 'bg-green-100 text-green-700'],
   admin_3d_version_archived: ['Admin: 3D version archived', 'bg-zinc-200 text-zinc-600'],
   admin_3d_version_restored: ['Admin: 3D version restored', 'bg-zinc-100 text-zinc-600'],
 };
@@ -196,7 +196,7 @@ function adminApp() {
     dialog: null, toasts: [],
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
     // External parts and 3D versions (docs/EXTERNAL-PARTS.md): the Add External Part dialog, an explicit session (S-1001)
-    xp: null, sc: null, scError: '', newSession: null, containers: [],
+    xp: null, sc: null, scError: '', containers: [], maxUpload: 300e6,   // the largest STL accepted (from the server)
     get EVENTS() { return EVENTS; },
     models: [], runtimePlaceholders: {}, mid: '', mc: null, draft: {}, dirty: false, note: '',
     mProduct: 'ring',                              // AI models & prompts: which product's configuration is shown (Ring | Charm)
@@ -288,6 +288,7 @@ function adminApp() {
 
     async _enter(s) {
       this.mode = s.mode; this.ok = true; this.keyInput = ''; this.error = '';
+      if (s.max_upload_bytes) this.maxUpload = s.max_upload_bytes;
       try {
         const cat = await (await fetch(BASE + '/api/catalog')).json();
         for (const g of cat.groups || []) for (const m of g.materials || []) { this.materials[m.id] = m.label; this.swatches[m.id] = m.swatch; }
@@ -1206,12 +1207,13 @@ function adminApp() {
     },
     // Add External Part: as a new design in a session, or as a new 3D version of an existing design (or of an order line)
     openPart(ctx) {
+      const canUpdate = ctx.canUpdate !== false;
       this.xp = { kind: ctx.kind, sessionKey: ctx.sessionKey || '', sessionRef: ctx.sessionRef || '', designs: ctx.designs || [],
-                  allowNew: ctx.allowNew !== false, line: ctx.line || null,
-                  target: ctx.kind === 'line' ? 'existing' : (ctx.target || 'new'),
+                  allowNew: ctx.allowNew !== false, line: ctx.line || null, canUpdate,
+                  target: ctx.kind === 'line' ? 'existing' : (ctx.target === 'existing' && canUpdate ? 'existing' : 'new'),
                   designId: ctx.designId || (ctx.designs || [])[0]?.id || '', options: ctx.options || [], candidate: ctx.candidate || '',
-                  // an order line's revised STL is that order's own by default; a design's new version becomes its active one
-                  file: null, title: '', product: ctx.product || 'ring', tool: '', note: '', scaling: 'exact', activate: ctx.kind !== 'line',
+                  // LIFO: the newest version becomes the one used (an Admin can choose another afterwards)
+                  file: null, title: '', product: ctx.product || 'ring', tool: '', note: '', scaling: 'exact', activate: true,
                   busy: false, progress: 0, error: '', uploadId: '', force: false };
     },
     // From a design's session page: its session's designs (this one first) and the option of its active version
@@ -1220,8 +1222,10 @@ function adminApp() {
       const designs = [own, ...((g?.designs || []).filter(d => d.id !== own.id))];
       const opts = (sd.three_d_defaults.options || []).map(o => ({ id: o.id, label: o.ring_id + (o.selected ? ' · selected' : '') }));
       const sel = opts.find(o => o.label.endsWith('selected')) || opts[0];
+      // A session with no finished part yet: the part is added as a new design of the session (nothing to add a version to)
       this.openPart({ kind: 'design', sessionKey: g ? g.id : sd.session.design_id, sessionRef: g?.ref || '', designs, designId: own.id,
                       target: 'existing', allowNew: !sd.session.shared, options: opts, product: sd.session.product_type,
+                      canUpdate: opts.length > 0 || designs.length > 1,
                       candidate: sd.three_d_defaults.existing_model?.candidate_id || sel?.id || '' });
     },
     async submitPart() {
@@ -1297,7 +1301,7 @@ function adminApp() {
     },
     async versionAction(v, action) {
       const text = {
-        activate: ['Make ' + v.label + ' the active version?', 'New 3D results and order preparation use it from now on. Existing results, and order lines already produced from another version, keep theirs.', 'Make active'],
+        activate: ['Use ' + v.label + '?', 'It becomes the version in use: new orders and new 3D results use it from now on, until another version is chosen or a newer one is added. Order lines already pinned to another version keep theirs.', 'Use this version'],
         archive: ['Archive ' + v.label + '?', 'It is hidden from the version choices. Its file, measurements and results stay, and it can be restored.', 'Archive'] }[action];
       if (text && !await this.ask({ title: text[0], text: text[1], confirmLabel: text[2] })) return;
       try { await this.api('POST', `/api/admin/versions/${encodeURIComponent(v.id)}/${action}`, {}); await this.loadSession(); }
@@ -1317,7 +1321,7 @@ function adminApp() {
         setTimeout(() => { this.downloadNote = ''; }, 6000);
       } catch (e) { this.notify('Download failed: ' + e.message, 'error'); }
     },
-    versionStateClass(s) { return { active: 'bg-emerald-100 text-emerald-800', superseded: 'bg-zinc-100 text-zinc-600', archived: 'bg-zinc-200 text-zinc-500' }[s] || 'bg-zinc-100'; },
+    versionStateClass(s) { return { active: 'bg-emerald-100 text-emerald-800', superseded: 'bg-zinc-100 text-zinc-600', archived: 'bg-zinc-200 text-zinc-500', unusable: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100'; },
     // An explicit session (S-1001): 0, 1 or many designs
     async loadContainer() {
       this.scError = ''; this.sd = null;
@@ -1329,25 +1333,6 @@ function adminApp() {
       this.openPart({ kind: 'session', sessionKey: c.id, sessionRef: c.ref, designs: c.designs.map(d => ({ id: d.id, title: d.title, ring_id: d.ring_id })),
                       target: 'new' });
     },
-    async openNewSession() {
-      this.newSession = { owner: '', title: '', busy: false, error: '', users: [], q: '' };
-      try { this.newSession.users = (await this.api('GET', '/api/admin/users')).users || []; } catch (e) { this.newSession.error = e.message; }
-    },
-    newSessionUsers() {
-      const n = this.newSession, q = (n?.q || '').trim().toLowerCase();
-      return (n?.users || []).filter(u => u.status !== 'removed' && (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))).slice(0, 50);
-    },
-    async createSession() {
-      const n = this.newSession; if (!n || n.busy) return;
-      if (!n.owner) { n.error = 'Choose whose session it is.'; return; }
-      n.busy = true; n.error = '';
-      try {
-        const s = await this.api('POST', '/api/admin/sessions', { owner_account_id: n.owner, title: n.title });
-        this.newSession = null;
-        this.notify('Session ' + s.ref + ' created — add its first part');
-        this.go('#/sessions/' + encodeURIComponent(s.id));
-      } catch (e) { n.error = e.message; } finally { if (this.newSession === n) n.busy = false; }
-    },
     // One line of an order's history (the 3D events name the line and the 3D version)
     orderEventText(e) {
       const d = e.data || {}, line = (this.od?.lines || []).find(l => l.id === d.line_id), who = line ? line.ring_id + ' · ' : '';
@@ -1357,7 +1342,7 @@ function adminApp() {
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
                '3d_pinned': '3D pinned · ' + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
-               '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s active version' : ' · this order only') }[e.kind] || e.kind;
+               '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s version in use' : ' · this order only') }[e.kind] || e.kind;
     },
     // An order line: produce it from another version of its option (explicit; recorded in the order history)
     async useLineVersion(l) {
@@ -1365,7 +1350,7 @@ function adminApp() {
       const choices = (l.three_d_versions || []).filter(v => v.mesh_id !== now);
       if (!choices.length) { this.notify(`${l.ring_id} has no other 3D version — upload a revised STL instead.`, 'error'); return; }
       const prod = ['production', 'qc', 'shipped', 'completed'].includes(this.od.status);
-      const r = await this.ask({ title: `Produce ${l.ring_id} from another 3D version?`,
+      const r = await this.ask({ title: `Use another 3D version for ${l.ring_id}?`,
         text: `It is produced from ${l.three_d_version?.label || '—'} now. The change is recorded in the order history.` + (prod ? ` ${this.od.ref} is already ${this.od.status_label.toLowerCase()} — say why.` : ''),
         choices: choices.map(v => ({ value: v.mesh_id, label: v.label + (v.active ? ' · the design’s active version' : '') })),
         input: { label: prod ? 'Why (required)' : 'Note (optional)', value: '', max: 300 }, confirmLabel: 'Use this version' });
@@ -2121,9 +2106,9 @@ function adminApp() {
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       if (e.kind === 'external_part') return e.text || 'Uploaded STL';
       if (e.kind === 'admin_external_design_added') return `Added to session ${d.session_ref || ''} from ${d.filename || 'an uploaded STL'}` + (d.source_tool ? ' (' + d.source_tool + ')' : '') + (d.scaling === 'exact' ? ' · used exactly as uploaded' : ' · scalable master') + (d.by ? ' — ' + d.by : '');
-      if (e.kind === 'admin_session_created') return `Session ${d.session_ref || ''}` + (d.from_design ? ' made from this design to hold another design' : '') + (d.title ? ' · ' + d.title : '') + (d.by ? ' — ' + d.by : '');
-      if (e.kind === 'admin_3d_version_added') return `v${d.version_no} · ` + (d.source === 'external' ? `External${d.source_tool ? ' · ' + d.source_tool : ''} · ${d.filename || ''} · ${d.scaling === 'exact' ? 'used exactly as uploaded' : 'scalable master'}` + (d.parent_version_no ? ` · revises v${d.parent_version_no}` : '') : 'Hi3D model') + (d.active ? ' · now active' : ' · kept beside the active version') + (d.order_ref ? ' · for ' + d.order_ref : '') + (d.note ? ' · ' + d.note : '') + (d.by && d.by !== 'hi3d' ? ' — ' + d.by : '');
-      if (e.kind === 'admin_3d_version_activated') return `${d.label || 'v' + d.version_no} is the active version` + (d.from_version_no ? ` (was v${d.from_version_no})` : '') + (d.note ? ' · ' + d.note : '') + (d.by ? ' — ' + d.by : '');
+      if (e.kind === 'admin_session_created') return `This session (${d.session_ref || ''}) now holds more than one design` + (d.by ? ' — ' + d.by : '');
+      if (e.kind === 'admin_3d_version_added') return `v${d.version_no} · ` + (d.source === 'external' ? `External${d.source_tool ? ' · ' + d.source_tool : ''} · ${d.filename || ''} · ${d.scaling === 'exact' ? 'used exactly as uploaded' : 'scalable master'}` + (d.parent_version_no ? ` · revises v${d.parent_version_no}` : '') : 'Hi3D model') + (d.active ? ' · now in use (newest)' : ' · kept beside the version in use') + (d.order_ref ? ' · for ' + d.order_ref : '') + (d.note ? ' · ' + d.note : '') + (d.by && d.by !== 'hi3d' ? ' — ' + d.by : '');
+      if (e.kind === 'admin_3d_version_activated') return `${d.label || (d.version_no ? 'v' + d.version_no : 'No version')} is the version in use` + (d.from_version_no ? ` (was v${d.from_version_no})` : '') + (d.note ? ' · ' + d.note : '') + (d.by ? ' — ' + d.by : '');
       if (e.kind === 'admin_3d_version_archived' || e.kind === 'admin_3d_version_restored') return (d.label || 'v' + d.version_no) + (e.kind.endsWith('archived') ? ' archived (its file stays)' : ' restored') + (d.by ? ' — ' + d.by : '');
       // The size in the product's own unit: the row's product (Dashboard activity), else the open session's
       const charm = e.product_type ? e.product_type === 'charm' : this.isCharm(this.sd?.session);
