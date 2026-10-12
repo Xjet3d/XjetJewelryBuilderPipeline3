@@ -424,16 +424,6 @@ function adminApp() {
         this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment');
       } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
-    async sendQuoteToFulfillment() {
-      if (!this.qd || !this.qf || !this.qf.eligible) return;
-      const r = await this.ask({ title: 'Send ' + this.qd.ref + ' to Fulfillment?',
-        text: 'Fulfillment reviews the piece operationally before the quote is answered; when the customer approves the quote, the order continues as the same requirement there. Payment, the quote itself and the customer emails stay here.',
-        confirmLabel: 'Send to Fulfillment', cancelLabel: 'Not now', input: { label: 'Note for the operations team (optional — not a signature)', value: '', placeholder: 'For example: a detail to check', max: 500 } });
-      if (!r) return;
-      this.qdBusy = true; this.qdError = '';
-      try { this.qf = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/fulfillment/enroll`, { note: (r.value || '').trim() }); this.toast(this.qd.ref + ' is with Fulfillment.'); await this.loadQuote(true); }
-      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
-    },
     // The quote request inbox: one page, searched and filtered on the server; counts per status for the filter and badge
     async loadQuoteInbox(offset = 0) {
       this.qiLoading = true; this.qiMsg = '';
@@ -605,7 +595,7 @@ function adminApp() {
         const same = keepDraft && this.qd && this.qd.id === fresh.id;
         this.qd = fresh;
         if (!same) this.qResetForm();
-        // The Fulfillment hand-over of the request (docs/FULFILLMENT.md); {enabled: false} where the integration is off
+        // Fulfillment never takes a quotation; the card shows the state of the order it became (docs/FULFILLMENT.md)
         this.qf = await this.api('GET', '/api/admin/quote-requests/' + encodeURIComponent(fresh.id) + '/fulfillment').catch(() => null);
       } catch (e) { this.qd = null; this.qdError = e.message; }
     },

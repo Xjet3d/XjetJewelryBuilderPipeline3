@@ -22,10 +22,13 @@ Fulfillment never writes to `pipeline3.db`; Pipeline 3 never writes to Fulfillme
 
 ## What Pipeline 3 gains (all behind `P3_FULFILLMENT_INTEGRATION`, off by default)
 
-- **Enrollment.** An order (or a quote request) is handed to Fulfillment by the Admin's explicit *Send to
-  Fulfillment* action, never automatically. From then on the record's process owner is Fulfillment: the legacy
-  production / qc / shipped / completed status changes on that order are refused with an explanation, and those
-  statuses are written by the projection instead. Payment, notes and cancellation stay with the Admin.
+- **Enrollment.** An order is handed to Fulfillment by the Admin's explicit *Send to Fulfillment* action, never
+  automatically (manual ingestion during the pilot, D-15). **Quotations are never enrolled** (D-10): a quote is
+  managed here until the customer approves it and it becomes an order; that order is sent, and its snapshot carries
+  the quote as a reference (`order.quote`, `lines[].quote_request_id`). From then on the order's process owner is
+  Fulfillment: the legacy production / qc / shipped / completed status changes on that order are refused with an
+  explanation, and those statuses are written by the projection instead. Payment, notes and cancellation stay with
+  the Admin.
 - **The integration API** `GET|POST /JewelryB2C3/api/integrations/fulfillment/v1/…` (identity, changes, a request's
   snapshot, commands, events, release checks, shipping checks, restricted asset access), authenticated with a dedicated
   service credential (`P3_FULFILLMENT_SERVICE_KEY`, never the Admin key) and answering only in the internal Admin
@@ -77,7 +80,7 @@ The environment id Fulfillment pins (`EXPECTED_ATELIER_ENVIRONMENT_ID` there) is
 | Batch | On this side |
 |---|---|
 | 0 | This document and the README link |
-| 3 | **Done 2026-10-12.** `p3/fulfillment_bridge.py`: the bridge tables and triggers (commercial changes and 3D results of enrolled records fill the outbox in the same transaction), the identity / changes / requests / assets (line image, production STL with its SHA-256) / events endpoints, the service key and the flag, the Admin's *Send to Fulfillment* with the order's Fulfillment card and projection, the ownership guard (production / qc / shipped / completed refused on enrolled orders; the projection's own writes create no change), the quote → order continuation (the order inherits the quote's enrollment) |
+| 3 | **Done 2026-10-12.** `p3/fulfillment_bridge.py`: the bridge tables and triggers (commercial changes and 3D results of enrolled records fill the outbox in the same transaction), the identity / changes / requests / assets (line image, production STL with its SHA-256) / events endpoints, the service key and the flag, the Admin's *Send to Fulfillment* with the order's Fulfillment card and projection, the ownership guard (production / qc / shipped / completed refused on enrolled orders; the projection's own writes create no change). *Amended 2026-10-13 (D-10): the quote-request enrollment, snapshot and trigger of this batch were removed — quotations stay in the Admin; the order keeps the quote reference* |
 | 4 | **Done 2026-10-13.** `POST …/v1/release-checks` (payment, cancellation, quantity read live for the exact lines and quantities); commands (`fulfillment_commands`, the Admin's *Request cancellation* on a line of an enrolled order → `cancel_line` in the feed with its payload → Pending until Fulfillment's `command_applied` / `command_rejected` event, the first answer stands, a repeated click is the same request); the projection writes Fulfillment's `order_status` into the order (production → qc → shipped → completed, forward only, never on a cancelled or completed order, no change goes back out); the Orders list's *Fulfillment* column and filter (`?fulfillment=enrolled|review|changes|blocked|in_progress|ready_to_ship|shipped|commercial_action|awaiting_sync`), the quote inbox's column, the order page's parts table (stage, review decision with its reason and customer-facing message, file, quantities, blockers) and requests, the quote page's Fulfillment card with *Send to Fulfillment* |
 | 8 | (also) `fulfillment_stage` and the timeline in My Account |
 | 7 | Shipping checks (the authoritative address and its version) |

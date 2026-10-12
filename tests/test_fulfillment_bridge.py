@@ -222,11 +222,11 @@ async def test_events_are_idempotent_stale_ones_are_ignored_and_conflicts_are_re
     try:
         _Did, O = await _Placed(H)
         await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
-        E1 = _Event("evt-1", O["id"], 1, parts=[{"display_no": "MP-10001-01", "summary": "0/2 passed QC", "file_state": "unavailable"}])
+        E1 = _Event("evt-1", O["id"], 1, parts=[{"display_no": "MP-10001-001", "summary": "0/2 passed QC", "file_state": "unavailable"}])
         R = await H.Client.post(Prefix + "/events", json={"events": [E1]}, headers=Service)
         assert R.status_code == 200 and R.json()["results"] == [{"event_id": "evt-1", "status": "applied", "result": "applied"}]
         State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=Admin)).json()
-        assert State["projection"]["customer_status"] == "UNDER_REVIEW" and State["projection"]["parts"][0]["display_no"] == "MP-10001-01"
+        assert State["projection"]["customer_status"] == "UNDER_REVIEW" and State["projection"]["parts"][0]["display_no"] == "MP-10001-001"
         Hist = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["events"]
         assert Hist[-1]["kind"] == "fulfillment" and Hist[-1]["by"] == "fulfillment" and Hist[-1]["data"]["summary"] == "1 part under review"
         # The same event again: a duplicate, applied once; the same id with another payload: a conflict, kept aside
@@ -251,46 +251,41 @@ async def test_events_are_idempotent_stale_ones_are_ignored_and_conflicts_are_re
         await H.Close()
 
 
-async def test_a_quote_request_is_the_same_requirement_before_and_after_it_becomes_an_order(tmp_path):
+async def test_a_quotation_stays_with_the_admin_and_the_order_it_becomes_carries_the_reference(tmp_path):
     H = _On(tmp_path)
     try:
-        B, Q = await _Request(H)
-        R = await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)
-        assert R.status_code == 200 and R.json()["enrolled"]
-        assert (await H.Client.post(f"/api/admin/quote-requests/Q-5001/fulfillment/enroll", headers=Admin)).json()["error"]["code"] == "already_enrolled"
-        S = (await H.Client.get(Prefix + f"/requests/quote_request/{Q['id']}", headers=Service)).json()
-        assert S["display_ref"] == "Q-5001" and S["quote_request"]["status"] == "new" and S["quote_request"]["order"] is None
-        assert S["quote_request"]["payment"] == {"status": "not_applicable", "basis": None}
-        L = S["lines"][0]
-        assert L["quote_request_id"] == Q["id"] and L["material_id"] == "gold_18k_yellow" and L["size"] == {"ring_size": 7, "label": "US 7"} and L["quantity"] == 2
-        assert L["model"]["state"] == "no_model"
-        # The quote is sent and approved by the customer: it becomes an order, which inherits the enrollment
+        _B, Q = await _Request(H)
+        # A quotation is never sent to Fulfillment (D-10): no action, no snapshot, no change in the feed
+        assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)).status_code == 404
+        State = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}/fulfillment", headers=Admin)).json()
+        assert State["quotation"] and not State["eligible"] and not State["enrolled"] and State["order"] is None and "managed here" in State["ineligible_reason"]
+        assert (await H.Client.get(Prefix + f"/requests/quote_request/{Q['id']}", headers=Service)).status_code == 404
+        assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_outbox")["n"] == 0
+        assert H.Ctx.Db.One("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'fulfillment_quotes_changed'") is None
+        # The quote is sent and approved by the customer: it becomes an order — that order is what goes to Fulfillment
         from datetime import datetime, timedelta, timezone
         Offer = {"size": 7, "weight_g": 6.5, "price_per_g": 400, "unit_price": 2600, "quantity": 2, "message": "Hello Dana,\n\nHere is your quote.",
                  "valid_until": (datetime.now(timezone.utc).date() + timedelta(days=10)).isoformat()}
         assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/offer", json=Offer, headers=Admin)).status_code == 200
-        C = (await H.Client.get(Prefix + "/changes?cursor=1", headers=Service)).json()["changes"]
-        assert [X["reason"] for X in C] == ["status"] and C[0]["entity_type"] == "quote_request"            # new → quoted
         Token = _Link(H).split("token=")[1]
         R = await H.Client.post("/quote/approve", data={"token": Token, **Address, "shipping_method": "standard", "terms": "1"})
         assert R.status_code == 200 and "ORD-10001" in R.text
-        C = (await H.Client.get(Prefix + "/changes?cursor=2", headers=Service)).json()["changes"]
-        assert [(X["entity_type"], X["reason"]) for X in C] == [("quote_request", "converted")]
-        S = (await H.Client.get(Prefix + f"/requests/quote_request/{Q['id']}", headers=Service)).json()
-        OrderId = S["quote_request"]["order"]["id"]
-        assert S["quote_request"]["order"]["ref"] == "ORD-10001" and S["quote_request"]["status"] == "approved"
-        # Reading the order enrolls it as the quote's continuation, with the linkage on its line
-        Os = (await H.Client.get(Prefix + f"/requests/order/{OrderId}", headers=Service)).json()
-        assert Os["enrollment"]["inherited_from"] == Q["id"] and Os["lines"][0]["quote_request_id"] == Q["id"]
-        assert Os["order"]["quote"]["ref"] == "Q-5001" and Os["order"]["payment"]["status"] == "pending"
-        C = (await H.Client.get(Prefix + "/changes?cursor=3", headers=Service)).json()["changes"]
-        assert [(X["entity_type"], X["kind"], X["reason"]) for X in C] == [("order", "enrolled", "inherited")]
-        State = (await H.Client.get(f"/api/admin/orders/{OrderId}/fulfillment", headers=Admin)).json()
-        assert State["enrolled"] and State["enrollment"]["inherited_from"] == Q["id"]
-        # An approved quote can no longer be sent on its own; a new quote request can
-        _B2, Q2 = await _Request(H, Prompt="Another signet")
-        assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)).json()["error"]["code"] == "already_enrolled"
-        assert (await H.Client.post(f"/api/admin/quote-requests/{Q2['id']}/fulfillment/enroll", headers=Admin)).json()["enrolled"]
+        State = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}/fulfillment", headers=Admin)).json()
+        assert State["order"]["ref"] == "ORD-10001" and State["order_fulfillment"] is None
+        OrderId = State["order"]["id"]
+        assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_outbox")["n"] == 0                       # the conversion itself is no change
+        assert (await H.Client.post(f"/api/admin/orders/{OrderId}/fulfillment/enroll", headers=Admin)).json()["enrolled"]
+        S = (await H.Client.get(Prefix + f"/requests/order/{OrderId}", headers=Service)).json()
+        assert S["order"]["quote"]["ref"] == "Q-5001" and S["lines"][0]["quote_request_id"] == Q["id"] and S["enrollment"]["inherited_from"] is None
+        assert S["lines"][0]["material_id"] == "gold_18k_yellow" and S["lines"][0]["quantity"] == 2 and S["order"]["payment"]["status"] == "pending"
+        C = (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"]
+        assert [(X["entity_type"], X["kind"], X["reason"]) for X in C] == [("order", "enrolled", "admin")]
+        # The quote page and the quote inbox show the order's Fulfillment state; a note on the quote changes nothing
+        assert (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}/fulfillment", headers=Admin)).json()["order_fulfillment"]["enrolled"]
+        Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
+        assert Rows[0]["id"] == Q["id"] and Rows[0]["fulfillment"]["enrolled"]
+        assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/note", json={"note": "x"}, headers=Admin)).status_code == 200
+        assert len((await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"]) == 1
     finally:
         await H.Close()
 
@@ -349,7 +344,7 @@ async def test_d07_a_command_stays_pending_until_fulfillment_answers_and_a_repea
         C = (await H.Client.get(Prefix + "/changes?cursor=1", headers=Service)).json()["changes"]
         assert [(X["kind"], X["reason"]) for X in C] == [("command", "cancel_line")] and C[0]["payload"]["command_id"] == Cmd["id"] and C[0]["payload"]["reason"] == "one ring fewer"
         E = _Event("evt-c1", O["id"], 2, Type="fulfillment.command_applied",
-                   command={"command_id": Cmd["id"], "action": "cancel_line", "result": "partially_accepted", "reason": None, "part": "MP-10001-01"})
+                   command={"command_id": Cmd["id"], "action": "cancel_line", "result": "partially_accepted", "reason": None, "part": "MP-10001-001"})
         assert (await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)).json()["results"][0]["status"] == "applied"
         Cmd = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment/commands", headers=Admin)).json()["commands"][0]
         assert Cmd["state"] == "applied" and Cmd["result"]["result"] == "partially_accepted" and Cmd["decided_at"]
@@ -399,7 +394,7 @@ async def test_the_lists_carry_the_fulfillment_state_and_filter_by_it(tmp_path):
         _D1, O1 = await _Placed(H, "Band one", Click="c1")
         _D2, O2 = await _Placed(H, "Band two", Click="c2")
         await H.Client.post(f"/api/admin/orders/{O2['id']}/fulfillment/enroll", headers=Admin)
-        E = _Event("evt-l1", O2["id"], 1, parts=[{"display_no": "MP-10002-01", "status": "awaiting_review", "review_status": "in_review", "summary": "0/2 passed QC",
+        E = _Event("evt-l1", O2["id"], 1, parts=[{"display_no": "MP-10002-001", "status": "awaiting_review", "review_status": "in_review", "summary": "0/2 passed QC",
                                                   "file_state": "unavailable", "blockers": ["PAYMENT_PENDING", "REVISION_NOT_APPROVED"]}], commercial_action_pending=False)
         await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)
         L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
@@ -407,15 +402,14 @@ async def test_the_lists_carry_the_fulfillment_state_and_filter_by_it(tmp_path):
         assert ById[O1["id"]]["fulfillment"] is None
         F = ById[O2["id"]]["fulfillment"]
         assert F["enrolled"] and F["customer_status"] == "UNDER_REVIEW" and F["review_status"] == "in_review" and F["blocker"] == "PAYMENT_PENDING" and F["pending_commands"] == 0
-        assert F["parts"][0]["display_no"] == "MP-10002-01" and {X["id"] for X in L["fulfillment_filters"]} >= {"enrolled", "review", "blocked", "shipped"}
+        assert F["parts"][0]["display_no"] == "MP-10002-001" and {X["id"] for X in L["fulfillment_filters"]} >= {"enrolled", "review", "blocked", "shipped"}
         for Filter, Expected in (("enrolled", [O2["id"]]), ("review", [O2["id"]]), ("shipped", []), ("blocked", []), ("commercial_action", [])):
             R = (await H.Client.get(f"/api/admin/orders?fulfillment={Filter}", headers=Admin)).json()
             assert [X["id"] for X in R["orders"]] == Expected and R["total"] == len(Expected), Filter
         assert (await H.Client.get("/api/admin/orders?fulfillment=nope", headers=Admin)).status_code == 400
-        # The quote inbox: an enrolled request carries its state too
+        # The quote inbox: a quotation has no Fulfillment state of its own (its order will)
         _B, Q = await _Request(H)
-        await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/fulfillment/enroll", headers=Admin)
         Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
-        assert Rows[0]["id"] == Q["id"] and Rows[0]["fulfillment"]["enrolled"] and Rows[0]["fulfillment"]["customer_status"] is None
+        assert Rows[0]["id"] == Q["id"] and Rows[0]["fulfillment"] is None
     finally:
         await H.Close()

@@ -35,8 +35,7 @@ ContractVersion = "atelier-fulfillment/v1"
 EnvironmentKey = "fulfillment_environment_id"
 Prefix = "/api/integrations/fulfillment/v1"
 ProjectionStatuses = ("production", "qc", "shipped", "completed")    # written by the projection; never a commercial change
-EligibleOrderStatuses = ("new", "payment_confirmed", "three_d_ready")
-EligibleQuoteStatuses = ("new", "quoted", "answered")
+EligibleOrderStatuses = ("new", "payment_confirmed", "three_d_ready")   # a quotation is never enrolled (D-10): its order is
 MaxChanges, MaxEvents, MaxCheckItems = 500, 200, 100
 CommandActions = {"cancel_line": "decide_cancellation"}            # an Admin command and the Fulfillment permission it delegates
 CommandOutcomeEvents = ("fulfillment.command_applied", "fulfillment.command_rejected")
@@ -148,16 +147,8 @@ BEGIN
     FROM fulfillment_enrollments e WHERE e.entity_type = 'order' AND e.entity_id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS fulfillment_quotes_changed AFTER UPDATE OF status, order_id, offer_json, ring_size, charm_size, quantity, material_id ON quote_requests
-WHEN EXISTS (SELECT 1 FROM fulfillment_enrollments e WHERE e.entity_type = 'quote_request' AND e.entity_id = NEW.id AND e.state = 'enrolled')
-BEGIN
-  UPDATE fulfillment_enrollments SET source_version = source_version + 1, updated_at = {_SqlNow}
-   WHERE entity_type = 'quote_request' AND entity_id = NEW.id;
-  INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at)
-  SELECT 'updated', 'quote_request', NEW.id, e.source_version,
-         CASE WHEN OLD.order_id IS NOT NEW.order_id THEN 'converted' WHEN OLD.status IS NOT NEW.status THEN 'status' ELSE 'offer' END, {_SqlNow}
-    FROM fulfillment_enrollments e WHERE e.entity_type = 'quote_request' AND e.entity_id = NEW.id;
-END;
+-- Quotations are never enrolled (D-10, 2026-10-13): the Batch 3 trigger on quote_requests is gone
+DROP TRIGGER IF EXISTS fulfillment_quotes_changed;
 
 -- A 3D result for a design changes the model availability of every enrolled order line of that design
 CREATE TRIGGER IF NOT EXISTS fulfillment_model_inserted AFTER INSERT ON session_3d
@@ -248,21 +239,17 @@ class FulfillmentBridge:
                 return False, f"an order in status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' stays with the existing flow", O
             return True, None, O
         Q = self._Quote(EntityId)
-        if Q["status"] == "approved":
-            return False, "this quote became an order: send the order", Q
-        if Q["status"] not in EligibleQuoteStatuses:
-            return False, f"a quote request in status '{Q['status']}' is not sent for review", Q
-        return True, None, Q
+        return False, "quotations are managed here; once the quote has become an order, the order is sent", Q
 
     def Enroll(self, EntityType: str, EntityId: str, By: str, Note: str = "", InheritedFrom: str | None = None) -> dict:
-        """The explicit hand-over. One row per record, an outbox row in the same transaction, a line in the record's
-        history. Repeating it is refused, never duplicated."""
+        """The explicit hand-over of an order. One row per order, an outbox row in the same transaction, a line in the
+        order's history. Repeating it is refused, never duplicated. A quotation is never sent (D-10)."""
         self._Require()
-        if EntityType not in ("order", "quote_request"):
-            raise HttpError(400, "invalid_entity", "An order or a quote request is sent to Fulfillment.")
+        if EntityType != "order":
+            raise HttpError(400, "invalid_entity", "Orders are sent to Fulfillment; a quotation stays here until it becomes an order.")
         Ok, Why, Record = self.Eligibility(EntityType, EntityId)
         Id = Record["id"]
-        Ref = Record["ref"] if EntityType == "order" else OrdersModule.QuoteRef(Record["request_no"])
+        Ref = Record["ref"]
         if self.IsEnrolled(EntityType, Id):                  # the truer answer first: a record already with Fulfillment is never "not eligible"
             raise HttpError(409, "already_enrolled", f"{Ref} is already with Fulfillment.")
         if not Ok:
@@ -423,27 +410,16 @@ class FulfillmentBridge:
 
     # ── snapshots ────────────────────────────────────────────────────────
     def Snapshot(self, EntityType: str, EntityId: str) -> dict:
-        """Everything Fulfillment needs about an enrolled record, read-only, without internal notes or history."""
-        if EntityType == "order":
-            O = self._Order(EntityId)
-            E = self.Enrollment("order", O["id"])
-            if not E:
-                # An order made from an enrolled quote inherits the enrollment: the same requirement, now an order
-                Quote = O.get("quote")
-                QE = self.Enrollment("quote_request", Quote["id"]) if Quote else None
-                if QE and QE["state"] == "enrolled":
-                    self.Enroll("order", O["id"], QE["enrolled_by"], f"inherited from {Quote['ref']}", InheritedFrom=Quote["id"])
-                    E = self.Enrollment("order", O["id"])
-            if not E:
-                raise HttpError(404, "not_enrolled", "This order is not with Fulfillment.")
-            return self._OrderSnapshot(O, E)
-        if EntityType == "quote_request":
-            Q = self._Quote(EntityId)
-            E = self.Enrollment("quote_request", Q["id"])
-            if not E:
-                raise HttpError(404, "not_enrolled", "This quote request is not with Fulfillment.")
-            return self._QuoteSnapshot(Q, E)
-        raise HttpError(404, "not_found", "Not found.")
+        """Everything Fulfillment needs about an enrolled order, read-only, without internal notes or history. The
+        quotation an order came from is a reference on it (`order.quote`, `lines[].quote_request_id`), never a
+        record of its own (D-10)."""
+        if EntityType != "order":
+            raise HttpError(404, "not_supported", "Only orders are with Fulfillment; a quotation is managed in Atelier.")
+        O = self._Order(EntityId)
+        E = self.Enrollment("order", O["id"])
+        if not E:
+            raise HttpError(404, "not_enrolled", "This order is not with Fulfillment.")
+        return self._OrderSnapshot(O, E)
 
     def _Envelope(self, EntityType: str, Id: str, Ref: str, E: dict) -> dict:
         return {"contract_version": ContractVersion, "environment_id": self.EnvironmentId(), "entity_type": EntityType, "entity_id": Id,
@@ -478,26 +454,6 @@ class FulfillmentBridge:
                                            "reason": (CancelEvent["data"].get("note") or None) if CancelEvent else None},
                           "quote": O.get("quote"), "promised_delivery": None},
                 "lines": Lines}
-
-    def _QuoteSnapshot(self, Q: dict, E: dict) -> dict:
-        J = self.Orders.QuoteRequestJson(Q)
-        Order = self.Ctx.Db.One("SELECT id, order_no, status, payment_status FROM orders WHERE id = ?", (Q["order_id"],)) if Q.get("order_id") else None
-        Size = {"ring_size": Q["ring_size"]} if J["product_type"] == "ring" else {"charm_size": Q.get("charm_size"), "unit": "mm"}
-        Line = {"line_id": None, "position": 1, "design_id": Q["design_id"], "candidate_id": Q["candidate_id"], "item_ref": Q["ring_id"], "title": Q["title"],
-                "product_type": J["product_type"], "material_id": Q["material_id"], "material_label": Q["material_label"], "size": {**Size, "label": J["size_label"]},
-                "quantity": Q["quantity"], "unit_price": (J["offer"] or {}).get("unit_price"), "currency": "USD", "quote_request_id": Q["id"],
-                "image": {"design_id": Q["design_id"], "candidate_id": Q["candidate_id"]},
-                "model": self._Model({"design_id": Q["design_id"], "candidate_id": Q["candidate_id"], "material_id": Q["material_id"],
-                                      "product_type": J["product_type"], "ring_size": Q["ring_size"], "charm_size": Q.get("charm_size")})}
-        return {**self._Envelope("quote_request", Q["id"], J["ref"], E),
-                "quote_request": {"status": Q["status"], "requested_at": Q["created_at"], "updated_at": Q["updated_at"],
-                                  "customer": {"name": (J["customer"].get("first_name", "") + " " + J["customer"].get("last_name", "")).strip(),
-                                               "email": J["customer"].get("email")},
-                                  "offer": J["offer"], "offer_expired": J["offer_expired"], "decided_at": Q.get("decided_at"),
-                                  "payment": {"status": "not_applicable", "basis": None},
-                                  "order": {"id": Order["id"], "ref": OrdersModule.OrderRef(Order["order_no"]), "status": Order["status"],
-                                            "payment_status": Order["payment_status"]} if Order else None},
-                "lines": [Line]}
 
     def _Model(self, L: dict) -> dict:
         """What Atelier knows about the production model of a line: available only when a measured, unflagged (or
@@ -543,7 +499,7 @@ class FulfillmentBridge:
                             (CandidateId, DesignId))
         if not R or not R["asset_path"]:
             raise HttpError(404, "image_not_found", "No such image.")
-        if not (self.IsEnrolled("order", self._OrderOfDesign(DesignId) or "") or self._QuoteEnrolledForDesign(DesignId)):
+        if not self.IsEnrolled("order", self._OrderOfDesign(DesignId) or ""):
             raise HttpError(404, "image_not_found", "No such image.")
         try:
             P = assets.Resolve(self.Ctx.Settings.AssetsDir, R["asset_path"])
@@ -557,10 +513,6 @@ class FulfillmentBridge:
         R = self.Ctx.Db.One("SELECT l.order_id FROM order_lines l JOIN fulfillment_enrollments e ON e.entity_type = 'order' AND e.entity_id = l.order_id "
                             "AND e.state = 'enrolled' WHERE l.design_id = ? LIMIT 1", (DesignId,))
         return R["order_id"] if R else None
-
-    def _QuoteEnrolledForDesign(self, DesignId: str) -> bool:
-        return bool(self.Ctx.Db.One("SELECT 1 AS x FROM quote_requests q JOIN fulfillment_enrollments e ON e.entity_type = 'quote_request' AND e.entity_id = q.id "
-                                    "AND e.state = 'enrolled' WHERE q.design_id = ? LIMIT 1", (DesignId,)))
 
     def StartProductionStl(self, LineId: str) -> dict:
         """The production file for an enrolled order line: the design's model scaled to the ordered size and material
@@ -647,7 +599,7 @@ class FulfillmentBridge:
             Result = "unknown_entity"
             if E["event_type"] in CommandOutcomeEvents:
                 self._ApplyCommandOutcome(Conn, E, T)
-            if EntityType in ("order", "quote_request") and EntityId and Conn.execute(
+            if EntityType == "order" and EntityId and Conn.execute(
                     "SELECT 1 FROM fulfillment_enrollments WHERE entity_type = ? AND entity_id = ?", (EntityType, EntityId)).fetchone():
                 Result = self._Project(Conn, E, EntityType, EntityId, T)
             Conn.execute("INSERT INTO fulfillment_inbox (event_id, event_type, aggregate_type, aggregate_id, aggregate_version, entity_type, entity_id, "
@@ -715,16 +667,18 @@ class FulfillmentBridge:
         if not self.Enabled:
             return {"enabled": False}
         Ok, Why, Record = self.Eligibility(EntityType, EntityId)
+        if EntityType == "quote_request":
+            # A quotation is never with Fulfillment; the order it became may be, and that is what the quote page shows
+            Order = self.Ctx.Db.One("SELECT id, order_no FROM orders WHERE id = ?", (Record["order_id"],)) if Record.get("order_id") else None
+            return {"enabled": True, "quotation": True, "enrolled": False, "eligible": False, "ineligible_reason": Why,
+                    "order": {"id": Order["id"], "ref": OrdersModule.OrderRef(Order["order_no"])} if Order else None,
+                    "order_fulfillment": self.Summary("order", Order["id"]) if Order else None}
         Id = Record["id"]
-        E = self.Enrollment(EntityType, Id)
+        E = self.Enrollment("order", Id)
         Pull = self.LastPull()
-        Out = {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and not (E and E["state"] == "enrolled"),
-               "ineligible_reason": Why, "enrollment": E, "awaiting_sync": self._Awaiting(EntityType, Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
-               "projection": self.Projection(EntityType, Id), "commands": self.CommandList(EntityType, Id) if EntityType == "order" else [],
-               "command_actions": list(CommandActions)}
-        if EntityType == "quote_request" and Record.get("order_id") and self.IsEnrolled("order", Record["order_id"]):
-            Out["order_projection"] = self.Projection("order", Record["order_id"])      # a converted quote: the progress lives on its order
-        return Out
+        return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and not (E and E["state"] == "enrolled"),
+                "ineligible_reason": Why, "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
+                "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions)}
 
     def Summary(self, EntityType: str, EntityId: str) -> dict | None:
         """One list row's Fulfillment column: the stage, the worst review state, the first blocker, pending commands and
@@ -744,14 +698,13 @@ class FulfillmentBridge:
                 "parts": [{"display_no": P.get("display_no"), "status": P.get("status"), "summary": P.get("summary"), "file_state": P.get("file_state")} for P in Parts]}
 
     def Decorate(self, Rows: list[dict], EntityType: str) -> list[dict]:
-        """The Fulfillment column on a page of orders or quote requests (a converted quote shows its order's state)."""
+        """The Fulfillment column on a page of orders, or of quote requests (a quotation shows its order's state once
+        it has become one; before that there is nothing to show — D-10)."""
         if not self.Enabled:
             return Rows
         for R in Rows:
-            S = self.Summary(EntityType, R["id"])
-            if S is None and EntityType == "quote_request" and R.get("order_id"):
-                S = self.Summary("order", R["order_id"])
-            R["fulfillment"] = S
+            OrderId = R["id"] if EntityType == "order" else R.get("order_id")
+            R["fulfillment"] = self.Summary("order", OrderId) if OrderId else None
         return Rows
 
     @staticmethod
@@ -854,10 +807,6 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
 
     @App_.get("/api/admin/quote-requests/{RequestId}/fulfillment")
     async def QuoteFulfillment(RequestId: str, authorization: str | None = Header(None)):
+        """What the quote page shows: never an enrollment of the quotation itself, the state of its order once it exists (D-10)."""
         Admin(authorization)
         return Bridge.AdminState("quote_request", RequestId)
-
-    @App_.post("/api/admin/quote-requests/{RequestId}/fulfillment/enroll")
-    async def EnrollQuote(RequestId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
-        Who = Admin(authorization)
-        return Bridge.Enroll("quote_request", RequestId, Who.Id, str(Body_.get("note") or ""))

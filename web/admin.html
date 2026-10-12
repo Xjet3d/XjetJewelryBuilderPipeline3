@@ -1508,27 +1508,19 @@
         </div>
       </section>
 
-      <!-- Fulfillment: the operational review of the piece before and after it becomes an order (docs/FULFILLMENT.md) -->
+      <!-- Fulfillment: quotations are managed here; the order a quote becomes is what goes to Fulfillment (docs/FULFILLMENT.md, D-10) -->
       <section class="card p-6 space-y-3" x-show="qf && qf.enabled" x-cloak>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-3"><p class="lbl">Fulfillment</p>
-            <span x-show="qf?.enrolled" class="badge bg-emerald-100 text-emerald-800">With Fulfillment</span>
-            <span x-show="qf?.enrolled && qf?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
-            <span x-show="!qf?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not sent</span></div>
-          <button x-show="qf?.eligible" class="btn !py-1.5" :disabled="qdBusy" @click="sendQuoteToFulfillment()">Send to Fulfillment</button>
-          <p x-show="!qf?.enrolled && !qf?.eligible && qf?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent: ' + qf.ineligible_reason + '.'"></p>
+            <span x-show="qf?.order_fulfillment?.enrolled" class="badge bg-emerald-100 text-emerald-800">Order with Fulfillment</span>
+            <span x-show="!qf?.order_fulfillment?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not applicable to a quotation</span></div>
+          <a x-show="qf?.order" class="btn2 !py-1.5" :href="'#/orders/' + encodeURIComponent(qf?.order?.id || '')" x-text="'Open order ' + (qf?.order?.ref || '')"></a>
         </div>
-        <template x-if="qf?.enrolled">
-          <div class="text-[13px] text-zinc-700 space-y-2">
-            <p>Sent <span x-text="dateTime(qf.enrollment.enrolled_at)"></span> · through <span x-text="qf.enrollment.enrolled_by === 'developer-key' ? 'Admin shared-key access' : qf.enrollment.enrolled_by"></span><span x-show="qf.enrollment.note" x-text="' · note: ' + qf.enrollment.note"></span>
-              <span x-show="qd.order_ref" x-text="' · continues as order ' + qd.order_ref"></span></p>
-            <template x-for="p in ((qf.order_projection || qf.projection)?.parts || [])" :key="p.display_no">
-              <p><span class="font-mono" x-text="p.display_no"></span> · <span x-text="fReview(p.review_status)"></span><span x-show="p.review?.reason" x-text="' (' + p.review.reason + ')'"></span>
-                <span x-show="p.review?.customer_message" class="block text-zinc-500" x-text="'To the customer: ' + p.review.customer_message"></span>
-                <span class="block text-zinc-500" x-text="(p.summary || '') + ' · file ' + (p.file_state || '—') + ((p.blockers || []).length ? ' · ' + p.blockers.map(b => fBlocker(b)).join(', ') : '')"></span></p>
-            </template>
-            <p x-show="(qf.order_projection || qf.projection)?.commercial_action_pending" class="text-amber-800">Commercial action pending in Fulfillment (a cost exception or a paid order that cannot be produced).</p>
-            <p x-show="!(qf.order_projection || qf.projection)" class="text-zinc-500">No review received yet.</p>
+        <p class="text-[13px] text-zinc-700">Quotations are managed here. Once the customer approves the quote it becomes an order; that order is sent to Fulfillment from its own page (<em>Send to Fulfillment</em>) and keeps this quote as its reference.</p>
+        <template x-if="qf?.order_fulfillment">
+          <div class="text-[13px] text-zinc-700 space-y-1">
+            <p><span class="font-medium" x-text="qf.order_fulfillment.customer_status || 'With Fulfillment'"></span><span class="text-zinc-500" x-text="fulfillmentLine(qf.order_fulfillment) ? ' · ' + fulfillmentLine(qf.order_fulfillment) : ''"></span></p>
+            <template x-for="p in (qf.order_fulfillment.parts || [])" :key="p.display_no"><p><span class="font-mono" x-text="p.display_no"></span> <span x-text="p.summary || ''"></span><span class="text-zinc-500" x-text="' · file ' + (p.file_state || '—')"></span></p></template>
           </div>
         </template>
       </section>
