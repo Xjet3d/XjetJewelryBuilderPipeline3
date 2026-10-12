@@ -13,6 +13,7 @@ This repository is independent of the commercial Pipeline 2 (`XjetJewelryBuilder
 - Pricing rules and what still needs approval: [docs/PRICING.md](docs/PRICING.md)
 - Accounts, tokens and credits, and the future shared-auth integration point: [docs/ACCOUNTS.md](docs/ACCOUNTS.md)
 - Admin area (user / token management, per-user activity and usage): [docs/ADMIN.md](docs/ADMIN.md) — `/JewelryB2C3/admin/`
+- The XJet Atelier Fulfillment integration (ownership, the integration API, the flag, the rules): [docs/FULFILLMENT.md](docs/FULFILLMENT.md)
 
 ## Setup (Windows, Python 3.13)
 
