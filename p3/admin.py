@@ -34,6 +34,7 @@ from p3 import payments as PaymentsModule
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
+from p3 import versions as VersionsModule
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
 from p3 import spendwarning as SpendWarning
@@ -269,12 +270,14 @@ def Dashboard(Ctx: Context, Orders=None, Days: int | None = None) -> dict:
     # the averages do not depend on which size each request happened to ask for.
     Raws = [json.loads(R["measurement_json"]) for R in Ctx.Db.All(
         "SELECT r.measurement_json, b.design_id FROM raw_geometry r JOIN meshes m ON m.id = r.mesh_id "
-        "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id WHERE r.status = 'measured'")
+        "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id WHERE r.status = 'measured' "
+        "AND m.source = 'hi3d'")                                  # Hi3D models only (an external part is not a generated design)
         if R["design_id"] in LiveDesigns]
     Measured = Raws
     Raws = [R for R in Measured if R.get("bore_ok") and R.get("inner_diameter") and R.get("closed_heuristic", True)]
     Created = sum(1 for R in Ctx.Db.All("SELECT b.design_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
-                                        "JOIN batches b ON b.id = c.batch_id WHERE m.status = 'ready'") if R["design_id"] in LiveDesigns)
+                                        "JOIN batches b ON b.id = c.batch_id WHERE m.status = 'ready' AND m.source = 'hi3d'")
+                  if R["design_id"] in LiveDesigns)
     Book = Ctx.MaterialPrices
     Mats = list(dict.fromkeys(Mandatory + tuple(Ctx.Catalog.Materials)))
 
@@ -357,8 +360,9 @@ def UserCost(Ctx: Context, AccountId: str, Prices, AllUsage: list | None = None)
     return {"sessions": N, "ai_cost": round(Total, 4)}
 
 
-def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None) -> dict:
-    """One journey: a design for its owner, or (session id = use id) a customer on a shared master design."""
+def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None, Versions=None) -> dict:
+    """One journey: a design for its owner, or (session id = use id) a customer on a shared master design. Versions = the
+    design's 3D versions and its explicit session (p3/versions.py)."""
     Use = Ctx.Db.One("SELECT * FROM gallery_uses WHERE id = ?", (SessionId,)) if SessionId.startswith("use_") else None
     DesignId = Use["design_id"] if Use else SessionId
     Summary = (Sessions.Summaries(Ctx, SessionIds=[SessionId]) or [None])[0]
@@ -404,21 +408,21 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     for C in Choices:
         Last = {**(Last or {}), **{K: V for K, V in C.items() if V is not None}}
     SelCand = next((C for B in Batches for C in B["candidates"] if C["selected"]), None)
-    Mesh = Ctx.Db.One("SELECT m.id, m.candidate_id, m.updated_at FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
-                      "JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? AND m.status = 'ready' "
-                      "ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
+    Mesh = VersionsModule.ActiveMesh(Ctx.Db, DesignId)            # the design's active 3D version
     RawGeo = Ctx.Db.One("SELECT faces, status, integrity, preview_path FROM raw_geometry WHERE mesh_id = ?", (Mesh["id"],)) if Mesh else None
     # The journey's size/material: the matching result (if any) is what "Prepare / download STL" exports.
     Charm = Summary.get("product_type") == Products.Charm
+    Own = Production.ExactSize(Mesh, Charm) if Mesh else None   # an active part used exactly as uploaded: its own size
     if Charm:                                       # a charm: its size in mm (the customer's, else the recommended size)
-        Size = Summary["charm_size"] if Summary.get("charm_size_chosen") else Ctx.Products.CharmDefaultSize
+        Size = Summary["charm_size"] if Summary.get("charm_size_chosen") else (Own or Ctx.Products.CharmDefaultSize)
     else:
-        Size = Summary["ring_size"] if Summary["ring_size_chosen"] else 10.0
+        Size = Summary["ring_size"] if Summary["ring_size_chosen"] else (Own or 10.0)
     Material = (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId
     Matching = next((T for T in ThreeD if Mesh and T["mesh_id"] == Mesh["id"] and T["production_size"] == Size
                      and T["material_id"] == Material and T["status"] in ("measured", "needs_review")), None) if Mesh else None
     LatestOnMesh = next((T for T in ThreeD if Mesh and T["mesh_id"] == Mesh["id"] and T["status"] in ("measured", "needs_review")), None)
     ExistingModel = {"mesh_id": Mesh["id"], "candidate_id": Mesh["candidate_id"], "ring_id": Refs.get(Mesh["candidate_id"]),
+                     "version": VersionsModule.Brief(Mesh, Mesh["id"]),
                      "ready_at": Mesh["updated_at"], "faces": RawGeo["faces"] if RawGeo else None,
                      "measured": bool(RawGeo and RawGeo["status"] == "measured"),
                      "preview_ready": bool(RawGeo and RawGeo["preview_path"]),
@@ -452,6 +456,11 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                      "providers": sorted({U["provider"] or "unknown" for U in Usage}),
                      "cost_usd": round(sum(Cost), 4) if Cost else None},
         "three_d": ThreeD,
+        # Every 3D version of the design (Hi3D models and uploaded parts), the active one first in importance
+        "versions": Versions.List(DesignId) if Versions else [],
+        # The explicit session the design belongs to (S-1001 and its other designs); None: a session of its own
+        "session_group": Versions.SessionOf(DesignId) if Versions else None,
+        "external": (Ctx.Db.One("SELECT origin FROM designs WHERE id = ?", (DesignId,)) or {}).get("origin") == "external",
         # The quote requests of this journey (the customer's, for this design), linked both ways with the Admin's quote page
         "quotes": [{"id": Q["id"], "ref": OrdersModule.QuoteRef(Q["request_no"]), "status": Q["status"], "order_id": Q["order_id"]}
                    for Q in Ctx.Db.All("SELECT id, request_no, status, order_id FROM quote_requests WHERE design_id = ? "
@@ -460,6 +469,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
             "customer_size": (Summary["charm_size"] if Summary.get("charm_size_chosen") else None) if Charm
             else (Summary["ring_size"] if Summary["ring_size_chosen"] else None),
             "production_size": Size,
+            "own_size": Own,                        # the active version is used exactly as uploaded: the size it is
             "material_id": (Summary["material_id"] if Summary["material_chosen"] else None) or Ctx.Catalog.DefaultMaterialId,
             "customer_material": Summary["material_id"] if Summary["material_chosen"] else None,
             "has_raw_mesh": any(T["hi3d"] and T["hi3d"]["status"] == "ready" for T in ThreeD),
@@ -483,7 +493,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     }
 
 def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery=None, Orders=None, Promos=None,
-                  HealthDetails=None, Quotes=None) -> None:
+                  HealthDetails=None, Quotes=None, Versions=None, Uploads=None) -> None:
     """Add the admin page and API to the (inner) app. `Page(name)` renders a web/ page; `HealthDetails()` is the
     server's full health picture (admin-only; the public /api/health says only that the service is up)."""
 
@@ -745,12 +755,16 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Admin(authorization)
         return {"sessions": Sessions.Summaries(Ctx, IncludeMock=include_mock), "idle_minutes": Sessions.IdleMinutes,
                 "mock_sessions": len(Sessions.MockDesignIds(Ctx)), "include_mock": include_mock,
-                "retired": RingIds.Retired(Ctx.Db)}
+                "retired": RingIds.Retired(Ctx.Db),
+                # sessions made in the Admin (S-1001 …): 0, 1 or many designs each (docs/EXTERNAL-PARTS.md)
+                "containers": Versions.Containers() if Versions else []}
 
     @App_.get("/api/admin/sessions/{DesignId}")
     async def GetSession(DesignId: str, authorization: str | None = Header(None)):
         Admin(authorization)
-        D = SessionDetail(Ctx, Production, DesignId, Prices, Gallery)
+        if DesignId.startswith("ses_"):                 # an explicit session: its designs
+            return {"container": Versions.Container(DesignId)}
+        D = SessionDetail(Ctx, Production, DesignId, Prices, Gallery, Versions)
         for T in D["three_d"]:                          # the Hi3D thumbnail is shown first (an <img>: signed link)
             if (T["live"].get("raw") or {}).get("thumbnail"):
                 T["live"]["thumbnail_url"] = _SignedUrl(T["id"], "thumbnail")
@@ -862,6 +876,107 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         if S["status"] == "done":
             S["url"] = _SignedUrl(Sid, f"export-{Jid}", _OrderRef(order))
         return S
+
+    # ── 3D versions, external parts, explicit sessions (docs/EXTERNAL-PARTS.md) ──
+    # A large STL arrives in pieces written straight to disk (p3/uploads.py), then becomes a 3D version of a design, a new
+    # design in a session, or a revised STL for an order line.
+    @App_.post("/api/admin/uploads")
+    async def UploadCreate(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Uploads.Create(str(Body_.get("filename") or ""), Body_.get("bytes"), Who.Id)
+
+    @App_.put("/api/admin/uploads/{Uid}")
+    async def UploadPiece(Uid: str, request: Request, offset: int = 0, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return await Uploads.Append(Uid, offset, request.stream())
+
+    @App_.post("/api/admin/uploads/{Uid}/complete")
+    async def UploadComplete(Uid: str, authorization: str | None = Header(None)):
+        """Every piece arrived: checked (an STL) and hashed off the event loop."""
+        Admin(authorization)
+        return await asyncio.get_running_loop().run_in_executor(None, Uploads.Complete, Uid)
+
+    @App_.delete("/api/admin/uploads/{Uid}")
+    async def UploadCancel(Uid: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Uploads.Cancel(Uid)
+
+    @App_.get("/api/admin/designs/{DesignId}/versions")
+    async def DesignVersions(DesignId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return {"versions": Versions.List(DesignId), "active_mesh_id": (VersionsModule.ActiveMesh(Ctx.Db, DesignId) or {}).get("id")}
+
+    @App_.post("/api/admin/designs/{DesignId}/versions")
+    async def AddDesignVersion(DesignId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """An uploaded STL becomes the design's next 3D version (Case C: an external revision; the old versions stay)."""
+        Who = Admin(authorization)
+        return Versions.AddVersion(DesignId, str(Body_.get("upload_id") or ""), Who.Id, Body_.get("candidate_id") or None,
+                                   str(Body_.get("scaling") or "exact"), str(Body_.get("source_tool") or ""),
+                                   str(Body_.get("note") or ""), bool(Body_.get("activate", True)), Body_.get("parent_mesh_id") or None)
+
+    @App_.post("/api/admin/versions/{MeshId}/download-link")
+    async def VersionDownloadLink(MeshId: str, authorization: str | None = Header(None)):
+        """A version's own file, downloaded natively by the browser through a short-lived signed link."""
+        Admin(authorization)
+        Path_, _ = Versions.FilePath(MeshId)
+        Exp = int(time.time()) + DownloadLinkSeconds
+        return {"url": f"{Ctx.Settings.BasePath}/api/admin/versions/{MeshId}/download?exp={Exp}&sig={_DownloadSig(MeshId, 'version', Exp)}",
+                "bytes": Path_.stat().st_size, "expires_in_s": DownloadLinkSeconds}
+
+    @App_.get("/api/admin/versions/{MeshId}/download")          # "/download": streamed as it is, never gzipped
+    async def VersionFile(MeshId: str, exp: int | None = None, sig: str | None = None, authorization: str | None = Header(None)):
+        Signed = (exp is not None and sig and exp >= time.time() and Ctx.Settings.AdminKey
+                  and hmac.compare_digest(sig, _DownloadSig(MeshId, "version", exp)))
+        if not Signed:
+            Admin(authorization)
+        Path_, Name = Versions.FilePath(MeshId)
+        return FileResponse(Path_, filename=Name, media_type="model/stl")
+
+    @App_.get("/api/admin/versions/{MeshId}/preview")
+    async def VersionPreview(MeshId: str, authorization: str | None = Header(None)):
+        """A version's light 3D preview (P3PV), for the 3D view before any sized result exists."""
+        Admin(authorization)
+        return FileResponse(Versions.PreviewPath(MeshId), media_type="application/octet-stream",
+                            headers={"Cache-Control": "private, max-age=600"})
+
+    @App_.post("/api/admin/versions/{MeshId}/{Action}")
+    async def VersionAction(MeshId: str, Action: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """activate (rollback = activating an older one) · archive (hidden; the file stays) · restore."""
+        Who = Admin(authorization)
+        if Action == "activate":
+            return Versions.Activate(MeshId, Who.Id, str(Body_.get("note") or ""))
+        if Action == "archive":
+            return Versions.Archive(MeshId, Who.Id)
+        if Action == "restore":
+            return Versions.Restore(MeshId, Who.Id)
+        raise HttpError(404, "unknown_action", "Unknown action.")  # after the specific /versions/… routes
+
+    @App_.post("/api/admin/sessions")
+    async def CreateSessionGroup(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """An empty session for an existing account (Case D starts here; its first design is added next)."""
+        Who = Admin(authorization)
+        return Versions.CreateSession(str(Body_.get("owner_account_id") or ""), str(Body_.get("title") or ""), Who.Id)
+
+    @App_.post("/api/admin/sessions/{SessionKey}/external-designs")
+    async def AddExternalDesign(SessionKey: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """An uploaded part becomes a new design in a session (Cases A, B, D): an explicit session (ses_…), or the session of
+        the design it is added next to (that design's session becomes explicit)."""
+        Who = Admin(authorization)
+        return Versions.AddExternalDesign(SessionKey, str(Body_.get("upload_id") or ""), Who.Id, str(Body_.get("product_type") or "ring"),
+                                          str(Body_.get("title") or ""), str(Body_.get("scaling") or "exact"),
+                                          str(Body_.get("source_tool") or ""), str(Body_.get("note") or ""), bool(Body_.get("force")))
+
+    # An order line: produce it from another version of its option, or from a revised STL uploaded for it
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/3d-version")
+    async def AdminOrderLineVersion(OrderId: str, LineId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.UseVersion(OrderId, LineId, str(Body_.get("mesh_id") or ""), Who.Id, str(Body_.get("note") or ""))
+
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/3d-upload")
+    async def AdminOrderLineUpload(OrderId: str, LineId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.UploadVersion(OrderId, LineId, str(Body_.get("upload_id") or ""), Who.Id, str(Body_.get("scaling") or "exact"),
+                                    str(Body_.get("source_tool") or ""), str(Body_.get("note") or ""), bool(Body_.get("activate", True)))
 
     @App_.get("/api/admin/storage")
     async def Storage(authorization: str | None = Header(None)):

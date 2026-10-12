@@ -188,6 +188,32 @@ ring path above is unchanged.
 - **The panel** shows *Height* (target and result, "total height incl. loop") in place of *Inner diameter*, sizes in
   mm, and the charm explanation under *What was done to the model*.
 
+### 3D versions and external parts
+
+Design document: `docs/EXTERNAL-PARTS.md` (`p3/versions.py`, `p3/uploads.py`, `p3/render3d.py`).
+
+- **Session → Design → 3D version.** Every model of a design is a numbered version: Hi3D models (v1, v2 …) and STLs
+  made outside Atelier (*External · Rhino*). The session page lists them under **3D versions** with the file, who and
+  when, the version it revises, the measurement (X × Y × Z, inner Ø and the US size it is, or a charm's height) and
+  where it is used (results, orders). **Make active** switches (rollback = activating an older one); **Archive** hides
+  a version (never the active one) and keeps its file; **Restore** brings it back. **View 3D** shows a version's own
+  light preview; **Download file** its STL.
+- **Add External Part…** (session page, an explicit session's page): upload an STL in 8 MB pieces (a 300 MB file is
+  fine; nothing is held in memory) and choose **Add as a new Design** (a design of its own in the session, picture =
+  a render of the part) or **Update an existing Design** (a new version; earlier versions stay). *How it is used*:
+  **Use exactly as uploaded** (default: the file is the production part in mm — each size is checked against it, ±0.15 mm
+  inner diameter / ±0.5 mm charm height, otherwise *review required*; the STL download is the file itself) or **Use as
+  scalable master** (sized like a Hi3D model).
+- **Sessions → New session…**: an empty session for an account (a customer, or XJet's team account), numbered S-1001 …;
+  it can hold 0, 1 or many designs. A design made in the customer flow is a session of its own until a part is added
+  next to it.
+- **Orders:** each line shows the 3D version it is produced from (*pinned* once prepared — a later active version never
+  changes it), **Use another version…** (logged; a reason is required from *In production* on) and **Upload revised
+  STL…** (a new version of the ordered option, used for that line; *Also make it the design's active version* is off
+  by default).
+- External designs are Admin-only for now: not in the customer's My Designs, not openable on the customer site, not in
+  the Inspiration Gallery.
+
 ## Working in the Admin
 
 - **Sign-in is remembered per browser** (server-side session cookie) until *Sign out*; *everywhere* revokes every browser. The key itself is never stored in the browser.

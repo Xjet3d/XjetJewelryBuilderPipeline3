@@ -76,7 +76,8 @@ def AccountActivity(Ctx: Context, AccountId: str, Days: int = 90, IncludeMock: b
                     f"JOIN batches b ON b.id = c.batch_id WHERE m.candidate_id IN ({QC}) ORDER BY m.created_at", CandIds)
     Meshes = Db.All(f"SELECT m.id, m.candidate_id, m.endpoint, m.status, m.provider_request_id, m.error_code, "
                     f"m.created_at, b.design_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
-                    f"JOIN batches b ON b.id = c.batch_id WHERE m.candidate_id IN ({QC}) ORDER BY m.created_at", CandIds)
+                    f"JOIN batches b ON b.id = c.batch_id WHERE m.candidate_id IN ({QC}) AND m.source = 'hi3d' "   # AI work only:
+                    f"ORDER BY m.created_at", CandIds)                                 # not an uploaded part
     Bag = Db.All("SELECT * FROM bag_lines WHERE owner_account_id = ? ORDER BY created_at", (AccountId,))
 
     def Jobs(Rows) -> dict:

@@ -35,6 +35,7 @@ from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import stages as Stages
+from p3 import versions as Versions
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.geometry import FastMethodVersion, Scaled, UsSizeToInnerDiameterMm
@@ -45,6 +46,8 @@ Terminal = ("measured", "needs_review", "failed", "cancelled")
 NewModelConfirmation = "GENERATE NEW 3D"      # typed by the admin to allow a second paid Hi3D model for a design
 Waiting = ("requested", "generating", "queued", "measuring")
 MaxRoundness = 0.04            # bore deviation from a circle above this → needs review
+ExactRingToleranceMm = 0.15    # an exact part: its inner diameter may differ this much from the size's before review
+ExactCharmToleranceMm = 0.5    # … a charm's total height this much
 
 
 def _Seconds(A: str | None, B: str | None) -> float | None:
@@ -137,6 +140,7 @@ class Production3D:
         self.Ctx = Ctx
         self.Meshes = Meshes
         self.Queue = Queue
+        self.OnPreview = []         # callbacks(mesh_id) once a model's light preview exists (p3/versions.py: an external design's picture)
         Meshes.OnReady.append(self._MeshFinished)
         Queue.Handlers.update({"measure": self._Measured, "preview": self._Previewed, "integrity": self._Integrity,
                                "fix_bore": self._BoreFixed})
@@ -144,11 +148,12 @@ class Production3D:
     # ── admin request ────────────────────────────────────────────────────
     def Request(self, DesignId: str, ProductionSize=None, MaterialId: str | None = None,
                 CandidateId: str | None = None, RequestedBy: str = "admin", Customer: dict | None = None,
-                Override: str | None = None) -> dict:
+                Override: str | None = None, MeshId: str | None = None) -> dict:
         """Customer = the journey whose size/material are the defaults (a gallery customer's session on a
         shared master design); otherwise the design owner's session.
 
-        Safeguard: a design that already has a valid Hi3D model never gets a second paid model by
+        The model is the design's active 3D version (p3/versions.py) — or MeshId, a given version of the design (an
+        order line pinned to it). Safeguard: a design that already has a valid Hi3D model never gets a second paid model by
         default — the existing raw model is reused for any size and material, whichever option is
         selected. A new model for another option requires Override == NewModelConfirmation (typed by
         the admin) and is recorded as an admin override. A refined design (new images, its own design)
@@ -158,8 +163,14 @@ class Production3D:
         if Summary is None:
             raise HttpError(404, "session_not_found", "Session not found.")
         Design = Db.One("SELECT * FROM designs WHERE id = ?", (DesignId,))
-        Existing = Db.One("SELECT m.* FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
-                          "WHERE b.design_id = ? AND m.status = 'ready' ORDER BY m.created_at DESC LIMIT 1", (DesignId,))
+        Pick = None
+        if MeshId:
+            Pick = Db.One("SELECT m.* FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
+                          "WHERE m.id = ? AND b.design_id = ? AND m.status = 'ready'", (MeshId, DesignId))
+            if Pick is None:
+                raise HttpError(404, "version_not_found", "That 3D version is not a version of this design.")
+            CandidateId = Pick["candidate_id"]
+        Existing = Versions.ActiveMesh(Db, DesignId)            # the design's active 3D version
         if not CandidateId and Existing:
             CandidateId = Existing["candidate_id"]              # the modelled option: reuse, never a new Hi3D call
         # No model yet: the journey's own selected option (a gallery customer's pick), else the design's.
@@ -172,19 +183,21 @@ class Production3D:
                       (CandidateId, DesignId)) if CandidateId else None
         if Cand is None or Cand["status"] != "ready":
             raise HttpError(409, "no_ready_image", "This session has no ready design image to turn into 3D.")
+        Raw = Pick or Versions.MeshFor(Db, DesignId, CandidateId)
         Charm = (Design.get("product_type") or Products.Ring) == Products.Charm
+        Own = self.ExactSize(Raw, Charm)             # a part used exactly as uploaded: by default its own size
         if Charm:
-            Size, SizeSource, CustomerSize = self._CharmSize(Summary, ProductionSize)
+            Size, SizeSource, CustomerSize = self._CharmSize(Summary, ProductionSize, Own)
         else:
             CustomerSize = Summary["ring_size"] if Summary["ring_size_chosen"] else None   # the default US 10 isn't a choice
             if ProductionSize in (None, ""):
-                Size, SizeSource = (float(CustomerSize), "customer") if CustomerSize is not None else (DefaultSize, "default")
+                Size, SizeSource = (float(CustomerSize), "customer") if CustomerSize is not None else (Own or DefaultSize, "default")
             else:
                 Size = float(ProductionSize)
                 if not Cat.IsValidSize(Size):
                     raise HttpError(400, "invalid_ring_size", "Please choose a standard US ring size.")
                 SizeSource = ("customer" if CustomerSize is not None and Size == float(CustomerSize)
-                              else "default" if CustomerSize is None and Size == DefaultSize else "admin_override")
+                              else "default" if CustomerSize is None and Size == (Own or DefaultSize) else "admin_override")
         CustomerMaterial = Summary["material_id"] if Summary["material_chosen"] else None
         if MaterialId:
             if Cat.Get(MaterialId) is None:
@@ -196,8 +209,6 @@ class Production3D:
             Mat, MatSource = CustomerMaterial, "customer"
         else:
             Mat, MatSource = (Summary["material_id"] or Cat.DefaultMaterialId), "default"
-        Raw = Db.One("SELECT * FROM meshes WHERE candidate_id = ? AND status = 'ready' ORDER BY created_at DESC LIMIT 1",
-                     (CandidateId,))
         if Raw is None and Existing is not None:
             ExistingRef = RingIds.CandidateRef(Db, Existing["candidate_id"])
             if (Override or "").strip() != NewModelConfirmation:
@@ -224,11 +235,12 @@ class Production3D:
             self._Continue(Mesh["id"])           # measured already → instant; else one queued measure job
         return self.Get(Sid)
 
-    def _CharmSize(self, Summary: dict, ProductionSize) -> tuple:
-        """A charm's 3D size in mm (the height it is scaled to): the customer's size, else the middle size on offer.
-        The Admin may choose any size between the limits (e.g. one no longer offered, for an existing order)."""
+    def _CharmSize(self, Summary: dict, ProductionSize, Own: float | None = None) -> tuple:
+        """A charm's 3D size in mm (the height it is scaled to): the customer's size, else the middle size on offer (a part
+        used exactly as uploaded: its own height). The Admin may choose any size between the limits (e.g. one no longer
+        offered, for an existing order)."""
         CustomerSize = Summary.get("charm_size") if Summary.get("charm_size_chosen") else None
-        Default = self.Ctx.Products.CharmDefaultSize                         # the recommended size
+        Default = Own or self.Ctx.Products.CharmDefaultSize                  # the recommended size
         if ProductionSize in (None, ""):
             return (float(CustomerSize), "customer", CustomerSize) if CustomerSize is not None else (Default, "default", None)
         try:
@@ -242,19 +254,49 @@ class Production3D:
                   else "default" if CustomerSize is None and Size == Default else "admin_override")
         return Size, Source, CustomerSize
 
+    def ExactSize(self, Mesh: dict | None, Charm: bool) -> float | None:
+        """A version used exactly as uploaded (and measured): its own size — the US size nearest to its inner diameter, or
+        its total height in mm. The default size of its results when nobody chose one."""
+        if not Mesh or (Mesh.get("scaling") or "scalable") != "exact":
+            return None
+        R = self.Ctx.Db.One("SELECT measurement_json FROM raw_geometry WHERE mesh_id = ? AND status = 'measured'", (Mesh["id"],))
+        M = json.loads(R["measurement_json"]) if R and R["measurement_json"] else {}
+        if Charm:
+            H = M.get("height")
+            return round(float(H), 1) if H and Products.CharmSizeMin <= H <= Products.CharmSizeMax else None
+        Us = Versions.UsSizeFor(M.get("inner_diameter")) if M.get("bore_ok") else None
+        Sizes = list(self.Ctx.Catalog.RingSizes)
+        return min(Sizes, key=lambda S: abs(S - Us)) if Us is not None and Sizes else None
+
     def _IsCharmMesh(self, MeshId: str) -> bool:
         M = self.Ctx.Db.One("SELECT candidate_id FROM meshes WHERE id = ?", (MeshId,))
         return bool(M) and Products.OfCandidate(self.Ctx.Db, M["candidate_id"]) == Products.Charm
 
+    def _Exact(self, MeshId: str | None) -> bool:
+        """The version is used exactly as uploaded (an external part in mm): no scaling, no export — the file itself."""
+        M = self.Ctx.Db.One("SELECT scaling FROM meshes WHERE id = ?", (MeshId,)) if MeshId else None
+        return bool(M) and M["scaling"] == "exact"
+
+    def MeasureVersion(self, MeshId: str) -> None:
+        """A new version's file is on disk: measure it now (one queued job), so its numbers are known before any result."""
+        self._Continue(MeshId)
+
+    def ResultFor(self, DesignId: str, MeshId: str, Size, MaterialId: str) -> dict | None:
+        """A usable result of this version at this size and material (finished first, else one in progress)."""
+        return self.Ctx.Db.One("SELECT * FROM session_3d WHERE design_id = ? AND mesh_id = ? AND material_id = ? AND production_size = ? "
+                               "AND status NOT IN ('failed', 'cancelled') "
+                               "ORDER BY status IN ('measured', 'needs_review') DESC, created_at DESC LIMIT 1",
+                               (DesignId, MeshId, MaterialId, float(Size)))
+
     def SourceModel(self, Design: dict) -> dict | None:
-        """For a variation (source_design_id): the source design's ready Hi3D model, if it has one."""
+        """For a variation (source_design_id): the source design's ready model (its active version), if it has one."""
         if not Design or not Design.get("source_design_id"):
             return None
         Db = self.Ctx.Db
+        A = Versions.ActiveMesh(Db, Design["source_design_id"])
         M = Db.One("SELECT m.id, m.candidate_id, d.id AS design_id, d.title, d.ring_no, d.charm_no, d.product_type FROM meshes m "
                    "JOIN candidates c ON c.id = m.candidate_id "
-                   "JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id WHERE b.design_id = ? AND m.status = 'ready' "
-                   "ORDER BY m.created_at DESC LIMIT 1", (Design["source_design_id"],))
+                   "JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id WHERE m.id = ?", (A["id"],)) if A else None
         if M is None:
             return None
         return {"design_id": M["design_id"], "title": M["title"], "design_ring_id": RingIds.Ref(M),
@@ -342,6 +384,8 @@ class Production3D:
                    "error = NULL, updated_at = ? WHERE mesh_id = ?",
                    (Dumps(Raw), Raw["method_version"], T, Raw["faces"], Result.get("sha256"), Result.get("bytes"),
                     f"meshes/{MeshId}/raw.stl" if Result.get("converted") else Old["stl_path"], Dumps(Timings), T, MeshId))
+        if Result.get("converted"):
+            self._KeepBinaryOnly(MeshId)
         Row = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
         for R in self._WaitingFor(MeshId):
             self._Finalize(R, Row)
@@ -350,6 +394,17 @@ class Production3D:
         self.Queue.Enqueue("preview", MeshId, Params={"source": Row["stl_path"], "raw": Raw,
                                                       "output": f"meshes/{MeshId}/preview.p3pv"})
         self.Queue.Enqueue("integrity", MeshId, Params={"source": Row["stl_path"]})
+
+    def _KeepBinaryOnly(self, MeshId: str) -> None:
+        """An external part uploaded as an ASCII STL is kept as the binary STL it was measured from (the same triangles,
+        about 5× smaller): that file becomes the version's file and the ASCII text is not kept. Hi3D models are untouched."""
+        Db, Dev = self.Ctx.Db, self.Ctx.Settings.DevDir
+        M = Db.One("SELECT source, original_path FROM meshes WHERE id = ?", (MeshId,))
+        Bin = f"meshes/{MeshId}/raw.stl"
+        if not M or M["source"] != "external" or M["original_path"] == Bin or not (Dev / Bin).is_file():
+            return
+        Db.Update("meshes", MeshId, original_path=Bin, stl_path=Bin)
+        (Dev / M["original_path"]).unlink(missing_ok=True)
 
     def _Timings(self, MeshId: str, **New) -> str:
         Old = self.Ctx.Db.One("SELECT timings_json FROM raw_geometry WHERE mesh_id = ?", (MeshId,))
@@ -362,6 +417,11 @@ class Production3D:
                             (json.loads(Job["params_json"])["output"],
                              self._Timings(Job["mesh_id"], preview_s=Result.get("seconds"),
                                            preview_faces=Result.get("preview_faces")), Now(), Job["mesh_id"]))
+        for Fn in self.OnPreview:
+            try:
+                Fn(Job["mesh_id"])
+            except Exception:  # noqa: BLE001
+                Logger.exception("Preview hook failed for %s", Job["mesh_id"])
 
     def _Integrity(self, Job: dict, Result, Error, Started: bool = False) -> None:
         if Started:
@@ -379,6 +439,8 @@ class Production3D:
         """Exact values for this request's size and material from the one raw measurement — arithmetic only."""
         Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
         Raw = json.loads(RawRow["measurement_json"])
+        if self._Exact(Row["mesh_id"]):
+            return self._FinalizeExact(Row, RawRow, Raw)
         if Raw.get("method_version") == CharmGeo.CharmMethodVersion:
             return self._FinalizeCharm(Row, RawRow, Raw)
         T = Now()
@@ -461,6 +523,75 @@ class Production3D:
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid,
                         status=Status, height_mm=G["height_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
+
+    def _FinalizeExact(self, Row: dict, RawRow: dict, Raw: dict) -> None:
+        """A version used exactly as uploaded: the file is the production geometry in mm whatever size was asked for — scale
+        1, nothing exported (the download is the file itself: its production row points at it, StoredProduction). The size
+        is checked against the file instead: a ring's inner diameter within ExactRingToleranceMm of the size's, a charm's
+        total height within ExactCharmToleranceMm. A difference, sides that do not look like millimetres, a bore that is
+        missing or not round, or a mesh that may be open → production review (the Admin can accept it as it is)."""
+        Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
+        Charm = Raw.get("method_version") == CharmGeo.CharmMethodVersion
+        Size = float(Row["production_size"])
+        T = Now()
+        Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
+        Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
+        Fix = "Correct the part in CAD and upload it as a new version, or accept it as it is."
+        Problems = []
+        Sides = (Raw["extent_x"], Raw["extent_y"], Raw["extent_z"])
+        if not Versions.UnitsMinMm <= max(Sides) <= Versions.UnitsMaxMm:
+            Problems.append({"code": "exact_units", "text": "The part measures " + " × ".join(f"{X:.2f}" for X in Sides)
+                             + " — an STL used exactly as uploaded must be in millimetres.",
+                             "action": "Export the part in millimetres and upload it as a new version (or use it as a scalable master)."})
+        if Charm:
+            Want, Have = Products.Charm3DHeight(Size), float(Raw.get("height") or 0.0)
+            if abs(Have - Want) > ExactCharmToleranceMm:
+                Problems.append({"code": "exact_size", "action": Fix + " Or make this result for the part's own size.",
+                                 "text": f"Used exactly as uploaded, the charm is {Have:.2f} mm high (loop included); the size "
+                                         f"{Size:g} mm asks for {Want:.2f} mm ({Have - Want:+.2f} mm)."})
+        else:
+            Want, Have = UsSizeToInnerDiameterMm(Size), Raw.get("inner_diameter") if Raw.get("bore_ok") else None
+            if Have is None:
+                Problems.append({"code": "no_bore", "action": "Check the part in CAD: " + Fix,
+                                 "text": "No ring bore was found, so the inner diameter cannot be checked against the size."})
+            else:
+                if abs(Have - Want) > ExactRingToleranceMm:
+                    Near = Versions.UsSizeFor(Have)
+                    Problems.append({"code": "exact_size", "action": Fix + " Or make this result for the part's own size.",
+                                     "text": f"Used exactly as uploaded, the inner diameter is {Have:.2f} mm (about US {Near:g}); "
+                                             f"US {Size:g} is {Want:.2f} mm ({Have - Want:+.2f} mm)."})
+                if (Raw.get("roundness") or 0) > MaxRoundness:
+                    Problems.append({"code": "bore_not_round", "action": Fix,
+                                     "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — check the inner diameter."})
+        if not Raw["closed_heuristic"]:
+            Problems.append({"code": "open_mesh_heuristic", "text": "The volume reference check suggests the mesh may not be closed — "
+                                                                    "volume and weight may be wrong.",
+                             "action": "Repair the mesh (close the holes) in CAD and upload it as a new version."})
+        Checks = {"exact": True, "closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
+                  "volume_alt_reference": Raw["volume_alt_reference"], "faces": Raw["faces"], "raw_sha256": RawRow["sha256"],
+                  "roundness": Raw.get("roundness"), "target_mm": Want, "measured_mm": Have, "exact_review": Problems,
+                  **({"height_basis": Products.CharmSizeDefinition["text"]} if Charm else {
+                      "bore_min_diameter_mm": Raw.get("bore_min_diameter"), "bore_max_diameter_mm": Raw.get("bore_max_diameter")})}
+        G = {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
+             "inner_diameter_mm": None if Charm else (Raw.get("inner_diameter") if Raw.get("bore_ok") else None),
+             "volume_mm3": Raw["volume"], "surface_area_mm2": Raw["area"]}
+        Ids = {}
+        for Stage, Path_ in (("raw", RawRow["stl_path"]), ("production", RawRow["stl_path"])):   # the file IS the production STL
+            Ids[Stage] = NewId("geo")
+            Db.Execute("INSERT INTO geometry_results (id, session_3d_id, stage, size_x_mm, size_y_mm, size_z_mm, "
+                       "inner_diameter_mm, volume_mm3, surface_area_mm2, watertight, scale_factor, stl_path, "
+                       "method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Ids[Stage], Sid, Stage, G["size_x_mm"], G["size_y_mm"], G["size_z_mm"], G["inner_diameter_mm"],
+                        G["volume_mm3"], G["surface_area_mm2"], int(Raw["closed_heuristic"]), 1.0 if Stage == "production" else None,
+                        Path_, Raw["method_version"], Dumps(Checks), T))
+        Weight = self._Price(Row, Ids["production"], G["volume_mm3"] if Raw["closed_heuristic"] else None)
+        Texts = [P["text"] for P in Problems]
+        Status = "needs_review" if Problems else "measured"
+        Db.Update("session_3d", Sid, status=Status, error=" ".join(Texts) or None)
+        Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Texts} if Problems else {}))
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid, status=Status,
+                        exact=True, measured_mm=Have, target_mm=Want, volume_mm3=G["volume_mm3"], weight_g=Weight)
 
     def _Price(self, Row: dict, Gid: str, VolumeMm3: float | None) -> float | None:
         """Weight, production cost and 3D price from Admin → Material pricing (current version); a charm's from the
@@ -560,6 +691,9 @@ class Production3D:
         Db, Row = self.Ctx.Db, self._Row(Sid)
         if self._IsCharmMesh(Row["mesh_id"]):
             raise HttpError(409, "not_a_ring", "Only a ring's bore can be made round.")
+        if self._Exact(Row["mesh_id"]):
+            raise HttpError(409, "exact_version", "This 3D version is used exactly as uploaded — correct the bore in CAD and "
+                                                  "upload a new version instead.")
         Raw = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ? AND status = 'measured'", (Row["mesh_id"],))
         if Raw is None or Row["status"] not in ("measured", "needs_review"):
             raise HttpError(409, "geometry_not_ready", "The model is not measured yet.")
@@ -821,7 +955,8 @@ class Production3D:
     def Get(self, Sid: str) -> dict:
         Db, Url = self.Ctx.Db, self.Ctx.AssetUrl
         R = self._Row(Sid)
-        Mesh = Db.One("SELECT id, status, provider_request_id, endpoint, error FROM meshes WHERE id = ?", (R["mesh_id"],))
+        Mesh = Db.One("SELECT * FROM meshes WHERE id = ?", (R["mesh_id"],))
+        Exact = bool(Mesh and Mesh["scaling"] == "exact")     # an external part used exactly as uploaded
         Geo = {G["stage"]: {**G, "checks": json.loads(G.pop("checks_json") or "{}")}
                for G in Db.All("SELECT * FROM geometry_results WHERE session_3d_id = ? ORDER BY created_at", (Sid,))}
         Calc = Db.One("SELECT * FROM price_calculations WHERE session_3d_id = ? ORDER BY created_at DESC LIMIT 1", (Sid,))
@@ -842,6 +977,9 @@ class Production3D:
         Review = ReviewItems(R["status"], RawMeasured, Integrity, Corrected=bool(Correction), Attempt=Attempt, Scale=Scale,
                              CorrectedRoundness=Checks.get("roundness") if Correction else None,
                              CorrectedDiameters=(Checks.get("bore_min_diameter_mm"), Checks.get("bore_max_diameter_mm")) if Correction else None)
+        if Exact:                    # its own checks (the size against the file, millimetres) and the background edge check
+            Review = ([] if R["status"] in Waiting + ("failed", "cancelled") else list(Checks.get("exact_review") or [])) + \
+                     [I for I in ReviewItems(R["status"], None, Integrity) if I["code"] == "open_edges"]
         if "production" in Geo:                             # the bore across its centre at this size (v3.4 measurements)
             Geo["production"].update({K: Checks.get(K) for K in ("bore_min_diameter_mm", "bore_max_diameter_mm")})
         Out = {
@@ -865,10 +1003,15 @@ class Production3D:
             "bore_expected_after": ((RawMeasured or {}).get("bore_ellipse") or {}).get("residual"),
             "raw_available": bool(Mesh and Mesh["status"] == "ready"),
             "hi3d": Mesh and {"mesh_id": Mesh["id"], "status": Mesh["status"], "endpoint": Mesh["endpoint"],
-                              "provider": "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else
+                              "provider": "external" if Mesh["source"] == "external" else
+                              "mock" if (Mesh["provider_request_id"] or "").startswith("mockreq_") else
                               ("fal" if Mesh["provider_request_id"] else None), "error": Mesh["error"]},
+            # The 3D version this result is made from (v2 · External · Rhino …) and whether it is the design's active one
+            "version": Versions.Brief(Mesh, (Versions.ActiveMesh(Db, R["design_id"]) or {}).get("id")) if Mesh else None,
+            "exact": Exact,
             "geometry": Geo, "price": Calc,
-            "scaled_stl": "stored" if Prod.get("stl_path") else ("on_demand" if Prod else None),   # v2 rows stored one
+            # how the STL for this size is had: the master file itself (exact), a stored one (v2 rows), or exported on demand
+            "scaled_stl": "master" if Exact and Prod else "stored" if Prod.get("stl_path") else ("on_demand" if Prod else None),
             "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }
@@ -906,7 +1049,8 @@ class Production3D:
                 Rel = Legacy
             elif Raw and Raw["preview_path"]:
                 Rel = Raw["preview_path"]
-            elif Legacy:                                        # v2: light STL next to the stored scaled STL
+            elif Legacy and not self._Exact(R["mesh_id"]):     # v2: light STL next to the stored scaled STL (an exact part's
+                # stored file is the full master — never the 3D view's file: its light preview follows in seconds)
                 P = assets.Resolve(Dev, Legacy)
                 Pv = P.with_name(P.stem + "_preview.stl")
                 return Pv if Pv.is_file() else P
@@ -933,7 +1077,10 @@ class Production3D:
             Parts += [OrderRef or "", SlugPart(CharmPrices.Label(self.Ctx.Catalog, R["material_id"])), f"{R['production_size']:g}mm"]
         elif Stage.startswith("export-") or Stage == "production":
             Parts += [OrderRef or "", SlugPart(Mat.Label if Mat else R["material_id"]), f"US{R['production_size']:g}"]
-        else:
+        else:                                  # the model as it came: which 3D version, from the second one or an external part
+            M = Db.One("SELECT version_no, source FROM meshes WHERE id = ?", (R["mesh_id"],))
+            if M and M["version_no"] and (M["source"] == "external" or M["version_no"] > 1):
+                Parts.append(f"v{M['version_no']}")
             Parts.append(Stage)
         return "_".join(P for P in Parts if P) + Suffix
 

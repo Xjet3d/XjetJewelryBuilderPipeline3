@@ -29,6 +29,7 @@ class DesignService:
         products this browser can see (a charm stays out of a ring-only site)."""
         Out = []
         for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? AND removed_at IS NULL "
+                                 "AND origin != 'external' "              # external parts are Admin-only (docs/EXTERNAL-PARTS.md)
                                  "ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
             Out.append({"id": D["id"], "title": D["title"], "thumbnail_url": self._Thumb(D["id"], D["selected_candidate_id"]),
                         "updated_at": D["updated_at"], "created_at": D["created_at"], "shared": False,
