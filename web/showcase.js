@@ -268,9 +268,11 @@
             X.opts.forEach(el => {
                 const u = S.options[+el.dataset.k], img = el.querySelector('img');
                 img.srcset = `${thumb(u, 320)} 320w, ${thumb(u, 800)} 800w`; img.sizes = sm ? '40vw' : '240px'; img.src = thumb(u, sm ? 320 : 800);
+                img.alt = 'Design option ' + (+el.dataset.k + 1);                 // as the design studio labels its options
             });
             const set = (img, u) => { img.srcset = `${thumb(u, 800)} 800w, ${thumb(u, 1024)} 1024w`; img.sizes = sm ? '80vw' : '520px'; img.src = thumb(u, 800); };
             set(X.orig, S.options[S.picked]); set(X.ref, S.refine ? S.refine.image_url : S.options[S.picked]);
+            X.orig.alt = S.title ? S.title + ' — designed with XJet Atelier' : '';   // the refined and metal layers repeat it
             set(X.silver, S.still_url); set(X.gold, S.still_url);
             // the render's own metal is shown untouched; only the other metal is a filter
             const goldFilter = X.defs.querySelector('#sc-gold') ? 'url(#sc-gold)' : '';

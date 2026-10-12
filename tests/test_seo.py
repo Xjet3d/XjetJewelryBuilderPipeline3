@@ -162,8 +162,9 @@ async def test_the_admin_switch_lets_search_engines_index_the_public_pages(tmp_p
             assert '<meta name="robots" content="index,follow">' in (await H.Client.get(Path_)).text, Path_
         Robots = (await H.Client.get("/robots.txt")).text.splitlines()
         assert Robots[0] == "User-agent: *" and "Allow: /JewelryB2C3/" in Robots
-        for P in ("/admin", "/api/", "/verify", "/quote", "/dev", "/showcase"):
-            assert f"Disallow: /JewelryB2C3{P}" in Robots, P
+        assert "Disallow: /JewelryB2C3/api/" in Robots                       # only the API is kept out ...
+        for P in ("/admin", "/verify", "/quote", "/dev", "/showcase"):            # ... the rest says noindex, readable
+            assert not [L for L in Robots if L.startswith("Disallow:") and P in L], P
         assert "Sitemap: https://atelier.example.com/JewelryB2C3/sitemap.xml" in Robots
         Map = (await H.Client.get("/sitemap.xml")).text
         Locs = re.findall(r"<loc>(.*?)</loc>", Map)
@@ -236,7 +237,7 @@ async def test_a_design_page_is_headed_by_the_design_name(tmp_path):
         assert f"<h1>{Title}</h1>" in Live and "data-ssr-fallback" in Live          # for readers that run no scripts
         assert '<h2 class="hero-title text-5xl' in Page and '<h1 class="hero-title' not in Page   # the tagline steps down
         assert '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>' in Page        # the dialog's name is the H1
-        assert f"<title>{Title} · XJet Atelier</title>" in Page and Page.count('rel="canonical"') == 1
+        assert f"<title>{Title} · Custom Ring Design · XJet Atelier</title>" in Page and Page.count('rel="canonical"') == 1
         Home = (await H.Client.get("/")).text
         assert '<h1 class="hero-title text-5xl' in Home and "<h1>" not in Home        # the home page keeps its own H1
     finally:

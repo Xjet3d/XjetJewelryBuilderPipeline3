@@ -39,10 +39,10 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     assert R.status_code == 200 and R.headers["content-type"].startswith("text/html")
     assert R.headers["cache-control"] == "no-cache"
     Html = R.text
-    assert "<title>Aurora Lattice · XJet Atelier</title>" in Html
+    assert "<title>Aurora Lattice · Custom Ring Design · XJet Atelier</title>" in Html
     assert '<meta property="og:title" content="Aurora Lattice">' in Html
     assert '<meta property="og:site_name" content="XJet Atelier">' in Html
-    assert re.search(r'<meta property="og:description" content="Designed with XJet Atelier[^"]*">', Html)
+    assert re.search(r'<meta property="og:description" content="Aurora Lattice — a ring designed with XJet Atelier[^"]*">', Html)
     Img = html.unescape(re.search(r'<meta property="og:image" content="([^"]+)">', Html).group(1))   # attributes escape "&"
     assert Img.startswith(f"http://p3.test{H.Base}/thumb/designs/") and Img.endswith("?w=800&f=jpg")
     assert (await H.Client.get(Img.removeprefix("http://p3.test" + H.Base), headers=Anon)).headers["content-type"] == "image/jpeg"

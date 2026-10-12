@@ -173,6 +173,14 @@ CREATE TABLE IF NOT EXISTS gallery_uses (
 );
 CREATE INDEX IF NOT EXISTS gallery_uses_owner ON gallery_uses(owner_account_id, last_active_at);
 
+-- The sitemap's <lastmod>: when each public page's own content last changed (p3/app.py Sitemap, p3/sitepages.py
+-- PageFingerprint). A date moves only when the page's fingerprint changes — never per request.
+CREATE TABLE IF NOT EXISTS page_lastmod (
+    path         TEXT PRIMARY KEY,
+    fingerprint  TEXT NOT NULL,
+    changed_at   TEXT NOT NULL
+);
+
 -- ♥ Favorites: a customer's saved reference to a shared XJet master design. Never a copy, never a My Design;
 -- the same master whoever saves it. Removing the design from the gallery hides the favorite, re-adding shows it.
 CREATE TABLE IF NOT EXISTS gallery_favorites (

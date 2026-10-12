@@ -11,6 +11,7 @@ import logging
 import mimetypes
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
@@ -36,7 +37,7 @@ from p3.auth import RequireDeveloper, RequirePrincipal
 from p3.config import LoadCatalog, LoadGenerationConfig
 from p3.context import Context, HttpError
 from p3.customize import CustomizeService
-from p3.db import Database
+from p3.db import Database, Now
 from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
@@ -153,6 +154,9 @@ ContentSecurityPolicy = ("default-src 'self'; script-src 'self' 'unsafe-inline' 
                          "worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
 
 
+SitemapCache: dict = {}            # (context, origin, products) → (built at, body): the sitemap is rebuilt at most once a minute
+
+
 def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFactories: dict | None = None) -> FastAPI:
     S = SettingsObj or LoadSettings()
     Base = S.BasePath
@@ -237,6 +241,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Host.rsplit(":", 1)[0] if Host.count(":") == 1 else Host
 
     AdminPaths = ("/admin", "/admin/", "/static/admin.html", "/static/admin.js")
+    # The API's own documentation (FastAPI) is a developer aid, not part of the public site: wherever the site is open to
+    # search engines (production, or Admin → Settings → System → Search engines) it does not exist; elsewhere (proto,
+    # development copies) it stays, never indexed.
+    ApiDocs = ("/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json")
     # /showcase (the reference page) is a developer tool; /api/showcase is the homepage hero's public data
     DevPaths = ("/dev", "/showcase", "/static/dev.html", "/static/showcase.html")
 
@@ -249,6 +257,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         IsAdmin = Rel in AdminPaths or Rel.startswith(("/api/admin/", "/api/dev/"))
         IsDev = Rel in DevPaths or Rel.startswith("/api/dev/")
         if IsDev and not S.DevTools:
+            return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
+        if Rel in ApiDocs and Indexable():
             return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
         if IsAdmin and S.AdminHost and _RequestHost(Req) != S.AdminHost:
             return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
@@ -271,7 +281,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
         H = Resp.headers
-        if Rel in ("/admin", "/admin/", "/dev", "/showcase", "/verify") or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
+        if Rel in ("/admin", "/admin/", "/dev", "/showcase", "/verify") or Rel in ApiDocs or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
             H.setdefault("X-Robots-Tag", "noindex, nofollow")       # the Admin, the tools and the API are never indexed
         H.setdefault("X-Content-Type-Options", "nosniff")
         H.setdefault("X-Frame-Options", "DENY")
@@ -411,20 +421,52 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         only at a host's root: where the site lives under a base path, the root's file must carry these lines."""
         Lines = ["User-agent: *"]
         if Indexable():
-            Lines += [f"Disallow: {Base}{P}" for P in ("/admin", "/api/", "/verify", "/quote", "/dev", "/showcase")]
-            Lines += [f"Allow: {Base}/", f"Sitemap: {S.PublicBaseUrl or PublicOrigin(request)}{Base}/sitemap.xml"]
+            # Only the API is kept out: the Admin, sign-in and quote links, the tools and a missing design answer with
+            # noindex, which a crawler can read only if it may fetch them (a disallowed URL can still be listed bare)
+            Lines += [f"Disallow: {Base}/api/", f"Allow: {Base}/", f"Sitemap: {S.PublicBaseUrl or PublicOrigin(request)}{Base}/sitemap.xml"]
         else:
             Lines.append(f"Disallow: {Base}/")             # search engines kept out (Admin → Settings → System)
         return PlainTextResponse("\n".join(Lines) + "\n")
 
+    def PageDates(Entries: list[tuple[str, str, str | None]]) -> dict:
+        """(path, fingerprint, first date) → the date each page's own content last changed (page_lastmod). A new page
+        starts at its first date (a gallery design: when it was published here) or now; a page whose fingerprint
+        changed moves to now; an unchanged page keeps its date."""
+        Known = {R["path"]: R for R in Ctx.Db.All("SELECT path, fingerprint, changed_at FROM page_lastmod")}
+        Out = {}
+        for Path_, Print, First in Entries:
+            R = Known.get(Path_)
+            if R is None:
+                At = First or Now()
+                Ctx.Db.Execute("INSERT OR IGNORE INTO page_lastmod (path, fingerprint, changed_at) VALUES (?,?,?)",
+                               (Path_, Print, At))
+            elif R["fingerprint"] != Print:
+                At = Now()
+                Ctx.Db.Execute("UPDATE page_lastmod SET fingerprint = ?, changed_at = ? WHERE path = ?", (Print, At, Path_))
+            else:
+                At = R["changed_at"]
+            Out[Path_] = At
+        return Out
+
     @App_.get("/sitemap.xml", include_in_schema=False)
     async def Sitemap(request: Request):
-        """Every public page and every gallery design's own page — never the Admin, the API, My Account or a link."""
+        """Every public page and every gallery design's own page — never the Admin, the API, My Account or a link — each
+        with the date its own content last changed (<lastmod>; PageDates). Built at most once a minute (crawlers only)."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)
-        Urls = [f"{Origin}{Base}/" + P for P in SitePages.Paths.values()]
-        Urls += [f"{Origin}{Base}/design/{L['slug']}" for L in GalleryLinks(request)]
+        Key = (id(Ctx), Origin, tuple(Products.VisibleProducts(Ctx, request)))
+        Hit = SitemapCache.get(Key)
+        if Hit and time.monotonic() - Hit[0] < 60:
+            return PlainTextResponse(Hit[1], media_type="application/xml")
+        Entries = [("/" + P, SitePages.PageFingerprint(RenderPage(request, View), View), None) for View, P in SitePages.Paths.items()]
+        for L in GalleryLinks(request):
+            Row = Ctx.Db.One("SELECT g.created_at FROM gallery_items g JOIN designs d ON d.id = g.design_id WHERE d.share_slug = ?",
+                             (L["slug"],))
+            Entries.append(("/design/" + L["slug"], SitePages.DesignFingerprint(L), Row["created_at"] if Row else None))
+        Dates = PageDates(Entries)
         Body_ = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
-            "".join(f"  <url><loc>{html.escape(U)}</loc></url>\n" for U in Urls) + "</urlset>\n"
+            "".join(f"  <url><loc>{html.escape(f'{Origin}{Base}{P}')}</loc><lastmod>{SitePages.W3cDate(Dates[P])}</lastmod></url>\n"
+                    for P, _F, _D in Entries) + "</urlset>\n"
+        SitemapCache[Key] = (time.monotonic(), Body_)
         return PlainTextResponse(Body_, media_type="application/xml")
 
     @App_.get("/favicon.ico", include_in_schema=False)
@@ -448,10 +490,18 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         ImageRaw = f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}"
         Image = html.escape(ImageRaw, quote=True)
         Noun = "charm" if Found.get("product_type") == Products.Charm else "ring"
-        Description = f"Designed with XJet Atelier — a {Noun} from the Inspiration Gallery. See it in 360°, choose your metal and make it yours."
-        Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(Description, quote=False)}</p>"
+        DescriptionText = (f"{Found['title']} — a {Noun} designed with XJet Atelier, from the Inspiration Gallery. "
+                           "See it in 360°, choose your metal and make it yours.")
+        Description = html.escape(DescriptionText, quote=True)
+        # Other gallery designs (same product first): links between the design pages, for crawlers
+        Others = sorted((L for L in GalleryLinks(request) if L["slug"] != Found["slug"]),
+                        key=lambda L: (L.get("product_type") or Products.Ring) != (Found.get("product_type") or Products.Ring))[:6]
+        Related = " · ".join(f'<a href="{html.escape(Base, quote=True)}/design/{html.escape(L["slug"], quote=True)}">'
+                             f'{html.escape(L["title"], quote=False)}</a>' for L in Others)
+        Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"
                                        f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier">'
-                                       f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
+                                       + (f"<p>More designs: {Related}</p>" if Related else "")
+                                       + f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
         Html = RenderPage(request, "home", Design={"block": Block})
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
         Tags = "\n".join([
@@ -467,11 +517,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:description" content="{Description}">',
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
-            SitePages.JsonLd(SitePages.DesignProduct(Found["title"], Url, ImageRaw, Description, Found.get("product_type") or Products.Ring)),
+            SitePages.JsonLd(SitePages.DesignProduct(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
             f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
         ])
         # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)
-        Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{Title} · XJet Atelier</title>", Html, count=1, flags=re.S)
+        Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{Title} · Custom {Noun.title()} Design · XJet Atelier</title>", Html,
+                      count=1, flags=re.S)
         Html = re.sub(r'<meta name="description" content="[^"]*">',
                       lambda _M: f'<meta name="description" content="{Description}">\n    {Tags}', Html, count=1)
         return HTMLResponse(Html)

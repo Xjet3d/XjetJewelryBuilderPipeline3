@@ -13,6 +13,7 @@ configuration is production. The Admin, the API, the tools, sign-in links, quote
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
@@ -49,6 +50,8 @@ def Words(Visible: tuple) -> dict:
     return {"noun": Noun, "nouns": Nouns, "Nouns": Nouns[:1].upper() + Nouns[1:], "list": " and ".join(Plurals),
             "ring": Products.Ring in Visible, "charm": Products.Charm in Visible, "none": not Visible, "many": len(Visible) > 1,
             "sole": Sole,
+            # "ring", "ring and charm": the singular, before a noun ("ring and charm designs")
+            "stext": " and ".join(Products.Labels[P].lower() for P in Visible) if Visible else "jewelry",
             # "rings", "rings and charms" (more: "rings, charms and pendants"); "Rings & Charms" in a title
             "text": (", ".join(Lower[:-1]) + " and " + Lower[-1]) if len(Lower) > 1 else (Lower[0] if Lower else "jewelry"),
             "title": (", ".join(Plurals[:-1]) + " & " + Plurals[-1]) if len(Plurals) > 1 else (Plurals[0] if Plurals else "Jewelry")}
@@ -122,7 +125,7 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
     return {
         "home": ("XJet Atelier — Custom AI Jewelry, Designed by You", HomeDescription),
         "inspiration": (f"Inspiration Gallery — {W['title']} Designed with AI · XJet Atelier",
-                        f"Real XJet {W['text']} designs, made with AI. Open one to see it large, preview it in another "
+                        f"Real XJet {W['stext']} designs, made with AI. Open one to see it large, preview it in another "
                         "metal and make it yours — or use it as the spark for your own."),
         "faq": ("FAQ — Designing Custom Jewelry with AI · XJet Atelier",
                 f"Answers about designing {W['text']} with AI at XJet Atelier: what you can create, the metals, how "
@@ -343,3 +346,42 @@ def DesignProduct(Title: str, Url: str, Image: str, Description: str, Product: s
     return {"@context": "https://schema.org", "@type": "Product", "name": Title, "url": Url, "image": [Image],
             "description": Description, "category": Products.Plurals.get(Product, "Rings"),
             "brand": {"@type": "Brand", "name": "XJet Atelier"}}
+
+
+# ── the sitemap's <lastmod>: a page's own content, fingerprinted ─────────────────────────────────────────────────────
+_AssetVersion = re.compile(r"\?v=\d+")
+_HeadParts = re.compile(r'<title>.*?</title>|<meta name="description"[^>]*>|<link rel="canonical"[^>]*>|'
+                        r'<script type="application/ld\+json">.*?</script>', re.S)
+
+
+def _LiveCopy(Html: str, View: str) -> str:
+    """The page's live copy (ServerView's <div data-ssr-view="View">…</div>), whole: its text, crawler blocks, FAQ."""
+    I = Html.find(f'data-ssr-view="{View}"')
+    if I < 0:
+        return ""
+    Start = Html.rfind("<div", 0, I)
+    Depth = 0
+    for M in re.finditer(r"<div\b|</div>", Html[Start:]):
+        Depth += -1 if M.group(0) == "</div>" else 1
+        if Depth == 0:
+            return Html[Start:Start + M.end()]
+    return Html[Start:]
+
+
+def PageFingerprint(Html: str, View: str) -> str:
+    """What a public page says of its own: title, description, canonical, structured data and the page's live copy — not
+    the shared shell, the other pages' templates or the asset versions, so a release that leaves the page alone leaves
+    its date alone."""
+    Text = "\n".join(M.group(0) for M in _HeadParts.finditer(Html)) + "\n" + _LiveCopy(Html, View)
+    return hashlib.sha256(" ".join(_AssetVersion.sub("", Text).split()).encode("utf-8")).hexdigest()
+
+
+def DesignFingerprint(Link: dict) -> str:
+    """A gallery design's own page: its name, image, product and address (the rest is the home page around it)."""
+    Own = {K: Link.get(K) for K in ("slug", "title", "image_url", "product_type")}
+    return hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def W3cDate(Value: str) -> str:
+    """A stored UTC timestamp as a sitemap date: 2026-10-12T10:15:02+00:00 (no fraction)."""
+    return Value[:19] + "+00:00" if len(Value) >= 19 and Value.endswith("+00:00") else Value
