@@ -476,7 +476,8 @@ nobody (proto sets `none`, so its test requests never reach the inbox). API: `GE
 
 ## Search engines (Settings → System)
 
-**Let search engines index the public pages** — off by default (every page `noindex`, `robots.txt` disallows the site);
+**Let search engines index the public pages** — off by default (every page `noindex`, `robots.txt` disallows the site;
+on, `robots.txt` keeps out only the API, the sitemap dates each page by its own last change and the API docs are hidden);
 only the public production site (Atelier) turns it on, after a confirmation. The card shows the `robots.txt` and sitemap
 URLs and takes Google Search Console's verification code (the meta tag's `content`, written on the home page). API:
 `GET|PUT /api/admin/site-indexing` (`{"on": bool}`, `{"google_verification": "…"}`). How the pages, `robots.txt`, the
