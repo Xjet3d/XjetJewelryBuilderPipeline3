@@ -2001,6 +2001,7 @@ function adminApp() {
       return geo;
     },
     adjustments(t) {
+      if (t.hi3d?.provider === 'external') return this.adjustmentsExternal(t);
       if ((t.geometry.production?.method_version || '').startsWith('charm-measure')) return this.adjustmentsCharm(t);
       if ((t.geometry.production?.method_version || '').startsWith('ring-measure-once')) return this.adjustmentsV3(t);
       const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
@@ -2020,6 +2021,35 @@ function adminApp() {
       return out;
     },
 
+    // An uploaded STL (a 3D version made outside Atelier): used as uploaded at its own size, otherwise scaled to the size
+    adjustmentsExternal(t) {
+      const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};
+      const n = (v, d) => v == null ? '?' : Number(v).toFixed(d);
+      const r = this.live3d[t.id]?.raw || {}, charm = !!t.target_height_mm, mm = t.exact;
+      const size = charm ? t.target_height_mm + ' mm' : 'US ' + t.production_size;
+      const out = [
+        `Received the uploaded STL ${t.version?.label || ''}: ${Number(c.faces || r.faces || 0).toLocaleString()} faces${r.bytes ? ', ' + this.gb(r.bytes) : ''}${r.sha256 ? ', SHA-256 ' + r.sha256.slice(0, 12) + '…' : ''}. Measured once, exactly, on the full file.`,
+        `The file${mm ? ' (millimetres)' : ''}: ${n(raw.size_x_mm, 2)} × ${n(raw.size_y_mm, 2)} × ${n(raw.size_z_mm, 2)}` + (charm ? `, total height ${n(c.measured_mm, 2)} (loop included).`
+          : (raw.inner_diameter_mm != null ? `, bore ${n(raw.inner_diameter_mm, 2)} (the largest circle that passes — what a ring gauge reads), roundness deviation ${c.roundness == null ? '?' : (c.roundness * 100).toFixed(2) + '%'}.` : ', no ring bore found.')),
+      ];
+      if (t.scaled_stl === 'master') out.push(`Used exactly as uploaded: the file is ${size} (${charm ? 'its height' : 'its bore'} is within ${charm ? '±0.5' : '±0.15'} mm of ${n(c.target_mm, 2)} mm) — the STL is the file itself.`);
+      else out.push(`Scaled by arithmetic ×${n(prod.scale_factor, 4)} so ${charm ? 'the total height is ' + n(c.target_mm, 2) + ' mm' : 'a Ø ' + n(c.target_mm, 2) + ' mm gauge passes exactly'} (${size}): lengths × s, area × s², volume × s³.`);
+      out.push(`Result: ${n(prod.size_x_mm, 2)} × ${n(prod.size_y_mm, 2)} × ${n(prod.size_z_mm, 2)} mm` + (charm ? '' : `, inner diameter ${n(prod.inner_diameter_mm, 3)} mm`) + `, volume ${prod.volume_mm3 == null ? '?' : (prod.volume_mm3 / 1000).toFixed(3) + ' cc'}, surface ${prod.surface_area_mm2 == null ? '?' : (prod.surface_area_mm2 / 100).toFixed(2) + ' cm²'}.`);
+      if (t.price?.weight_g != null) out.push(`Weight = ${(prod.volume_mm3 / 1000).toFixed(3)} cc × ${t.density_g_cm3} g/cm³ (${t.material_label}) = ${t.price.weight_g.toFixed(2)} g.`);
+      if (t.scaled_stl !== 'master') {
+        out.push(charm ? 'The scaled STL (lying flat: width along X, height along Y, thickness along Z, centred, millimetres) is created on demand and deleted after an hour.'
+                       : 'The scaled STL (bore centre at the origin, ring axis along Z, millimetres) is created on demand and deleted after an hour.');
+        out.push('Note: uniform scaling also scales band width and thickness.');
+      }
+      return out;
+    },
+    // A file whose name gives a ring size other than its bore measures (e.g. "…_US_5.5.stl" with a US 2 bore): said plainly
+    versionNameSize(v) {
+      const m = (v.original_filename || '').match(/(?:^|[^a-z])US[\s_-]*(\d{1,2}(?:[.,]\d{1,2})?)/i), b = v.measure?.inner_diameter;
+      if (!m || b == null || v.measure.units !== 'mm') return '';
+      const named = parseFloat(m[1].replace(',', '.')), want = 11.63 + 0.8128 * named;
+      return Math.abs(want - b) > 0.15 ? `The file name says US ${named} (${want.toFixed(2)} mm), but its bore measures ${b.toFixed(2)} mm (≈ US ${v.measure.us_size}). Sizes are made from the measured bore.` : '';
+    },
     // A charm: its own path — no bore, scaled by its overall height (the attachment loop is not detected)
     adjustmentsCharm(t) {
       const raw = t.geometry.raw || {}, prod = t.geometry.production || {}, c = prod.checks || {};

@@ -106,13 +106,22 @@ numpy + PIL, no AI call), used as its option's image.
 
 ## 5. Exact vs scalable master
 
-| | Exact (default for external) | Scalable master (default for Hi3D) |
+| | *Use exactly as uploaded* (default for external) | *Use as scalable master* (default for Hi3D) |
 |---|---|---|
-| Meaning | The STL is the production geometry, in **mm**. | The STL is a shape; Atelier sizes it. |
-| Sizes | One size: the file's own (the default size of its results). A result for any size and material uses scale 1. | Any size by arithmetic (ring: inner diameter; charm: total height incl. loop). |
-| Checks | Ring: the measured inner diameter vs the ordered US size (±0.15 mm). Charm: the total height vs the ordered size (±0.5 mm). Outside → *review required* (never silently accepted); the Admin can accept. | As before. |
-| Download | The master file itself, under the usual production name — no export job. | Temporary scaled export (as before). |
-| Units | External files are read as mm. The panel warns when the sizes do not look like jewelry in mm (largest side < 3 mm or > 200 mm). | Hi3D's arbitrary units, scaled. |
+| Meaning | The STL is the part in **mm**. | The STL is a shape in any units. |
+| Its own size | The size whose target is within ±0.15 mm of the file's inner diameter (a ring) or ±0.5 mm of its total height (a charm): the production geometry **is the file** (scale 1). It is the default size of its results. | — |
+| Any other size | **The part scaled to the size** by arithmetic (ring: inner diameter; charm: total height incl. loop), exactly like a Hi3D model. | Every size scaled the same way. |
+| Download | Own size: the file itself, under the usual production name. Other sizes: the temporary scaled export (as for Hi3D). A file is never named for one size while holding another. | Temporary scaled export. |
+| Review | Only real problems: a ring with no bore (cannot be sized — used as uploaded), a bore not round, a file used as uploaded that is not jewelry in mm (largest side < 3 mm or > 200 mm), a mesh that may be open. | As before. |
+
+The versions panel shows each file's measured size (inner Ø ≈ US size, or a charm's height) and says when a file's name
+gives another US size than its bore measures (e.g. *…_US_5.5.stl* with a 13.32 mm bore, ≈ US 2): sizes are always made
+from the measured bore.
+
+Changed on 2026-10-13 at the user's request (an STL named US 5.5 with a US 2 bore was given to US 8.5 and US 6.5
+unchanged, under those sizes' names, and flagged): until then a part used exactly as uploaded was never scaled and any
+other size was sent to review. Results flagged that way are made again at the next start (`RefinalizeExactSizes`), unless
+the Admin accepted them.
 
 ---
 
@@ -130,6 +139,9 @@ lines keep theirs. A version whose file cannot be measured is skipped (logged, b
 * **Design → version in use** (changes over time). **Order line → pinned version → pinned 3D result** (never changes
   by itself).
 * Placing an order pins each line to the version in use for its option (when the design has a 3D model).
+* An order line whose design has no 3D model yet (e.g. a part made outside Atelier for it): *Upload revised STL…* on the
+  line attaches the file as a version of the ordered option and pins the line to it; its size is made from the file
+  (as uploaded at its own size, scaled otherwise).
 * *Prepare STL* on a line pins it to the result it creates on that version (event `3d_prepared` with the version).
 * *Use another version…* re-pins explicitly (event `3d_version_changed`, from / to / who / note); from *In production*
   on a reason is required.
@@ -187,8 +199,9 @@ SHA-256) and the exported file (size, material, its own hash) — the same for A
    external part is attached to that existing session.
 3. **Several versions, LIFO.** The newest valid version is the default (the one in use); the Admin can choose any other
    existing version; history is kept, nothing is overwritten.
-4. **Units and checks** (approved as built): millimetres; ring inner diameter ±0.15 mm; charm height ±0.5 mm; outside the
-   tolerance → review, never silently accepted.
+4. **Units and checks**: millimetres; ring inner diameter ±0.15 mm; charm height ±0.5 mm. Within the tolerance the part is
+   the file itself; outside it (since 2026-10-13, the user's request) the part is scaled to the size — never a file
+   that is not the size it is named for, never silently accepted at the wrong size.
 5. **Upload size and retention.** At most 300 MB per STL. A completed STL attached to a part is a persistent asset of
    the session's part (like its image and movie) — never deleted automatically. Only uploads that were never attached
    are removed.

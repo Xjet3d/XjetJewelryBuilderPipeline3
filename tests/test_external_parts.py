@@ -297,15 +297,25 @@ async def test_an_exact_part_is_the_production_file_and_is_checked_against_the_s
     Name = File.headers["content-disposition"]
     assert File.content == Data and "_R-1001-A_ORD-10077_" in Name and Name.endswith('_US7.stl"'), Name
     assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM geometry_jobs WHERE kind = 'export'")["n"] == Jobs
-    # Another size: the file stays as it is, and the difference is a reason for review
+    # Another size: the part scaled to it (by its inner diameter) — a real scaled STL, named for the size it holds
     T9 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 9}, headers=Admin)).json()
     await H.Idle()
     T9 = next(X for X in (await Session(H, Did))["three_d"] if X["id"] == T9["id"])
-    assert T9["production_state"] == "review_required" and [R["code"] for R in T9["review"]] == ["exact_size"]
-    assert "US 9 is 18.95 mm" in T9["review"][0]["text"] and T9["geometry"]["production"]["scale_factor"] == 1.0
+    P9 = T9["geometry"]["production"]
+    assert (T9["production_state"], T9["review"], T9["scaled_stl"]) == ("complete", [], "on_demand")
+    assert P9["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(9), abs=0.01)
+    assert P9["scale_factor"] == pytest.approx(UsSizeToInnerDiameterMm(9) / V["measure"]["inner_diameter"], rel=1e-6)
+    E = (await H.Client.post(f"/api/admin/3d/{T9['id']}/export", headers=Admin)).json()
+    await H.Idle()
+    E = (await H.Client.get(f"/api/admin/3d/{T9['id']}/export/{E['job_id']}?order=ORD-10077", headers=Admin)).json()
+    File9 = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
+    Name9 = File9.headers["content-disposition"]
+    assert "_R-1001-A_ORD-10077_" in Name9 and Name9.endswith('_US9.stl"') and File9.content != Data
+    Path9 = H.TmpPath / "us9.stl"
+    Path9.write_bytes(File9.content)
+    assert MeasureRaw(Path9)["inner_diameter"] == pytest.approx(UsSizeToInnerDiameterMm(9), abs=0.02)     # the file holds US 9
     R = await H.Client.post(f"/api/admin/3d/{T9['id']}/fix-bore", headers=Admin)
     assert R.status_code == 409 and R.json()["error"]["code"] in ("exact_version", "geometry_not_ready")
-    assert (await H.Client.post(f"/api/admin/3d/{T9['id']}/accept", json={"note": "resized in CAD later"}, headers=Admin)).status_code == 200
 
 
 async def test_an_exact_charm_is_checked_by_its_total_height_and_an_ascii_part_is_kept_binary(HE):
@@ -343,7 +353,43 @@ async def test_an_exact_charm_is_checked_by_its_total_height_and_an_ascii_part_i
     await H.Idle()
     Rows = {X["id"]: X for X in (await Session(H, Did))["three_d"]}
     assert Rows[T["id"]]["production_state"] == "complete" and Rows[T["id"]]["geometry"]["production"]["size_y_mm"] == pytest.approx(Height)
-    assert [R["code"] for R in Rows[T25["id"]]["review"]] == ["exact_size"] and "25 mm" in Rows[T25["id"]]["review"][0]["text"]
+    T25 = Rows[T25["id"]]                                          # another size: the charm scaled to a 25 mm total height
+    assert (T25["production_state"], T25["review"], T25["scaled_stl"]) == ("complete", [], "on_demand")
+    assert T25["geometry"]["production"]["size_y_mm"] == pytest.approx(25.0) and Rows[T["id"]]["scaled_stl"] == "master"
+
+
+async def test_a_part_whose_bore_is_no_size_on_offer_is_scaled_and_old_flags_are_made_again(HE):
+    """The 2026-10-13 report: a file named US 5.5 whose bore measures 13.32 mm (about US 2). Every size is the part
+    scaled to it — never the file under another size's name — and results flagged under the former rule are made again."""
+    H = HE
+    B, Did = await ModelledRing(H)
+    U = await Upload(H, Torus(13.32 / 2 + 1.5), "New_Eclat Heart_ORD-10003_Sterling_Silver_US_5.5.stl")
+    V = (await H.Client.post(f"/api/admin/designs/{Did}/versions", json={"upload_id": U["id"], "source_tool": "Blender"},
+                             headers=Admin)).json()
+    await H.Idle()
+    V = next(X for X in (await H.Client.get(f"/api/admin/designs/{Did}/versions", headers=Admin)).json()["versions"] if X["id"] == V["id"])
+    assert V["measure"]["inner_diameter"] == pytest.approx(13.32, abs=0.02) and V["measure"]["us_size"] == pytest.approx(2.07, abs=0.03)
+    # No size on offer is the file's own: the default is the customer's (none here) or US 10 — scaled, not "as uploaded"
+    T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
+    assert (T["production_size"], T["size_source"]) == (10.0, "default")
+    T85 = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 8.5}, headers=Admin)).json()
+    await H.Idle()
+    Rows = {X["id"]: X for X in (await Session(H, Did))["three_d"]}
+    for Id_, Size in ((T["id"], 10), (T85["id"], 8.5)):
+        X = Rows[Id_]
+        assert (X["production_state"], X["scaled_stl"]) == ("complete", "on_demand"), X["review"]
+        assert X["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(Size), abs=0.01)
+    # A result flagged under the former rule (scale 1, "exact_size") is made again at a restart: scaled, complete
+    Db = H.Ctx.Db
+    G = Db.One("SELECT id, checks_json FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (T85["id"],))
+    Old = json.loads(G["checks_json"])
+    Old["exact_review"] = [{"code": "exact_size", "text": "Used exactly as uploaded, …", "action": "…"}]
+    Db.Execute("UPDATE geometry_results SET checks_json = ?, scale_factor = 1.0, inner_diameter_mm = 13.32 WHERE id = ?", (json.dumps(Old), G["id"]))
+    Db.Execute("UPDATE session_3d SET status = 'needs_review', error = 'Used exactly as uploaded' WHERE id = ?", (T85["id"],))
+    assert H.Svc.Production3D.RefinalizeExactSizes() == 1 and H.Svc.Production3D.RefinalizeExactSizes() == 0
+    X = next(Y for Y in (await Session(H, Did))["three_d"] if Y["id"] == T85["id"])
+    assert (X["status"], X["production_state"], X["scaled_stl"]) == ("measured", "complete", "on_demand")
+    assert X["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(8.5), abs=0.01)
 
 
 # ── Sessions start on the website; an external part joins an existing one ─────

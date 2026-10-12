@@ -256,8 +256,9 @@ class Production3D:
         return Size, Source, CustomerSize
 
     def ExactSize(self, Mesh: dict | None, Charm: bool) -> float | None:
-        """A version used exactly as uploaded (and measured): its own size — the US size nearest to its inner diameter, or
-        its total height in mm. The default size of its results when nobody chose one."""
+        """A part uploaded in millimetres (and measured): its own size — the US size whose inner diameter its bore is (within
+        ExactRingToleranceMm), or its total height in mm. The default size of its results when nobody chose one, so the
+        default result is the file itself. None when no size on offer is the file's own (e.g. a bore smaller than US 4)."""
         if not Mesh or (Mesh.get("scaling") or "scalable") != "exact":
             return None
         R = self.Ctx.Db.One("SELECT measurement_json FROM raw_geometry WHERE mesh_id = ? AND status = 'measured'", (Mesh["id"],))
@@ -265,9 +266,12 @@ class Production3D:
         if Charm:
             H = M.get("height")
             return round(float(H), 1) if H and Products.CharmSizeMin <= H <= Products.CharmSizeMax else None
-        Us = Versions.UsSizeFor(M.get("inner_diameter")) if M.get("bore_ok") else None
+        Bore = M.get("inner_diameter") if M.get("bore_ok") else None
         Sizes = list(self.Ctx.Catalog.RingSizes)
-        return min(Sizes, key=lambda S: abs(S - Us)) if Us is not None and Sizes else None
+        if Bore is None or not Sizes:
+            return None
+        Near = min(Sizes, key=lambda X: abs(UsSizeToInnerDiameterMm(X) - Bore))
+        return Near if abs(UsSizeToInnerDiameterMm(Near) - Bore) <= ExactRingToleranceMm else None
 
     def _IsCharmMesh(self, MeshId: str) -> bool:
         M = self.Ctx.Db.One("SELECT candidate_id FROM meshes WHERE id = ?", (MeshId,))
@@ -531,11 +535,14 @@ class Production3D:
                         status=Status, height_mm=G["height_mm"], volume_mm3=G["volume_mm3"], weight_g=Weight)
 
     def _FinalizeExact(self, Row: dict, RawRow: dict, Raw: dict) -> None:
-        """A version used exactly as uploaded: the file is the production geometry in mm whatever size was asked for — scale
-        1, nothing exported (the download is the file itself: its production row points at it, StoredProduction). The size
-        is checked against the file instead: a ring's inner diameter within ExactRingToleranceMm of the size's, a charm's
-        total height within ExactCharmToleranceMm. A difference, sides that do not look like millimetres, a bore that is
-        missing or not round, or a mesh that may be open → production review (the Admin can accept it as it is)."""
+        """A part uploaded in millimetres (scaling 'exact'). At its own size — the asked size within ExactRingToleranceMm of
+        the file's inner diameter (a ring) or ExactCharmToleranceMm of its total height (a charm) — the file IS the
+        production geometry: scale 1, nothing exported (the download is the file itself, StoredProduction). Any other size
+        is the part scaled to it by arithmetic, exactly like a Hi3D model (a ring by its inner diameter, a charm by its
+        total height) and exported on demand: a file is never named for one size while holding another (2026-10-13).
+        Production review only for a real problem: a ring without a bore (it cannot be sized, so it is used as uploaded),
+        a bore that is not round, a file used as uploaded whose sides are not jewelry in millimetres, a mesh that may be
+        open. The Admin can accept it."""
         Ctx, Db, Sid = self.Ctx, self.Ctx.Db, Row["id"]
         Charm = Raw.get("method_version") == CharmGeo.CharmMethodVersion
         Size = float(Row["production_size"])
@@ -543,61 +550,77 @@ class Production3D:
         Db.Execute("DELETE FROM price_calculations WHERE session_3d_id = ?", (Sid,))     # a retry replaces results
         Db.Execute("DELETE FROM geometry_results WHERE session_3d_id = ?", (Sid,))
         Fix = "Correct the part in CAD and upload it as a new version, or accept it as it is."
+        if Charm:
+            Want, Tol = Products.Charm3DHeight(Size), ExactCharmToleranceMm
+            Have = float(Raw.get("height") or 0.0) or None
+        else:
+            Want, Tol = UsSizeToInnerDiameterMm(Size), ExactRingToleranceMm
+            Have = Raw.get("inner_diameter") if Raw.get("bore_ok") else None
+        AsUploaded = Have is None or abs(Have - Want) <= Tol      # without a bore a ring cannot be sized: used as uploaded
         Problems = []
         Sides = (Raw["extent_x"], Raw["extent_y"], Raw["extent_z"])
-        if not Versions.UnitsMinMm <= max(Sides) <= Versions.UnitsMaxMm:
+        if AsUploaded and Have is not None and not Versions.UnitsMinMm <= max(Sides) <= Versions.UnitsMaxMm:
             Problems.append({"code": "exact_units", "text": "The part measures " + " × ".join(f"{X:.2f}" for X in Sides)
                              + " — an STL used exactly as uploaded must be in millimetres.",
                              "action": "Export the part in millimetres and upload it as a new version (or use it as a scalable master)."})
-        if Charm:
-            Want, Have = Products.Charm3DHeight(Size), float(Raw.get("height") or 0.0)
-            if abs(Have - Want) > ExactCharmToleranceMm:
-                Problems.append({"code": "exact_size", "action": Fix + " Or make this result for the part's own size.",
-                                 "text": f"Used exactly as uploaded, the charm is {Have:.2f} mm high (loop included); the size "
-                                         f"{Size:g} mm asks for {Want:.2f} mm ({Have - Want:+.2f} mm)."})
-        else:
-            Want, Have = UsSizeToInnerDiameterMm(Size), Raw.get("inner_diameter") if Raw.get("bore_ok") else None
-            if Have is None:
-                Problems.append({"code": "no_bore", "action": "Check the part in CAD: " + Fix,
-                                 "text": "No ring bore was found, so the inner diameter cannot be checked against the size."})
-            else:
-                if abs(Have - Want) > ExactRingToleranceMm:
-                    Near = Versions.UsSizeFor(Have)
-                    Problems.append({"code": "exact_size", "action": Fix + " Or make this result for the part's own size.",
-                                     "text": f"Used exactly as uploaded, the inner diameter is {Have:.2f} mm (about US {Near:g}); "
-                                             f"US {Size:g} is {Want:.2f} mm ({Have - Want:+.2f} mm)."})
-                if (Raw.get("roundness") or 0) > MaxRoundness:
-                    Problems.append({"code": "bore_not_round", "action": Fix,
-                                     "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — check the inner diameter."})
+        if not Charm and Have is None:
+            Problems.append({"code": "no_bore", "action": "Check the part in CAD: " + Fix,
+                             "text": "No ring bore was found, so the part cannot be sized: it is used exactly as uploaded."})
+        elif not Charm and (Raw.get("roundness") or 0) > MaxRoundness:
+            Problems.append({"code": "bore_not_round", "action": Fix,
+                             "text": f"The bore is not round ({Raw['roundness'] * 100:.1f}% deviation) — check the inner diameter."})
         if not Raw["closed_heuristic"]:
             Problems.append({"code": "open_mesh_heuristic", "text": "The volume reference check suggests the mesh may not be closed — "
                                                                     "volume and weight may be wrong.",
                              "action": "Repair the mesh (close the holes) in CAD and upload it as a new version."})
-        Checks = {"exact": True, "closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
+        File = {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
+                "inner_diameter_mm": None if Charm else Have, "volume_mm3": Raw["volume"], "surface_area_mm2": Raw["area"]}
+        if AsUploaded:
+            G, Scale, StlPath = File, 1.0, RawRow["stl_path"]                  # the file IS the production STL
+        else:
+            G = CharmGeo.CharmScaled(Raw, Want) if Charm else Scaled(Raw, Want)
+            Scale, StlPath = G["scale_factor"], None                          # the scaled STL: exported on demand only
+        Checks = {"exact": True, "as_uploaded": AsUploaded, "closed_heuristic": Raw["closed_heuristic"], "volume": Raw["volume"],
                   "volume_alt_reference": Raw["volume_alt_reference"], "faces": Raw["faces"], "raw_sha256": RawRow["sha256"],
                   "roundness": Raw.get("roundness"), "target_mm": Want, "measured_mm": Have, "exact_review": Problems,
-                  **({"height_basis": Products.CharmSizeDefinition["text"]} if Charm else {
-                      "bore_min_diameter_mm": Raw.get("bore_min_diameter"), "bore_max_diameter_mm": Raw.get("bore_max_diameter")})}
-        G = {"size_x_mm": Raw["extent_x"], "size_y_mm": Raw["extent_y"], "size_z_mm": Raw["extent_z"],
-             "inner_diameter_mm": None if Charm else (Raw.get("inner_diameter") if Raw.get("bore_ok") else None),
-             "volume_mm3": Raw["volume"], "surface_area_mm2": Raw["area"]}
+                  **({"height_basis": Products.CharmSizeDefinition["text"], "up_source": Raw.get("up_source")} if Charm else {
+                      "bore_min_diameter_mm": (Raw.get("bore_min_diameter") or 0) * Scale or None,
+                      "bore_max_diameter_mm": (Raw.get("bore_max_diameter") or 0) * Scale or None})}
         Ids = {}
-        for Stage, Path_ in (("raw", RawRow["stl_path"]), ("production", RawRow["stl_path"])):   # the file IS the production STL
+        for Stage, Geo_, Sc, Path_ in (("raw", File, None, RawRow["stl_path"]), ("production", G, Scale, StlPath)):
             Ids[Stage] = NewId("geo")
             Db.Execute("INSERT INTO geometry_results (id, session_3d_id, stage, size_x_mm, size_y_mm, size_z_mm, "
                        "inner_diameter_mm, volume_mm3, surface_area_mm2, watertight, scale_factor, stl_path, "
                        "method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                       (Ids[Stage], Sid, Stage, G["size_x_mm"], G["size_y_mm"], G["size_z_mm"], G["inner_diameter_mm"],
-                        G["volume_mm3"], G["surface_area_mm2"], int(Raw["closed_heuristic"]), 1.0 if Stage == "production" else None,
-                        Path_, Raw["method_version"], Dumps(Checks), T))
+                       (Ids[Stage], Sid, Stage, Geo_["size_x_mm"], Geo_["size_y_mm"], Geo_["size_z_mm"], Geo_["inner_diameter_mm"],
+                        Geo_["volume_mm3"], Geo_["surface_area_mm2"], int(Raw["closed_heuristic"]), Sc, Path_, Raw["method_version"],
+                        Dumps(Checks), T))
         Weight = self._Price(Row, Ids["production"], G["volume_mm3"] if Raw["closed_heuristic"] else None)
-        Texts = [P["text"] for P in Problems]
+        Texts = [P_["text"] for P_ in Problems]
         Status = "needs_review" if Problems else "measured"
         Db.Update("session_3d", Sid, status=Status, error=" ".join(Texts) or None)
         Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Texts} if Problems else {}))
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(Ctx, Owner["owner_account_id"], "admin_3d_measured", Row["design_id"], session_3d_id=Sid, status=Status,
-                        exact=True, measured_mm=Have, target_mm=Want, volume_mm3=G["volume_mm3"], weight_g=Weight)
+                        exact=True, as_uploaded=AsUploaded, scale=Scale, measured_mm=Have, target_mm=Want,
+                        volume_mm3=G["volume_mm3"], weight_g=Weight)
+
+    def RefinalizeExactSizes(self) -> int:
+        """Results of uploaded parts flagged only because the asked size was not the file's own — before 2026-10-13 such a
+        part was never scaled — are made again: the part scaled to the size, by arithmetic (no file is read). A result the
+        Admin accepted stays as it was."""
+        Db, N = self.Ctx.Db, 0
+        for R in Db.All("SELECT s.* FROM session_3d s JOIN meshes m ON m.id = s.mesh_id JOIN geometry_results g "
+                        "ON g.session_3d_id = s.id AND g.stage = 'production' WHERE m.scaling = 'exact' "
+                        "AND s.status IN ('measured', 'needs_review') AND s.accepted_at IS NULL AND g.checks_json LIKE ?",
+                        ('%"exact_size"%',)):
+            RawRow = Db.One("SELECT * FROM raw_geometry WHERE mesh_id = ? AND status = 'measured'", (R["mesh_id"],))
+            if RawRow and RawRow["measurement_json"]:
+                self._Finalize(R, RawRow)
+                N += 1
+        if N:
+            Logger.info("Made %d result(s) of uploaded parts again at their size (scaled)", N)
+        return N
 
     def _Price(self, Row: dict, Gid: str, VolumeMm3: float | None) -> float | None:
         """Weight, production cost and 3D price from Admin → Material pricing (current version); a charm's from the
@@ -910,6 +933,7 @@ class Production3D:
         """After a restart: continue every request whose raw STL is on disk; Hi3D ones resume via the mesh."""
         self.RepriceMissing()
         self.ClearLegacyLoopReviews()
+        self.RefinalizeExactSizes()
         N = 0
         for R in self.Ctx.Db.All("SELECT DISTINCT s.mesh_id, m.status FROM session_3d s JOIN meshes m ON m.id = s.mesh_id "
                                  f"WHERE s.status IN ({','.join('?' * len(Waiting))})", Waiting):
@@ -1017,7 +1041,7 @@ class Production3D:
             "exact": Exact,
             "geometry": Geo, "price": Calc,
             # how the STL for this size is had: the master file itself (exact), a stored one (v2 rows), or exported on demand
-            "scaled_stl": "master" if Exact and Prod else "stored" if Prod.get("stl_path") else ("on_demand" if Prod else None),
+            "scaled_stl": ("master" if Exact else "stored") if Prod.get("stl_path") else ("on_demand" if Prod else None),
             "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }

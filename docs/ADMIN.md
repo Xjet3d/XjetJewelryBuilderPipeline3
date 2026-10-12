@@ -202,10 +202,11 @@ Design document: `docs/EXTERNAL-PARTS.md` (`p3/versions.py`, `p3/uploads.py`, `p
 - **Add External Part…** (in a session page's 3D section; in the header of a session with no finished part yet):
   upload an STL of up to **300 MB** in 8 MB pieces (nothing is held in memory) and choose **Add as a new Design** (a
   design of its own in this session — picture = a render of the part) or **Update an existing Design** (a new version;
-  earlier versions stay). *How it is used*: **Use exactly as uploaded** (default: the file is the production part in mm
-  — each size is checked against it, ±0.15 mm inner diameter / ±0.5 mm charm height, otherwise *review required*; the
-  STL download is the file itself) or **Use as scalable master** (sized like a Hi3D model). An attached STL stays with
-  its part for good; only an upload that was never attached is removed.
+  earlier versions stay). *How it is used*: **Use exactly as uploaded** (default: the file is the part in mm — at its
+  own size, ±0.15 mm inner diameter / ±0.5 mm charm height, the STL is the file itself; any other size is the part
+  scaled to that size, exactly like a Hi3D model, with *Download scaled STL*) or **Use as scalable master** (a shape in
+  any units: every size scaled). The panel shows the size a file measures and warns when its name says another US size.
+  An attached STL stays with its part for good; only an upload that was never attached is removed.
 - **Sessions start on the website**; the Admin does not create them. When a design is added to a session, the session
   holds several designs and gets a number (S-1001 …), shown above the Sessions list and on its designs.
 - **External designs are ordinary parts of their session**: their owner sees them in My Designs and can order them;
