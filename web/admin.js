@@ -211,6 +211,7 @@ function adminApp() {
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', oFulfillment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
+    prodSel: {}, prodNote: '',                   // Send selected lines to Production: the lines ticked (eligible ones are ticked by default)
     qf: null, cmdForm: null,                     // a quote request's Fulfillment state; a request to Fulfillment being written
     oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
     qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
@@ -431,7 +432,7 @@ function adminApp() {
       this.odBusy = true; this.odError = '';
       try {
         const c = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/fulfillment/commands`, body);
-        this.cmdForm = null; this.toast(c.state === 'pending' ? 'Request sent to Fulfillment — pending until it answers.' : 'Request ' + c.state + '.');
+        this.cmdForm = null; this.notify(c.state === 'pending' ? 'Request sent to Fulfillment — pending until it answers.' : 'Request ' + c.state + '.');
         this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment');
       } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
@@ -552,17 +553,30 @@ function adminApp() {
         this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment').catch(() => null);
       } catch (e) { this.od = null; this.odError = e.message; }
     },
-    // Send to Fulfillment: an explicit, confirmed hand-over. From then on production, QC and shipping are recorded there.
-    async sendToFulfillment() {
-      if (!this.od || !this.of || !this.of.eligible) return;
-      const r = await this.ask({ title: 'Send ' + this.od.ref + ' to Fulfillment?',
-        text: 'Fulfillment takes over the operational review and the manufacturing of this order. Production, QC and shipping are then recorded there and shown here as its progress; payment, notes and cancellation stay here. This cannot be undone from this page.',
-        confirmLabel: 'Send to Fulfillment', cancelLabel: 'Not now',
-        input: { label: 'Note for the operations team (optional — not a signature)', value: '', placeholder: 'For example: rush, or a detail to check', max: 500 } });
+    // ── Order → Production (docs/order-to-production-review.md): the explicit, per-line hand-over ──
+    prodLine(l) { return (this.of?.lines || []).find(x => x.line_id === l.id) || null; },
+    prodEligible() { return (this.of?.lines || []).filter(x => x.eligible); },
+    prodSelected() { return this.prodEligible().filter(x => this.prodSel[x.line_id] !== false).map(x => x.line_id); },
+    // Send to Production: one line, or the ticked eligible lines of the order. The confirmation names every line with the
+    // exact print version pinned for it; the server checks each line again and refuses when a print file is missing.
+    async sendToProduction(lineIds) {
+      if (!this.od || !this.of || this.odBusy) return;
+      const lines = (this.of.lines || []).filter(x => lineIds.includes(x.line_id));
+      if (!lines.length) return;
+      const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — print version: ' + (x.print_version?.label || '—') + (x.pinned ? ' · pinned' : '')).join('\n');
+      const r = await this.ask({ title: 'Send ' + (lines.length === 1 ? lines[0].item_ref : lines.length + ' lines of ' + this.od.ref) + ' to Production?',
+        text: what + '\n\nFulfillment takes over the manufacturing of these lines: the exact print file is pinned now, and a later version of the design never changes it. Production, QC and shipping are recorded there and shown here as progress; payment, notes and cancellation stay here. A wrong file is replaced through an explicit revision; a line leaves Production only through a cancellation request.',
+        confirmLabel: 'Send to Production', cancelLabel: 'Not now',
+        input: { label: 'Note for the operations team (optional — not a signature)', value: this.prodNote || '', placeholder: 'For example: complimentary sample — approved for production', max: 500 } });
       if (!r) return;
       this.odBusy = true; this.odError = '';
-      try { this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/fulfillment/enroll`, { note: (r.value || '').trim() }); this.toast(this.od.ref + ' is with Fulfillment.'); await this.loadOrder(); }
-      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+      try {
+        this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/production`, { line_ids: lineIds, note: (r.value || '').trim() });
+        this.prodSel = {}; this.prodNote = '';
+        this.notify((lines.length === 1 ? lines[0].item_ref : lines.length + ' lines') + ' sent to Production.');
+        await this.loadOrder();
+      } catch (e) { this.odError = e.message; await this.loadOrder(); }      // a line that was already sent, or lost its file meanwhile: the page shows the truth
+      finally { this.odBusy = false; }
     },
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;

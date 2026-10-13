@@ -75,6 +75,10 @@ class Settings:
     FulfillmentCustomerNotifications: bool = False   # P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS
     FulfillmentNotificationRecipient: str | None = None   # P3_FULFILLMENT_NOTIFICATION_RECIPIENT: every customer email goes here instead (testing / initial activation)
     FulfillmentNotificationWindowS: int = 120    # P3_FULFILLMENT_NOTIFICATION_WINDOW_S: parts of one order that reach a milestone together make one email
+    # The commercial rule Atelier owns and advertises to Fulfillment (identity.payment_gate; docs/order-to-production-review.md
+    # §J, K8): True (the default, the deployed systems) — an unpaid order's lines are not released and the live checks say
+    # PAYMENT_PENDING; False — payment is shown, never gating: the Admin decides what enters Production (switched at activation)
+    FulfillmentPaymentGate: bool = True          # P3_FULFILLMENT_PAYMENT_GATE
 
     @property
     def Production(self) -> bool:
@@ -160,6 +164,7 @@ def LoadSettings(**Overrides) -> Settings:
         FulfillmentCustomerNotifications=_Bool("P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS"),
         FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
         FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
+        FulfillmentPaymentGate=_Bool("P3_FULFILLMENT_PAYMENT_GATE", True),
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])

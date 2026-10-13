@@ -11,7 +11,7 @@ import smtplib
 from p3 import mail as Mail
 from p3.mail import MailNotAccepted, MailOutcomeUnknown, SmtpMailer
 from tests.conftest import Harness
-from tests.test_fulfillment_bridge import Admin, AdminKey, Prefix, Service, ServiceKey, _Event, _On, _Placed
+from tests.test_fulfillment_bridge import Admin, AdminKey, Prefix, Service, ServiceKey, _Enrolled, _Event, _On, _Placed
 
 
 async def _Post(H, *Events):
@@ -45,9 +45,9 @@ Shipment = {"display_no": "S-0001", "state": "SHIPPED", "carrier": "DHL Express"
 async def test_off_by_default_the_customer_sees_the_stage_and_the_parcels_and_no_email_is_intended_for_sending(tmp_path):
     H = _On(tmp_path)                                                                                  # the integration on, the notifications off (the default)
     try:
-        _Did, O = await _Placed(H, Qty=1)
+        Did, O = await _Placed(H, Qty=1)
         _Did2, Other = await _Placed(H, "Plain band", Click="click-2")                                 # a second order, never enrolled
-        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        await _Enrolled(H, Did, O)
         Msg = "Please confirm the ring size: the band looks like a 6.5 on the photo."
         await _Post(H, _Event("e1", O["id"], 1, parts=_Parts("Under review")),
                     _Event("e2", O["id"], 2, "fulfillment.review_changes_required", customer_status="Changes required",
@@ -92,8 +92,8 @@ async def test_off_by_default_the_customer_sees_the_stage_and_the_parcels_and_no
 async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_to_the_test_recipient(tmp_path):
     H = _On(tmp_path / "a", FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0, PublicBaseUrl="https://atelier.example")
     try:
-        _Did, O = await _Placed(H, Qty=2)
-        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        Did, O = await _Placed(H, Qty=2)
+        await _Enrolled(H, Did, O)
         Email = O["customer"]["email"]
         Approved = lambda Part, Rev: {"part": Part, "decision": "approved", "revision_no": Rev, "reason": None, "customer_message": None, "preliminary": False}   # noqa: E731
         # Two parts approved one after the other: two intents, one email (C10); the unpaid order is told about the payment
@@ -141,8 +141,8 @@ async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_t
     # The test recipient: every message goes there, the order's history says so; nothing reaches the customer
     H2 = _On(tmp_path / "b", FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0, FulfillmentNotificationRecipient="qa@example.test")
     try:
-        _Did, O = await _Placed(H2, Qty=1)
-        await H2.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        Did, O = await _Placed(H2, Qty=1)
+        await _Enrolled(H2, Did, O)
         await _Post(H2, _Event("b1", O["id"], 1, "fulfillment.shipment_shipped", customer_status="Shipped", order_status="shipped", shipment=Shipment, shipments=[Shipment]))
         assert (await H2.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)).json()["sent"] == 1
         assert [M["to"] for M in _Mails(H2)] == ["qa@example.test"]
@@ -157,8 +157,8 @@ async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_t
 async def test_d12_what_arrived_while_sending_was_off_is_never_sent_after_it_is_switched_on(tmp_path):
     Off = _On(tmp_path)
     try:
-        _Did, O = await _Placed(Off, Qty=1)
-        await Off.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        Did, O = await _Placed(Off, Qty=1)
+        await _Enrolled(Off, Did, O)
         H1 = _Event("h1", O["id"], 1, "fulfillment.review_approved", customer_status="Preparing for production",
                     review={"part": "MP-10001-001", "decision": "approved", "revision_no": 1, "reason": None, "customer_message": None, "preliminary": False})
         await _Post(Off, H1, _Event("h2", O["id"], 2, "fulfillment.shipment_shipped", customer_status="Shipped", order_status="shipped", shipment=Shipment, shipments=[Shipment]))
@@ -201,8 +201,8 @@ class ScriptedMailer:
 async def test_d13_a_known_failure_is_retried_an_unknown_outcome_is_flagged_and_never_retried_blindly(tmp_path):
     H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0)
     try:
-        _Did, O = await _Placed(H, Qty=1)
-        await H.Client.post(f"/api/admin/orders/{O['id']}/fulfillment/enroll", headers=Admin)
+        Did, O = await _Placed(H, Qty=1)
+        await _Enrolled(H, Did, O)
         Mailer = ScriptedMailer([MailNotAccepted("connection refused"), "ok", MailOutcomeUnknown("connection lost after DATA"), MailNotAccepted("x"), MailNotAccepted("x"), MailNotAccepted("x")])
         H.Ctx.Mailer = Mailer
         Dispatch = lambda: H.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)   # noqa: E731

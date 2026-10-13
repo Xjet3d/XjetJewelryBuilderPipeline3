@@ -1805,12 +1805,25 @@
       <!-- Fulfillment: the hand-over to the manufacturing application and its progress (docs/FULFILLMENT.md) -->
       <section class="card p-6 space-y-3" x-show="of && of.enabled" x-cloak>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-3"><p class="lbl">Fulfillment</p>
-            <span x-show="of?.enrolled" class="badge bg-emerald-100 text-emerald-800">With Fulfillment</span>
+          <div class="flex items-center gap-3"><p class="lbl">Production</p>
+            <span x-show="of?.enrolled" class="badge bg-emerald-100 text-emerald-800" x-text="of?.lines_sent + ' of ' + of?.lines_total + ' line(s) in Production'"></span>
             <span x-show="of?.enrolled && of?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
-            <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not sent</span></div>
-          <button x-show="of?.eligible" class="btn !py-1.5" :disabled="odBusy" @click="sendToFulfillment()">Send to Fulfillment</button>
-          <p x-show="!of?.enrolled && !of?.eligible && of?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent: ' + of.ineligible_reason + '.'"></p>
+            <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not in Production</span></div>
+          <p x-show="!of?.eligible && of?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent to Production: ' + of.ineligible_reason + '.'"></p>
+        </div>
+        <!-- Send selected lines to Production (docs/order-to-production-review.md, K11): the eligible lines ticked, the others with their reason; the exact print version named -->
+        <div x-show="of?.eligible" class="border border-zinc-200 bg-zinc-50 p-3 space-y-2 text-[13px]">
+          <p class="font-medium">Send selected lines to Production</p>
+          <template x-for="x in (of?.lines || [])" :key="x.line_id">
+            <label class="flex items-start gap-2" :class="x.eligible ? 'cursor-pointer' : 'text-zinc-400'">
+              <input type="checkbox" class="mt-0.5" :disabled="!x.eligible" :checked="x.eligible && prodSel[x.line_id] !== false" @change="prodSel[x.line_id] = $event.target.checked">
+              <span><span class="font-mono" x-text="x.item_ref"></span> <span x-text="x.title + ' ×' + x.quantity"></span>
+                <span x-show="x.eligible" class="text-zinc-500" x-text="' · print version: ' + (x.print_version?.label || '—') + (x.pinned ? ' · pinned' : '')"></span>
+                <span x-show="!x.eligible && x.production?.sent" class="text-emerald-800"> · in Production</span>
+                <span x-show="!x.eligible && !x.production?.sent" class="text-amber-700" x-text="' · print file required: ' + (x.message || '')"></span></span>
+            </label>
+          </template>
+          <button class="btn !py-1.5" :disabled="odBusy || !prodSelected().length" @click="sendToProduction(prodSelected())" x-text="'Send ' + prodSelected().length + ' line(s) to Production…'"></button>
         </div>
         <template x-if="of?.enrolled">
           <div class="text-[13px] text-zinc-700 space-y-2">
@@ -1869,7 +1882,7 @@
                 <div class="flex gap-2"><button type="submit" class="btn !py-1.5" :disabled="odBusy || !cmdForm.reason.trim()">Send the request</button><button type="button" class="btn2 !py-1.5" @click="cmdForm = null">Cancel</button></div>
               </form>
             </template>
-            <p class="text-[12px] text-zinc-500">Production, QC, shipping and completion are recorded in Fulfillment and reach this page as its progress; the status select above no longer accepts them for this order. A cancellation of part of a line is requested from the line below.</p>
+            <p class="text-[12px] text-zinc-500">Production, QC, shipping and completion of the lines in Production are recorded in Fulfillment and reach this page as its progress; the status select above no longer accepts them for this order. There is no un-send: a wrong file is replaced through an explicit revision, and a line leaves Production only through the cancellation request below, which Operations decide.</p>
           </div>
         </template>
       </section>
@@ -1904,13 +1917,28 @@
                      x-text="(l.three_d_version_pinned ? '3D version: ' : 'Will use: ') + (l.three_d_version?.label || '') + (l.three_d_version_pinned ? ' · pinned' : '')"></p>
                   <p class="flex flex-wrap gap-x-3 mt-0.5 text-[11px] uppercase tracking-widest">
                     <button x-show="(l.three_d_versions || []).length > 1" class="underline text-zinc-600 hover:text-black" @click="useLineVersion(l)">Use another version…</button>
-                    <button class="underline text-zinc-600 hover:text-black" @click="openPartForLine(l)">Upload revised STL…</button></p></td>
+                    <button class="underline text-zinc-600 hover:text-black" @click="openPartForLine(l)">Upload revised STL…</button></p>
+                  <!-- Order → Production (docs/order-to-production-review.md): the explicit hand-over of THIS line; the print file is pinned then -->
+                  <template x-if="of?.enabled && prodLine(l)">
+                    <div class="mt-1.5 text-[11px]">
+                      <template x-if="prodLine(l).production?.sent">
+                        <p><span class="badge bg-emerald-100 text-emerald-800">In Production</span>
+                          <span class="text-zinc-600" x-text="' sent ' + dateTime(prodLine(l).production.sent_at) + ' · ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · revision ' + prodLine(l).production.handoff_no : '')"></span>
+                          <span x-show="prodLine(l).production.part_display_no" class="font-mono text-zinc-600" x-text="' · ' + (prodLine(l).production.part_display_no || '')"></span>
+                          <span x-show="!prodLine(l).production.pinned?.file_sha256" class="text-zinc-500"> · preparing the production file…</span></p>
+                      </template>
+                      <template x-if="!prodLine(l).production?.sent">
+                        <p><button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? 'Pin ' + (prodLine(l).print_version?.label || 'this version') + ' and send this line to Production' : 'Print file required before sending to Production'" @click="sendToProduction([l.id])">Send to Production</button>
+                          <span x-show="!prodLine(l).eligible" class="block text-amber-700 mt-0.5 normal-case tracking-normal" x-text="'Print file required before sending to Production — ' + (prodLine(l).message || '')"></span></p>
+                      </template>
+                    </div>
+                  </template></td>
                 <td class="text-right whitespace-nowrap">
                   <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :class="l.three_d_state === 'review_required' ? 'text-amber-800' : ''" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)" x-text="l.three_d_state === 'review_required' ? 'Download STL · not reviewed' : 'Download STL'"></button>
                   <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
                   <a x-show="!l.has_model" class="text-xs uppercase tracking-widest underline" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Generate 3D on the session</a>
                   <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p>
-                  <button x-show="of?.enrolled && od.status !== 'cancelled'" class="text-xs uppercase tracking-widest underline text-zinc-500 hover:text-black block mt-1 ml-auto" @click="requestCancellation(l)">Request cancellation…</button></td>
+                  <button x-show="prodLine(l)?.production?.sent && od.status !== 'cancelled'" class="text-xs uppercase tracking-widest underline text-zinc-500 hover:text-black block mt-1 ml-auto" @click="requestCancellation(l)">Request cancellation…</button></td>
               </tr>
             </template>
           </tbody>

@@ -37,6 +37,23 @@ Prefix = "/api/integrations/fulfillment/v1"
 ProjectionStatuses = ("production", "qc", "shipped", "completed")    # written by the projection; never a commercial change
 EligibleOrderStatuses = ("new", "payment_confirmed", "three_d_ready")   # a quotation is never enrolled (D-10): its order is
 MaxChanges, MaxEvents, MaxCheckItems = 500, 200, 100
+# Why an order line cannot be sent to Production now (docs/order-to-production-review.md §B.2): the page shows the
+# message under the disabled button, the server answers it as 409 print_file_required / already_sent
+ProductionReasons = {
+    "already_sent": "already sent to Production",
+    "order_cancelled": "the order is cancelled",
+    "order_completed": "the order is completed",
+    "legacy_production": "the order is in the existing production flow (set here by hand) and stays there",
+    "no_model": "no 3D model exists for this design yet (it is generated on the session page — a paid Hi3D request)",
+    "not_prepared": "the production STL is not prepared for the ordered size and material: Prepare STL on this line first",
+    "not_pinned": "the line is not pinned to a 3D version yet: Prepare STL on this line first",
+    "processing": "the 3D result is still being measured",
+    "review_required": "the 3D result is flagged for production review: accept it on the session page first",
+    "failed": "the 3D result failed; prepare it again",
+    "cancelled": "the 3D result was cancelled; prepare it again",
+    "other_size": "the prepared result is for another size or material: Prepare STL on this line",
+    "export_failed": "the production file cannot be exported",
+}
 CommandActions = {"cancel_line": "decide_cancellation"}            # an Admin command and the Fulfillment permission it delegates
 CommandOutcomeEvents = ("fulfillment.command_applied", "fulfillment.command_rejected")
 ReviewSeverity = ("cannot_produce", "changes_required", "in_review", "not_started", "approved")   # the worst review state of an order's parts first
@@ -129,6 +146,38 @@ CREATE TABLE IF NOT EXISTS fulfillment_commands (
 );
 CREATE INDEX IF NOT EXISTS fulfillment_commands_entity ON fulfillment_commands(entity_type, entity_id, created_at);
 
+-- Order → Production (docs/order-to-production-review.md): the per-line hand-over and the exact file it pins. One row
+-- per order line ever sent; what happened (sent, the file recorded, revised, received) is in order_events. A row is
+-- never deleted: there is no un-send (K7) — a part leaves production through the cancellation request Fulfillment decides.
+CREATE TABLE IF NOT EXISTS fulfillment_line_production (
+    id                  TEXT PRIMARY KEY,                -- flp_…
+    order_id            TEXT NOT NULL,
+    line_id             TEXT NOT NULL UNIQUE,
+    sent_at             TEXT NOT NULL,
+    sent_by             TEXT NOT NULL,
+    note                TEXT,
+    handoff_no          INTEGER NOT NULL DEFAULT 1,      -- 1, then +1 for every revised file submitted to Production
+    mesh_id             TEXT NOT NULL,                   -- the pinned 3D version …
+    version_no          INTEGER,
+    version_label       TEXT,
+    source              TEXT,                            -- hi3d | external
+    scaling             TEXT,                            -- scalable | exact
+    master_sha256       TEXT,                            -- the version's own file (raw_geometry.sha256)
+    three_d_id          TEXT NOT NULL,                   -- … and the sized result the line is produced from
+    method_version      TEXT,
+    file_sha256         TEXT,                            -- the production file as handed over (null until its export finished)
+    file_bytes          INTEGER,
+    file_job_id         TEXT,                            -- the export job (or 'stored') the hash was taken from
+    revision_reason     TEXT,                            -- why the file changed after the hand-over (handoff_no > 1)
+    answers_request_id  TEXT,                            -- Fulfillment's attention request this revision answers
+    state               TEXT NOT NULL CHECK (state IN ('sent', 'received', 'revised')),
+    received_at         TEXT,                            -- when Fulfillment first reported the part
+    part_id             TEXT,
+    part_display_no     TEXT,
+    updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS fulfillment_line_production_order ON fulfillment_line_production(order_id);
+
 -- A commercial change to an enrolled order: the enrollment's source version advances and the outbox gets one row,
 -- in the transaction of the change itself. A status the projection writes is not a commercial change.
 CREATE TRIGGER IF NOT EXISTS fulfillment_orders_changed AFTER UPDATE ON orders
@@ -212,7 +261,11 @@ class FulfillmentBridge:
     def Identity(self) -> dict:
         return {"contract_version": ContractVersion, "environment_id": self.EnvironmentId(), "site": {"env": self.Ctx.Settings.Env,
                 "base_path": self.Ctx.Settings.BasePath or "/"},
-                "capabilities": ["changes", "requests", "events", "assets.image", "assets.production_stl", "commands", "release_checks", "shipping_checks"], "server_now": Now()}
+                "capabilities": ["changes", "requests", "events", "assets.image", "assets.production_stl", "commands", "release_checks", "shipping_checks",
+                                 "line_production", "admin_payload", "attention", "about_parts"],
+                # The commercial rule Atelier owns (docs/order-to-production-review.md §J): while True, an unpaid order's
+                # lines are released only once paid — the checks say PAYMENT_PENDING; False: payment is shown, never gating
+                "payment_gate": bool(self.Ctx.Settings.FulfillmentPaymentGate), "server_now": Now()}
 
     # ── enrollment ───────────────────────────────────────────────────────
     def Enrollment(self, EntityType: str, EntityId: str) -> dict | None:
@@ -234,57 +287,196 @@ class FulfillmentBridge:
         return R
 
     def Eligibility(self, EntityType: str, EntityId: str) -> tuple[bool, str | None, dict]:
-        """Whether the record may be handed to Fulfillment now, with the reason when it may not, and the record."""
+        """Whether the record may send lines to Production now, with the reason when it may not, and the record. An
+        order's lines decide the rest (LineEligibility); a quotation never goes (D-10)."""
         if EntityType == "order":
             O = self._Order(EntityId)
-            if O["status"] not in EligibleOrderStatuses:
+            if O["status"] == "cancelled":
+                return False, "the order is cancelled", O
+            if O["status"] == "completed":
+                return False, "the order is completed", O
+            if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
                 return False, f"an order in status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' stays with the existing flow", O
             return True, None, O
         Q = self._Quote(EntityId)
         return False, "quotations are managed here; once the quote has become an order, the order is sent", Q
 
-    def Enroll(self, EntityType: str, EntityId: str, By: str, Note: str = "", InheritedFrom: str | None = None) -> dict:
-        """The explicit hand-over of an order. One row per order, an outbox row in the same transaction, a line in the
-        order's history. Repeating it is refused, never duplicated. A quotation is never sent (D-10)."""
+    # ── Order → Production: the per-line hand-over (docs/order-to-production-review.md §B, §G) ──
+    def LineProduction(self, LineId: str) -> dict | None:
+        return self.Ctx.Db.One("SELECT * FROM fulfillment_line_production WHERE line_id = ?", (LineId,))
+
+    def ProductionRows(self, OrderId: str) -> list[dict]:
+        return self.Ctx.Db.All("SELECT * FROM fulfillment_line_production WHERE order_id = ? ORDER BY sent_at, id", (OrderId,))
+
+    def LineEligibility(self, O: dict, L: dict, Prod: dict | None = None, Known: bool = False) -> dict:
+        """Whether this order line may be sent to Production now: pinned to a 3D version, with a complete sized result
+        (measured, closed or accepted) for the ordered size and material — "Print file required" otherwise, with the
+        exact reason. Prod = its production row when it was sent already (Known: the caller looked it up)."""
+        Prod = Prod if Known else self.LineProduction(L["id"])
+
+        def No(Reason: str, Message: str | None = None) -> dict:
+            return {"eligible": False, "reason": Reason, "message": Message or ProductionReasons[Reason], "production": Prod}
+
+        if Prod:
+            return No("already_sent")
+        if O["status"] == "cancelled":
+            return No("order_cancelled")
+        if O["status"] == "completed":
+            return No("order_completed")
+        if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
+            return No("legacy_production")
+        if not L.get("has_model"):
+            return No("no_model")
+        if not L.get("three_d_id"):
+            return No("not_prepared")
+        if not L.get("three_d_pinned"):
+            return No("not_pinned")
+        if not L.get("three_d_match"):
+            return No("other_size")
+        State = L.get("three_d_state")
+        if State != "complete":
+            return No(State if State in ProductionReasons else "processing")
+        return {"eligible": True, "reason": None, "message": None, "production": None}
+
+    def _PinInfo(self, L: dict) -> dict:
+        """The exact geometry a line is produced from: its pinned 3D version (number, source, scaling, the master
+        file's hash) and the sized result."""
+        V = L.get("three_d_version") or {}
+        Raw = self.Ctx.Db.One("SELECT sha256, method_version FROM raw_geometry WHERE mesh_id = ?", (V.get("mesh_id"),)) if V.get("mesh_id") else None
+        return {"mesh_id": V.get("mesh_id"), "version_no": V.get("version_no"), "version_label": V.get("label"), "source": V.get("source"),
+                "scaling": V.get("scaling"), "master_sha256": Raw["sha256"] if Raw else None, "method_version": Raw["method_version"] if Raw else None,
+                "three_d_id": L["three_d_id"]}
+
+    def _ProductionFile(self, Sid: str) -> dict | None:
+        """The production file of a sized result as it would be served now — its hash, size and the export job (or
+        'stored': an exact part's master at its own size) — or None while the export is still queued or running.
+        Raises when no export can be made (no bore, not measured): then there is no valid print file."""
+        Export = self.Production.StartExport(Sid)
+        if Export["status"] != "done":
+            return None
+        return {"sha256": self._ExportSha(Sid, Export["job_id"]), "bytes": self._ExportPath(Sid, Export["job_id"]).stat().st_size, "job_id": Export["job_id"]}
+
+    def _EnrollRow(self, Conn, O: dict, By: str, Note: str, T: str) -> int:
+        """The order's enrollment, written by its first line sent to Production: the row, the outbox's `enrolled`, the
+        history line — inside the caller's transaction. Version 1."""
+        Conn.execute("INSERT INTO fulfillment_enrollments (id, entity_type, entity_id, display_ref, state, source_version, enrolled_at, enrolled_by, note, "
+                     "inherited_from, updated_at) VALUES (?,?,?,?,'enrolled',1,?,?,?,NULL,?)", (NewId("fen"), "order", O["id"], O["ref"], T, By, Note or None, T))
+        Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('enrolled', 'order', ?, 1, 'production', ?)",
+                     (O["id"], T))
+        Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                     (O["id"], "fulfillment", Dumps({"action": "enrolled", "by": By, "note": Note or None, "inherited_from": None}), By, T))
+        return 1
+
+    def SendToProduction(self, OrderId: str, LineIds, By: str, Note: str = "") -> dict:
+        """The explicit hand-over of order lines to Production: every line checked again on the server, the order
+        enrolled on its first line, one production row per line with the pinned version and the file's hash, one
+        outbox row, one history line per line — all in one transaction. A line already sent is refused, never
+        duplicated; a retry after a timeout finds the rows and is told so. Nothing is sent by itself, ever."""
         self._Require()
-        if EntityType != "order":
-            raise HttpError(400, "invalid_entity", "Orders are sent to Fulfillment; a quotation stays here until it becomes an order.")
-        Ok, Why, Record = self.Eligibility(EntityType, EntityId)
-        Id = Record["id"]
-        Ref = Record["ref"]
-        if self.IsEnrolled(EntityType, Id):                  # the truer answer first: a record already with Fulfillment is never "not eligible"
-            raise HttpError(409, "already_enrolled", f"{Ref} is already with Fulfillment.")
+        O = self._Order(OrderId)
+        Ids = list(dict.fromkeys(X for X in (LineIds or []) if isinstance(X, str) and X)) if isinstance(LineIds, list) else []
+        if not Ids:
+            raise HttpError(400, "lines_required", "Choose at least one order line to send to Production.")
+        Lines = {L["id"]: L for L in O["lines"]}
+        Unknown = [X for X in Ids if X not in Lines]
+        if Unknown:
+            raise HttpError(404, "line_not_found", "No such line on this order.", {"line_ids": Unknown})
+        Note = " ".join(str(Note or "").split())[:500]
+        Ok, Why, _ = self.Eligibility("order", O["id"])
         if not Ok:
-            raise HttpError(409, "not_eligible", f"{Ref} cannot be sent to Fulfillment: {Why}.")
+            raise HttpError(409, "not_eligible", f"{O['ref']} cannot be sent to Production: {Why}.")
+        Blocked, Pins = [], {}
+        for Id in Ids:
+            El = self.LineEligibility(O, Lines[Id])
+            if not El["eligible"]:
+                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": El["reason"], "message": El["message"]})
+                continue
+            try:                                              # the export is started (or found) before the transaction: never a paid call
+                Pins[Id] = {**self._PinInfo(Lines[Id]), "file": self._ProductionFile(Lines[Id]["three_d_id"])}
+            except HttpError as E:
+                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "export_failed", "message": f"{ProductionReasons['export_failed']}: {E.Message}"})
+        if Blocked:
+            Code = "already_sent" if all(B["reason"] == "already_sent" for B in Blocked) else "print_file_required"
+            Text = "; ".join(f"{B['item_ref']}: {B['message']}" for B in Blocked)
+            raise HttpError(409, Code, (f"{Text}." if Code == "already_sent" else f"Print file required before sending to Production — {Text}."), {"blocked": Blocked})
         T = Now()
         with self.Ctx.Db.Transaction() as Conn:
-            Existing = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = ? AND entity_id = ?", (EntityType, Id)).fetchone()
-            if Existing and Existing["state"] == "enrolled":
-                raise HttpError(409, "already_enrolled", f"{Ref} is already with Fulfillment (since {Existing['enrolled_at']}).")
-            if Existing:                                     # released earlier: enrolled again as a new version
-                Conn.execute("UPDATE fulfillment_enrollments SET state = 'enrolled', source_version = source_version + 1, enrolled_at = ?, enrolled_by = ?, "
-                             "note = ?, inherited_from = ?, released_at = NULL, released_by = NULL, release_note = NULL, updated_at = ? WHERE id = ?",
-                             (T, By, (Note or "").strip()[:500] or None, InheritedFrom, T, Existing["id"]))
-                Version = Existing["source_version"] + 1
+            for Id in Ids:                                    # a double click, or a retry that already landed
+                if Conn.execute("SELECT 1 FROM fulfillment_line_production WHERE line_id = ?", (Id,)).fetchone():
+                    raise HttpError(409, "already_sent", f"{Lines[Id]['ring_id']} was already sent to Production.",
+                                    {"blocked": [{"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "already_sent", "message": ProductionReasons["already_sent"]}]})
+            E = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (O["id"],)).fetchone()
+            if E is None:
+                Version = self._EnrollRow(Conn, O, By, Note, T)
             else:
-                Conn.execute("INSERT INTO fulfillment_enrollments (id, entity_type, entity_id, display_ref, state, source_version, enrolled_at, enrolled_by, "
-                             "note, inherited_from, updated_at) VALUES (?,?,?,?,'enrolled',1,?,?,?,?,?)",
-                             (NewId("fen"), EntityType, Id, Ref, T, By, (Note or "").strip()[:500] or None, InheritedFrom, T))
-                Version = 1
-            Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('enrolled', ?, ?, ?, ?, ?)",
-                         (EntityType, Id, Version, "inherited" if InheritedFrom else "admin", T))
-            Data = {"action": "enrolled", "by": By, "note": (Note or "").strip()[:500] or None, "inherited_from": InheritedFrom}
-            if EntityType == "order":
-                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)", (Id, "fulfillment", Dumps(Data), By, T))
-            else:
-                OrdersModule.QuoteEvent(Conn, Id, "fulfillment", Data, By)
-        return self.AdminState(EntityType, Id)
+                Version = E["source_version"] + 1
+                Conn.execute("UPDATE fulfillment_enrollments SET source_version = ?, updated_at = ? WHERE id = ?", (Version, T, E["id"]))
+                Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('updated', 'order', ?, ?, 'production', ?)",
+                             (O["id"], Version, T))
+            for Id in Ids:
+                P, L = Pins[Id], Lines[Id]
+                F = P["file"] or {}
+                Conn.execute("INSERT INTO fulfillment_line_production (id, order_id, line_id, sent_at, sent_by, note, handoff_no, mesh_id, version_no, version_label, source, "
+                             "scaling, master_sha256, three_d_id, method_version, file_sha256, file_bytes, file_job_id, state, updated_at) "
+                             "VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,'sent',?)",
+                             (NewId("flp"), O["id"], Id, T, By, Note or None, P["mesh_id"], P["version_no"], P["version_label"], P["source"], P["scaling"],
+                              P["master_sha256"], P["three_d_id"], P["method_version"], F.get("sha256"), F.get("bytes"), F.get("job_id"), T))
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (O["id"], "production_sent", Dumps({"line_id": Id, "item_ref": L["ring_id"], "title": L["title"], "mesh_id": P["mesh_id"],
+                                                                 "version_no": P["version_no"], "version_label": P["version_label"], "session_3d_id": P["three_d_id"],
+                                                                 "file_sha256": F.get("sha256"), "handoff_no": 1, "note": Note or None, "source_version": Version}), By, T))
+        return self.AdminState("order", O["id"])
+
+    def _RecordFile(self, Row: dict, F: dict) -> None:
+        """The production file's hash and size, recorded once on a sent line whose export finished after the
+        hand-over; Fulfillment is told through a snapshot change (reason production_file)."""
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT file_sha256, handoff_no FROM fulfillment_line_production WHERE id = ?", (Row["id"],)).fetchone()
+            if Cur is None or Cur["file_sha256"]:
+                return
+            Conn.execute("UPDATE fulfillment_line_production SET file_sha256 = ?, file_bytes = ?, file_job_id = ?, updated_at = ? WHERE id = ?",
+                         (F["sha256"], F["bytes"], F["job_id"], T, Row["id"]))
+            E = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (Row["order_id"],)).fetchone()
+            if E:
+                Conn.execute("UPDATE fulfillment_enrollments SET source_version = source_version + 1, updated_at = ? WHERE id = ?", (T, E["id"]))
+                Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('updated', 'order', ?, ?, 'production_file', ?)",
+                             (Row["order_id"], E["source_version"] + 1, T))
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (Row["order_id"], "production_file", Dumps({"line_id": Row["line_id"], "session_3d_id": Row["three_d_id"], "file_sha256": F["sha256"],
+                                                                     "file_bytes": F["bytes"], "handoff_no": Cur["handoff_no"]}), "system", T))
+
+    def _FinalizeFiles(self, OrderId: str) -> None:
+        """Sent lines whose export was still running at the hand-over: record the file once it exists."""
+        for Row in self.Ctx.Db.All("SELECT * FROM fulfillment_line_production WHERE order_id = ? AND file_sha256 IS NULL", (OrderId,)):
+            try:
+                F = self._ProductionFile(Row["three_d_id"])
+            except HttpError:
+                continue
+            if F:
+                self._RecordFile(Row, F)
+
+    def _ProductionJson(self, Prod: dict | None) -> dict:
+        """The snapshot's (and the page's) view of a line's hand-over: not sent, or sent with the exact pin."""
+        if not Prod:
+            return {"sent": False}
+        return {"sent": True, "sent_at": Prod["sent_at"], "sent_by": Prod["sent_by"], "note": Prod["note"], "handoff_no": Prod["handoff_no"], "state": Prod["state"],
+                "received_at": Prod["received_at"], "part_id": Prod["part_id"], "part_display_no": Prod["part_display_no"],
+                "pinned": {K: Prod[K] for K in ("mesh_id", "version_no", "version_label", "source", "scaling", "master_sha256", "three_d_id", "method_version",
+                                                "file_sha256", "file_bytes", "file_job_id")},
+                "revision_reason": Prod["revision_reason"], "answers_request_id": Prod["answers_request_id"]}
+
+    def _AllLinesSent(self, Conn, OrderId: str) -> bool:
+        N = Conn.execute("SELECT COUNT(*) FROM order_lines WHERE order_id = ?", (OrderId,)).fetchone()[0]
+        S = Conn.execute("SELECT COUNT(*) FROM fulfillment_line_production WHERE order_id = ?", (OrderId,)).fetchone()[0]
+        return N > 0 and S >= N
 
     def GuardStatusChange(self, Order: dict, Status: str) -> None:
-        """The legacy production / QC / shipping statuses are Fulfillment's once a record is enrolled (spec §7.5)."""
+        """The legacy production / QC / shipping statuses are Fulfillment's once a line of the order was sent to
+        Production (spec §7.5)."""
         if Status in OrdersModule.ProductionStatuses and self.IsEnrolled("order", Order["id"]):
-            raise HttpError(409, "owned_by_fulfillment", f"{Order['ref']} is with Fulfillment: production, QC, shipping and completion are recorded "
-                                                        "there and reach this page as its progress. Cancellation and payment stay here.")
+            raise HttpError(409, "owned_by_fulfillment", f"{Order['ref']} has lines in Production: production, QC, shipping and completion are recorded "
+                                                        "in Fulfillment and reach this page as its progress. Cancellation and payment stay here.")
 
     # ── commands from the Admin (spec §7.4) ──────────────────────────────
     def Command(self, EntityType: str, EntityId: str, Action: str, Body: dict, By: str) -> dict:
@@ -376,7 +568,7 @@ class FulfillmentBridge:
             O = self.Ctx.Db.One("SELECT id, order_no, status, payment_status FROM orders WHERE id = ?", (L["order_id"],))
             E = self.Enrollment("order", O["id"])
             B = []
-            if O["payment_status"] != "paid":
+            if self.Ctx.Settings.FulfillmentPaymentGate and O["payment_status"] != "paid":     # the gate Atelier owns (identity.payment_gate)
                 B.append({"code": "PAYMENT_PENDING", "text": f"Payment is {O['payment_status']}; only a paid order releases production."})
             if O["status"] == "cancelled":
                 B.append({"code": "ORDER_CANCELLED", "text": "The order is cancelled."})
@@ -403,7 +595,7 @@ class FulfillmentBridge:
         B = []
         if O["status"] == "cancelled":
             B.append({"code": "ORDER_CANCELLED", "text": "The order is cancelled."})
-        if O["payment_status"] != "paid":
+        if self.Ctx.Settings.FulfillmentPaymentGate and O["payment_status"] != "paid":         # the gate Atelier owns (identity.payment_gate)
             B.append({"code": "PAYMENT_PENDING", "text": f"Payment is {O['payment_status']}."})
         Address = O["address"]
         return {**Base, "ok": not B, "blockers": B, "order_ref": O["ref"], "address": Address, "address_lines": O["address_lines"],
@@ -457,13 +649,16 @@ class FulfillmentBridge:
         CancelEvent = next((Ev for Ev in reversed(O["events"]) if Ev["kind"] == "status" and Ev["data"].get("to") == "cancelled"), None) if Cancelled else None
         PayEvent = next((Ev for Ev in reversed(O["events"]) if Ev["kind"] == "payment"), None)
         Lines = []
+        Prods = {R["line_id"]: R for R in self.ProductionRows(O["id"])}
         for I, L in enumerate(O["lines"], start=1):
             Size = {"ring_size": L["ring_size"]} if L["product_type"] == "ring" else {"charm_size": L["charm_size"], "unit": "mm"}
             Lines.append({"line_id": L["id"], "position": I, "design_id": L["design_id"], "candidate_id": L["candidate_id"], "item_ref": L["ring_id"],
                           "title": L["title"], "product_type": L["product_type"], "material_id": L["material_id"], "material_label": L["material_label"],
                           "size": {**Size, "label": L["size_label"]}, "quantity": L["quantity"], "unit_price": L["unit_price"], "currency": L["currency"],
                           "quote_request_id": O["quote"]["id"] if O.get("quote") else None,
-                          "image": {"design_id": L["design_id"], "candidate_id": L["candidate_id"]}, "model": self._Model(L)})
+                          "image": {"design_id": L["design_id"], "candidate_id": L["candidate_id"]}, "model": self._Model(L),
+                          # The hand-over (docs/order-to-production-review.md §B.4): only a sent line becomes a manufacturing part
+                          "production": self._ProductionJson(Prods.get(L["id"]))})
         return {**self._Envelope("order", O["id"], O["ref"], E),
                 "order": {"status": O["status"], "placed_at": O["created_at"], "updated_at": O["updated_at"],
                           "payment": {"status": O["payment_status"], "basis": "paid" if O["payment_status"] == "paid" else None,
@@ -484,9 +679,13 @@ class FulfillmentBridge:
         accepted) result exists for the ordered size and material. Never invented; a missing model says so."""
         Info = self.Orders._ThreeDForLine(L)
         Sid, Match, State = Info["three_d_id"], Info["three_d_match"], Info["three_d_state"]
+        V = Info.get("three_d_version") or {}
         Out = {"available": False, "state": "no_model", "session_3d_id": None, "mesh_id": None, "raw_sha256": None, "method_version": None,
                "integrity": None, "production_size": None, "material_id": None, "accepted": None, "review": [], "geometry": None, "weight": None,
                "latest_other": Info.get("three_d_latest"), "model_item_ref": Info.get("model_ring_id"),
+               # The 3D version the line is (or would be) produced from (p3/versions.py), pinned or still following the design
+               "version": {"mesh_id": V.get("mesh_id"), "version_no": V.get("version_no"), "label": V.get("label"), "source": V.get("source"),
+                           "scaling": V.get("scaling"), "original_filename": V.get("original_filename"), "pinned": bool(Info.get("three_d_version_pinned"))} if V else None,
                "note": "No 3D model exists for this design yet: it is generated in Atelier (a paid Hi3D request) on the session page."}
         if not Sid:
             if Info.get("has_model"):
@@ -539,39 +738,47 @@ class FulfillmentBridge:
         return R["order_id"] if R else None
 
     def StartProductionStl(self, LineId: str) -> dict:
-        """The production file for an enrolled order line: the design's model scaled to the ordered size and material
-        (prepared by arithmetic when it does not exist yet — never a paid request), exported as a temporary STL."""
-        L = self.Ctx.Db.One("SELECT order_id FROM order_lines WHERE id = ?", (LineId,))
-        if L is None or not self.IsEnrolled("order", L["order_id"]):
-            raise HttpError(404, "line_not_found", "No such enrolled order line.")
-        O = self._Order(L["order_id"])
-        Line = next(X for X in O["lines"] if X["id"] == LineId)
-        if not Line["three_d_match"]:
-            if not Line["has_model"]:
-                return {"status": "unavailable", "reason": "no_model", "message": "No 3D model exists for this design; it is generated in Atelier (paid)."}
-            try:
-                self.Orders.PrepareLine3D(O["id"], LineId, "fulfillment")
-            except HttpError as E:
-                return {"status": "unavailable", "reason": E.Code, "message": E.Message}
-            Line = next(X for X in self._Order(O["id"])["lines"] if X["id"] == LineId)
-        if Line["three_d_state"] != "complete":
-            return {"status": "unavailable", "reason": Line["three_d_state"], "session_3d_id": Line["three_d_id"],
-                    "message": "The 3D result must be measured and unflagged (or accepted) in Atelier before the production file is released."}
-        Sid = Line["three_d_id"]
-        Export = self.Production.StartExport(Sid)
+        """The production file of an order line sent to Production: the export of the sized result pinned at the
+        hand-over (or the stored master of an exact part at its own size), served only while its hash is the one
+        recorded then — a different file is an integration fault, said as such, never served. A line not sent has no
+        production file here, whatever its model: nothing is prepared or exported for it."""
+        Prod = self.LineProduction(LineId)
+        if Prod is None or not self.IsEnrolled("order", Prod["order_id"]):
+            raise HttpError(404, "line_not_found", "No such order line sent to Production.")
+        Sid = Prod["three_d_id"]
+        try:
+            Export = self.Production.StartExport(Sid)
+        except HttpError as E:
+            return {"status": "unavailable", "reason": E.Code, "message": E.Message, "session_3d_id": Sid, "handoff_no": Prod["handoff_no"]}
         Out = {"status": Export["status"], "job_id": Export["job_id"], "session_3d_id": Sid, "bytes": Export.get("bytes"), "ahead": Export.get("ahead"),
-               "expires_at": Export.get("expires_at"), "error": Export.get("error")}
+               "expires_at": Export.get("expires_at"), "error": Export.get("error"), "handoff_no": Prod["handoff_no"], "pinned_sha256": Prod["file_sha256"]}
         if Export["status"] == "done":
-            Out["sha256"] = self._ExportSha(Sid, Export["job_id"])
+            Sha = self._ExportSha(Sid, Export["job_id"])
+            if not Prod["file_sha256"]:
+                self._RecordFile(Prod, {"sha256": Sha, "bytes": self._ExportPath(Sid, Export["job_id"]).stat().st_size, "job_id": Export["job_id"]})
+            elif Sha != Prod["file_sha256"]:
+                raise HttpError(409, "file_changed", "The export no longer reproduces the file pinned at the hand-over; a revised file must be submitted to "
+                                                     "Production explicitly.", {"line_id": LineId, "pinned_sha256": Prod["file_sha256"], "export_sha256": Sha})
+            Out.update({"sha256": Sha, "pinned_sha256": Prod["file_sha256"] or Sha})
         return Out
 
     def ExportStatus(self, Sid: str, Jid: str) -> dict:
+        """A production file is served only for the sized result pinned by a line sent to Production (the service
+        credential alone opens nothing), and only while it is the file recorded at the hand-over."""
+        Prod = self.Ctx.Db.One("SELECT * FROM fulfillment_line_production WHERE three_d_id = ? ORDER BY handoff_no DESC LIMIT 1", (Sid,))
+        if Prod is None or not self.IsEnrolled("order", Prod["order_id"]):
+            raise HttpError(404, "job_not_found", "Export not found.")
         S = self.Production.StoredProduction(Sid) if Jid == "stored" else self.Production.ExportStatus(Sid, Jid)
         if S is None:
             raise HttpError(404, "job_not_found", "Export not found.")
-        Out = {"status": S["status"], "job_id": S["job_id"], "session_3d_id": Sid, "bytes": S.get("bytes"), "ahead": S.get("ahead"), "error": S.get("error")}
+        Out = {"status": S["status"], "job_id": S["job_id"], "session_3d_id": Sid, "bytes": S.get("bytes"), "ahead": S.get("ahead"), "error": S.get("error"),
+               "handoff_no": Prod["handoff_no"], "pinned_sha256": Prod["file_sha256"]}
         if S["status"] == "done":
-            Out["sha256"] = self._ExportSha(Sid, S["job_id"])
+            Sha = self._ExportSha(Sid, S["job_id"])
+            if Prod["file_sha256"] and Sha != Prod["file_sha256"]:
+                raise HttpError(409, "file_changed", "The export no longer reproduces the file pinned at the hand-over.",
+                                {"line_id": Prod["line_id"], "pinned_sha256": Prod["file_sha256"], "export_sha256": Sha})
+            Out["sha256"] = Sha
         return Out
 
     def _ExportPath(self, Sid: str, Jid: str):
@@ -644,7 +851,9 @@ class FulfillmentBridge:
         State.update({K: V for K, V in Public.items() if K in ("customer_status", "summary", "parts", "review_status", "blockers", "file_state", "shipment", "shipments",
                                                                  "order_status", "review", "commercial_action_pending", "commercial_action")})
         State.update({"aggregate_versions": Versions, "last_event_type": E["event_type"], "last_event_at": E["occurred_at"], "last_received_at": T})
-        if EntityType == "order" and Public.get("order_status") in ProjectionStatuses:
+        # K1: Fulfillment's order-level status is written only when every line of the order is in Production; a partly
+        # sent order keeps its commercial status, and every line shows its own stage
+        if EntityType == "order" and Public.get("order_status") in ProjectionStatuses and self._AllLinesSent(Conn, EntityId):
             self._ProjectStatus(Conn, EntityId, Public["order_status"], T)
         Summary = str(Public.get("summary") or E.get("summary") or E["event_type"])[:300]
         if Row:
@@ -732,9 +941,22 @@ class FulfillmentBridge:
                     "order_fulfillment": self.Summary("order", Order["id"]) if Order else None}
         Id = Record["id"]
         E = self.Enrollment("order", Id)
+        if E:
+            self._FinalizeFiles(Id)
+        Rows = {R["line_id"]: R for R in self.ProductionRows(Id)}
+        Lines = []
+        for L in Record["lines"]:
+            El = self.LineEligibility(Record, L, Rows.get(L["id"]), Known=True)
+            Lines.append({"line_id": L["id"], "item_ref": L["ring_id"], "title": L["title"], "quantity": L["quantity"], "eligible": El["eligible"],
+                          "reason": El["reason"], "message": El["message"], "print_version": L.get("three_d_version"), "print_state": L.get("three_d_state"),
+                          "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")), "production": self._ProductionJson(Rows.get(L["id"]))})
         Pull = self.LastPull()
-        return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and not (E and E["state"] == "enrolled"),
-                "ineligible_reason": Why, "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
+        AnyEligible = any(X["eligible"] for X in Lines)
+        return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and AnyEligible,
+                "ineligible_reason": Why if not Ok else (None if AnyEligible else ("every line is in Production" if Rows and len(Rows) >= len(Lines) else
+                                                                                   "no line has a valid print file yet")),
+                "lines": Lines, "lines_sent": len(Rows), "lines_total": len(Lines),
+                "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
                 "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions),
                 "notifications": self.Notifications.List(OrderId=Id, Limit=20)}
 
@@ -750,9 +972,12 @@ class FulfillmentBridge:
         Review = min(Reviews, key=ReviewSeverity.index) if Reviews else None
         Blocker = next((B for P in Parts for B in (P.get("blockers") or []) if isinstance(B, str)), None)
         Pending = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_commands WHERE entity_type = ? AND entity_id = ? AND state = 'pending'", (EntityType, EntityId))["n"]
+        Sent = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_line_production WHERE order_id = ?", (EntityId,))["n"]
+        Total = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM order_lines WHERE order_id = ?", (EntityId,))["n"]
         return {"enrolled": True, "enrolled_at": E["enrolled_at"], "customer_status": Proj.get("customer_status"), "order_status": Proj.get("order_status"),
                 "review_status": Review, "blocker": Blocker, "commercial_action_pending": bool(Proj.get("commercial_action_pending")), "pending_commands": Pending,
                 "last_event_at": Proj.get("last_event_at"), "awaiting_sync": self._Awaiting(EntityType, EntityId, E, self.LastPull()),
+                "lines_sent": Sent, "lines_total": Total,
                 "parts": [{"display_no": P.get("display_no"), "status": P.get("status"), "summary": P.get("summary"), "file_state": P.get("file_state")} for P in Parts]}
 
     def Decorate(self, Rows: list[dict], EntityType: str) -> list[dict]:
@@ -876,10 +1101,11 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
         Who = Admin(authorization)
         return Bridge.Notifications.Resolve(IntentId, Who.Id, str(Body_.get("note") or ""))
 
-    @App_.post("/api/admin/orders/{OrderId}/fulfillment/enroll")
-    async def EnrollOrder(OrderId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+    # Send to Production: the explicit, per-line hand-over (docs/order-to-production-review.md §B.3); the order is enrolled by its first line
+    @App_.post("/api/admin/orders/{OrderId}/production")
+    async def SendToProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return Bridge.Enroll("order", OrderId, Who.Id, str(Body_.get("note") or ""))
+        return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""))
 
     @App_.get("/api/admin/orders/{OrderId}/fulfillment/commands")
     async def OrderCommands(OrderId: str, authorization: str | None = Header(None)):
