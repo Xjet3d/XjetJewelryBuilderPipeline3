@@ -94,6 +94,7 @@ class OrderService:
         self.Production = Production          # Production3D: the STL for an ordered line at its size/material
         self.Versions = None                  # VersionService (p3/versions.py): a revised STL uploaded for a line
         self.StatusGuard = None               # the Fulfillment bridge: an enrolled order's production statuses are not set here
+        self.LineGuard = None                 # the Fulfillment bridge: a line in Production changes its 3D version only through the revision workflow
         self.FulfillmentView = None           # the Fulfillment bridge: what the customer sees of an enrolled order (stage, parcels, timeline)
 
     # ── checkout: what the customer sees before ordering ─────────────────
@@ -627,14 +628,17 @@ class OrderService:
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
         return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
 
-    def UseVersion(self, OrderId: str, LineId: str, MeshId: str, By: str, Note: str = "") -> dict:
+    def UseVersion(self, OrderId: str, LineId: str, MeshId: str, By: str, Note: str = "", ForProduction: bool = False) -> dict:
         """Produce a line from another 3D version of its option (explicit; an order event keeps from / to / who / why). The
         line's result for that version is reused or made (arithmetic on its one measurement — no Hi3D call). An order
-        already in production or later needs a note saying why its geometry changes."""
+        already in production or later needs a note saying why its geometry changes. A line sent to Production changes
+        only through the revision workflow (ForProduction: the bridge's SubmitRevision), never in place."""
         O = self.AdminGet(OrderId)
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
             raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if self.LineGuard and not ForProduction:
+            self.LineGuard(O, L)
         Db = self.Ctx.Db
         M = Db.One("SELECT * FROM meshes WHERE id = ? AND status = 'ready'", (MeshId,))
         if M is None or not Db.One("SELECT 1 AS x FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE c.id = ? AND b.design_id = ?",
@@ -664,16 +668,19 @@ class OrderService:
         return {"line": Fresh, "three_d_id": T["id"], "changed": True}
 
     def UploadVersion(self, OrderId: str, LineId: str, UploadId: str, By: str, Scaling: str = "exact", SourceTool: str = "",
-                      Note: str = "", Activate: bool = True) -> dict:
+                      Note: str = "", Activate: bool = True, ForProduction: bool = False) -> dict:
         """A revised STL for an ordered line: a new 3D version of the line's design and option (revising the version the
         line is produced from), then the line is produced from it (UseVersion). Activate = it also becomes the design's
-        active version; otherwise it is this order's own revision and the design keeps its active version."""
+        active version; otherwise it is this order's own revision and the design keeps its active version. A line in
+        Production takes it only through the revision workflow (ForProduction)."""
         if self.Versions is None:
             raise HttpError(503, "versions_unavailable", "3D versions are not available.")
         O = self.AdminGet(OrderId)
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
             raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if self.LineGuard and not ForProduction:
+            self.LineGuard(O, L)
         Note = " ".join(str(Note or "").split())[:300]
         if O["status"] in ProductionStatuses and not Note:
             raise HttpError(400, "note_required", f"Order {O['ref']} is {StatusLabels[O['status']].lower()}: say why its 3D version changes.")
@@ -685,7 +692,7 @@ class OrderService:
                             (O["id"], "3d_version_uploaded", Dumps({"line_id": LineId, "mesh_id": V["id"], "version_no": V["version_no"],
                                                                     "filename": V["original_filename"], "scaling": Scaling,
                                                                     "source_tool": V["source_tool"], "active": bool(Activate)}), By, Now()))
-        return {**self.UseVersion(OrderId, LineId, V["id"], By, Note or f"Revised STL {V['original_filename']}"), "version": V}
+        return {**self.UseVersion(OrderId, LineId, V["id"], By, Note or f"Revised STL {V['original_filename']}", ForProduction=ForProduction), "version": V}
 
     def _PinDerived(self, O: dict, By: str) -> None:
         """An order released toward production pins every line that still follows its design (prepared on the session

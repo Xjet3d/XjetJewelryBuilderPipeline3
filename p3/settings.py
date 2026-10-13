@@ -79,6 +79,7 @@ class Settings:
     # §J, K8): True (the default, the deployed systems) — an unpaid order's lines are not released and the live checks say
     # PAYMENT_PENDING; False — payment is shown, never gating: the Admin decides what enters Production (switched at activation)
     FulfillmentPaymentGate: bool = True          # P3_FULFILLMENT_PAYMENT_GATE
+    FulfillmentUrl: str = ""                     # P3_FULFILLMENT_URL: the Fulfillment application's URL for the Admin's "Open in Fulfillment" links (e.g. https://tron/atelier-fulfillment)
 
     @property
     def Production(self) -> bool:
@@ -165,6 +166,7 @@ def LoadSettings(**Overrides) -> Settings:
         FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
         FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
         FulfillmentPaymentGate=_Bool("P3_FULFILLMENT_PAYMENT_GATE", True),
+        FulfillmentUrl=os.environ.get("P3_FULFILLMENT_URL", "").strip().rstrip("/"),
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])

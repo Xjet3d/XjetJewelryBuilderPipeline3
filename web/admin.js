@@ -212,6 +212,9 @@ function adminApp() {
     orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
     oq: '', oStatus: '', oPayment: '', oFulfillment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
     prodSel: {}, prodNote: '',                   // Send selected lines to Production: the lines ticked (eligible ones are ticked by default)
+    // The Production page (#/orders/production): the lines sent, Fulfillment's side of each; one line's detail (#/orders/production/<line id>)
+    pr: { rows: [], orders: [], total: 0, offset: 0, limit: 50, loading: false, msg: '', enabled: true, stages: [], materials: [], products: [], fulfillment_url: null, last_pull_at: null },
+    pf: { q: '', stage: '', attention: false, material: '', product: '', build: '', since: '', until: '' }, productionLineId: '', pd: null, pdError: '', pdBusy: false,
     qf: null, cmdForm: null,                     // a quote request's Fulfillment state; a request to Fulfillment being written
     oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
     qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
@@ -343,9 +346,11 @@ function adminApp() {
       const wasList = this.tab === 'sessions' && !this.sessionId;
       this.userId = this.tab === 'users' ? id : '';
       this.sessionId = this.tab === 'sessions' ? id : '';
-      this.orderId = this.tab === 'orders' && !id.startsWith('quote/') && id !== 'quotes' ? id : '';
+      const production = this.tab === 'orders' && (id === 'production' || id.startsWith('production/'));
+      this.orderId = this.tab === 'orders' && !id.startsWith('quote/') && id !== 'quotes' && !production ? id : '';
       this.quoteId = this.tab === 'orders' && id.startsWith('quote/') ? id.slice(6) : '';
-      this.ordersView = this.tab === 'orders' && id === 'quotes' ? 'quotes' : 'orders';     // #/orders/quotes: the quote inbox
+      this.productionLineId = production && id.startsWith('production/') ? id.slice(11) : '';   // #/orders/production/<line id>: one sent line
+      this.ordersView = this.tab === 'orders' && id === 'quotes' ? 'quotes' : production ? 'production' : 'orders';   // #/orders/quotes: the quote inbox · #/orders/production: the Production page
       this.openDesign = null; this.zoom = null; this.rename.open = false;
       const backToList = this.tab === 'sessions' && !id && !wasList;
       if (!backToList) window.scrollTo({ top: 0 });
@@ -360,6 +365,8 @@ function adminApp() {
       if (this.tab === 'users' && id) await this.loadDetail(); else this.d = null;
       if (this.tab === 'orders' && !id) await this.loadOrders();
       if (this.tab === 'orders' && id === 'quotes') await this.loadQuoteInbox();
+      if (this.tab === 'orders' && id === 'production') await this.loadProduction();
+      if (this.tab === 'orders' && this.productionLineId) await this.loadProductionDetail(); else this.pd = null;
       if (this.tab === 'orders' && this.orderId) await this.loadOrder(); else this.od = null;
       if (this.tab === 'orders' && this.quoteId) await this.loadQuote(); else this.qd = null;
       if (this.tab === 'gallery') await this.loadGallery();
@@ -404,6 +411,38 @@ function adminApp() {
       } catch (e) { this.ordersMsg = e.message; }
       finally { this.ordersLoading = false; }
     },
+    // ── the Production page (docs/order-to-production-review.md §H): every line sent to Production, Fulfillment's side of each ──
+    async loadProduction(offset = 0) {
+      this.pr.loading = true; this.pr.msg = '';
+      try {
+        const q = new URLSearchParams({ offset: String(typeof offset === 'number' ? offset : 0), limit: String(this.pr.limit) });
+        for (const [k, v] of Object.entries(this.pf)) { if (v === true) q.set(k, '1'); else if (v && v !== false) q.set(k, String(v).trim()); }
+        const r = await this.api('GET', '/api/admin/production?' + q);
+        Object.assign(this.pr, { rows: r.rows, orders: r.orders, total: r.total, offset: r.offset, limit: r.limit, enabled: r.enabled, stages: r.stages || [], materials: r.materials || [],
+                                 products: r.products || [], fulfillment_url: r.fulfillment_url || null, last_pull_at: r.last_pull_at || null });
+      } catch (e) { this.pr.msg = e.message; }
+      finally { this.pr.loading = false; }
+    },
+    clearProductionFilters() { this.pf = { q: '', stage: '', attention: false, material: '', product: '', build: '', since: '', until: '' }; this.loadProduction(); },
+    productionPageText() { const p = this.pr; if (!p.total) return 'No line'; const a = p.offset + 1, b = Math.min(p.offset + p.rows.length, p.total); return a + '–' + b + ' of ' + p.total; },
+    stageClass(s) {
+      return { attention: 'bg-amber-100 text-amber-800', rejected: 'bg-red-100 text-red-700', on_hold: 'bg-amber-100 text-amber-800', cancelled: 'bg-zinc-200 text-zinc-600',
+               sent: 'bg-zinc-100 text-zinc-600', received: 'bg-sky-100 text-sky-800', planned: 'bg-sky-100 text-sky-800', in_production: 'bg-violet-100 text-violet-800',
+               post_processing: 'bg-violet-100 text-violet-800', qc: 'bg-indigo-100 text-indigo-800', rework: 'bg-amber-100 text-amber-800', ready_to_ship: 'bg-emerald-100 text-emerald-800',
+               partially_shipped: 'bg-emerald-100 text-emerald-800', shipped: 'bg-emerald-100 text-emerald-800', delivered: 'bg-emerald-100 text-emerald-800' }[s] || 'bg-zinc-100 text-zinc-600';
+    },
+    quantityLine(x) {
+      const q = x.quantities || {}; const bits = ['ordered ' + (q.ordered ?? x.line?.quantity ?? '—')];
+      if (q.target != null && q.target !== q.ordered) bits.push('target ' + q.target);
+      if (q.in_progress) bits.push(q.in_progress + ' in progress'); if (q.passed) bits.push(q.passed + ' passed QC'); if (q.rework) bits.push(q.rework + ' rework');
+      if (q.shipped) bits.push(q.shipped + ' shipped'); if (q.delivered) bits.push(q.delivered + ' delivered');
+      return bits.join(' · ');
+    },
+    async loadProductionDetail() {
+      this.pdError = ''; this.pd = null;
+      try { this.pd = await this.api('GET', '/api/admin/production/' + encodeURIComponent(this.productionLineId)); }
+      catch (e) { this.pdError = e.message; }
+    },
     // ── the Fulfillment state on lists and detail pages (docs/FULFILLMENT.md) ──
     get fulfillmentOn() { return (this.ordersMeta.fulfillment_filters || []).length > 0; },
     fReview(s) { return { not_started: 'Review not started', in_review: 'In review', changes_required: 'Changes required', approved: 'Approved', cannot_produce: 'Cannot produce' }[s] || (s || '—'); },
@@ -423,18 +462,48 @@ function adminApp() {
       return bits.join(' · ');
     },
     cmdStateClass(s) { return { pending: 'bg-amber-100 text-amber-800', applied: 'bg-emerald-100 text-emerald-800', rejected: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100 text-zinc-600'; },
-    requestCancellation(line) { this.cmdForm = { line_id: line.id, item: line.title + (line.ring_id ? ' · ' + line.ring_id : ''), max: line.quantity, quantity: '', reason: '' }; },
+    requestCancellation(line) { this.cmdForm = { order_id: this.od?.id, line_id: line.id, item: line.title + (line.ring_id ? ' · ' + line.ring_id : ''), max: line.quantity, quantity: '', reason: '' }; },
+    // From the Production page: the same request, for the line shown there (K7: a line leaves Production only this way, decided by Operations)
+    requestCancellationFromProduction(pd) { this.cmdForm = { order_id: pd.order.id, line_id: pd.line.id, item: pd.line.title + ' · ' + pd.line.item_ref, max: pd.line.quantity, quantity: '', reason: '' }; },
     // A request to Fulfillment: stored here, delivered through its own connection, Pending until it answers (never shown as done before)
     async sendCommand() {
-      const f = this.cmdForm; if (!this.od || !f || !f.reason.trim()) return;
-      const body = { action: 'cancel_line', line_id: f.line_id, reason: f.reason.trim(), expected_version: this.of?.enrollment?.source_version };
+      const f = this.cmdForm; if (!f || !f.reason.trim()) return;
+      const orderId = f.order_id || this.od?.id; if (!orderId) return;
+      const body = { action: 'cancel_line', line_id: f.line_id, reason: f.reason.trim(), expected_version: this.of?.enrollment?.source_version ?? this.pd?.enrollment?.source_version };
       if (f.quantity) body.quantity = Number(f.quantity);
-      this.odBusy = true; this.odError = '';
+      this.odBusy = true; this.odError = ''; this.pdError = '';
       try {
-        const c = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/fulfillment/commands`, body);
+        const c = await this.api('POST', `/api/admin/orders/${encodeURIComponent(orderId)}/fulfillment/commands`, body);
         this.cmdForm = null; this.notify(c.state === 'pending' ? 'Request sent to Fulfillment — pending until it answers.' : 'Request ' + c.state + '.');
-        this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment');
-      } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+        if (this.od && this.od.id === orderId) this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(orderId) + '/fulfillment');
+        if (this.productionLineId) await this.loadProductionDetail();
+      } catch (e) { if (this.productionLineId) this.pdError = e.message; else this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // A revised file for a line in Production (docs/order-to-production-review.md §B.6): explicit, with a reason, through the
+    // existing version choice and upload; Fulfillment makes a new revision of it and holds the part until re-approved
+    async useVersionForProduction(pd, answersRequestId = null) {
+      const now = pd.line.three_d_version?.mesh_id;
+      const choices = (pd.line.three_d_versions || []).filter(v => v.mesh_id !== now);
+      if (!choices.length) { this.notify(pd.line.item_ref + ' has no other 3D version — upload a revised STL instead.', 'error'); return; }
+      const r = await this.ask({ title: 'Use another 3D version for ' + pd.line.item_ref + ' in Production?',
+        text: 'It is produced from ' + (pd.line.three_d_version?.label || '—') + ' now. The line is pinned to the version you choose and Fulfillment receives it as revision ' + (pd.handoff_no + 1) + ': the part is held until Operations re-approve the new file; nothing already printed is replaced.',
+        confirmLabel: 'Submit to Production', cancelLabel: 'Not now', choices: choices.map(v => ({ value: v.mesh_id, label: v.label + (v.active ? ' · in use' : '') })),
+        input: { label: 'Why the file changes (required — kept with the order and sent to Fulfillment)', value: '', placeholder: 'For example: wall thickened to 1 mm as asked', max: 300 } });
+      if (!r || !(r.value || '').trim()) { if (r) this.notify('A reason is required.', 'error'); return; }
+      await this.productionRevision(pd, { mesh_id: r.choice, reason: r.value.trim(), answers_request_id: answersRequestId });
+    },
+    async submitRevisionForProduction(pd, answersRequestId = null) {
+      // The existing upload dialog (Add External Part, for a line) with the hand-over on top: xp.forProduction tells it to submit the new version to Production
+      this.openPartForLine({ id: pd.line.id, title: pd.line.title, ring_id: pd.line.item_ref, three_d_version: pd.line.three_d_version, design_id: pd.line.design_id, candidate_id: pd.line.candidate_id });
+      if (this.xp) { this.xp.forProduction = { order_id: pd.order.id, answers_request_id: answersRequestId, handoff_no: pd.handoff_no }; }
+    },
+    async productionRevision(pd, body) {
+      this.pdBusy = true; this.pdError = '';
+      try {
+        await this.api('POST', `/api/admin/orders/${encodeURIComponent(pd.order.id)}/lines/${encodeURIComponent(pd.line.id)}/production-revision`, body);
+        this.notify('Revised file submitted to Production as revision ' + (pd.handoff_no + 1) + '.');
+        await this.loadProductionDetail();
+      } catch (e) { this.pdError = e.message; } finally { this.pdBusy = false; }
     },
     // The quote request inbox: one page, searched and filtered on the server; counts per status for the filter and badge
     async loadQuoteInbox(offset = 0) {
@@ -1301,7 +1370,13 @@ function adminApp() {
       try {
         if (!x.uploadId) x.uploadId = (await this.uploadFile(x.file, p => { x.progress = p; })).id;
         let go = null;
-        if (x.kind === 'line') {
+        if (x.kind === 'line' && x.forProduction) {
+          // A line in Production (docs/order-to-production-review.md §B.6): the upload is submitted to Production as the next revision, with the reason
+          if (!(x.note || '').trim()) { x.error = 'Say why the production file changes (the note is the reason sent to Fulfillment).'; x.busy = false; return; }
+          const r = await this.api('POST', `/api/admin/orders/${encodeURIComponent(x.forProduction.order_id)}/lines/${encodeURIComponent(x.line.id)}/production-revision`,
+                                   { upload_id: x.uploadId, scaling: x.scaling, source_tool: x.tool, reason: x.note, activate: x.activate, answers_request_id: x.forProduction.answers_request_id });
+          this.notify(`Revised STL submitted to Production as revision ${r.handoff_no} for ${x.line.ring_id} — measuring now; Fulfillment fetches it once complete`);
+        } else if (x.kind === 'line') {
           const r = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(x.line.id)}/3d-upload`,
                                    { upload_id: x.uploadId, scaling: x.scaling, source_tool: x.tool, note: x.note, activate: x.activate });
           this.notify(`${r.version.label} uploaded for ${this.od.ref} · ${x.line.ring_id} — measuring now`);
@@ -1321,7 +1396,7 @@ function adminApp() {
         }
         x.uploadId = '';                                   // used: nothing to delete
         this.xp = null;
-        if (go) this.go(go); else await this.refreshAfterPart();
+        if (go) this.go(go); else if (this.productionLineId) await this.loadProductionDetail(); else await this.refreshAfterPart();
       } catch (e) {
         if (e.code === 'duplicate_title' && this.xp === x) {
           x.busy = false;

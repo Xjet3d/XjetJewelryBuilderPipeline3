@@ -54,6 +54,44 @@ ProductionReasons = {
     "other_size": "the prepared result is for another size or material: Prepare STL on this line",
     "export_failed": "the production file cannot be exported",
 }
+# The stages Fulfillment reports per part (its admin payload; docs/order-to-production-review.md §I), in order of progress —
+# `sent` is Atelier's own: the line is sent and Fulfillment has not reported its part yet
+ProductionStageLabels = {
+    "sent": "Sent to Production", "received": "Received by Fulfillment", "attention": "Attention required", "rejected": "Rejected — cannot produce",
+    "on_hold": "On hold", "planned": "Production planned", "in_production": "In production", "post_processing": "Post-processing", "qc": "QC",
+    "rework": "Rework / reprint", "ready_to_ship": "Ready to ship", "partially_shipped": "Partially shipped", "shipped": "Shipped",
+    "delivered": "Delivered", "cancelled": "Cancelled",
+}
+LineEventLabels = {"production_sent": "Sent to Production", "production_file": "Production file recorded", "production_revision_submitted": "Revised file submitted to Production",
+                   "3d_prepared": "STL prepared", "3d_pinned": "3D version pinned", "3d_version_changed": "3D version changed", "3d_version_uploaded": "Revised STL uploaded"}
+FulfillmentEventLabels = {
+    "fulfillment.request_enrolled": "Received by Fulfillment", "fulfillment.request_updated": "Updated", "fulfillment.review_started": "Manufacturing review started",
+    "fulfillment.review_approved": "Approved for production", "fulfillment.review_changes_required": "Changes required", "fulfillment.review_cannot_produce": "Cannot produce",
+    "fulfillment.commercial_action_required": "Commercial action required", "fulfillment.commercial_action_closed": "Commercial action closed",
+    "fulfillment.command_applied": "Request applied", "fulfillment.command_rejected": "Request rejected",
+    "fulfillment.production_released": "Released to a build", "fulfillment.production_started": "Production started", "fulfillment.production_completed": "Production completed",
+    "fulfillment.production_failed": "Production failed", "fulfillment.production_withdrawn": "Release withdrawn", "fulfillment.qc_recorded": "QC recorded",
+    "fulfillment.qc_corrected": "QC corrected", "fulfillment.reprint_planned": "Reprint planned", "fulfillment.cancellation_accepted": "Cancellation accepted",
+    "fulfillment.cancellation_rejected": "Cancellation rejected", "fulfillment.shipment_packed": "Packed", "fulfillment.shipment_shipped": "Shipped",
+    "fulfillment.shipment_delivered": "Delivered", "fulfillment.shipment_updated": "Tracking updated", "fulfillment.shipment_exception": "Shipping exception",
+    "fulfillment.shipment_cancelled": "Parcel cancelled", "fulfillment.revision_received": "Revised file received", "fulfillment.attention_required": "Attention required",
+    "fulfillment.attention_cleared": "Attention request closed", "fulfillment.note_added": "Internal note",
+}
+
+
+def _LineEventText(Kind: str, D: dict) -> str:
+    Sha = (D.get("file_sha256") or "")[:12]
+    if Kind == "production_sent":
+        return " · ".join(X for X in (D.get("version_label"), f"file {Sha}…" if Sha else None, D.get("note")) if X)
+    if Kind == "production_file":
+        return f"file {Sha}… ({D.get('file_bytes')} bytes)"
+    if Kind == "production_revision_submitted":
+        return " · ".join(X for X in (f"revision {D.get('handoff_no')}", D.get("version_label"), D.get("reason")) if X)
+    if Kind == "3d_version_changed":
+        return f"v{D.get('from_version_no') or '?'} → {D.get('label') or 'v' + str(D.get('version_no') or '?')}" + (f": {D['note']}" if D.get("note") else "")
+    if Kind == "3d_version_uploaded":
+        return f"v{D.get('version_no')} · {D.get('filename') or ''}"
+    return "v" + str(D.get("version_no") or "?")
 CommandActions = {"cancel_line": "decide_cancellation"}            # an Admin command and the Fulfillment permission it delegates
 CommandOutcomeEvents = ("fulfillment.command_applied", "fulfillment.command_rejected")
 ReviewSeverity = ("cannot_produce", "changes_required", "in_review", "not_started", "approved")   # the worst review state of an order's parts first
@@ -466,6 +504,73 @@ class FulfillmentBridge:
                                                 "file_sha256", "file_bytes", "file_job_id")},
                 "revision_reason": Prod["revision_reason"], "answers_request_id": Prod["answers_request_id"]}
 
+    # ── a revised file after the hand-over (docs/order-to-production-review.md §B.6, §G.4) ──
+    def GuardLineVersionChange(self, Order: dict, Line: dict) -> None:
+        """A line in Production changes its geometry only through the explicit revision workflow (a reason, Fulfillment
+        told, a new revision there): the plain *Use another version* / *Upload revised STL* of the order page are refused."""
+        if self.Enabled and self.LineProduction(Line["id"]):
+            raise HttpError(409, "line_in_production", f"{Line['ring_id']} is in Production: a revised file is submitted to Production explicitly, with a reason, "
+                                                       "from the Production page — never changed in place.")
+
+    def SubmitRevision(self, OrderId: str, LineId: str, By: str, Body: dict) -> dict:
+        """A revised production file for a line in Production: the line re-pinned through the existing version choice or
+        upload (a reason required), the production row advanced to the next hand-over number with the new pin and
+        file hash, Fulfillment told through a snapshot change (reason production_revision). The former version, its
+        file and everything made from it stay in the history on both sides; a file already used in a build is never
+        replaced — Fulfillment holds the part until Operations re-approve."""
+        self._Require()
+        Prod = self.LineProduction(LineId)
+        if Prod is None or Prod["order_id"] != OrderId:
+            raise HttpError(404, "production_not_found", "This order line was not sent to Production.")
+        Reason = " ".join(str(Body.get("reason") or "").split())[:300]
+        if not Reason:
+            raise HttpError(400, "reason_required", "Say why the production file changes (kept with the order and sent to Fulfillment).")
+        MeshId, UploadId = Body.get("mesh_id"), Body.get("upload_id")
+        if not (isinstance(MeshId, str) and MeshId) and not (isinstance(UploadId, str) and UploadId):
+            raise HttpError(400, "version_required", "Choose another 3D version or upload a revised STL.")
+        Answers = str(Body.get("answers_request_id") or "") or None
+        if UploadId:
+            self.Orders.UploadVersion(OrderId, LineId, UploadId, By, str(Body.get("scaling") or "exact"), str(Body.get("source_tool") or ""), Reason,
+                                      bool(Body.get("activate", True)), ForProduction=True)
+        else:
+            self.Orders.UseVersion(OrderId, LineId, MeshId, By, Reason, ForProduction=True)
+        O = self._Order(OrderId)
+        L = next(X for X in O["lines"] if X["id"] == LineId)
+        if L.get("three_d_id") == Prod["three_d_id"] and (L.get("three_d_version") or {}).get("mesh_id") == Prod["mesh_id"]:
+            raise HttpError(409, "nothing_changed", "That is the version already in Production.")
+        # The new pin must be a real result of the line's option. Unlike the first hand-over it may still be measuring (an
+        # uploaded STL is measured in the background) or flagged for review: Fulfillment receives the revision now and
+        # fetches its file once the result is complete (or accepted) — exactly as it waits for any other file.
+        El = self.LineEligibility(O, L, None, Known=True)
+        if not El["eligible"] and El["reason"] not in ("processing", "review_required"):
+            raise HttpError(409, "print_file_required", f"The revised file is not a valid print file — {El['message']}.", {"blocked": [{"line_id": LineId, "reason": El["reason"], "message": El["message"]}]})
+        Pin = self._PinInfo(L)
+        File = {}
+        if El["eligible"]:
+            try:
+                File = self._ProductionFile(L["three_d_id"]) or {}
+            except HttpError as E:
+                raise HttpError(409, "print_file_required", f"The revised file cannot be exported: {E.Message}")
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT * FROM fulfillment_line_production WHERE id = ?", (Prod["id"],)).fetchone()
+            E = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (OrderId,)).fetchone()
+            Version = E["source_version"] + 1
+            Conn.execute("UPDATE fulfillment_enrollments SET source_version = ?, updated_at = ? WHERE id = ?", (Version, T, E["id"]))
+            Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('updated', 'order', ?, ?, 'production_revision', ?)",
+                         (OrderId, Version, T))
+            Conn.execute("UPDATE fulfillment_line_production SET handoff_no = handoff_no + 1, mesh_id = ?, version_no = ?, version_label = ?, source = ?, scaling = ?, "
+                         "master_sha256 = ?, three_d_id = ?, method_version = ?, file_sha256 = ?, file_bytes = ?, file_job_id = ?, revision_reason = ?, answers_request_id = ?, "
+                         "state = 'revised', updated_at = ? WHERE id = ?",
+                         (Pin["mesh_id"], Pin["version_no"], Pin["version_label"], Pin["source"], Pin["scaling"], Pin["master_sha256"], Pin["three_d_id"], Pin["method_version"],
+                          File.get("sha256"), File.get("bytes"), File.get("job_id"), Reason, Answers, T, Prod["id"]))
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (OrderId, "production_revision_submitted", Dumps({"line_id": LineId, "item_ref": L["ring_id"], "handoff_no": Cur["handoff_no"] + 1, "mesh_id": Pin["mesh_id"],
+                                                                           "version_no": Pin["version_no"], "version_label": Pin["version_label"], "session_3d_id": Pin["three_d_id"],
+                                                                           "file_sha256": File.get("sha256"), "reason": Reason, "answers_request_id": Answers,
+                                                                           "from_mesh_id": Cur["mesh_id"], "from_version_no": Cur["version_no"], "source_version": Version}), By, T))
+        return self.ProductionDetail(LineId)
+
     def _AllLinesSent(self, Conn, OrderId: str) -> bool:
         N = Conn.execute("SELECT COUNT(*) FROM order_lines WHERE order_id = ?", (OrderId,)).fetchone()[0]
         S = Conn.execute("SELECT COUNT(*) FROM fulfillment_line_production WHERE order_id = ?", (OrderId,)).fetchone()[0]
@@ -848,8 +953,17 @@ class FulfillmentBridge:
             return "ignored_stale"
         Versions[Agg] = int(E["aggregate_version"])
         Public = E.get("public_payload") if isinstance(E.get("public_payload"), dict) else {}
+        AdminP = E.get("admin_payload") if isinstance(E.get("admin_payload"), dict) else {}
         State.update({K: V for K, V in Public.items() if K in ("customer_status", "summary", "parts", "review_status", "blockers", "file_state", "shipment", "shipments",
                                                                  "order_status", "review", "commercial_action_pending", "commercial_action")})
+        if AdminP:
+            # The staff-only view (docs/order-to-production-review.md §C.4): the parts' stages, builds, holds, attention
+            # and latest notes replace the previous ones; every note is kept for the Production page; never shown to a customer
+            Admin = State.get("admin") if isinstance(State.get("admin"), dict) else {}
+            Admin.update({K: V for K, V in AdminP.items() if K in ("parts", "attention", "revision")})
+            if isinstance(AdminP.get("note"), dict):
+                Admin["notes"] = ([AdminP["note"]] + [N for N in (Admin.get("notes") or []) if N.get("id") != AdminP["note"].get("id")])[:200]
+            State["admin"] = Admin
         State.update({"aggregate_versions": Versions, "last_event_type": E["event_type"], "last_event_at": E["occurred_at"], "last_received_at": T})
         # K1: Fulfillment's order-level status is written only when every line of the order is in Production; a partly
         # sent order keeps its commercial status, and every line shows its own stage
@@ -862,13 +976,32 @@ class FulfillmentBridge:
         else:
             Conn.execute("INSERT INTO fulfillment_projection (entity_type, entity_id, aggregate_version, state_json, last_event_id, last_event_at, updated_at) "
                          "VALUES (?,?,?,?,?,?,?)", (EntityType, EntityId, int(E["aggregate_version"]), Dumps(State), E["event_id"], E["occurred_at"], T))
-        Data = {"event_type": E["event_type"], "summary": Summary, "event_id": E["event_id"], "at": E["occurred_at"]}
+        # The history line names the parts the event is about (K9), so each line's timeline on the Production page is exact
+        PartLines = {P.get("display_no"): P.get("line_id") for P in (Public.get("parts") or []) if isinstance(P, dict) and P.get("display_no")}
+        About = [X for X in E.get("about_parts") if isinstance(X, str)] if isinstance(E.get("about_parts"), list) else list(PartLines)
+        Data = {"event_type": E["event_type"], "summary": Summary, "event_id": E["event_id"], "at": E["occurred_at"], "about_parts": About,
+                "line_ids": [PartLines[X] for X in About if PartLines.get(X)]}
         if EntityType == "order":
             Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)", (EntityId, "fulfillment", Dumps(Data), "fulfillment", T))
+            self._LinesReported(Conn, EntityId, Public, AdminP, E["occurred_at"], T)
             self.Notifications.Intend(Conn, EntityId, E, Public, T)       # a milestone becomes one intent per scope, in this transaction (C09)
         else:
             OrdersModule.QuoteEvent(Conn, EntityId, "fulfillment", Data, "fulfillment")
         return "applied"
+
+    def _LinesReported(self, Conn, OrderId: str, Public: dict, AdminP: dict, At: str, T: str) -> None:
+        """A sent line whose part Fulfillment reports is *received* (with the part's id and number); a revised line is
+        received again once Fulfillment reports the revision at that hand-over number."""
+        for P in Public.get("parts") or []:
+            if isinstance(P, dict) and isinstance(P.get("line_id"), str):
+                Conn.execute("UPDATE fulfillment_line_production SET part_id = COALESCE(part_id, ?), part_display_no = COALESCE(part_display_no, ?), updated_at = ? "
+                             "WHERE line_id = ? AND order_id = ?", (P.get("part_id"), P.get("display_no"), T, P["line_id"], OrderId))
+                Conn.execute("UPDATE fulfillment_line_production SET state = 'received', received_at = COALESCE(received_at, ?), updated_at = ? "
+                             "WHERE line_id = ? AND order_id = ? AND state = 'sent'", (At, T, P["line_id"], OrderId))
+        Rev = AdminP.get("revision") if isinstance(AdminP.get("revision"), dict) else None
+        if Rev and isinstance(Rev.get("part"), str):
+            Conn.execute("UPDATE fulfillment_line_production SET state = 'received', updated_at = ? WHERE order_id = ? AND part_display_no = ? AND state = 'revised' "
+                         "AND handoff_no = ?", (T, OrderId, Rev["part"], Rev.get("handoff_no")))
 
     # ── what the customer sees in My Account (spec §24.1, C08) ───────────
     CustomerLabels = {"fulfillment.request_enrolled": "Received for production review", "fulfillment.review_approved": "Approved for production",
@@ -990,6 +1123,163 @@ class FulfillmentBridge:
             R["fulfillment"] = self.Summary("order", OrderId) if OrderId else None
         return Rows
 
+    # ── the Production page (docs/order-to-production-review.md §H): every line sent, Atelier's facts and Fulfillment's side by side ──
+    def _PartOf(self, Proj: dict, LineId: str) -> dict | None:
+        """The projected part of a line: the customer-safe summary and the staff-only view merged (the staff view wins)."""
+        Public = next((P for P in (Proj.get("parts") or []) if isinstance(P, dict) and P.get("line_id") == LineId), None)
+        Admin = next((P for P in ((Proj.get("admin") or {}).get("parts") or []) if isinstance(P, dict) and P.get("line_id") == LineId), None)
+        if Public is None and Admin is None:
+            return None
+        return {**(Public or {}), **(Admin or {})}
+
+    def _ProductionRows(self, OrderId: str | None = None, LineId: str | None = None) -> list[dict]:
+        Where = " WHERE p.order_id = ?" if OrderId else " WHERE p.line_id = ?" if LineId else ""
+        return self.Ctx.Db.All("SELECT p.*, l.title, l.ring_id, l.material_id, l.material_label, l.product_type, l.ring_size, l.charm_size, l.quantity, l.image_path, "
+                               "l.position, o.order_no, o.status AS order_status, o.customer_json, o.payment_status FROM fulfillment_line_production p "
+                               "JOIN order_lines l ON l.id = p.line_id JOIN orders o ON o.id = p.order_id" + Where + " ORDER BY p.sent_at DESC, p.id",
+                               (OrderId or LineId,) if Where else ())
+
+    def _ProductionRow(self, R: dict, Part: dict | None, Proj: dict, Awaiting: bool) -> dict:
+        from p3 import products as Products
+        Customer = json.loads(R["customer_json"] or "{}")
+        Stage = (Part or {}).get("stage") or "sent"
+        Pin = {K: R[K] for K in ("mesh_id", "version_no", "version_label", "source", "scaling", "master_sha256", "three_d_id", "method_version", "file_sha256", "file_bytes", "file_job_id")}
+        Detail = (Part or {}).get("stage_detail") if Part else ("awaiting synchronization" if Awaiting else "not reported by Fulfillment yet")
+        Updates = [X for X in (R["updated_at"], (Part or {}).get("updated_at"), Proj.get("last_event_at")) if X]
+        return {"line_id": R["line_id"],
+                "order": {"id": R["order_id"], "ref": OrdersModule.OrderRef(R["order_no"]), "status": R["order_status"],
+                          "status_label": OrdersModule.StatusLabels.get(R["order_status"], R["order_status"]), "payment_status": R["payment_status"],
+                          "customer": (str(Customer.get("first_name", "")) + " " + str(Customer.get("last_name", ""))).strip(), "customer_email": Customer.get("email")},
+                "line": {"title": R["title"], "item_ref": R["ring_id"], "product_type": R["product_type"], "material_id": R["material_id"], "material_label": R["material_label"],
+                         "size_label": Products.SizeLabel(R["product_type"] or Products.Ring, R["ring_size"], R["charm_size"]), "quantity": R["quantity"],
+                         "position": R["position"], "image_url": self.Ctx.AssetUrl(R["image_path"])},
+                "sent_at": R["sent_at"], "sent_by": R["sent_by"], "note": R["note"], "handoff_no": R["handoff_no"], "state": R["state"], "received_at": R["received_at"],
+                "pinned": Pin, "revision_reason": R["revision_reason"], "answers_request_id": R["answers_request_id"],
+                "part": Part, "part_display_no": (Part or {}).get("display_no") or R["part_display_no"], "part_id": (Part or {}).get("part_id") or R["part_id"],
+                "stage": Stage, "stage_label": ProductionStageLabels.get(Stage, Stage), "stage_detail": Detail,
+                "build": (Part or {}).get("build"), "attention": (Part or {}).get("attention"), "latest_note": (Part or {}).get("latest_note"),
+                "holds": (Part or {}).get("holds") or [], "quantities": (Part or {}).get("quantities") or {"ordered": R["quantity"]},
+                "file_state": ((Part or {}).get("revision") or {}).get("file_state"), "revision": (Part or {}).get("revision"),
+                "fulfillment_url": self._FulfillmentPartUrl((Part or {}).get("part_id") or R["part_id"]), "last_updated": max(Updates) if Updates else R["sent_at"]}
+
+    def _FulfillmentPartUrl(self, PartId: str | None) -> str | None:
+        Base = self.Ctx.Settings.FulfillmentUrl
+        return f"{Base}/#/orders/{PartId}" if Base and PartId else None
+
+    def ProductionList(self, Stage: str | None = None, Attention: bool = False, Material: str | None = None, Product: str | None = None, Query: str | None = None,
+                       Build: str | None = None, OrderId: str | None = None, Since: str | None = None, Until: str | None = None, Offset: int = 0, Limit: int = 50) -> dict:
+        """The Production page's rows: every order line sent to Production, newest hand-over first, with Atelier's facts
+        (the order, the customer, the line, the pin) and Fulfillment's (the part's stage, build, attention, latest note)
+        joined by line id; filtered, searched and paged here (the pilot's volume is small); grouped by order."""
+        if not self.Enabled:
+            return {"enabled": False, "rows": [], "orders": [], "total": 0, "offset": 0, "limit": Limit, "stages": [], "materials": [], "products": []}
+        Pull = self.LastPull()
+        Projections, Enrollments, Out = {}, {}, {}
+        for R in self._ProductionRows(OrderId):
+            if R["order_id"] not in Projections:
+                Projections[R["order_id"]] = self.Projection("order", R["order_id"]) or {}
+                Enrollments[R["order_id"]] = self.Enrollment("order", R["order_id"])
+            Proj = Projections[R["order_id"]]
+            Row = self._ProductionRow(R, self._PartOf(Proj, R["line_id"]), Proj, self._Awaiting("order", R["order_id"], Enrollments[R["order_id"]], Pull))
+            Out[R["line_id"]] = Row
+        Rows = list(Out.values())
+        Facets = {"stages": sorted({X["stage"] for X in Rows}, key=lambda S: list(ProductionStageLabels).index(S) if S in ProductionStageLabels else 99),
+                  "materials": sorted({(X["line"]["material_id"], X["line"]["material_label"]) for X in Rows}),
+                  "products": sorted({X["line"]["product_type"] for X in Rows})}
+        Q = (Query or "").strip().lower()
+        Keep = []
+        for X in Rows:
+            if Stage and X["stage"] != Stage:
+                continue
+            if Attention and not X["attention"]:
+                continue
+            if Material and X["line"]["material_id"] != Material:
+                continue
+            if Product and X["line"]["product_type"] != Product:
+                continue
+            if Build and ((X["build"] or {}).get("display_no") or "").lower() != Build.strip().lower():
+                continue
+            if Since and X["sent_at"][:10] < Since[:10]:
+                continue
+            if Until and X["sent_at"][:10] > Until[:10]:
+                continue
+            if Q:
+                Hay = " ".join(str(V) for V in (X["order"]["ref"], X["order"]["customer"], X["order"]["customer_email"], X["line"]["title"], X["line"]["item_ref"],
+                                                 X["part_display_no"], (X["build"] or {}).get("display_no"), X["pinned"]["version_label"]) if V).lower()
+                if Q not in Hay:
+                    continue
+            Keep.append(X)
+        Offset, Limit = max(0, int(Offset)), max(1, min(int(Limit), 200))
+        Page = Keep[Offset:Offset + Limit]
+        Groups: dict = {}
+        for X in Page:
+            G = Groups.setdefault(X["order"]["id"], {"order": X["order"], "lines": [], "lines_sent": 0, "lines_total": 0, "attention": False})
+            G["lines"].append(X)
+            G["attention"] = G["attention"] or bool(X["attention"])
+        for Oid, G in Groups.items():
+            G["lines_sent"] = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_line_production WHERE order_id = ?", (Oid,))["n"]
+            G["lines_total"] = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM order_lines WHERE order_id = ?", (Oid,))["n"]
+            Stages = [L["stage"] for L in G["lines"]]
+            G["stage"] = min(Stages, key=lambda S: list(ProductionStageLabels).index(S) if S in ProductionStageLabels else 99)   # the least advanced line
+            G["stage_label"] = ProductionStageLabels.get(G["stage"], G["stage"])
+        return {"enabled": True, "rows": Page, "orders": list(Groups.values()), "total": len(Keep), "offset": Offset, "limit": Limit,
+                "stages": [{"id": S, "label": ProductionStageLabels.get(S, S)} for S in Facets["stages"]],
+                "materials": [{"id": M, "label": Lb} for M, Lb in Facets["materials"]], "products": Facets["products"],
+                "fulfillment_url": self.Ctx.Settings.FulfillmentUrl or None, "last_pull_at": Pull["at"] if Pull else None}
+
+    def ProductionDetail(self, LineId: str) -> dict:
+        """One sent line: the row, the line's 3D choices for a revision, the holds and attention, the notes, the commands
+        about it and its timeline — Atelier's own events and Fulfillment's, in time order, each with its source."""
+        self._Require()
+        Prod = self.LineProduction(LineId)
+        if Prod is None:
+            raise HttpError(404, "production_not_found", "This order line was not sent to Production.")
+        self._FinalizeFiles(Prod["order_id"])
+        O = self._Order(Prod["order_id"])
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "line_not_found", "No such line on this order.")
+        E = self.Enrollment("order", O["id"])
+        Proj = self.Projection("order", O["id"]) or {}
+        Part = self._PartOf(Proj, LineId)
+        R = self._ProductionRows(LineId=LineId)[0]
+        Row = self._ProductionRow(R, Part, Proj, self._Awaiting("order", O["id"], E, self.LastPull()))
+        DisplayNo = Row["part_display_no"]
+        Notes = [N for N in ((Proj.get("admin") or {}).get("notes") or []) if isinstance(N, dict) and N.get("part") == DisplayNo]
+        return {**Row, "enrollment": E, "awaiting_sync": self._Awaiting("order", O["id"], E, self.LastPull()),
+                "line": {**Row["line"], "id": LineId, "session_id": L.get("session_id"), "design_id": L["design_id"], "candidate_id": L["candidate_id"],
+                         "three_d_id": L.get("three_d_id"), "three_d_state": L.get("three_d_state"), "three_d_version": L.get("three_d_version"),
+                         "three_d_versions": L.get("three_d_versions") or [], "three_d_pinned": bool(L.get("three_d_pinned"))},
+                "notes": Notes, "commands": [C for C in self.CommandList("order", O["id"]) if C["payload"].get("line_id") == LineId],
+                "timeline": self._LineTimeline(O, LineId, DisplayNo), "order_lines_sent": self.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_line_production WHERE order_id = ?", (O["id"],))["n"],
+                "order_lines_total": len(O["lines"])}
+
+    def _LineTimeline(self, O: dict, LineId: str, DisplayNo: str | None) -> list[dict]:
+        """The line's history from the order's events (K9: no second history): Atelier's hand-over, file, version and
+        revision events for this line, the requests about it, and every Fulfillment event about its part."""
+        Items = []
+        for Ev in O["events"]:
+            K, D = Ev["kind"], Ev["data"] or {}
+            if K in LineEventLabels and D.get("line_id") == LineId:
+                Items.append({"at": Ev["created_at"], "source": "atelier", "kind": K, "label": LineEventLabels[K], "text": _LineEventText(K, D), "by": Ev["by"]})
+            elif K == "fulfillment" and D.get("action") in ("command", "command_outcome"):
+                if D.get("line_id") == LineId or (DisplayNo and D.get("part") == DisplayNo):
+                    if D["action"] == "command":
+                        Items.append({"at": Ev["created_at"], "source": "atelier", "kind": "command", "label": "Cancellation requested",
+                                      "text": (f"{D.get('quantity')} unit(s)" if D.get("quantity") else "the whole line") + " · " + str(D.get("reason") or ""), "by": Ev["by"]})
+                    else:
+                        Items.append({"at": Ev["created_at"], "source": "fulfillment", "kind": "command_outcome", "label": "Request " + str(D.get("state") or ""),
+                                      "text": str(D.get("result") or "") + (": " + D["reason"] if D.get("reason") else ""), "by": "Fulfillment"})
+            elif K == "fulfillment" and D.get("event_type"):
+                About, Lines = D.get("about_parts"), D.get("line_ids")
+                Mine = (isinstance(Lines, list) and LineId in Lines) or (isinstance(About, list) and DisplayNo and DisplayNo in About) or (not About and not Lines)
+                if Mine:
+                    Items.append({"at": D.get("at") or Ev["created_at"], "source": "fulfillment", "kind": D["event_type"],
+                                  "label": FulfillmentEventLabels.get(D["event_type"], D["event_type"].replace("fulfillment.", "").replace("_", " ")),
+                                  "text": D.get("summary"), "by": "Fulfillment"})
+        Items.sort(key=lambda X: X["at"])
+        return Items
+
     @staticmethod
     def FilterLabels() -> dict:
         return dict(Filters)
@@ -1106,6 +1396,26 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
     async def SendToProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
         return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""))
+
+    # The Production page (§H): the lines sent, with Fulfillment's side of each; one line's detail and timeline
+    @App_.get("/api/admin/production")
+    async def ProductionList(stage: str | None = None, attention: bool = False, material: str | None = None, product: str | None = None, q: str | None = None,
+                             build: str | None = None, order_id: str | None = None, since: str | None = None, until: str | None = None, offset: int = 0, limit: int = 50,
+                             authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Bridge.ProductionList(stage or None, bool(attention), material or None, product or None, q or None, build or None, order_id or None, since or None,
+                                     until or None, offset, limit)
+
+    @App_.get("/api/admin/production/{LineId}")
+    async def ProductionDetail(LineId: str, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return Bridge.ProductionDetail(LineId)
+
+    # A revised file for a line in Production (§B.6): another version of the option, or an uploaded STL, with a reason
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/production-revision")
+    async def ProductionRevision(OrderId: str, LineId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Bridge.SubmitRevision(OrderId, LineId, Who.Id, Body_)
 
     @App_.get("/api/admin/orders/{OrderId}/fulfillment/commands")
     async def OrderCommands(OrderId: str, authorization: str | None = Header(None)):
