@@ -1852,7 +1852,7 @@
           </div>
           <div class="space-y-1">
             <p class="lbl">Manufacturing <span class="font-normal normal-case tracking-normal text-zinc-500">(Fulfillment)</span></p>
-            <p :title="'A production revision is Fulfillment's specification of the part (file, size, material, production profile): a profile assignment or a revised file makes a new one. The hand-over number counts Atelier's sends of this line.'" x-text="'Part ' + (pd.part_display_no || '—') + (pd.revision ? ' · production revision ' + pd.revision.no + (pd.revision.approved ? ' approved' : ' not approved yet') : '') + (pd.handoff_no ? ' · hand-over ' + pd.handoff_no : '')"></p>
+            <p title="A production revision is the specification Fulfillment keeps for the part (file, size, material, production profile): a profile assignment or a revised file makes a new one. The hand-over number counts how many times Atelier sent this line." x-text="'Part ' + (pd.part_display_no || '—') + (pd.revision ? ' · production revision ' + pd.revision.no + (pd.revision.approved ? ' approved' : ' not approved yet') : '') + (pd.handoff_no ? ' · hand-over ' + pd.handoff_no : '')"></p>
             <p x-text="quantityLine(pd)"></p>
             <p x-text="pd.build ? 'Build ' + pd.build.display_no + ' · ' + pd.build.state.toLowerCase().replace('_', ' ') : 'Not in a build yet'"></p>
             <template x-for="h in (pd.holds || [])" :key="h.id"><p class="text-[12px] text-amber-800" x-text="'On hold: ' + h.reason_label + ' · owner ' + h.owner + ' · since ' + dateTime(h.since)"></p></template>
