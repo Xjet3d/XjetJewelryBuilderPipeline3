@@ -785,7 +785,8 @@ function adminApp() {
       const d = e.data || {};
       return ({ created: 'Request received', note: 'Note', offer_sent: d.revised ? 'Revised quote sent' : 'Quote sent', approved: 'Approved by the customer',
                 rejected: 'Declined by the customer', status: 'Status changed', staff_notified: 'Team notified', staff_notify_failed: 'Team notification failed',
-                email: d.type === 'offer' ? 'Quote email' : 'Confirmation email', email_failed: d.type === 'offer' ? 'Quote email failed' : 'Confirmation email failed' })[e.kind] || e.kind;
+                email: d.type === 'offer' ? 'Quote email' : 'Confirmation email', email_failed: d.type === 'offer' ? 'Quote email failed' : 'Confirmation email failed',
+                email_skipped: (d.type === 'offer' ? 'Quote email' : 'Confirmation email') + ' not sent — test request' })[e.kind] || e.kind;
     },
     qEventDetail(e) {
       const d = e.data || {}, m = v => this.money(v);
@@ -799,6 +800,7 @@ function adminApp() {
         case 'status': return (this.quoteStatusLabel(d.from) || '') + ' to ' + (this.quoteStatusLabel(d.to) || '');
         case 'email': return (d.delivery === 'smtp' ? 'sent to ' : 'kept in the outbox for ') + (d.to || '');
         case 'email_failed': case 'staff_notify_failed': return (d.to || '') + (d.error ? ' · ' + d.error : '');
+        case 'email_skipped': return (d.to || '') + ' · a reserved test address: the customer is never emailed';
         case 'staff_notified': return d.to || '';
         default: return '';
       }
@@ -1509,7 +1511,7 @@ function adminApp() {
       const d = e.data || {}, line = (this.od?.lines || []).find(l => l.id === d.line_id), who = line ? line.ring_id + ' · ' : '';
       const v = n => n ? 'v' + n : 'a 3D version';
       return { placed: 'Order placed', status: 'Status → ' + this.orderStatusLabel(d.to), payment: 'Payment → ' + this.payLabel(d.to) + (d.manual ? ' (manual)' : ''),
-               note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed',
+               note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed', email_skipped: 'Confirmation email not sent — test order',
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
                '3d_pinned': '3D pinned · ' + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
