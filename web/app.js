@@ -203,6 +203,7 @@ function p3App() {
 
     // ── lifecycle ─────────────────────────────────────────────────────
     async init() {
+      try { window.AtelierAnalytics?.page(location.pathname, document.title); } catch (_) {}
       const st = loadStore();
       // Rotate the waiting-screen status line every 3.5 s (P2 cadence); skipped for reduced motion.
       if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
@@ -256,6 +257,7 @@ function p3App() {
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
+        this.measure('login', { method: 'link' });
         await this._afterSignIn(true);
         return;
       }
@@ -354,6 +356,7 @@ function p3App() {
       else history.replaceState(null, '', BASE + '/');                                  // the Design screens live at the home URL
       const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
       if (titles[v] || titles.home) document.title = titles[v] || titles.home;
+      this.measureScreen(v);
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
@@ -373,6 +376,19 @@ function p3App() {
       if (!this.token) return;
       this.api('POST', '/api/events', { kind, design_id: designId }).catch(() => {});
     },
+    // Site analytics (web/consent.js, docs/ANALYTICS.md): nothing is sent unless the visitor allowed Analytics, and
+    // consent.js keeps only the listed fields with fixed values — never prompts, names, emails, addresses or file names
+    measure(name, params = {}) { try { window.AtelierAnalytics?.track(name, params); } catch (_) {} },
+    // A screen: a page of the site at its own address, a step of the design journey as BASE/app/<step>
+    measureScreen(v) {
+      const path = BASE + '/' + (PAGE_VIEWS.includes(v) ? (PAGE_PATHS[v] || '') : 'app/' + v);
+      try { window.AtelierAnalytics?.page(path, document.title); } catch (_) {}
+    },
+    measureItem(product, materialId, price, quantity) {
+      return { item_id: 'custom-' + product, item_name: 'Custom ' + product, item_category: product, item_variant: materialId, price, quantity };
+    },
+    promptBand(text) { const n = (text || '').length; return n < 40 ? 'short' : n <= 150 ? 'medium' : 'long'; },
+    failReason(e) { return e?.code === 'prompt_rejected' ? 'prompt_refused' : e?.code === 'quota_exhausted' ? 'no_credits' : 'error'; },
     scrollToHowItWorks() {
       this.navigateTo('home');
       this.$nextTick(() => setTimeout(() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }), 80));
@@ -449,6 +465,7 @@ function p3App() {
       this.heroIndex = i;
     },
     openGallery(g) {
+      this.measure('gallery_design_opened', { product_type: g.product_type || 'ring', design: g.title });
       this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetal[g.id] || ''; this.shareUrl = ''; this.shareCopied = false;
       this._pauseStory();
       // The share link is fetched as the preview opens, so Share / Copy link act at once inside the tap (browsers
@@ -575,6 +592,7 @@ function p3App() {
       this.galleryBusy = true; this.galleryError = '';
       try {
         const d = await this.api('POST', `/api/gallery/${encodeURIComponent(id)}/start`, { client_request_id: newRequestId() });
+        this.measure('design_session_started', { product_type: (this.gallery.find(x => x.id === id) || {}).product_type || 'ring', entry: 'gallery' });
         this._setPendingGallery('');
         this.closeGallery(); this.galleryGridOpen = false; this.showRegModal = false; this.closePreview(); this.signInNotice = null;
         await this.openDesign(d.id);
@@ -640,6 +658,7 @@ function p3App() {
       try {
         const Name = this.regForm.name.trim(), Email = this.regForm.email.trim();
         const Result = await this.api('POST', '/api/register', { Name, Email }, { noAuth: true });
+        this.measure('sign_up', { method: 'email' });
         this._saveUserProfile(Name, Email);
         // The token is never returned here — it is emailed. Show a confirmation message.
         this.regInfo = Result.message
@@ -656,6 +675,7 @@ function p3App() {
         const Token = this.regForm.token.toUpperCase().trim();
         const Result = await this.api('POST', '/api/register-token', { Token, Name: '', Email: '' }, { noAuth: true });
         this._setSession({ token: Token, quotaUsed: Result.used, quotaMax: Result.max, name: Result.name || '' });
+        this.measure('login', { method: 'code' });
         if (Result.name) this._saveUserProfile(Result.name, null);
         this.showRegModal = false; this._returnFocus = null;
         this.regForm = { token: '', name: '', email: '' };
@@ -1037,14 +1057,19 @@ function p3App() {
       fd.append('client_request_id', newRequestId());
       if (this.uploadedFile) { fd.append('reference', this.uploadedFile); fd.append('rights_confirmed', 'true'); }
       if (this.catalog?.products) fd.append('product', this.newProduct);   // named whenever the catalog lists products (not the ring-only site)
+      const product = this.catalog?.products ? this.newProduct : 'ring';
+      this.measure('prompt_submitted', { product_type: product, kind: 'new', has_reference_image: !!this.uploadedFile, prompt_length: this.promptBand(text) });
       this.submitting = true;
       try {
         const batch = await this.api('POST', '/api/designs', fd);
+        this.measure('design_session_started', { product_type: product, entry: 'home' });
+        this.measure('design_generation_started', { product_type: product, kind: 'new' });
         this.openedFromList = false; this.candIndex = 0;
         this.userInput = ''; this.clearUpload();
         await this.openDesign(batch.design_id);
         this.loadDesigns();
       } catch (e) {
+        this.measure('design_generation_failed', { product_type: product, kind: 'new', reason: this.failReason(e) });
         this.composeError = e.message;          // prompt and reference are kept for retry
       } finally {
         this.submitting = false;
@@ -1161,7 +1186,9 @@ function p3App() {
             // Stale-result guard: only apply to the design this poll belongs to.
             if (!this.design || this.design.id !== designId || fresh.design_id !== designId) return;
             const idx = this.design.batches.findIndex(x => x.id === fresh.id);
+            const wasActive = idx >= 0 && this.anyActive(this.design.batches[idx]);
             if (idx >= 0) this.design.batches.splice(idx, 1, fresh);
+            if (wasActive && !this.anyActive(fresh)) this.measureBatch(fresh);
             this.onBatchUpdated(fresh);
           } catch (e) { /* transient: next tick retries the same read */ }
         }
@@ -1171,6 +1198,13 @@ function p3App() {
     },
     stopPolling() { if (this._poll) { clearInterval(this._poll); this._poll = null; } },
 
+    measureBatch(b) {
+      const product = this.design?.product_type || 'ring', kind = b.kind === 'refine' ? 'refine' : 'new';
+      const ready = this.readyCount(b), failed = b.candidates.filter(c => c.status === 'failed').length;
+      const seconds = b.created_at ? Math.max(0, Math.round((Date.now() - Date.parse(b.created_at)) / 1000)) : undefined;
+      if (ready) this.measure('design_generation_completed', { product_type: product, kind, options_ready: ready, options_failed: failed, duration_s: seconds });
+      else this.measure('design_generation_failed', { product_type: product, kind, reason: this.policyRefused(b) ? 'content_policy' : 'provider' });
+    },
     onBatchUpdated(b) {
       if (!this.anyActive(b)) this._refreshQuota();
       // Refresh My Designs thumbnails once a batch has images to show.
@@ -1197,6 +1231,10 @@ function p3App() {
       this.design.selected_candidate_id = candidateId;          // optimistic
       try {
         await this.api('PUT', `/api/designs/${designId}/selection`, { candidate_id: candidateId });
+        if (candidateId) {
+          const b = this.design?.batches.find(x => x.candidates.some(c => c.id === candidateId));
+          this.measure('design_selected', { product_type: this.design?.product_type || 'ring', option: b ? b.candidates.findIndex(c => c.id === candidateId) + 1 : undefined });
+        }
       } catch (e) {
         if (this.design?.id === designId) { this.design.selected_candidate_id = prev; this.actionError = e.message; }
       }
@@ -1206,6 +1244,7 @@ function p3App() {
       this.actionError = '';
       try {
         const b = await this.api('POST', `/api/candidates/${c.id}/retry`);
+        this.measure('design_generation_started', { product_type: this.design?.product_type || 'ring', kind: 'retry' });
         this.replaceBatch(b);
         this.ensurePolling();
       } catch (e) { this.actionError = e.message; }
@@ -1214,6 +1253,7 @@ function p3App() {
       this.actionError = '';
       try {
         this.replaceBatch(await this.api('POST', `/api/batches/${b.id}/retry-failed`));
+        this.measure('design_generation_started', { product_type: this.design?.product_type || 'ring', kind: 'retry' });
         this.ensurePolling();
       } catch (e) { this.actionError = e.message; }
     },
@@ -1234,12 +1274,14 @@ function p3App() {
       if (!this.canActOnSelection) { this.composeError = 'Select one of the designs to refine it.'; return; }
       const text = this.userInput.trim();
       if (text.length < 3) { this.composeError = 'Describe the change you want.'; return; }
-      const designId = this.design.id;
+      const designId = this.design.id, product = this.design.product_type || 'ring';
+      this.measure('prompt_submitted', { product_type: product, kind: 'refine', has_reference_image: false, prompt_length: this.promptBand(text) });
       this.submitting = true;
       try {
         const b = await this.api('POST', `/api/designs/${designId}/batches`, {
           parent_candidate_id: this.selectedId, instruction: text, client_request_id: newRequestId(),
         });
+        this.measure('design_generation_started', { product_type: product, kind: 'refine' });
         if (this.design?.id !== designId) return;
         if (b.design_id !== designId) {           // a shared gallery design, or one that already has a movie / 3D / order: a design of your own
           const was = this.design?.title, own = !this.design?.shared;
@@ -1256,6 +1298,7 @@ function p3App() {
         this.userInput = '';
         this.ensurePolling();
       } catch (e) {
+        this.measure('design_generation_failed', { product_type: product, kind: 'refine', reason: this.failReason(e) });
         this.composeError = e.message;         // e.g. reference_unavailable — no text-only fallback
       } finally {
         this.submitting = false;
@@ -1359,6 +1402,7 @@ function p3App() {
                     product_type: this.design?.product_type || 'ring', charm_size: null };
       this.mediaTab = 'movie'; this.custError = ''; this.bagMessage = '';
       this.groupOpen = { fashion: true, luxury: false };
+      this.measure('customize_opened', { product_type: this.design?.product_type || 'ring', source: this.design?.shared ? 'gallery' : 'results' });
       this.navigateTo('review');
       try {
         const c = await this.api('POST', `/api/designs/${designId}/customize`, { candidate_id: candidateId });
@@ -1379,6 +1423,7 @@ function p3App() {
       this.lastMaterialByGroup[g] = c.material_id;
       this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
       if (this.view !== 'review') this.navigateTo('review');
+      if (!same && ['queued', 'running'].includes(c.movie?.status)) this.measure('movie_generation_started', { product_type: c.product_type || 'ring', retry: false });
       this.pollCustomization();
     },
 
@@ -1394,6 +1439,9 @@ function p3App() {
           const fresh = await this.api('GET', `/api/customizations/${custId}`);
           if (this.cust?.id === custId) {
             if (fresh.movie?.status === 'ready' && this.cust.movie?.status !== 'ready') this._refreshQuota();
+            const now = fresh.movie?.status, product = this.cust.product_type || 'ring';
+            if (now === 'ready') this.measure('movie_generation_completed', { product_type: product });
+            else if (now === 'failed' || now === 'interrupted') this.measure('movie_generation_failed', { product_type: product });
             this.cust.movie = fresh.movie;
           }
         } catch { /* retry next tick */ }
@@ -1407,7 +1455,10 @@ function p3App() {
       this.custError = '';
       try {
         const m = await this.api('POST', `/api/candidates/${this.cust.candidate_id}/movie`);
-        if (this.cust?.id === custId) { this.cust.movie = m; this.mediaTab = 'movie'; this.pollCustomization(); }
+        if (this.cust?.id === custId) {
+          this.cust.movie = m; this.mediaTab = 'movie'; this.pollCustomization();
+          if (['queued', 'running'].includes(m?.status)) this.measure('movie_generation_started', { product_type: this.cust.product_type || 'ring', retry: true });
+        }
       } catch (e) { this.custError = e.message; }
     },
 
@@ -1438,6 +1489,7 @@ function p3App() {
       if (!this.cust?.id || this.cust.material_id === materialId) return;
       const custId = this.cust.id;
       const g = this.groupOfMaterial(materialId);
+      this.measure('material_selected', { product_type: this.cust.product_type || 'ring', material_id: materialId, material_group: g });
       this.lastMaterialByGroup[g] = materialId;
       this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
       // Never leave a previous fashion price visible while the new quote loads.
@@ -1451,6 +1503,7 @@ function p3App() {
       if (!this.cust?.id) return;
       const size = v === '' || v === null ? null : Number(v);
       this.sizeConfirmed = size !== null;
+      if (size !== null) this.measure('size_selected', { product_type: this.cust.product_type || 'ring', size });
       // Confirming the suggested size is still a choice: the server records it (customization_changed).
       await this.patchCustomization(this.cust.id, { [this.custIsCharm ? 'charm_size' : 'ring_size']: size }, { force: true });
     },
@@ -1551,6 +1604,9 @@ function p3App() {
       this.bagMessage = ''; this.custError = '';
       try {
         this.bag = await this.api('POST', '/api/bag', { customization_id: this.cust.id });
+        const c = this.cust, product = c.product_type || 'ring', qty = c.quantity || 1;
+        const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / qty : undefined);
+        this.measure('add_to_cart', { currency: 'USD', value: c.line_total ?? undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
         this.bagMessage = 'Added to your bag.';
         this.showToast('Added to your bag', { label: 'View bag', action: () => this.goToCheckout() });
       } catch (e) { this.custError = e.message; }
@@ -1599,6 +1655,8 @@ function p3App() {
       this.co.busy = true; this.co.error = '';
       try {
         const info = await this.api('GET', '/api/checkout');
+        this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
+                                         items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
         this.checkout = info; this.coQuote = info.quote;
         const c = this.co.customer, p = info.customer || {};
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
@@ -1673,6 +1731,9 @@ function p3App() {
           client_request_id: this.co.requestId, use_suggested_address: this.co.useSuggested,
         });
         this.order = o;
+        this.measure('order_created', { source: 'checkout', currency: o.currency, value: o.total, item_count: o.count });
+        this.measure('purchase', { transaction_id: o.ref, currency: o.currency, value: o.total,
+                                   items: (o.lines || []).map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
         this.co.requestId = ''; this.co.promo_code = ''; this.co.promo_input = ''; this.co.terms = false; this.co.addrCheck = null;
         await this.refreshBag();
         this.navigateTo('confirmation');
@@ -1758,6 +1819,7 @@ function p3App() {
           quantity: this.quoteReq.quantity, customer: this.quoteReq.customer, message: this.quoteReq.message,
         });
         this.quoteReq.done = r;
+        this.measure('quote_requested', { product_type: this.cust?.product_type || 'ring', material_group: this.groupOfMaterial(this.cust?.material_id) || 'luxury' });
       } catch (e) {
         this.quoteReq.error = e.message;
         if (e.problems) this.quoteReq.problems = Object.fromEntries(e.problems.map(p => [p.field, p.message]));

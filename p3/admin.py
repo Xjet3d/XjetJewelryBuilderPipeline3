@@ -25,6 +25,7 @@ from fastapi import BackgroundTasks, Body, FastAPI, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from p3 import adminauth as AdminAuth
+from p3 import analytics as Analytics
 from p3 import merge as Merge
 from p3 import naming as Naming
 from p3 import charmprices as CharmPrices
@@ -1173,6 +1174,32 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 raise HttpError(400, "invalid_verification", "Paste the content of Search Console's google-site-verification meta tag.")
             Ctx.Products.Set(SitePages.VerificationKey, Code, Who.Id, "Search Console verification code " + ("set" if Code else "removed"))
         return _IndexingState(request)
+
+    # ── Analytics & cookies: GA4 and Microsoft Clarity, only after a visitor's consent (p3/analytics.py) ──
+    def _AnalyticsState(request: Request) -> dict:
+        R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Analytics.Key,))
+        Public = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
+        C = Analytics.Stored(Ctx.Products)
+        return {**C, "active": Analytics.Public(Ctx.Products) is not None,
+                "placeholder": {T: Analytics.Placeholder(T, C[T]) for T in ("ga4", "clarity")},
+                "consent_version": Analytics.ConsentVersion, "production": bool(Ctx.Settings.Production),
+                "site_host": re.sub(r"^https?://", "", Public).split("/", 1)[0].split(":", 1)[0].lower(),
+                "changed_at": R["updated_at"] if R else None, "changed_by": R["updated_by"] if R else None}
+
+    @App_.get("/api/admin/analytics")
+    async def AnalyticsState(request: Request, authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _AnalyticsState(request)
+
+    @App_.put("/api/admin/analytics")
+    async def SetAnalytics(request: Request, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"enabled", "host", "ga4", "clarity"} — any of them; logged with the product settings. The IDs are public
+        (they are in the page once a visitor consents); each environment has its own (Proto never uses Atelier's)."""
+        Who = Admin(authorization)
+        New = Analytics.Validate(Body_, Analytics.Stored(Ctx.Products))
+        Ctx.Products.Set(Analytics.Key, New, Who.Id, "analytics " + ("on" if New["enabled"] else "off") + f" · host {New['host'] or '—'}"
+                         + f" · GA4 {New['ga4'] or '—'} · Clarity {New['clarity'] or '—'}")
+        return _AnalyticsState(request)
 
     # ── Products: rings and charms (customer availability per product, charm sizes) ──
     def _ProductsState() -> dict:

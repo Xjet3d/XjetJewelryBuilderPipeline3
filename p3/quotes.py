@@ -21,6 +21,7 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 
 from p3 import addressing as Addressing
+from p3 import analytics as Analytics
 from p3 import charmgeometry as CharmGeo
 from p3 import media as Media
 from p3 import products as Products
@@ -318,7 +319,8 @@ class QuoteDesk:
         if Action == "reject":
             Forms.reverse()
         Msg = "".join(f"<p class='msg'>{_E(P).replace(chr(10), '<br>')}</p>" for P in (Offer.get("message") or "").split("\n\n") if P.strip())
-        return self._Render(f"Your quote {_E(Ref)}", Msg + Body + "".join(Forms), Wide=True), (400 if Problems else 200)
+        return self._Render(f"Your quote {_E(Ref)}", Msg + Body + "".join(Forms), Wide=True,
+                            Events=[] if Problems else [{"name": "quote_viewed", "params": {"product_type": self._Product(R)}}]), (400 if Problems else 200)
 
     def _QuoteBox(self, R: dict, Offer: dict) -> str:
         Asset = self.Ctx.Db.One("SELECT asset_path FROM candidates WHERE id = ?", (R["candidate_id"],))
@@ -385,10 +387,26 @@ class QuoteDesk:
   <button type="submit" class="secondary">Decline the quote</button>
 </form>"""
 
-    def _Render(self, Title: str, Body: str, Bad: bool = False, Wide: bool = False) -> str:
+    def _Render(self, Title: str, Body: str, Bad: bool = False, Wide: bool = False, Events: list | None = None) -> str:
         Page = (WebDir / "quote.html").read_text(encoding="utf-8")
         return (Page.replace("{{CARD_CLASS}}", " ".join(C for C in ("bad" if Bad else "", "wide" if Wide else "") if C))
-                .replace("{{TITLE}}", Title).replace("{{BODY}}", Body).replace("{{BASE}}", self.Ctx.Settings.BasePath))
+                .replace("{{TITLE}}", Title).replace("{{BODY}}", Body).replace("{{ANALYTICS}}", self._AnalyticsHead(Events))
+                .replace("{{BASE}}", self.Ctx.Settings.BasePath))
+
+    def _AnalyticsHead(self, Events: list | None) -> str:
+        """Cookie consent on the quote page (web/consent.js, docs/ANALYTICS.md): the analytics configuration and the
+        page's funnel events, sent only once the visitor allows Analytics. Never Microsoft Clarity here: the page's
+        address carries the quote's secret token, and the page shows the customer's details."""
+        Js = WebDir / "consent.js"
+        Version = Js.stat().st_mtime_ns if Js.is_file() else 0
+        Safe = lambda V: json.dumps(V).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+        return (f"<script>window.__p3Analytics = {Safe(Analytics.Public(self.Ctx.Products))}; window.__p3NoClarity = true; "
+                f"window.__p3Events = {Safe(Events or [])};</script>\n"
+                f'  <script defer src="{{{{BASE}}}}/static/consent.js?v={Version}"></script>')
+
+    @staticmethod
+    def _Product(R: dict) -> str:
+        return R.get("product_type") or Products.Ring
 
     def Approve(self, Token: str, Form: dict, SendMail=None) -> tuple[str, int]:
         """The customer approves: the address and the terms; the quote becomes an order at the quoted price."""
@@ -425,11 +443,19 @@ class QuoteDesk:
         Email = self.Orders.EmailState(Order["id"], Order["customer"]["email"])
         Mail = {"sent": "A confirmation email has been sent to you.", "pending": "A confirmation email is on its way to you."}.get(
             Email["status"], "Please keep your order reference.")
+        Product, Cur = self._Product(R), Order.get("currency") or "USD"
+        Items = [{"item_id": f"custom-{L.get('product_type') or Product}", "item_name": f"Custom {L.get('product_type') or Product}",
+                  "item_category": L.get("product_type") or Product, "item_variant": L.get("material_id"), "price": L.get("unit_price"),
+                  "quantity": L.get("quantity")} for L in Order.get("lines") or []]
+        Events = [{"name": "quote_approved", "params": {"product_type": Product, "currency": Cur, "value": Order["total"]}},
+                  {"name": "order_created", "params": {"source": "quote", "currency": Cur, "value": Order["total"],
+                                                       "item_count": Order.get("count") or 1}},
+                  {"name": "purchase", "params": {"transaction_id": Order["ref"], "currency": Cur, "value": Order["total"], "items": Items}}]
         return self._Render("Thank you — your order is placed",
                             f"<p>Quote {_E(QuoteRef(R['request_no']))} is approved and your order <strong>{_E(Order['ref'])}</strong> is "
                             f"placed: {_E(Order['lines'][0]['title'])}, {_E(Order['lines'][0]['material_label'])}, "
                             f"{_E(Order['lines'][0]['size_label'])}, total {_Money(Order['total'])}.</p>"
-                            f"<p>{_E(Order.get('payment_message') or '')}</p><p>{_E(Mail)}</p>"), 200
+                            f"<p>{_E(Order.get('payment_message') or '')}</p><p>{_E(Mail)}</p>", Events=Events), 200
 
     def Reject(self, Token: str, Form: dict) -> tuple[str, int]:
         R, State = self._ByToken(Token)
@@ -445,7 +471,8 @@ class QuoteDesk:
         return self._Render("Thank you — we have noted your answer",
                             f"<p>You declined quote {_E(QuoteRef(R['request_no']))}"
                             + (". Your note was passed to our team" if Note else "")
-                            + ". If you would like a different quote, contact us and quote its reference.</p>"), 200
+                            + ". If you would like a different quote, contact us and quote its reference.</p>",
+                            Events=[{"name": "quote_declined", "params": {"product_type": self._Product(R)}}]), 200
 
     def _NotifyStaff(self, R: dict, Decision: str, Note: str) -> None:
         Staff = tuple(self.Ctx.Settings.StaffNotifyEmails or ())

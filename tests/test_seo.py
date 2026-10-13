@@ -215,10 +215,11 @@ async def test_structured_data_says_only_what_is_true(tmp_path):
         for Q in Data["mainEntity"]:                                    # exactly what the page shows
             assert html.escape(Q["name"], quote=True) in Live and html.escape(Q["acceptedAnswer"]["text"], quote=True) in Live
         Design = (await H.Client.get(f"/design/{Share['slug']}")).text
-        [Product] = _JsonLd(Design)
-        assert Product["@type"] == "Product" and Product["name"] == Share["title"] and Product["category"] == "Rings"
-        assert Product["url"] == f"https://atelier.example.com/design/{Share['slug']}" and Product["image"][0].endswith("?w=800&f=jpg")
-        for Page in (json.dumps(Home), json.dumps(Data), json.dumps(Product)):
+        [Work] = _JsonLd(Design)                                         # a creative work: no price is shown, so no Product
+        assert Work["@type"] == "CreativeWork" and Work["name"] == Share["title"] and Work["genre"] == "Rings"
+        assert Work["url"] == f"https://atelier.example.com/design/{Share['slug']}" and Work["image"][0].endswith("?w=800&f=jpg")
+        assert Work["creator"]["name"] == "XJet Ltd." and '"@type": "Product"' not in Design
+        for Page in (json.dumps(Home), json.dumps(Data), json.dumps(Work)):
             for Invented in ("offers", "price", "availability", "review", "aggregateRating", "ratingValue"):
                 assert f'"{Invented}"' not in Page, Invented
         for P in ("/gallery", "/materials", "/terms"):

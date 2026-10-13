@@ -227,6 +227,7 @@ function adminApp() {
     aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
     siteIndexing: null, siteIndexingBusy: false, siteIndexingMsg: '', siteIndexingErr: false,   // Settings → System → Search engines
     gscCode: '',                                 // Search Console's verification code (the meta tag's content)
+    analytics: null, anForm: { host: '', ga4: '', clarity: '' }, anBusy: false, anMsg: '', anErr: false,   // Settings → System → Analytics & cookies
     spendWarning: null, swThreshold: '', swTo: '', swBusy: false, swMsg: '', swErr: false,   // Settings → System → AI spend warning
     scCap: '', scBusy: false, scMsg: '', scErr: false,                                     // … and the hard cap beside it
     clientIp: null,                              // the caller's address as the rate limits see it
@@ -387,6 +388,8 @@ function adminApp() {
           this.aiMode = await this.api('GET', '/api/admin/ai-mode').catch(() => null);
           this.siteIndexing = await this.api('GET', '/api/admin/site-indexing').catch(() => null);
           this.gscCode = this.siteIndexing?.google_verification || '';
+          this.analytics = await this.api('GET', '/api/admin/analytics').catch(() => null);
+          this._anFill();
           this.spendWarning = await this.api('GET', '/api/admin/spend-warning').catch(() => null);
           this.swThreshold = this.spendWarning?.threshold_usd ?? ''; this.swTo = this.spendWarning?.to || '';
           this.scCap = this.spendWarning?.own_cap_usd ?? '';
@@ -1628,6 +1631,29 @@ function adminApp() {
         this.gscCode = this.siteIndexing.google_verification || '';
         this.siteIndexingMsg = this.gscCode ? 'Saved: the home page carries the verification tag.' : 'Removed: no verification tag on the home page.';
       } catch (e) { this.siteIndexingErr = true; this.siteIndexingMsg = e.message; } finally { this.siteIndexingBusy = false; }
+    },
+    // Analytics & cookies (p3/analytics.py): the IDs and the one host the tools may run on; nothing runs before consent
+    _anFill() {
+      const a = this.analytics || {};
+      this.anForm = { host: a.host || '', ga4: a.ga4 || '', clarity: a.clarity || '' };
+    },
+    get anDirty() {
+      const a = this.analytics || {}, f = this.anForm;
+      return f.host.trim() !== (a.host || '') || f.ga4.trim() !== (a.ga4 || '') || f.clarity.trim() !== (a.clarity || '');
+    },
+    async saveAnalytics(patch) {
+      this.anBusy = true; this.anMsg = ''; this.anErr = false;
+      try {
+        this.analytics = await this.api('PUT', '/api/admin/analytics', patch || { host: this.anForm.host.trim(), ga4: this.anForm.ga4.trim(), clarity: this.anForm.clarity.trim() });
+        this._anFill();
+        this.anMsg = this.analytics.active ? 'Saved — the tools run on ' + this.analytics.host + ' for visitors who accept Analytics.'
+                                           : 'Saved — no analytics tool runs on this site.';
+      } catch (e) { this.anErr = true; this.anMsg = e.message; } finally { this.anBusy = false; }
+    },
+    async toggleAnalytics() {
+      const on = !this.analytics?.enabled;
+      if (on && !this.anForm.host.trim()) this.anForm.host = this.analytics?.site_host || '';
+      await this.saveAnalytics({ enabled: on, host: this.anForm.host.trim(), ga4: this.anForm.ga4.trim(), clarity: this.anForm.clarity.trim() });
     },
 
     // ── Admin key (Settings → Keys) ────────────────────────────────────
