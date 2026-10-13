@@ -840,7 +840,7 @@
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
                         <p x-text="termsService"></p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your access</h3>
-                        <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs.</p>
+                        <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your content</h3>
                         <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the licence needed to generate, store, display and produce your design and to improve the service.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Orders</h3>
@@ -861,15 +861,21 @@
                             <li>Your sign-in code (stored hashed) and the name and email you registered with.</li>
                             <li>The descriptions and images you upload, the designs and movies generated for you, and your saved designs and bag.</li>
                             <li>Technical logs (requests, errors) needed to run and secure the service.</li>
+                            <li><strong class="font-semibold text-zinc-900">Records of the service.</strong> We keep a record of the steps you take in Atelier — for example a design created, an option chosen, an order placed — to run the service, prevent misuse and help you when you contact us.</li>
+                            <li><strong class="font-semibold text-zinc-900">How you use the site — only if you allow Analytics.</strong> The pages and steps of the design journey you visit, the kind of device and browser you use, and your approximate region. With Microsoft Clarity, also how you interact with pages — clicks, scrolling and session replays — with personal details masked. Analytics never receives your descriptions, uploaded images or files, your name, email, postal address or phone number.</li>
                         </ul>
                         <h3 class="text-lg font-semibold text-zinc-900">How we use it</h3>
-                        <p>To generate your designs, to keep the service working, and to improve it. We do not sell your data.</p>
+                        <p>To generate your designs, to keep the service working, and to improve it. With your consent, to understand how the site is used and to improve it (analytics); you can withdraw your consent at any time — see Cookies and storage. We do not sell your data.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Third parties</h3>
                         <p>Design generation runs on AI providers that process your descriptions and images to produce the results; they do not receive your contact details.</p>
+                        <p><strong class="font-semibold text-zinc-900">Analytics providers — only if you allow Analytics.</strong> Google Analytics 4 (Google) and Microsoft Clarity (Microsoft) process information about how the site is used on our behalf, to give us statistics and anonymized replays. Advertising features are switched off. These providers may process data outside your country, including in the United States.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Cookies and storage</h3>
-                        <p>We use no advertising cookies. Your browser stores your sign-in code and current design so you can return to them.</p>
+                        <p><strong class="font-semibold text-zinc-900">Necessary — always on.</strong> Atelier keeps in your browser what it needs to work: your sign-in, your current design and bag, and your cookie choice. Staff signing in to Atelier’s administration area also receive a session cookie. These cannot be switched off and are never used for analytics or advertising.</p>
+                        <p><strong class="font-semibold text-zinc-900">Analytics — only with your consent.</strong> If you choose Accept all, or switch Analytics on in Cookie Settings: Google Analytics stores <span class="font-mono text-[13px]">_ga</span> and <span class="font-mono text-[13px]">_ga_&lt;ID&gt;</span> on our site, to tell visits apart (up to 2 years). Microsoft Clarity stores <span class="font-mono text-[13px]">_clck</span> and <span class="font-mono text-[13px]">_clsk</span> on our site, to connect the pages of a visit; Microsoft may also set its own cookies on its domains (such as CLID and MUID). Google Analytics keeps the statistics for 14 months; Clarity keeps recordings for the period Microsoft sets.</p>
+                        <p><strong class="font-semibold text-zinc-900">Marketing.</strong> Atelier uses no marketing or advertising cookies.</p>
+                        <p><strong class="font-semibold text-zinc-900">Your choice.</strong> Nothing optional runs until you choose, and Reject non-essential leaves the site fully working. You can change your choice at any time with <button type="button" data-cookie-settings class="underline underline-offset-2 hover:text-black">Cookie Settings</button> at the foot of every page; withdrawing consent removes the analytics cookies stored on our site.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Your rights</h3>
-                        <p>You can ask to see, correct or delete your data at any time by contacting us (see Contact &amp; Support).</p>
+                        <p>You can withdraw your analytics consent at any time with Cookie Settings. For any other request — to see, correct or delete your data — write to <a href="mailto:atelier@xjet3d.com" class="underline underline-offset-2 hover:text-black">atelier@xjet3d.com</a>.</p>
                     </div>
                 </template>
 
