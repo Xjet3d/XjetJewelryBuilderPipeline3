@@ -536,7 +536,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
             SitePages.LightboxPreload(Found["image_url"]),
-            SitePages.JsonLd(SitePages.DesignProduct(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
+            SitePages.JsonLd(SitePages.DesignWork(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
             f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
         ])
         # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)

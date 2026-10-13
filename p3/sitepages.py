@@ -355,11 +355,13 @@ def FaqPage(Items: list[tuple[str, str]]) -> dict:
             "mainEntity": [{"@type": "Question", "name": Q, "acceptedAnswer": {"@type": "Answer", "text": A}} for Q, A in Items]}
 
 
-def DesignProduct(Title: str, Url: str, Image: str, Description: str, Product: str) -> dict:
-    """A gallery design: its name, image, description and kind — no price, availability, rating or review."""
-    return {"@context": "https://schema.org", "@type": "Product", "name": Title, "url": Url, "image": [Image],
-            "description": Description, "category": Products.Plurals.get(Product, "Rings"),
-            "brand": {"@type": "Brand", "name": "XJet Atelier"}}
+def DesignWork(Title: str, Url: str, Image: str, Description: str, Product: str) -> dict:
+    """A gallery design as a creative work: its name, picture, description and kind, made by XJet. Not a Product: the
+    page shows no price (the owner's decision of 2026-10-13), and Google's product snippets need an offer, reviews or a
+    rating — a Product without one is only reported invalid, and a price is never invented to satisfy it."""
+    return {"@context": "https://schema.org", "@type": "CreativeWork", "name": Title, "url": Url, "image": [Image],
+            "description": Description, "genre": Products.Plurals.get(Product, "Rings"), "inLanguage": "en",
+            "creator": {"@type": "Organization", "name": "XJet Ltd.", "url": "https://www.xjet3d.com/"}}
 
 
 # ── the sitemap's <lastmod>: a page's own content, fingerprinted ─────────────────────────────────────────────────────
