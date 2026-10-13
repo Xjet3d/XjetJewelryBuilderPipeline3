@@ -188,6 +188,34 @@ ring path above is unchanged.
 - **The panel** shows *Height* (target and result, "total height incl. loop") in place of *Inner diameter*, sizes in
   mm, and the charm explanation under *What was done to the model*.
 
+### 3D versions and external parts
+
+Design document: `docs/EXTERNAL-PARTS.md` (`p3/versions.py`, `p3/uploads.py`, `p3/render3d.py`); decisions of 2026-10-12.
+
+- **Session → Part/Design → 3D version.** Every model of a design is a numbered version: Hi3D models and STLs made
+  outside Atelier (*External · Rhino*). The session page lists them under **3D versions** with the file, who and when,
+  the version it revises, the measurement (X × Y × Z, inner Ø and the US size it is, or a charm's height) and where it is
+  used (results, orders). **The newest version is in use** (last in, first out); **Use this version** chooses another
+  (rollback = choosing an older one); **Archive** hides a version (never the one in use) and keeps its file;
+  **Restore** brings it back. **View 3D** shows a version's own light preview; **Download file** its STL. A version
+  whose file cannot be measured is *Not usable* and never in use.
+- **Add External Part…** (in a session page's 3D section; in the header of a session with no finished part yet):
+  upload an STL of up to **300 MB** in 8 MB pieces (nothing is held in memory) and choose **Add as a new Design** (a
+  design of its own in this session — picture = a render of the part) or **Update an existing Design** (a new version;
+  earlier versions stay). *How it is used*: **Use exactly as uploaded** (default: the file is the part in mm — at its
+  own size, ±0.15 mm inner diameter / ±0.5 mm charm height, the STL is the file itself; any other size is the part
+  scaled to that size, exactly like a Hi3D model, with *Download scaled STL*) or **Use as scalable master** (a shape in
+  any units: every size scaled). The panel shows the size a file measures and warns when its name says another US size.
+  An attached STL stays with its part for good; only an upload that was never attached is removed.
+- **Sessions start on the website**; the Admin does not create them. When a design is added to a session, the session
+  holds several designs and gets a number (S-1001 …), shown above the Sessions list and on its designs.
+- **External designs are ordinary parts of their session**: their owner sees them in My Designs and can order them;
+  STL files are never shown to customers. They are not offered in the Inspiration Gallery.
+- **Orders:** a line is pinned to the 3D version in use when it is ordered (shown as *3D version: v2 · … · pinned*;
+  a later version never changes it), then to the result it is produced from. **Use another version…** (logged; a
+  reason is required from *In production* on) and **Upload revised STL…** (a new version of the ordered option — the
+  newest, so also the design's version in use — and the line uses it).
+
 ## Working in the Admin
 
 - **Sign-in is remembered per browser** (server-side session cookie) until *Sign out*; *everywhere* revokes every browser. The key itself is never stored in the browser.

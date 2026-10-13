@@ -4,7 +4,8 @@ Multi-million-face models need a lot of memory. Running each job in a child proc
 address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit only fails this job —
 it can never take the web server down.
 
-args.json: {"kind": "measure" | "preview" | "integrity" | "export" | "fix_bore", "source": <raw STL>, "result": <json out>,
+args.json: {"kind": "measure" | "preview" | "integrity" | "export" | "fix_bore" | "render", "source": <raw STL>, "result": <json out>,
+            render only: "source" = the light preview (P3PV), "output" = a PNG, "product" (p3/render3d.py),
             "product": "charm" for a charm's measure / export (p3/charmgeometry.py; rings: absent),
             "raw": {measurement}, "target_mm": <float>, "output": <file out>,
             export only: "round": true for a ring whose bore was made round (the corrected scaling, not the uniform one),
@@ -65,6 +66,9 @@ def Run(A: dict) -> dict:
         Out = {"preview_faces": g.WritePreview(A["source"], A["raw"], A["output"])}
     elif Kind == "integrity":
         Out = g.IntegrityCheck(A["source"])
+    elif Kind == "render":                                    # an external design's picture, from the light preview
+        from p3 import render3d
+        Out = render3d.RenderPng(A["source"], A["output"], A.get("product") or "ring", int(A.get("size") or 1024))
     elif Kind == "export" and A.get("product") == "charm":
         from p3 import charmgeometry as cg
         Out = {"faces": cg.ExportScaledCharmStl(A["source"], A["raw"], float(A["target_mm"]), A["output"], A.get("label", ""))}

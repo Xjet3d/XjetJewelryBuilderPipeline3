@@ -216,6 +216,8 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
     SourceOwners = {R["id"]: R["owner_account_id"] for R in Db.All(
         f"SELECT id, owner_account_id FROM designs WHERE id IN ({','.join('?' * len(SourceIds))})", SourceIds)} if (
         SourceIds := list({D["source_design_id"] for D, _ in Journeys if D.get("source_design_id")})) else {}
+    Groups = {R["id"]: R["session_no"] for R in Db.All(              # explicit sessions (p3/versions.py): S-1001 …
+        f"SELECT id, session_no FROM sessions WHERE id IN (SELECT session_id FROM designs WHERE id IN ({Q}))", Ids)}
     OrderRefsByOwner = defaultdict(set)              # (design, owner) → order references
     for R in Db.All(f"SELECT l.design_id, o.owner_account_id, o.order_no FROM order_lines l JOIN orders o ON o.id = l.order_id "
                     f"WHERE l.design_id IN ({Q})", Ids):
@@ -292,6 +294,9 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Path += [StageLabels[S] for S in ("customize", "bag", "checkout_clicked", "order") if Times[S]]
         if Failed:
             Path.append("Generation failed")
+        External = D.get("origin") == "external"              # a part made outside Atelier (p3/versions.py)
+        if External and Path and Path[0] == StageLabels["generated"]:
+            Path[0] = "External part"
         if State == "ended" and not Times["bag"] and not Times["order"]:
             Path.append("stopped")
         Name, Email = Names.get(Owner, ("", ""))
@@ -304,7 +309,12 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
             "title": D["title"], "prompt": D["prompt"], "mock": Did in Mock,
             # A journey from a gallery image (a customer's use, or their fork of a master); the owner's own
             # refinement of their own master is a new design of their own, not a gallery journey
-            "origin": "gallery" if (U or (D.get("source_design_id") and SourceOwners.get(D["source_design_id"]) != Owner)) else "prompt",
+            "origin": "external" if External else
+                      "gallery" if (U or (D.get("source_design_id") and SourceOwners.get(D["source_design_id"]) != Owner)) else "prompt",
+            "external": External,
+            # the explicit session this design belongs to (None: a session of its own, as before)
+            "session_group": {"id": D["session_id"], "ref": f"S-{Groups[D['session_id']]}"}
+                             if D.get("session_id") in Groups else None,
             # A design copied from the gallery before shared master designs existed (kept as history, labelled)
             "legacy_copy": bool(not U and D.get("source_design_id") and not Db.One(
                 "SELECT 1 AS x FROM batches WHERE design_id = ? AND kind = 'refine'", (Did,))),
@@ -378,6 +388,9 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
     First = next((B for B in Batches if B["kind"] == "initial"), None)
     Items = [] if Use else [{"at": D["created_at"], "kind": "started", "text": D["prompt"], **_Reference(Ctx, D, First, Refs)}]
     for Bt in Batches:
+        if Bt["endpoint"] == "external":                      # an uploaded part (p3/versions.py): no images were generated
+            Items.append({"at": Bt["created_at"], "kind": "external_part", "text": Bt["user_text"]})
+            continue
         Cs = Db.All("SELECT status, updated_at FROM candidates WHERE batch_id = ?", (Bt["id"],))
         Ready = [X for X in Cs if X["status"] == "ready"]
         Items.append({"at": Bt["created_at"], "kind": "refine_requested" if Bt["kind"] == "refine" else "generate_requested",
@@ -489,6 +502,12 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str 
             Steps.append(CheckStep(Pc))
     ByBatch = {Pc["batch_id"]: Pc for Pc in Checks if Pc["batch_id"]}
     for B in ([] if Shared else Db.All("SELECT * FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))):
+        if B["endpoint"] == "external":                       # an uploaded part (p3/versions.py): no AI request, no cost
+            Steps.append({"kind": "external", "label": "External part", "endpoint": "external", "text": B["user_text"],
+                          "started_at": B["created_at"], "finished_at": B["created_at"], "duration_s": 0.0, "status": "ready",
+                          "detail": "uploaded STL — no AI request", "cost": 0.0, "cost_partial": False, "requests": 0,
+                          "providers": [], "basis": []})
+            continue
         if B["id"] in ByBatch:
             Steps.append(CheckStep(ByBatch[B["id"]]))
         Cs = Db.All("SELECT id, status, updated_at FROM candidates WHERE batch_id = ?", (B["id"],))
@@ -517,19 +536,21 @@ def Pipeline(Ctx: Context, DesignId: str, Usage: list[dict], Prices, Owner: str 
         })
     SeenMeshes = set()
     for T in Db.All("SELECT s.*, m.endpoint, m.settings_json, m.status AS mesh_status, m.created_at AS mesh_created, "
-                    "m.updated_at AS mesh_updated FROM session_3d s LEFT JOIN meshes m ON m.id = s.mesh_id "
+                    "m.updated_at AS mesh_updated, m.source AS mesh_source, m.version_no FROM session_3d s LEFT JOIN meshes m ON m.id = s.mesh_id "
                     "WHERE s.design_id = ? ORDER BY s.created_at", (DesignId,)):
         Done = T["status"] in ("measured", "needs_review", "failed")
         Params = json.loads(T["settings_json"] or "{}")
         Reused = T["mesh_id"] in SeenMeshes          # an earlier 3D request already paid for this Hi3D model
         SeenMeshes.add(T["mesh_id"])
+        External = T["mesh_source"] == "external"     # an uploaded part (p3/versions.py): measured, never a Hi3D request
         Steps.append({
-            "kind": "3d", "label": "3D (Hi3D + measurement)", "endpoint": T["endpoint"],
+            "kind": "3d", "label": "3D (external STL + measurement)" if External else "3D (Hi3D + measurement)", "endpoint": T["endpoint"],
             "text": CharmSizeLabel(T["production_size"]) if Charm else f"US {T['production_size']:g}",   # a charm: "20 mm"
             "started_at": T["created_at"], "finished_at": T["updated_at"] if Done else None,
             "duration_s": _Seconds(T["created_at"], T["updated_at"]) if Done else None, "status": T["status"],
-            "detail": "reused existing Hi3D model — only re-measured" if Reused else f"{Params.get('resolution', '2048quality')}",
-            **(Cost([], T["endpoint"], Params) if Reused else Cost([T["mesh_id"]], T["endpoint"], Params)),
+            "detail": f"v{T['version_no']} external STL — no Hi3D request" if External else
+                      "reused existing Hi3D model — only re-measured" if Reused else f"{Params.get('resolution', '2048quality')}",
+            **(Cost([], T["endpoint"], Params) if Reused or External else Cost([T["mesh_id"]], T["endpoint"], Params)),
         })
     Known = [S["cost"] for S in Steps if S["cost"] is not None]
     return {"steps": Steps, "total_cost": round(sum(Known), 4) if Known else 0.0,

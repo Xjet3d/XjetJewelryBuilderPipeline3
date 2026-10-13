@@ -80,6 +80,56 @@
       </div>
     </div>
   </template>
+  <!-- Add External Part: an STL made outside Atelier → a new design in a session, a new 3D version, or a revised STL for an order line -->
+  <template x-if="xp">
+    <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" @click.self="!xp.busy && closePart()" @keydown.escape.window="xp && !xp.busy && closePart()">
+      <div class="card p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="xp-title">
+        <p id="xp-title" class="text-base font-semibold" x-text="xp.kind === 'line' ? 'Upload a revised STL · ' + (xp.line?.ring_id || '') : 'Add External Part' + (xp.sessionRef ? ' · Session ' + xp.sessionRef : '')"></p>
+        <div x-show="xp.kind !== 'line'" class="space-y-2" role="radiogroup" aria-label="Where the part goes">
+          <label x-show="xp.allowNew" class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-target" value="new" x-model="xp.target">
+            <span><strong>Add as a new Design</strong><span class="block text-[12px] text-zinc-500">An independent design in this session, with its own ID. Nothing else changes.</span></span></label>
+          <label x-show="xp.designs.length" class="flex items-start gap-2 text-sm" :class="xp.canUpdate ? 'cursor-pointer' : 'opacity-50'"><input type="radio" class="mt-1" name="xp-target" value="existing" x-model="xp.target" :disabled="!xp.canUpdate">
+            <span><strong>Update an existing Design</strong><span class="block text-[12px] text-zinc-500" x-text="xp.canUpdate ? 'A new 3D version of the design. Its earlier versions are kept.' : 'This session has no finished part yet to add a version to — add the part as a new design of the session.'"></span></span></label>
+        </div>
+        <p x-show="xp.kind === 'line'" class="text-[13px] text-zinc-700" x-text="'A new 3D version of ' + (xp.line?.title || '') + ' (' + (xp.line?.ring_id || '') + '), revising ' + (xp.line?.three_d_version?.label || 'its current model') + '. This order line is then produced from it; the change is recorded in the order history.'"></p>
+        <label class="block"><span class="lbl block mb-1" x-text="'STL file · up to ' + Math.round(maxUpload / 1e6) + ' MB'"></span>
+          <input type="file" accept=".stl" class="block w-full text-sm" :disabled="xp.busy" @change="if (xp.uploadId) { api('DELETE', '/api/admin/uploads/' + encodeURIComponent(xp.uploadId)).catch(() => {}); xp.uploadId = ''; } xp.file = $event.target.files[0] || null"></label>
+        <template x-if="xp.kind !== 'line' && xp.target === 'new'">
+          <div class="grid grid-cols-[1fr_auto] gap-3">
+            <label class="block"><span class="lbl block mb-1">Design name</span><input class="inp" x-model="xp.title" maxlength="60" placeholder="For example: Éclat Heart Bold"></label>
+            <label class="block"><span class="lbl block mb-1">Product</span><select class="inp" x-model="xp.product"><option value="ring">Ring</option><option value="charm">Charm</option></select></label>
+          </div>
+        </template>
+        <template x-if="xp.kind !== 'line' && xp.target === 'existing'">
+          <div class="space-y-3">
+            <label x-show="xp.designs.length > 1" class="block"><span class="lbl block mb-1">Design</span>
+              <select class="inp" x-model="xp.designId"><template x-for="d in xp.designs" :key="d.id"><option :value="d.id" x-text="(d.ring_id || '') + ' · ' + d.title"></option></template></select></label>
+            <label x-show="xp.options.length > 1 && xp.designId === sd?.session?.design_id" class="block"><span class="lbl block mb-1">Option it is a version of</span>
+              <select class="inp" x-model="xp.candidate"><template x-for="o in xp.options" :key="o.id"><option :value="o.id" x-text="o.label"></option></template></select></label>
+          </div>
+        </template>
+        <label class="block"><span class="lbl block mb-1">Made with (optional)</span><input class="inp" x-model="xp.tool" maxlength="60" placeholder="Rhino, Blender, Matrix, a supplier…"></label>
+        <div class="space-y-1.5" role="radiogroup" aria-label="Scaling">
+          <span class="lbl block">How it is used</span>
+          <label class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-scaling" value="exact" x-model="xp.scaling">
+            <span><strong>Use exactly as uploaded</strong><span class="block text-[12px] text-zinc-500">The file is the part in millimetres. At its own size the download is the file itself; any other size is the part scaled to that size (a ring by its inner diameter, a charm by its total height).</span></span></label>
+          <label class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" class="mt-1" name="xp-scaling" value="scalable" x-model="xp.scaling">
+            <span><strong>Use as scalable master</strong><span class="block text-[12px] text-zinc-500">The file is a shape in any units: every size is scaled from it, like a Hi3D model.</span></span></label>
+        </div>
+        <p x-show="xp.kind === 'line' || xp.target === 'existing'" class="text-[12px] text-zinc-600">The newest version becomes the one used (last in, first out); every earlier version is kept, and another one can be chosen at any time on the design’s page.</p>
+        <label class="block"><span class="lbl block mb-1">Note (optional)</span><textarea class="inp" rows="2" x-model="xp.note" maxlength="300" placeholder="What changed"></textarea></label>
+        <div x-show="xp.busy" class="space-y-1" aria-live="polite">
+          <div class="h-2 bg-zinc-100 overflow-hidden"><div class="h-2 bg-zinc-900 transition-all" :style="'width:' + Math.round((xp.progress || 0) * 100) + '%'"></div></div>
+          <p class="text-[12px] text-zinc-600 tabular-nums" x-text="xp.uploadId ? 'Uploaded — adding it…' : 'Uploading ' + Math.round((xp.progress || 0) * 100) + '%' + (xp.file ? ' of ' + gb(xp.file.size) : '')"></p>
+        </div>
+        <p x-show="xp.error" class="text-sm text-red-600" role="alert" x-text="xp.error"></p>
+        <div class="flex gap-3 justify-end">
+          <button class="btn2" :disabled="xp.busy" @click="closePart()">Cancel</button>
+          <button class="btn px-4 py-2 disabled:opacity-40" :disabled="xp.busy || (!xp.file && !xp.uploadId)" @click="submitPart()" x-text="xp.busy ? 'Working…' : (xp.kind === 'line' ? 'Upload and use for this line' : xp.target === 'new' ? 'Upload and add the design' : 'Upload the new version')"></button>
+        </div>
+      </div>
+    </div>
+  </template>
   <!-- Toasts: what just happened (success) or what failed (error) -->
   <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[95] flex flex-col gap-2 items-center pointer-events-none" aria-live="polite">
     <template x-for="t in toasts" :key="t.id">
@@ -728,6 +778,15 @@
         </form>
       </div>
 
+      <!-- Sessions made in the Admin (S-1001 …): each holds 0, 1 or many designs -->
+      <div x-show="(containers || []).length" class="px-4 md:px-6 py-3 border-b border-zinc-100 flex flex-wrap items-center gap-2 text-[12px]">
+        <span class="lbl mr-1">Sessions with several designs</span>
+        <template x-for="c in containers" :key="c.id">
+          <a class="inline-flex items-center gap-1.5 border border-zinc-300 bg-white px-2 py-1 hover:border-zinc-900" :href="'#/sessions/' + encodeURIComponent(c.id)">
+            <span class="font-mono font-semibold" x-text="c.ref"></span><span class="text-zinc-700 truncate max-w-[160px]" x-text="c.title || c.owner_name || c.owner_email"></span>
+            <span class="text-zinc-500" x-text="c.design_count + (c.design_count === 1 ? ' design' : ' designs')"></span></a>
+        </template>
+      </div>
       <!-- Filters that persist between visits can hide new sessions: say so, with the way out -->
       <div x-show="filtersActive && sessionsState === 'loaded' && sessionsFiltered.length !== sessions.length" class="px-4 md:px-6 py-2 text-[12px] bg-amber-50 text-amber-900 border-b border-amber-200 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span x-text="'Showing ' + sessionsFiltered.length + ' of ' + sessions.length + ' sessions — ' + activeFilterText()"></span>
@@ -773,6 +832,8 @@
                     <p class="flex flex-wrap gap-1 mt-1">
                       <span class="prod-chip" :class="isCharm(x) ? 'is-charm' : ''" :title="pLabel((x || {}).product_type)"><span x-html="pIcon((x || {}).product_type, 'w-3.5 h-3.5')"></span><span x-text="pLabel((x || {}).product_type)"></span></span>
                       <span x-show="x.mock" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800">Mock</span>
+                      <span x-show="x.external" class="badge !text-[10px] !px-1.5 bg-sky-50 text-sky-800 border border-sky-200" title="A part made outside Atelier and uploaded as an STL">External part</span>
+                      <a x-show="x.session_group" class="badge !text-[10px] !px-1.5 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 font-mono" :href="'#/sessions/' + encodeURIComponent(x.session_group?.id || '')" @click.stop :title="'Part of session ' + (x.session_group?.ref || '') + ' (several designs)'" x-text="x.session_group?.ref"></a>
                       <span x-show="x.shared" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800" :title="'A customer on the shared gallery design ' + (x.source_ring_id || '')">Gallery</span>
                       <span x-show="x.legacy_copy" class="badge !text-[10px] !px-1.5 bg-amber-50 text-amber-800 border border-amber-200" :title="'A copy of the gallery design ' + (x.source_ring_id || '') + ' made before shared master designs existed — the same ring twice. Open it and use Merge into master.'">Gallery copy · legacy</span>
                       <span x-show="x.removed" class="badge !text-[10px] !px-1.5 bg-zinc-200 text-zinc-600" title="Removed from My Designs by the customer">Removed</span>
@@ -817,7 +878,51 @@
   </main>
 
   <!-- ══════════════════════════ Session detail ══════════════════════════ -->
-  <main x-show="ok && tab === 'sessions' && sessionId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+  <!-- ══════════════════════════ An explicit session (S-1001): its designs ══════════════════════════ -->
+  <main x-show="ok && tab === 'sessions' && sessionId.startsWith('ses_')" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    <p class="text-xs text-zinc-500"><a href="#/sessions" class="hover:text-black act">← Sessions</a></p>
+    <p x-show="scError" class="text-sm text-red-600" role="alert" x-text="scError"></p>
+    <p x-show="!sc && !scError" class="text-sm text-zinc-500" role="status">Loading…</p>
+    <template x-if="sc">
+      <div class="space-y-6">
+        <section class="card p-6 space-y-3">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex flex-wrap items-center gap-3"><h1 class="cinzel text-2xl" x-text="'Session ' + sc.ref"></h1>
+                <span class="badge bg-zinc-100 text-zinc-600" x-text="sc.design_count + (sc.design_count === 1 ? ' design' : ' designs')"></span></div>
+              <p x-show="sc.title" class="text-sm text-zinc-700" x-text="sc.title"></p>
+              <p class="text-sm"><a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(sc.owner_account_id)" x-text="sc.owner_name || 'Unknown account'"></a>
+                <span class="text-zinc-500" x-text="sc.owner_email"></span></p>
+              <p class="text-[12px] text-zinc-500" x-text="'Created ' + dateTime(sc.created_at) + ' by ' + sc.created_by + (sc.origin === 'design' ? ' — from a design that got a second design' : '')"></p>
+            </div>
+            <button class="btn" @click="openPartForContainer()">Add External Part…</button>
+          </div>
+        </section>
+        <section class="card">
+          <p class="lbl px-6 pt-4 pb-2">Designs</p>
+          <p x-show="!sc.journeys.length" class="px-6 pb-6 text-sm text-zinc-500">No designs yet. Use <strong>Add External Part</strong> to upload the first one.</p>
+          <ul class="divide-y divide-zinc-100">
+            <template x-for="j in sc.journeys" :key="j.design_id">
+              <li class="px-6 py-3 flex items-center gap-4 row-link" @click="go('#/sessions/' + encodeURIComponent(j.design_id))" tabindex="0" @keydown.enter="go('#/sessions/' + encodeURIComponent(j.design_id))" role="link">
+                <div class="w-14 h-14 bg-zinc-100 border border-zinc-200 overflow-hidden shrink-0"><img x-show="j.thumbnail_url" :src="small(j.thumbnail_url)" :data-full="j.thumbnail_url" class="w-full h-full object-cover" alt=""></div>
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium truncate" x-text="j.title"></p>
+                  <p class="flex flex-wrap items-center gap-1.5 text-[12px]">
+                    <span class="prod-chip" :class="isCharm(j) ? 'is-charm' : ''"><span x-html="pIcon(j.product_type, 'w-3.5 h-3.5')"></span><span x-text="pLabel(j.product_type)"></span></span>
+                    <span class="font-mono text-zinc-600" x-text="j.ring_id"></span>
+                    <span x-show="j.external" class="badge !text-[10px] !px-1.5 bg-sky-50 text-sky-800 border border-sky-200">External part</span>
+                    <span x-show="j.active_version" class="font-mono text-zinc-600" x-text="'3D ' + (j.active_version?.label || '')"></span></p>
+                </div>
+                <span x-show="j.three_d_state" class="badge" :class="prodClass(j.three_d_state)" x-text="'3D · ' + prodLabel(j.three_d_state).toLowerCase()"></span>
+              </li>
+            </template>
+          </ul>
+        </section>
+      </div>
+    </template>
+  </main>
+
+  <main x-show="ok && tab === 'sessions' && sessionId && !sessionId.startsWith('ses_')" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <p x-show="sdError" class="text-sm text-red-600" role="alert" x-text="sdError"></p>
     <p x-show="!sd && !sdError" class="text-sm text-zinc-500" role="status">Loading…</p>
     <template x-if="sd">
@@ -840,9 +945,10 @@
           </div>
           <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button x-show="!noImage()" class="btn !py-1.5" @click="scrollToId('sect-3d')" x-text="sd.three_d_defaults.existing_model ? 'Recalculate 3D' : 'Generate 3D'"></button>
+            <button x-show="noImage()" class="btn2 !py-1.5" @click="openPartForDesign()" title="Attach an STL made outside Atelier to this session">Add External Part…</button>
             <button x-show="!noImage()" class="btn2 !py-1.5" :class="stlNotReviewed(journeyResult()) ? '!text-amber-800 !border-amber-400' : ''" :disabled="!journeyResult()" @click="safeExportStl(journeyResult())" :title="journeyResult() ? 'Scaled STL for this journey (' + (journeyResult().size_label || 'US ' + journeyResult().production_size) + ' · ' + journeyResult().material_label + ')' + (stlNotReviewed(journeyResult()) ? ' — not reviewed: not for production' : '') : 'No 3D result for this journey’s size and material yet — recalculate the geometry first'" x-text="stlNotReviewed(journeyResult()) ? 'Download STL · not reviewed' : 'Download STL'"></button>
             <button x-show="sd.merge" x-cloak class="btn2 !py-1.5 !text-amber-800 !border-amber-400" @click="mergeCopy()" :title="'A copy of ' + (sd.merge?.master_title || '') + ' — the same ring twice'" x-text="'Merge into ' + (sd.merge?.master_ring_id || 'master')"></button>
-            <button x-show="!noImage()" class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
+            <button x-show="!noImage() && !sd.external" class="btn2 !py-1.5" :class="sd.gallery ? '!text-amber-700 !border-amber-400' : ''" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery #' + (sd.gallery?.position || '') : 'Show in gallery'"></button>
           </div>
         </div>
       </div>
@@ -874,6 +980,9 @@
               </form>
               <span class="font-mono text-sm px-2 py-0.5 border border-zinc-300 text-zinc-700" title="Ring ID — use it to refer to this design" x-text="sd.session.ring_id"></span>
               <span x-show="sd.session.origin === 'gallery'" class="badge bg-amber-100 text-amber-800" x-text="'Started from gallery · ' + (sd.session.source_ring_id || '')"></span>
+              <span x-show="sd.external" class="badge bg-sky-50 text-sky-800 border border-sky-200" title="Made outside Atelier and uploaded as an STL — not shown to customers or in the gallery">External part</span>
+              <a x-show="sd.session_group" class="badge bg-zinc-100 text-zinc-700 hover:bg-zinc-200" :href="'#/sessions/' + encodeURIComponent(sd.session_group?.id || '')"
+                 x-text="'Session ' + (sd.session_group?.ref || '') + ' · ' + (sd.session_group?.design_count || 0) + ((sd.session_group?.design_count || 0) === 1 ? ' design' : ' designs')"></a>
               <span x-show="sd.design?.shared" class="badge bg-amber-100 text-amber-800" title="One shared XJet design; this customer's own selection, size and material">Shared XJet design</span>
               <span x-show="sd.session.removed" class="badge bg-zinc-200 text-zinc-600" title="The customer removed it from My Designs; the journey is kept">Removed by customer</span>
               <span x-show="sd.gallery" class="badge bg-amber-100 text-amber-800" x-text="'In gallery #' + (sd.gallery?.position || '') + ' · ' + (sd.gallery?.sessions || 0) + ' selected'"></span>
@@ -929,7 +1038,8 @@
       <!-- What exists: image · movie · 3D -->
       <section x-show="!noImage()" class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="card overflow-hidden"><div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2"><p class="lbl" x-text="'Selected image' + (sd.artifacts.ring_id ? ' · ' + sd.artifacts.ring_id : '')"></p>
-            <button x-show="sd.artifacts.image_url" class="text-[11px] uppercase tracking-widest underline whitespace-nowrap" :class="sd.gallery ? 'text-amber-700' : 'text-zinc-500'" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery · remove' : 'Show in gallery'"></button></div>
+            <button x-show="sd.artifacts.image_url && !sd.external" class="text-[11px] uppercase tracking-widest underline whitespace-nowrap" :class="sd.gallery ? 'text-amber-700' : 'text-zinc-500'" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery · remove' : 'Show in gallery'"></button>
+            <span x-show="sd.external" class="text-[11px] text-zinc-500">Render of the active 3D version</span></div>
           <div class="aspect-square bg-zinc-50 flex items-center justify-center"><img x-show="sd.artifacts.image_url" :src="sd.artifacts.image_url" class="w-full h-full object-contain" alt="">
             <span x-show="!sd.artifacts.image_url" class="text-xs text-zinc-500">No image</span></div></div>
         <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2">360° movie</p>
@@ -940,7 +1050,7 @@
           <div class="aspect-square bg-zinc-50 relative">
             <template x-if="thumb() && !viewer3d.id"><img :src="thumb()" alt="Hi3D thumbnail" class="absolute inset-0 w-full h-full object-contain"></template>
             <div x-ref="viewer" class="absolute inset-0"></div>
-            <span x-show="!measured3d() && !thumb()" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Not generated — use Generate 3D below</span>
+            <span x-show="!measured3d() && !thumb() && !viewer3d.id" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Not generated — use Generate 3D below</span>
             <span x-show="measured3d() && !viewer3d.id && thumb() && !viewer3d.error" class="absolute inset-x-0 bottom-2 text-center text-[12px] text-zinc-500">Hi3D thumbnail · light 3D preview is being prepared…</span>
             <span x-show="measured3d() && viewer3d.loading" class="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Loading 3D…</span>
             <span x-show="viewer3d.note" class="absolute left-2 top-2 text-[11px] text-zinc-500 bg-white/80 px-1.5 py-0.5 pointer-events-none" x-text="viewer3d.note"></span>
@@ -994,8 +1104,48 @@
       <!-- 3D production -->
       <section id="sect-3d" x-show="!noImage() || sd.three_d.length" class="card p-6 space-y-5 scroll-mt-20">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
-          <p class="lbl">3D production · Hi3D v3.0</p>
-          <p class="text-[12px] text-zinc-500">Never runs automatically. Each new Hi3D generation is a paid call in live mode (AI mode: <span x-text="mode"></span>).</p>
+          <p class="lbl" x-text="sd.external ? '3D production · uploaded part' : '3D production · Hi3D v3.0'"></p>
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-[12px] text-zinc-500">Never runs automatically. Each new Hi3D generation is a paid call in live mode (AI mode: <span x-text="mode"></span>).</p>
+            <button class="btn2 !py-1.5" @click="openPartForDesign()" title="Upload an STL made outside Atelier: a new 3D version of this design, or a new design in its session">Add External Part…</button>
+          </div>
+        </div>
+        <!-- 3D versions: every model of this design — Hi3D models and uploaded parts. One is active; nothing is deleted. -->
+        <div x-show="(sd.versions || []).length" class="border border-zinc-200">
+          <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-zinc-50 border-b border-zinc-200">
+            <p class="lbl" x-text="'3D versions (' + (sd.versions || []).length + ')'"></p>
+            <p class="text-[12px] text-zinc-500" x-text="(sd.versions || []).some(v => v.state === 'active' && !v.newest) ? 'An Admin chose the version in use; a newer version exists. New orders and results use the version in use; order lines keep the version they were ordered with.' : 'The newest version is used (last in, first out). New orders and results use it; order lines keep the version they were ordered with.'"></p>
+          </div>
+          <ul class="divide-y divide-zinc-100">
+            <template x-for="v in (sd.versions || [])" :key="v.id">
+              <li class="px-4 py-3 flex flex-wrap items-start gap-x-5 gap-y-2" :class="v.state === 'archived' ? 'opacity-60' : ''">
+                <div class="w-[170px] shrink-0 space-y-0.5">
+                  <p class="flex items-center gap-2"><span class="font-mono text-sm font-semibold" x-text="'v' + v.version_no"></span>
+                    <span class="badge" :class="versionStateClass(v.state)" x-text="{ active: 'In use', superseded: 'Earlier', archived: 'Archived', unusable: 'Not usable' }[v.state]"></span>
+                    <span x-show="v.newest" class="badge bg-zinc-100 text-zinc-600">Newest</span></p>
+                  <p class="text-[12px] text-zinc-700" x-text="v.source === 'external' ? 'External' + (v.source_tool ? ' · ' + v.source_tool : '') : 'Hi3D model'"></p>
+                  <p class="text-[11px]" :class="v.scaling === 'exact' ? 'text-sky-800' : 'text-zinc-500'" x-text="v.scaling === 'exact' ? 'Used exactly as uploaded (mm)' : 'Scalable master'"></p>
+                  <p class="text-[11px] text-zinc-500 font-mono" x-text="v.ring_id"></p>
+                </div>
+                <div class="flex-1 min-w-[240px] text-[12px] space-y-0.5">
+                  <p x-show="v.original_filename" class="text-zinc-800 break-all" x-text="v.original_filename + (v.file.bytes ? ' · ' + gb(v.file.bytes) : '') + (v.file.uploaded_format === 'ascii' ? ' · ASCII, kept as binary' : '')"></p>
+                  <p :class="v.measure.units_warning || v.measure.status === 'failed' ? 'text-amber-700' : 'text-zinc-600'" x-text="versionMeasure(v) + (v.measure.units_warning ? ' — check that the STL is in millimetres' : '')"></p>
+                  <p x-show="versionNameSize(v)" class="text-amber-700" x-text="versionNameSize(v)"></p>
+                  <p class="text-zinc-500" x-text="(v.created_by ? v.created_by + ' · ' : '') + dateTime(v.created_at) + (v.parent ? ' · revises v' + v.parent.version_no : '') + (v.archived_at ? ' · archived ' + dateTime(v.archived_at) : '')"></p>
+                  <p x-show="v.note" class="text-zinc-700 italic" x-text="v.note"></p>
+                  <p x-show="v.results || v.orders.length" class="flex flex-wrap items-center gap-1.5 text-zinc-500"><span x-text="v.results + (v.results === 1 ? ' result' : ' results')"></span>
+                    <template x-for="r in v.orders" :key="r"><a class="badge !text-[10px] !px-1.5 bg-zinc-900 text-white hover:bg-zinc-700" :href="'#/orders/' + encodeURIComponent(r)" x-text="r"></a></template></p>
+                </div>
+                <div class="flex flex-wrap gap-3 text-xs uppercase tracking-widest">
+                  <button x-show="v.preview_ready" class="underline" @click="viewVersion(v)">View 3D</button>
+                  <button class="underline" @click="downloadVersion(v)">Download file</button>
+                  <button x-show="v.state === 'superseded'" class="underline" @click="versionAction(v, 'activate')">Use this version</button>
+                  <button x-show="v.state === 'superseded'" class="underline text-zinc-500" @click="versionAction(v, 'archive')">Archive</button>
+                  <button x-show="v.state === 'archived'" class="underline" @click="versionAction(v, 'restore')">Restore</button>
+                </div>
+              </li>
+            </template>
+          </ul>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-x-4 gap-y-1 items-end">
           <label class="lbl">Customer selected size</label>
@@ -1018,7 +1168,7 @@
           </div>
           <button class="btn h-[38px]" @click="generate3d()" :disabled="g3.busy" x-text="sd.three_d_defaults.existing_model ? 'Recalculate geometry' : 'Generate 3D'"></button>
           <button class="btn2 h-[38px] !text-amber-800 !border-amber-400" x-show="sd.three_d_defaults.source_model" @click="openNewModel()">New model for this variation…</button>
-          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : (isCharm(sd.session) ? 'Recommended ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
+          <p class="text-[12px] text-zinc-500" x-text="sd.three_d_defaults.customer_size != null ? 'Customer choice' : sd.three_d_defaults.own_size != null ? 'The part’s own size (' + size3dLabel(sd.three_d_defaults.own_size) + ') is used' : (isCharm(sd.session) ? 'Recommended ' + sd.catalog.charm_default_size + ' mm is used' : 'Default US 10 is used')"></p>
           <p class="text-[12px]" :class="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'text-amber-700' : 'text-zinc-500'" x-text="g3.size !== (sd.three_d_defaults.customer_size ?? default3dSize()) ? 'Manual override' : 'Same as customer / default'"></p>
           <p class="text-[12px]" :class="sd.three_d_defaults.customer_material && g3.material !== sd.three_d_defaults.customer_material ? 'text-amber-700' : 'text-zinc-500'"
              x-text="sd.three_d_defaults.customer_material ? (g3.material === sd.three_d_defaults.customer_material ? 'Customer selection' : 'Differs from customer selection') : 'Customer did not choose a material'"></p>
@@ -1029,13 +1179,13 @@
           <div class="border border-amber-200 bg-amber-50 p-4 space-y-3">
             <div class="flex flex-wrap items-center gap-3">
               <p class="text-sm font-semibold text-amber-900" x-text="sd.session.shared ? 'Existing 3D model available from Gallery Master' : 'Existing 3D model available'"></p>
-              <span class="font-mono text-[12px] px-2 py-0.5 border border-amber-300 bg-white text-amber-900" x-text="'Uses Master model ' + sd.three_d_defaults.existing_model.ring_id"></span>
+              <span class="font-mono text-[12px] px-2 py-0.5 border border-amber-300 bg-white text-amber-900" x-text="'Uses Master model ' + sd.three_d_defaults.existing_model.ring_id + (sd.three_d_defaults.existing_model.version ? ' · ' + sd.three_d_defaults.existing_model.version.label : '')"></span>
               <span x-show="sd.three_d_defaults.existing_model.production_state" class="badge" :class="prodClass(sd.three_d_defaults.existing_model.production_state)" x-text="prodLabel(sd.three_d_defaults.existing_model.production_state)"></span>
             </div>
             <p class="text-[12px] text-amber-900/80">
               Ready <span x-text="dateTime(sd.three_d_defaults.existing_model.ready_at)"></span>
               <span x-show="sd.three_d_defaults.existing_model.faces" x-text="' · ' + Number(sd.three_d_defaults.existing_model.faces).toLocaleString() + ' faces'"></span>
-              <span x-text="sd.three_d_defaults.existing_model.measured ? ' · measured once — every size and material is arithmetic' : ' · measurement pending'"></span>.
+              <span x-text="!sd.three_d_defaults.existing_model.measured ? ' · measurement pending' : sd.three_d_defaults.existing_model.version?.scaling === 'exact' ? ' · used exactly as uploaded — each size is checked against the file, every material is arithmetic' : ' · measured once — every size and material is arithmetic'"></span>.
               The actions below reuse this model: <strong>no Hi3D call, nothing charged</strong>.
             </p>
             <p x-show="sd.artifacts.ring_id && sd.artifacts.ring_id !== sd.three_d_defaults.existing_model.ring_id" class="text-[12px] text-amber-900/80">
@@ -1047,7 +1197,7 @@
               <span x-show="!sd.three_d_defaults.existing_model.journey_3d_id" class="text-[12px] text-amber-900/70"
                     x-text="'No result yet for ' + size3dLabel(sd.three_d_defaults.existing_model.journey_size) + ' · ' + materialLabelFor(sd.three_d_defaults.existing_model.journey_material_id, sd.session.product_type) + ' — recalculate geometry first, then the scaled STL can be prepared.'"></span>
             </div>
-            <button class="text-[12px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
+            <button x-show="!sd.external" class="text-[12px] uppercase tracking-widest underline text-amber-900/70 hover:text-amber-900" @click="openNewModel()">Generate a completely new Hi3D model instead…</button>
           </div>
         </template>
         <!-- A variation of a master whose model exists: a different design (new images), so Generate 3D is open; the
@@ -1087,9 +1237,10 @@
             <div class="flex flex-wrap items-center gap-3 text-sm">
               <span class="badge" :class="prodClass(t.production_state)" x-text="prodLabel(t.production_state)"></span>
               <span x-show="t.ring_id" class="font-mono text-[13px] font-semibold px-1.5 border border-zinc-300 text-zinc-800" x-text="'Model ' + t.ring_id"></span>
+              <span x-show="t.version" class="font-mono text-[12px] px-1.5 border" :class="t.version?.active ? 'border-emerald-300 text-emerald-800' : 'border-zinc-300 text-zinc-600'" :title="t.version?.active ? 'The design’s active 3D version' : 'Not the active version'" x-text="t.version?.label"></span>
               <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-zinc-300" :style="'background:' + swatch(t.material_id)"></span>
                 <span x-text="(t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label"></span><span class="text-[11px] text-zinc-500" x-text="'(' + sizeSource(t.size_source) + ' size, ' + sizeSource(t.material_source) + ' material)'"></span></span>
-              <span class="text-[12px] text-zinc-500" x-text="dateTime(t.created_at) + ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : '')"></span>
+              <span class="text-[12px] text-zinc-500" x-text="dateTime(t.created_at) + (t.hi3d?.provider === 'external' ? ' · uploaded STL' + (t.scaled_stl === 'master' ? ', used exactly as uploaded' : ', scaled to this size') : ' · Hi3D ' + (t.hi3d?.status || '—') + (t.hi3d?.provider ? ' (' + t.hi3d.provider + ')' : ''))"></span>
             </div>
             <!-- Real state: current stage with a live clock (percent only for real bytes downloaded) -->
             <div x-show="live3d[t.id]?.stages?.length" class="space-y-1">
@@ -1113,7 +1264,7 @@
                 <p class="text-[12px] text-amber-900/70">Viewing or downloading the model does not approve it for production.</p>
                 <div class="flex flex-wrap gap-2">
                   <!-- A bore that is not round: scale the model along the bore's two axes so it is a circle of the target size (local work) -->
-                  <button x-show="(t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.bore_correction && !t.bore_correction_failed" class="btn !py-1.5" @click="fixBore(t)">Make the bore round</button>
+                  <button x-show="(t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.exact && !t.bore_correction && !t.bore_correction_failed" class="btn !py-1.5" @click="fixBore(t)">Make the bore round</button>
                   <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
                   <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
                   <!-- A correction that made the bore rounder but not round: back to the model as generated -->
@@ -1183,8 +1334,8 @@
                 <p x-show="downloadNote" class="text-[12px] text-emerald-700" x-text="downloadNote"></p>
                 <div class="flex gap-4 text-xs uppercase tracking-widest">
                   <button x-show="previewReady(t)" class="underline" @click="show3d(t)">View in 3D</button>
-                  <button class="underline" :class="stlNotReviewed(t) ? 'text-amber-800' : ''" :disabled="!!exports3d[t.id]" @click="safeExportStl(t)" x-text="stlNotReviewed(t) ? 'Download scaled STL · not reviewed' : 'Download scaled STL'"></button>
-                  <button class="underline text-zinc-500" @click="downloadStl(t.id, 'raw')">Download raw Hi3D</button>
+                  <button class="underline" :class="stlNotReviewed(t) ? 'text-amber-800' : ''" :disabled="!!exports3d[t.id]" @click="safeExportStl(t)" x-text="(t.scaled_stl === 'master' ? 'Download STL (as uploaded)' : 'Download scaled STL') + (stlNotReviewed(t) ? ' · not reviewed' : '')"></button>
+                  <button x-show="t.scaled_stl !== 'master'" class="underline text-zinc-500" @click="downloadStl(t.id, 'raw')" x-text="t.hi3d?.provider === 'external' ? 'Download uploaded file' : 'Download raw Hi3D'"></button>
                 </div>
               </div>
             </template>
@@ -1746,7 +1897,14 @@
                   <span x-show="!l.three_d_state && l.has_model" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to ' + sizeOf(l) + ' · ' + l.material_label"></span>
                   <span x-show="!l.three_d_state && !l.has_model" class="text-[12px] text-amber-700">No 3D model yet — generate it on the session page (paid Hi3D call)</span>
                   <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line)'"></p>
-                  <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p></td>
+                  <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id && !l.three_d_version" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p>
+                  <!-- The 3D version the line is produced from (pinned once prepared: a later version never changes it) -->
+                  <p x-show="l.three_d_version" class="text-[11px] mt-1" :class="l.three_d_version_pinned ? 'text-zinc-700' : 'text-zinc-500'"
+                     :title="l.three_d_version_pinned ? 'Pinned: this line keeps this geometry whatever version the design uses later' : 'Ordered before the design had a 3D model: it follows the design’s version until its STL is prepared'"
+                     x-text="(l.three_d_version_pinned ? '3D version: ' : 'Will use: ') + (l.three_d_version?.label || '') + (l.three_d_version_pinned ? ' · pinned' : '')"></p>
+                  <p class="flex flex-wrap gap-x-3 mt-0.5 text-[11px] uppercase tracking-widest">
+                    <button x-show="(l.three_d_versions || []).length > 1" class="underline text-zinc-600 hover:text-black" @click="useLineVersion(l)">Use another version…</button>
+                    <button class="underline text-zinc-600 hover:text-black" @click="openPartForLine(l)">Upload revised STL…</button></p></td>
                 <td class="text-right whitespace-nowrap">
                   <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :class="l.three_d_state === 'review_required' ? 'text-amber-800' : ''" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)" x-text="l.three_d_state === 'review_required' ? 'Download STL · not reviewed' : 'Download STL'"></button>
                   <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
@@ -1782,7 +1940,7 @@
           <ol class="space-y-2 max-h-64 overflow-y-auto">
             <template x-for="e in od.events" :key="e.id">
               <li class="text-[12px]"><span class="text-zinc-500 tabular-nums" x-text="dateTime(e.created_at)"></span>
-                <span class="ml-2 font-medium" x-text="{ placed: 'Order placed', status: 'Status → ' + orderStatusLabel(e.data.to), payment: 'Payment → ' + payLabel(e.data.to) + (e.data.manual ? ' (manual)' : ''), note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed' }[e.kind] || e.kind"></span>
+                <span class="ml-2 font-medium" x-text="orderEventText(e)"></span>
                 <span class="text-zinc-500" x-text="e.by ? ' · ' + e.by : ''"></span>
                 <p x-show="e.data.note || e.data.error || e.data.to_email" class="text-zinc-600 pl-2 border-l border-zinc-200 mt-0.5" x-text="e.data.note || e.data.error || ''"></p></li>
             </template>

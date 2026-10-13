@@ -28,6 +28,7 @@ from p3 import payments as Payments
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
+from p3 import versions as Versions
 from p3.accounts import Principal
 from p3.accounts.local import EmailPattern
 from p3.context import Context, HttpError
@@ -91,6 +92,7 @@ class OrderService:
         self.Validator = Validator or Addressing.NoValidator()
         self.Mailer = Mailer
         self.Production = Production          # Production3D: the STL for an ordered line at its size/material
+        self.Versions = None                  # VersionService (p3/versions.py): a revised STL uploaded for a line
         self.StatusGuard = None               # the Fulfillment bridge: an enrolled order's production statuses are not set here
         self.FulfillmentView = None           # the Fulfillment bridge: what the customer sees of an enrolled order (stage, parcels, timeline)
 
@@ -240,6 +242,9 @@ class OrderService:
         Promo = Q["promo"]
         PromoSnapshot = {**{K: Promo[K] for K in ("code", "kind", "value", "discount", "label")}, "original_amount": Q["subtotal"],
                          "final_amount": round(Q["subtotal"] - Promo["discount"], 2)} if Promo else None
+        # Each line is pinned to the 3D version its option is made from right now (the design's current one — LIFO or the
+        # Admin's choice); a later version never changes it. A design without a model yet is pinned when it is prepared.
+        Pins = {L["bag_line_id"]: (Versions.MeshFor(Db, L["design_id"], L["candidate_id"]) or {}).get("id") for L in Q["lines"]}
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
@@ -254,14 +259,14 @@ class OrderService:
             for N, L in enumerate(Q["lines"], start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
-                             "line_total, currency, pricing_version, image_path, purchase_json) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, N, L["design_id"], L["candidate_id"], L["bag_line_id"], L["customization_id"],
                               L["title"], L["ring_id"], L["product_type"], L["material_id"], L["material_label"],
                               L["ring_size"] if L["product_type"] == Products.Ring else None,
                               L["charm_size"] if L["product_type"] == Products.Charm else None, L["quantity"],
                               L["unit_price"], L["line_total"], L["currency"], L["pricing_version"], L["image_path"],
-                              Dumps(PurchaseSnapshot(L))))
+                              Dumps(PurchaseSnapshot(L)), Pins.get(L["bag_line_id"])))
                 Conn.execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (L["bag_line_id"], Who.AccountId))
             if Promo:
                 self.Promos.Redeem(Conn, Promo["promo_id"])
@@ -366,6 +371,8 @@ class OrderService:
             Out["notes"] = O["notes"]
             Out["payment_ref"] = O["payment_ref"]
             Out["client_request_id"] = O["client_request_id"]
+            for J, L in zip(Out["lines"], Lines):          # the 3D result and version the line is pinned to (Admin only)
+                J["pinned_three_d_id"], J["pinned_mesh_id"] = L.get("three_d_id"), L.get("mesh_id")
         return Out
 
     def Get(self, Who: Principal, OrderId: str) -> dict:
@@ -526,47 +533,86 @@ class OrderService:
     def _ThreeDForLine(self, L: dict) -> dict:
         """The 3D result that belongs to THIS line: the design's model scaled to the ordered size in the
         ordered material. A result for another size or material is never offered as the line's file —
-        it is reported as `latest` so the admin sees what exists and can prepare the right one."""
+        it is reported as `latest` so the admin sees what exists and can prepare the right one.
+
+        A line is pinned to the 3D version current when it was ordered (order_lines.mesh_id; the normal order flow), then to
+        the result it is produced from (three_d_id): a later version, or a newer result, never changes it — only an explicit
+        "Use another version" (UseVersion). A line ordered before its design had a model follows the design (the version
+        its STL would be prepared from, p3/versions.py MeshFor) until it is prepared or the order is released."""
         from p3.production3d import ProductionState
-        Rows = self.Ctx.Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, s.accepted_at, r.integrity FROM session_3d s "
-                               "LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? ORDER BY s.created_at DESC", (L["design_id"],))
+        Db = self.Ctx.Db
+        Rows = Db.All("SELECT s.id, s.status, s.production_size, s.material_id, s.candidate_id, s.mesh_id, s.accepted_at, r.integrity "
+                      "FROM session_3d s LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? ORDER BY s.created_at DESC",
+                      (L["design_id"],))
         Done = ("measured", "needs_review")
         Size = LineSize(L)                               # the US size of a ring, the mm size of a charm (None: no match)
 
         def SameSize(R):
             return Size is not None and R["production_size"] is not None and float(R["production_size"]) == float(Size)
-        Match = next((R for R in Rows if R["status"] in Done and SameSize(R) and R["material_id"] == L["material_id"]), None)
-        Pending = next((R for R in Rows if R["status"] not in Done + ("failed", "cancelled") and SameSize(R)
-                        and R["material_id"] == L["material_id"]), None)
+        Pin = next((R for R in Rows if R["id"] == L.get("pinned_three_d_id")), None)
+        if Pin and Pin["status"] in ("failed", "cancelled"):
+            Pin = None                                   # a pinned result that failed: prepared again (and pinned again)
+        Version = (Db.One("SELECT * FROM meshes WHERE id = ?", (Pin["mesh_id"] if Pin else L.get("pinned_mesh_id"),))
+                   if Pin or L.get("pinned_mesh_id") else None) or Versions.MeshFor(Db, L["design_id"], L.get("candidate_id"))
+        if Pin:
+            Match, Pending = (Pin, None) if Pin["status"] in Done else (None, Pin)
+        else:
+            Mine = [R for R in Rows if Version and R["mesh_id"] == Version["id"]]
+            Match = next((R for R in Mine if R["status"] in Done and SameSize(R) and R["material_id"] == L["material_id"]), None)
+            Pending = next((R for R in Mine if R["status"] not in Done + ("failed", "cancelled") and SameSize(R)
+                            and R["material_id"] == L["material_id"]), None)
         Latest = Rows[0] if Rows else None
-        Model = self.Ctx.Db.One("SELECT m.candidate_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
-                                "WHERE b.design_id = ? AND m.status = 'ready' ORDER BY m.created_at DESC LIMIT 1", (L["design_id"],))
+        Model = Versions.ActiveMesh(Db, L["design_id"])
         Chosen = Match or Pending
+        Active = Model["id"] if Model else None
+        Choices = Db.All("SELECT m.* FROM meshes m WHERE m.candidate_id = ? AND m.status = 'ready' AND (m.id = ? OR (m.archived_at IS NULL "
+                         "AND NOT EXISTS (SELECT 1 FROM raw_geometry r WHERE r.mesh_id = m.id AND r.status = 'failed'))) "
+                         "ORDER BY COALESCE(m.version_no, 0) DESC", (L.get("candidate_id"), Version["id"] if Version else ""))
         return {"three_d_id": Chosen["id"] if Chosen else None,
                 "three_d_status": Chosen["status"] if Chosen else None,
                 "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"], bool(Chosen["accepted_at"])) if Chosen else None,
                 "three_d_match": bool(Match),
+                "three_d_pinned": bool(Pin),                           # its result (prepared, or released with the order)
+                "three_d_version_pinned": bool(Pin or L.get("pinned_mesh_id")),   # its version (from the moment it was ordered)
+                # the 3D version the line is (or would be) produced from, and the versions of the ordered option to choose from
+                "three_d_version": Versions.Brief(Version, Active),
+                "three_d_versions": [Versions.Brief(M, Active) for M in Choices],
                 "has_model": Model is not None,
                 # the modelled option: the one Hi3D model per design may be of another option than the ordered one
-                "model_ring_id": RingIds.CandidateRef(self.Ctx.Db, Model["candidate_id"]) if Model else None,
+                "model_ring_id": RingIds.CandidateRef(Db, Model["candidate_id"]) if Model else None,
                 "three_d_latest": {"id": Latest["id"], "size": Latest["production_size"], "material_id": Latest["material_id"],
                                    "state": ProductionState(Latest["status"], Latest["integrity"], bool(Latest["accepted_at"]))} if Latest and not Chosen else None}
+
+    def _Pin(self, OrderId: str, Line: dict, ThreeDId: str, By: str, Kind: str = "3d_pinned", **Data) -> None:
+        """Pin a line to a 3D result and its version (an order event says which, who and when)."""
+        Db = self.Ctx.Db
+        T = Db.One("SELECT s.mesh_id, m.version_no FROM session_3d s LEFT JOIN meshes m ON m.id = s.mesh_id WHERE s.id = ?", (ThreeDId,))
+        Db.Execute("UPDATE order_lines SET three_d_id = ?, mesh_id = ? WHERE id = ? AND order_id = ?",
+                   (ThreeDId, T["mesh_id"], Line["id"], OrderId))
+        Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                   (OrderId, Kind, Dumps({"line_id": Line["id"], "session_3d_id": ThreeDId, "mesh_id": T["mesh_id"],
+                                          "version_no": T["version_no"], **Data}), By, Now()))
 
     def PrepareLine3D(self, OrderId: str, LineId: str, By: str) -> dict:
         """The STL for an ordered ring must be the ordered size and material. Reuse the design's model
         (arithmetic, no Hi3D call) when the matching result does not exist yet; never start a paid
-        Hi3D request from here — a design without a model is generated on its session page."""
+        Hi3D request from here — a design without a model is generated on its session page. The line is pinned to the
+        result (and its 3D version) from here on."""
         O = self.AdminGet(OrderId)
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
             raise HttpError(404, "order_line_not_found", "Order line not found.")
         if L["three_d_id"]:
+            if not L["three_d_pinned"]:
+                self._Pin(O["id"], L, L["three_d_id"], By)
+                L = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
             return {"line": L, "three_d_id": L["three_d_id"], "prepared": False}
         if not L["has_model"]:
             raise HttpError(409, "no_model", f"{L['title']} ({L['ring_id']}) has no 3D model yet. Generate it on the session page first "
                                              "(a paid Hi3D call), then prepare the STL here.")
         # The STL is prepared from the option the customer ordered — never from another option's model
-        if not self.Ctx.Db.One("SELECT 1 AS x FROM meshes WHERE candidate_id = ? AND status = 'ready'", (L["candidate_id"],)):
+        Version = L.get("three_d_version")              # the pinned version, else the one the ordered option is made from
+        if not Version:
             raise HttpError(409, "model_of_other_option",
                             f"The 3D model of this design is of option {L['model_ring_id'] or '—'}; this line was ordered as "
                             f"{L['ring_id']}. Generate a model for the ordered option on the session page (a paid Hi3D call), "
@@ -575,13 +621,78 @@ class OrderService:
             raise HttpError(503, "production_unavailable", "3D production is not available.")
         Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
         T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"],
-                                    CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer)
-        self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
-                            (O["id"], "3d_prepared", Dumps({"line_id": LineId, "session_3d_id": T["id"], "ring_size": L["ring_size"],
-                                                            "charm_size": L.get("charm_size"), "product_type": L.get("product_type"),
-                                                            "material_id": L["material_id"], "reused_model": bool(T.get("raw_available"))}), By, Now()))
+                                    CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer, MeshId=Version["mesh_id"])
+        self._Pin(O["id"], L, T["id"], By, "3d_prepared", ring_size=L["ring_size"], charm_size=L.get("charm_size"),
+                  product_type=L.get("product_type"), material_id=L["material_id"], reused_model=bool(T.get("raw_available")))
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
         return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
+
+    def UseVersion(self, OrderId: str, LineId: str, MeshId: str, By: str, Note: str = "") -> dict:
+        """Produce a line from another 3D version of its option (explicit; an order event keeps from / to / who / why). The
+        line's result for that version is reused or made (arithmetic on its one measurement — no Hi3D call). An order
+        already in production or later needs a note saying why its geometry changes."""
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        Db = self.Ctx.Db
+        M = Db.One("SELECT * FROM meshes WHERE id = ? AND status = 'ready'", (MeshId,))
+        if M is None or not Db.One("SELECT 1 AS x FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE c.id = ? AND b.design_id = ?",
+                                   (M["candidate_id"], L["design_id"])):
+            raise HttpError(404, "version_not_found", "That 3D version is not a version of this design.")
+        if M["candidate_id"] != L["candidate_id"]:
+            raise HttpError(409, "version_of_other_option", f"That version is of another option; this line was ordered as {L['ring_id']}.")
+        if M["archived_at"]:
+            raise HttpError(409, "version_archived", "That version is archived. Restore it on the session page first.")
+        Note = " ".join(str(Note or "").split())[:300]
+        if O["status"] in ProductionStatuses and not Note:
+            raise HttpError(400, "note_required", f"Order {O['ref']} is {StatusLabels[O['status']].lower()}: say why its 3D version changes.")
+        if self.Production is None:
+            raise HttpError(503, "production_unavailable", "3D production is not available.")
+        Before = L.get("three_d_version") or {}
+        if L["three_d_pinned"] and Before.get("mesh_id") == MeshId:
+            return {"line": L, "three_d_id": L["three_d_id"], "changed": False}
+        T = self.Production.ResultFor(L["design_id"], MeshId, LineSize(L), L["material_id"])
+        if T is None:
+            Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
+            T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"],
+                                        CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer, MeshId=MeshId)
+        self._Pin(O["id"], L, T["id"], By, "3d_version_changed", from_mesh_id=Before.get("mesh_id"),
+                  from_version_no=Before.get("version_no"), from_session_3d_id=L.get("pinned_three_d_id"), label=Versions.Label(M),
+                  order_status=O["status"], note=Note)
+        Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
+        return {"line": Fresh, "three_d_id": T["id"], "changed": True}
+
+    def UploadVersion(self, OrderId: str, LineId: str, UploadId: str, By: str, Scaling: str = "exact", SourceTool: str = "",
+                      Note: str = "", Activate: bool = True) -> dict:
+        """A revised STL for an ordered line: a new 3D version of the line's design and option (revising the version the
+        line is produced from), then the line is produced from it (UseVersion). Activate = it also becomes the design's
+        active version; otherwise it is this order's own revision and the design keeps its active version."""
+        if self.Versions is None:
+            raise HttpError(503, "versions_unavailable", "3D versions are not available.")
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        Note = " ".join(str(Note or "").split())[:300]
+        if O["status"] in ProductionStatuses and not Note:
+            raise HttpError(400, "note_required", f"Order {O['ref']} is {StatusLabels[O['status']].lower()}: say why its 3D version changes.")
+        Parent = (L.get("three_d_version") or {}).get("mesh_id")
+        V = self.Versions.AddVersion(L["design_id"], UploadId, By, CandidateId=L["candidate_id"], Scaling=Scaling, SourceTool=SourceTool,
+                                     Note=Note, Activate=Activate, ParentMeshId=Parent,
+                                     Context_={"order_ref": O["ref"], "line_id": LineId})
+        self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                            (O["id"], "3d_version_uploaded", Dumps({"line_id": LineId, "mesh_id": V["id"], "version_no": V["version_no"],
+                                                                    "filename": V["original_filename"], "scaling": Scaling,
+                                                                    "source_tool": V["source_tool"], "active": bool(Activate)}), By, Now()))
+        return {**self.UseVersion(OrderId, LineId, V["id"], By, Note or f"Revised STL {V['original_filename']}"), "version": V}
+
+    def _PinDerived(self, O: dict, By: str) -> None:
+        """An order released toward production pins every line that still follows its design (prepared on the session
+        page rather than here): from now on its geometry never changes by itself."""
+        for L in O["lines"]:
+            if L.get("three_d_id") and not L.get("three_d_pinned"):
+                self._Pin(O["id"], L, L["three_d_id"], By, status_change=True)
 
     @staticmethod
     def _AdminWhere(Status: str | None, Payment: str | None, Query: str | None, Product: str | None,
@@ -693,6 +804,8 @@ class OrderService:
                 raise HttpError(400, "note_required", "Say why the status is set although the 3D results are not complete.")
             if Unresolved:
                 Note = f"[3D results not complete — exception] {Note}"
+        if Status == "three_d_ready" or Status in ProductionStatuses:
+            self._PinDerived(O, By)
         self._SetStatus(O["id"], Status, By, Note)
         return self.AdminGet(O["id"])
 
@@ -826,6 +939,7 @@ class OrderService:
         OrderId, T = NewId("ord"), Now()
         Total = round(Line["line_total"] + Ship["price"], 2)
         Notes = f"From quote {Ref} (version {Offer['version']})." + (f" Customer's note: {Note}" if Note else "")
+        Pin = (Versions.MeshFor(Db, Q["design_id"], Q["candidate_id"]) or {}).get("id")     # the 3D version current now
         try:
             with Db.Transaction() as Conn:
                 Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
@@ -839,12 +953,12 @@ class OrderService:
                               TermsVersion, T, Rid, Notes, T, T))
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
-                             "line_total, currency, pricing_version, image_path, purchase_json) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, 1, Line["design_id"], Line["candidate_id"], None, None, Line["title"],
                               Line["ring_id"], Product, Line["material_id"], Line["material_label"], Line["ring_size"],
                               Line["charm_size"], Qty, Unit, Line["line_total"], Line["currency"], Line["pricing_version"],
-                              Img["asset_path"] if Img else None, Dumps(Snapshot)))
+                              Img["asset_path"] if Img else None, Dumps(Snapshot), Pin))
                 Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                              (OrderId, "placed", Dumps({"total": Total, "lines": 1, "from_quote": Ref, "version": Offer["version"]}),
                               "customer", T))

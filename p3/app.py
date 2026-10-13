@@ -51,6 +51,8 @@ from p3 import charmprices as CharmPrices
 from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
+from p3.uploads import UploadService
+from p3.versions import VersionService
 from p3.gallery import GalleryService
 from p3.fulfillment_bridge import FulfillmentBridge, RegisterBridge
 from p3.mail import BuildMailer
@@ -82,16 +84,20 @@ class Services:
         self.Meshes = MeshService(Ctx)
         self.Geometry = GeometryQueue(Ctx)                       # one heavy local STL job at a time, persisted
         self.Production3D = Production3D(Ctx, self.Meshes, self.Geometry)   # admin-only; never automatic
+        self.Uploads = UploadService(Ctx)                        # large files to the Admin, in pieces straight to disk
+        # Session → Design → 3D version: Hi3D models and STLs made outside Atelier (docs/EXTERNAL-PARTS.md)
+        self.Versions = VersionService(Ctx, self.Meshes, self.Production3D, self.Geometry, self.Uploads)
         self.Gallery = GalleryService(Ctx)                       # Inspiration Gallery: curated XJet designs
         self.Promos = PromoService(Ctx)                          # promo codes (Admin), evaluated server-side
         # Checkout + orders: payment and address validation sit behind adapters (none connected yet).
         self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer, self.Production3D)
         self.Quotes = QuoteDesk(Ctx, self.Orders, Mailer)                 # the Admin's quote and the customer's decision
+        self.Orders.Versions = self.Versions                              # a revised STL uploaded for an order line
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
                 "meshes": self.Meshes.Reconcile(), "geometry_jobs": self.Geometry.Reconcile(),
-                "production_3d": self.Production3D.Reconcile()}
+                "production_3d": self.Production3D.Reconcile(), "uploads_expired": self.Uploads.Cleanup()}
 
 
 class _NoGzipForMedia:
@@ -574,7 +580,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                                                                                 "minimax-camera-charm", "hi3d-charm")}}
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, Ctx.AiPrices, Svc.Gallery,
-                  Svc.Orders, Svc.Promos, HealthDetails=HealthDetails, Quotes=Svc.Quotes)
+                  Svc.Orders, Svc.Promos, HealthDetails=HealthDetails, Quotes=Svc.Quotes, Versions=Svc.Versions,
+                  Uploads=Svc.Uploads)
     # The Atelier ↔ Fulfillment bridge (docs/FULFILLMENT.md): tables and triggers exist, routes answer and the Admin
     # action works only with P3_FULFILLMENT_INTEGRATION on; an enrolled order's production statuses belong to Fulfillment
     Bridge = FulfillmentBridge(Ctx, Svc.Orders, Svc.Production3D)

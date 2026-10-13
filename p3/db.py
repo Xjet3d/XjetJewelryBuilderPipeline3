@@ -320,6 +320,8 @@ CREATE TABLE IF NOT EXISTS {Name} (
     pricing_version   TEXT NOT NULL,
     image_path        TEXT,
     purchase_json     TEXT NOT NULL DEFAULT '{{}}',
+    three_d_id        TEXT,                        -- the 3D result this line is produced from, once prepared (pinned) …
+    mesh_id           TEXT,                        -- … and its 3D version: a later active version never changes the line
     CHECK ((product_type = 'ring' AND ring_size IS NOT NULL) OR (product_type = 'charm' AND charm_size IS NOT NULL))
 );
 """
@@ -552,6 +554,105 @@ END;
 """
 
 
+# ── 3D versions, external parts, explicit sessions (docs/EXTERNAL-PARTS.md, p3/versions.py) ──────────────
+# Session (S-1001) → Design → 3D version. A session made in the Admin holds 0, 1 or many designs (designs.session_id);
+# a design without one is a session of its own, as before. Every model of a design — a Hi3D model or an STL made outside
+# Atelier — is a numbered 3D version (meshes.version_no); the design points at its active one (designs.active_mesh_id).
+VersionTables = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id                TEXT PRIMARY KEY,           -- ses_…
+    session_no        INTEGER UNIQUE,             -- S-1001 … (trigger, never reused)
+    owner_account_id  TEXT NOT NULL,
+    title             TEXT NOT NULL DEFAULT '',
+    origin            TEXT NOT NULL,              -- admin (made in the Admin) | design (a design's journey that got a second design)
+    created_by        TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS sessions_no_assign AFTER INSERT ON sessions
+WHEN NEW.session_no IS NULL BEGIN
+  UPDATE sessions SET session_no = (SELECT COALESCE(MAX(session_no), 1000) + 1 FROM sessions) WHERE id = NEW.id;
+END;
+
+-- A large file sent to the Admin in pieces (p3/uploads.py): written straight to disk, moved into place when used.
+CREATE TABLE IF NOT EXISTS uploads (
+    id          TEXT PRIMARY KEY,                 -- upl_…
+    filename    TEXT NOT NULL,                    -- as the browser named it
+    bytes       INTEGER NOT NULL,                 -- the size announced
+    received    INTEGER NOT NULL DEFAULT 0,
+    path        TEXT NOT NULL,                    -- under the dev dir while it is an upload
+    status      TEXT NOT NULL,                    -- receiving | complete | used | expired | cancelled
+    sha256      TEXT,
+    format      TEXT,                             -- binary | ascii (STL)
+    faces       INTEGER,
+    used_by     TEXT,                             -- the 3D version it became
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+-- One-time data steps already done on this database (name → when)
+CREATE TABLE IF NOT EXISTS schema_marks (
+    name  TEXT PRIMARY KEY,
+    at    TEXT NOT NULL
+);
+"""
+
+VersionColumns = {
+    "designs": ("session_id TEXT", "origin TEXT NOT NULL DEFAULT 'ai' CHECK (origin IN ('ai', 'external'))", "active_mesh_id TEXT"),
+    "meshes": ("version_no INTEGER", "source TEXT NOT NULL DEFAULT 'hi3d' CHECK (source IN ('hi3d', 'external'))",
+               "scaling TEXT NOT NULL DEFAULT 'scalable' CHECK (scaling IN ('scalable', 'exact'))", "parent_mesh_id TEXT",
+               "source_tool TEXT", "original_filename TEXT", "note TEXT", "created_by TEXT", "archived_at TEXT", "archived_by TEXT"),
+    "order_lines": ("three_d_id TEXT", "mesh_id TEXT"),
+}
+
+
+def _InstallVersions(Conn) -> None:
+    """3D versions (additive: new columns and tables; old code ignores them). The backfill runs once per database."""
+    Conn.executescript(VersionTables)
+    for Table, Cols in VersionColumns.items():
+        Have = _Columns(Conn, Table)
+        for Col in Cols:
+            if Col.split()[0] not in Have:
+                Conn.execute(f"ALTER TABLE {Table} ADD COLUMN {Col}")
+    Conn.execute("CREATE INDEX IF NOT EXISTS designs_session ON designs(session_id)")
+    if Conn.execute("SELECT 1 FROM schema_marks WHERE name = 'versions-backfill'").fetchone() is None:
+        Conn.execute("BEGIN")
+        try:
+            _BackfillVersions(Conn)
+            Conn.execute("INSERT INTO schema_marks (name, at) VALUES ('versions-backfill', ?)", (Now(),))
+            Conn.execute("COMMIT")
+        except Exception:
+            Conn.execute("ROLLBACK")
+            raise
+
+
+def _BackfillVersions(Conn) -> None:
+    """What the code used until 3D versions existed, written down: every ready model is a version of its design (numbered
+    by creation), the newest ready model is the design's active version, and every order line is pinned to the 3D result
+    its order page showed (the newest result for its size and material — a finished one first) and that result's model —
+    only a result of the ordered option: a line is never pinned to another option's model (it stays unpinned, and is
+    pinned when its STL is prepared)."""
+    Next = {}
+    for MeshId, DesignId in Conn.execute("SELECT m.id, b.design_id FROM meshes m JOIN candidates c ON c.id = m.candidate_id "
+                                         "JOIN batches b ON b.id = c.batch_id WHERE m.status = 'ready' "
+                                         "ORDER BY b.design_id, m.created_at, m.id").fetchall():
+        Next[DesignId] = Next.get(DesignId, 0) + 1
+        Conn.execute("UPDATE meshes SET version_no = ? WHERE id = ? AND version_no IS NULL", (Next[DesignId], MeshId))
+        Conn.execute("UPDATE designs SET active_mesh_id = ? WHERE id = ?", (MeshId, DesignId))      # the newest wins
+    for L in Conn.execute("SELECT id, design_id, candidate_id, product_type, ring_size, charm_size, material_id FROM order_lines "
+                          "WHERE three_d_id IS NULL").fetchall():
+        Size = L["charm_size"] if L["product_type"] == "charm" else L["ring_size"]
+        if Size is None:
+            continue
+        R = Conn.execute("SELECT id, mesh_id FROM session_3d WHERE design_id = ? AND candidate_id = ? AND material_id = ? "
+                         "AND production_size = ? AND status NOT IN ('failed', 'cancelled') "
+                         "ORDER BY status IN ('measured', 'needs_review') DESC, created_at DESC LIMIT 1",
+                         (L["design_id"], L["candidate_id"], L["material_id"], float(Size))).fetchone()
+        if R:
+            Conn.execute("UPDATE order_lines SET three_d_id = ?, mesh_id = ? WHERE id = ?", (R["id"], R["mesh_id"], L["id"]))
+
+
 def _Columns(Conn, Table: str) -> dict:
     return {R[1]: R for R in Conn.execute(f"PRAGMA table_info({Table})")}
 
@@ -713,6 +814,7 @@ class Database:
                     _InstallProducts(Conn)                 # product type on designs (rings by default), charm sizes
                     from p3 import ringids
                     ringids.Install(Conn)                 # item IDs: R-1042 … for rings, C-1001 … for charms
+                    _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 

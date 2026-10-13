@@ -5,7 +5,7 @@ fails after MaxAttempts, so a model that always crashes cannot loop). Queued job
 Remote Hi3D generation is not queued here — only local processing of the raw STL is serialised.
 
 Priorities (lower runs first): export 10 (an admin is waiting for a download) · measure 20 ·
-preview 30 · integrity 90 (background, never blocks results).
+preview 30 · render 40 (an external design's picture) · integrity 90 (background, never blocks results).
 """
 
 import asyncio
@@ -20,7 +20,7 @@ from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 
 Logger = logging.getLogger("p3.geoqueue")
-Priority = {"export": 10, "fix_bore": 15, "measure": 20, "preview": 30, "integrity": 90}
+Priority = {"export": 10, "fix_bore": 15, "measure": 20, "preview": 30, "render": 40, "integrity": 90}
 MaxAttempts = 2
 JobTimeoutS = 1800
 ExportTtlS = 3600
@@ -40,7 +40,7 @@ class GeometryQueue:
     def Enqueue(self, Kind: str, MeshId: str, Session3dId: str | None = None, Params: dict | None = None,
                 Dedupe: bool = True) -> dict:
         Db = self.Ctx.Db
-        if Dedupe and Kind in ("measure", "preview", "integrity"):
+        if Dedupe and Kind in ("measure", "preview", "integrity", "render"):
             Live = Db.One("SELECT * FROM geometry_jobs WHERE kind = ? AND mesh_id = ? AND status IN ('queued','running') "
                           "ORDER BY created_at LIMIT 1", (Kind, MeshId))
             if Live:
