@@ -67,11 +67,15 @@ first-party cookies (`_ga`, `_ga_<id>`, `_clck`, `_clsk`) and reloads the page.
 | | GA4 | Clarity | Host |
 |---|---|---|---|
 | Atelier (production) | property "XJet Atelier — Production", stream `https://xjetatelier.xjet3d.com` | project "XJet Atelier — Production" | `xjetatelier.xjet3d.com` |
-| Proto (tests) | property "XJet Atelier — Proto (test)", stream `http://proto` | project "XJet Atelier — Proto (test)" | `proto` |
+| Proto (functional tests) | placeholder `G-TEST0000` — nothing loaded or sent | placeholder `test0000` — nothing loaded or sent | `proto` |
 | Development copies | off | off | — |
 
-Proto is switched on only while testing. Atelier's IDs are entered in Atelier's Admin only, after the owner approved
-the release. Production reports can also filter on hostname = `xjetatelier.xjet3d.com` as a second guard.
+GA4 and Clarity measure **Atelier production only** (the owner's decision of 2026-10-13): Proto has no property or
+project of its own. Proto tests the consent and analytics code with the placeholder IDs `G-TEST0000` and `test0000`:
+the banner, the choice and every event run in the page, but neither tool is loaded, nothing is sent, and the page's
+policy stays closed to both (`window.dataLayer` and `window.clarity.q` show what would have been sent). Atelier's IDs
+are entered in Atelier's Admin only, after the owner approved the release. Production reports can also filter on
+hostname = `xjetatelier.xjet3d.com` as a second guard.
 
 ### GA4 property settings
 

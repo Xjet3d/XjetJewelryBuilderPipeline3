@@ -1169,7 +1169,9 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     def _AnalyticsState(request: Request) -> dict:
         R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Analytics.Key,))
         Public = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
-        return {**Analytics.Stored(Ctx.Products), "active": Analytics.Public(Ctx.Products) is not None,
+        C = Analytics.Stored(Ctx.Products)
+        return {**C, "active": Analytics.Public(Ctx.Products) is not None,
+                "placeholder": {T: Analytics.Placeholder(T, C[T]) for T in ("ga4", "clarity")},
                 "consent_version": Analytics.ConsentVersion, "production": bool(Ctx.Settings.Production),
                 "site_host": re.sub(r"^https?://", "", Public).split("/", 1)[0].split(":", 1)[0].lower(),
                 "changed_at": R["updated_at"] if R else None, "changed_by": R["updated_by"] if R else None}

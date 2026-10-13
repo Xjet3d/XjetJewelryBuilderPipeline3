@@ -33,6 +33,12 @@ ClaritySources = {"script-src": ("https://*.clarity.ms",),
                   "connect-src": ("https://*.clarity.ms", "https://c.bing.com")}
 
 
+def Placeholder(Tool: str, Id: str | None) -> bool:
+    """A functional-test ID (G-TEST… for GA4, test… for Clarity): web/consent.js runs the banner and the events but
+    loads neither tool and sends nothing — and the page's policy does not open the tool's hosts either."""
+    return bool(Id) and (Id.upper().startswith("G-TEST") if Tool == "ga4" else Id.lower().startswith("test"))
+
+
 def Stored(Products) -> dict:
     """The saved configuration, with defaults for anything never set."""
     Raw = Products.Get(Key)
@@ -85,7 +91,7 @@ def Csp(Base: str, P: dict | None) -> str:
         return Base
     Extra: dict[str, list[str]] = {}
     for Tool, Sources in (("ga4", GoogleSources), ("clarity", ClaritySources)):
-        if P.get(Tool):
+        if P.get(Tool) and not Placeholder(Tool, P[Tool]):
             for Directive, Hosts in Sources.items():
                 Extra.setdefault(Directive, []).extend(H for H in Hosts if H not in Extra.get(Directive, []))
     Parts = []

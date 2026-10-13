@@ -2077,7 +2077,8 @@
       <section class="card p-5 space-y-3" x-show="analytics" aria-label="Analytics and cookies">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <p class="lbl">Analytics &amp; cookies</p>
-          <span class="badge" :class="analytics?.active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="analytics?.active ? 'ON · AFTER CONSENT' : 'OFF'"></span>
+          <span class="badge" :class="analytics?.active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'"
+                x-text="!analytics?.active ? 'OFF' : (analytics?.placeholder?.ga4 || analytics?.placeholder?.clarity) ? 'TEST · NOTHING SENT' : 'ON · AFTER CONSENT'"></span>
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <span id="analytics-switch-label" class="text-sm">Offer Analytics to visitors (Google Analytics 4, Microsoft Clarity):</span>
@@ -2098,7 +2099,7 @@
             <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.clarity" placeholder="e.g. abcd1234ef" autocomplete="off"></label>
           <div class="sm:col-span-3"><button type="submit" class="btn2 !py-1.5" :disabled="anBusy || !anDirty">Save</button></div>
         </form>
-        <p class="text-[12px] text-zinc-500">Nothing loads before a visitor chooses: the cookie banner offers Accept all, Reject non-essential and Customize, and Cookie Settings at the foot of every page changes the choice. Google Analytics runs in consent mode (basic: no Google tag before consent; advertising signals always denied); Clarity masks customer details and never runs on the quote page, the Admin or the developer tools. The tools run only on the host above — <strong>use this environment's own IDs</strong> (Proto has its own GA4 property and Clarity project; Atelier's are set only on Atelier). Consent version <span x-text="analytics?.consent_version"></span>.
+        <p class="text-[12px] text-zinc-500">Nothing loads before a visitor chooses: the cookie banner offers Accept all, Reject non-essential and Customize, and Cookie Settings at the foot of every page changes the choice. Google Analytics runs in consent mode (basic: no Google tag before consent; advertising signals always denied); Clarity masks customer details and never runs on the quote page, the Admin or the developer tools. The tools run only on the host above — <strong>use this environment's own IDs</strong> (Proto has its own GA4 property and Clarity project; Atelier's are set only on Atelier). For a functional test that loads and sends nothing (Proto), use the placeholder IDs <span class="font-mono">G-TEST0000</span> and <span class="font-mono">test0000</span>: the banner, the choice and the events run in the page only. Consent version <span x-text="analytics?.consent_version"></span>.
           <span x-show="analytics?.changed_at" x-text="'Last changed ' + dateTime(analytics?.changed_at) + ' by ' + (analytics?.changed_by || '—') + '.'"></span></p>
         <p x-show="anMsg" class="text-sm" role="status" :class="anErr ? 'text-red-600' : 'text-emerald-700'" x-text="anMsg"></p>
       </section>

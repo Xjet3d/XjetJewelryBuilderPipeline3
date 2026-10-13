@@ -11,6 +11,10 @@
  * analytics granted, ads denied). Withdrawing it tells both, deletes their cookies and reloads the page, so no tool keeps
  * running. Clarity never starts on a page whose address carries a secret (a quote link's or a sign-in link's token).
  *
+ * Placeholder IDs — G-TEST… for GA4, test… for Clarity — are for functional tests (Proto): the banner, the choice and
+ * the events run as usual, but neither tool is loaded and nothing is sent anywhere; what would have been sent stays in
+ * the page (window.dataLayer, window.clarity.q) for checks.
+ *
  * Events go through AtelierAnalytics.track(): only the events and fields listed below, with values from fixed lists,
  * numbers or design references — never free text, names, emails, addresses, phone numbers, prompts or file names — and
  * page addresses without their query string or fragment (UTM campaign tags excepted).
@@ -24,6 +28,7 @@
   var ACTIVE = !!(CFG && CFG.host && (CFG.ga4 || CFG.clarity) && HOST === String(CFG.host).toLowerCase());
   var VERSION = ACTIVE ? CFG.version : 0;
   var VENDORS = ACTIVE ? ['ga4', 'clarity'].filter(function (k) { return !!CFG[k]; }) : [];
+  var DRY = { ga4: ACTIVE && /^G-TEST/i.test(CFG.ga4 || ''), clarity: ACTIVE && /^test/i.test(CFG.clarity || '') };   // placeholders
   var running = { ga4: false, clarity: false };
   var lastPage = null, pageSent = '', pendingDefault = null;
 
@@ -58,10 +63,12 @@
     var gtag = window.gtag;
     gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'denied' });
     gtag('consent', 'update', { analytics_storage: 'granted' });            // the visitor accepted Analytics, nothing else
-    var s = document.createElement('script');
-    s.async = true;
-    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(CFG.ga4);
-    document.head.appendChild(s);
+    if (!DRY.ga4) {                                          // a placeholder ID: the calls stay in dataLayer, nothing loads
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(CFG.ga4);
+      document.head.appendChild(s);
+    }
     gtag('js', new Date());
     gtag('config', CFG.ga4, {
       send_page_view: false,                                  // page views are sent by sendPage() with clean addresses
@@ -83,6 +90,7 @@
     running.clarity = true;
     (function (c, l, a, r, i, t, y) {
       c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+      if (DRY.clarity) return;                               // a placeholder ID: the calls stay in clarity.q, nothing loads
       t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
       y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
     })(window, document, 'clarity', 'script', CFG.clarity);
@@ -337,7 +345,8 @@
       sendPage(path, title);
     },
     openSettings: openSettings,
-    allowed: function () { return ACTIVE && !!(read() || {}).analytics; }
+    allowed: function () { return ACTIVE && !!(read() || {}).analytics; },
+    placeholder: { ga4: DRY.ga4, clarity: DRY.clarity }
   };
 
   function boot() {

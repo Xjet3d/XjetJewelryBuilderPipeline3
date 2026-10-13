@@ -90,6 +90,23 @@ async def test_with_a_tool_on_only_the_customer_pages_get_it(tmp_path):
         await H.Close()
 
 
+async def test_placeholder_ids_run_the_consent_but_never_open_the_policy(tmp_path):
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        S = (await H.Client.put("/api/admin/analytics", json={"enabled": True, "host": "proto", "ga4": "G-TEST0000", "clarity": "test0000"},
+                                headers=Admin)).json()
+        assert S["active"] and S["placeholder"] == {"ga4": True, "clarity": True}
+        R = await H.Client.get("/")
+        assert _Config(R.text)["analytics"] == {"version": 1, "host": "proto", "ga4": "G-TEST0000", "clarity": "test0000"}
+        assert "connect-src 'self';" in _Csp(R) and not any(X in _Csp(R) for X in Google + Clarity)     # nothing could load
+        S = (await H.Client.put("/api/admin/analytics", json={"ga4": "G-REAL12345"}, headers=Admin)).json()
+        assert S["placeholder"] == {"ga4": False, "clarity": True}
+        Csp = _Csp(await H.Client.get("/"))
+        assert all(X in Csp for X in Google) and not any(X in Csp for X in Clarity)
+    finally:
+        await H.Close()
+
+
 async def test_the_quote_page_offers_consent_never_clarity_and_states_events_without_personal_details(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
