@@ -14,7 +14,7 @@ from tests.conftest import Harness
 
 AdminKey = "quotes-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@example.com", "phone": "+972 54 123 4567"}
+Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@atelier-customer.co.il", "phone": "+972 54 123 4567"}
 Address = {"recipient": "Dana Levi", "line1": "12 Rothschild Blvd", "line2": "", "city": "Tel Aviv", "region": "",
            "postal_code": "6688112", "country": "IL"}
 
@@ -41,7 +41,7 @@ async def _Offer(H, Q, **Over):
 def _Link(H, Version=1):
     """The customer's link from the quote email of this version (the newest such email)."""
     for M in H.App.state.Mailer.List(200):
-        if M["to"] == "dana@example.com" and M["subject"].startswith("Your quote"):
+        if M["to"] == "dana@atelier-customer.co.il" and M["subject"].startswith("Your quote"):
             Found = re.search(r'href="([^"]+/quote\?token=[^"&]+)&amp;action=approve"', M["html"])
             if Found:
                 return Found.group(1)
@@ -53,9 +53,9 @@ async def test_the_workspace_shows_every_detail_and_a_price_from_the_3d_model(tm
     try:
         B, Q = await _Request(H)
         D = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}", headers=Admin)).json()
-        assert D["ref"] == "Q-5001" and D["email_to"] == "dana@example.com" and D["notification"]["staff"] == ["ops@example.com"]
+        assert D["ref"] == "Q-5001" and D["email_to"] == "dana@atelier-customer.co.il" and D["notification"]["staff"] == ["ops@example.com"]
         assert D["customer"] == Customer and D["message"] == "Engrave D&L inside" and D["quantity"] == 2 and D["size_label"] == "US 7"
-        assert D["notification"]["customer_confirmation"]["to"] == "dana@example.com"
+        assert D["notification"]["customer_confirmation"]["to"] == "dana@atelier-customer.co.il"
         Kinds = [E["kind"] for E in D["history"]]
         assert Kinds[0] == "created" and "staff_notified" in Kinds and "email" in Kinds
         assert D["history"][0]["data"]["message"] == "Engrave D&L inside"

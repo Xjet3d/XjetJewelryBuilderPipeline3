@@ -637,6 +637,25 @@ function adminApp() {
     },
     // ── Order → Production (docs/order-to-production-review.md): the explicit, per-line hand-over ──
     prodLine(l) { return (this.of?.lines || []).find(x => x.line_id === l.id) || null; },
+    // Why a line cannot be sent now — a ready print file is never called "required" (the owner's question about ORD-10001, 2026-10-13)
+    prodWhy(x) {
+      if (!x || x.eligible) return '';
+      if (x.reason === 'already_sent') return 'already in Production';
+      if (x.print_ready) return x.reason === 'not_enabled' ? 'print file ready · Production not enabled for this order (controlled phase)' : 'print file ready · ' + (x.message || '');
+      return 'print file required — ' + (x.message || '');
+    },
+    prodWhyLong(x) {
+      if (!x || x.eligible) return '';
+      if (x.print_ready) return x.reason === 'not_enabled' ? 'Not enabled for this order: during the controlled phase only the orders on the integration\'s allowlist are sent to Production.' : 'Cannot be sent now: ' + (x.message || '') + '.';
+      return 'Print file required before sending to Production — ' + (x.message || '');
+    },
+    // The hand-over after Send to Production (I-32): pending until Fulfillment confirms the part, then received with its number
+    prodHandoff(x) {
+      const p = x && x.production; if (!p || !p.sent) return null;
+      if (p.state === 'revised') return { tone: 'amber', label: 'Revised file sent — waiting for Fulfillment', hint: 'Fulfillment confirms the new revision within about a minute (it reads Atelier every 30 seconds).' };
+      if (p.state === 'received' || p.part_display_no) return { tone: 'green', label: 'Received by Fulfillment', hint: 'Fulfillment confirmed the part' + (p.received_at ? ' · ' + this.dateTime(p.received_at) : '') + '.' };
+      return { tone: 'amber', label: 'Sent — waiting for Fulfillment', hint: 'Fulfillment confirms within about a minute (it reads Atelier every 30 seconds); the part number and the link appear here then.' };
+    },
     prodEligible() { return (this.of?.lines || []).filter(x => x.eligible); },
     prodSelected() { return this.prodEligible().filter(x => this.prodSel[x.line_id] !== false).map(x => x.line_id); },
     // Send to Production: one line, or the ticked eligible lines of the order. The confirmation names every line with the

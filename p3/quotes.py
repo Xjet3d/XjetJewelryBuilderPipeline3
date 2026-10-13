@@ -265,6 +265,11 @@ class QuoteDesk:
         Mode = getattr(self.Mailer, "Mode", None)
 
         def Send():
+            from p3.testrecords import ReservedEmail
+            if ReservedEmail(Offer["to"]):                       # a synthetic request: the customer is never emailed (p3/testrecords.py)
+                QuoteEvent(self.Ctx.Db, R["id"], "email_skipped", {"type": "offer", "to": Offer["to"], "version": Offer["version"],
+                                                                   "reason": "test request: reserved test domain"}, "system")
+                return
             try:
                 self.Mailer.Send(Offer["to"], Subject, Body)
                 QuoteEvent(self.Ctx.Db, R["id"], "email", {"type": "offer", "to": Offer["to"], "version": Offer["version"],

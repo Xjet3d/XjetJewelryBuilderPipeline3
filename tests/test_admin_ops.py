@@ -8,7 +8,7 @@ from tests.conftest import Harness, MakeLive
 
 AdminKey = "ops-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@example.com", "phone": "+972 54 123 4567"}
+Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@atelier-customer.co.il", "phone": "+972 54 123 4567"}
 Address = {"recipient": "Dana Levi", "line1": "12 Rothschild Blvd", "city": "Tel Aviv", "postal_code": "6688112", "country": "IL"}
 
 

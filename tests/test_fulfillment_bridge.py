@@ -170,7 +170,7 @@ async def test_the_hand_over_the_changes_feed_and_the_snapshot(tmp_path):
         assert S["entity_type"] == "order" and S["display_ref"] == "ORD-10001" and S["source_version"] == 2 and S["enrollment"]["state"] == "enrolled"
         Od = S["order"]
         assert Od["status"] == "new" and Od["payment"] == {"status": "pending", "basis": None, "provider": None, "ref": None, "updated_at": Od["placed_at"]}
-        assert Od["customer"] == {"name": "Dana Levi", "email": "dana@example.com"} and Od["address"]["city"] == "Tel Aviv"
+        assert Od["customer"] == {"name": "Dana Levi", "email": "dana@atelier-customer.co.il"} and Od["address"]["city"] == "Tel Aviv"
         assert len(Od["address_version"]) == 16 and Od["cancellation"] == {"state": "none", "at": None, "reason": None} and Od["promised_delivery"] is None
         assert "notes" not in S and "events" not in S and "notes" not in Od
         L = S["lines"][0]
@@ -602,8 +602,10 @@ async def test_the_controlled_phase_s_allowlist_is_the_server_s_rule(tmp_path):
         D1, O1 = await _Placed(H, Qty=1, Click="click-a")
         await _Prepared(H, D1, O1["id"])
         State = (await H.Client.get(f"/api/admin/orders/{O1['id']}/fulfillment", headers=Admin)).json()
-        assert not State["eligible"] and "allowlist" in State["ineligible_reason"]
-        assert not State["lines"][0]["eligible"] and State["lines"][0]["reason"] == "order" and "allowlist" in State["lines"][0]["message"]
+        assert not State["eligible"] and "allowlist" in State["ineligible_reason"] and State["not_enabled"]
+        # The line's own print file is ready: the order-level rule is said apart, never as "print file required" (ORD-10001)
+        L0 = State["lines"][0]
+        assert not L0["eligible"] and L0["reason"] == "not_enabled" and L0["print_ready"] and "allowlist" in L0["message"] and "not enabled" in L0["message"]
         R = await H.Client.post(f"/api/admin/orders/{O1['id']}/production", json={"line_ids": [State["lines"][0]["line_id"]]}, headers=Admin)
         assert R.status_code == 409 and R.json()["error"]["code"] == "not_eligible" and "allowlist" in R.json()["error"]["message"]
         assert (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"] == []

@@ -10,7 +10,7 @@ from tests.conftest import Harness
 
 AdminKey = "commerce-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@example.com", "phone": "+972 54 123 4567"}
+Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@atelier-customer.co.il", "phone": "+972 54 123 4567"}
 Address = {"recipient": "Dana Levi", "line1": "12 Rothschild Blvd", "line2": "", "city": "Tel Aviv", "region": "",
            "postal_code": "6688112", "country": "IL"}
 
@@ -54,14 +54,14 @@ async def test_the_order_says_whether_its_confirmation_email_really_went_out(tmp
         await _InBag(H)
         O = (await H.Client.post("/api/orders", json=_Order())).json()
         # The outbox mode keeps a copy and sends nothing: the customer is not told an email was sent
-        assert O["confirmation_email"] == {"status": "not_sent", "to": "dana@example.com"}
+        assert O["confirmation_email"] == {"status": "not_sent", "to": "dana@atelier-customer.co.il"}
         assert (await H.Client.get(f"/api/orders/{O['id']}")).json()["confirmation_email"]["status"] == "not_sent"
         # Through SMTP the answer is "sent" once the mail left — or "failed", recorded on the order
         H.Svc.Orders.Mailer = _Smtp()
         await _InBag(H, "Second band")
         O2 = (await H.Client.post("/api/orders", json=_Order(client_request_id="click-2"))).json()
         assert (await H.Client.get(f"/api/orders/{O2['id']}")).json()["confirmation_email"]["status"] == "sent"
-        assert [T for T, _S, _B in H.Svc.Orders.Mailer.Sent] == ["dana@example.com"]
+        assert [T for T, _S, _B in H.Svc.Orders.Mailer.Sent] == ["dana@atelier-customer.co.il"]
         H.Svc.Orders.Mailer = _Smtp(Fail=True)
         await _InBag(H, "Third band")
         O3 = (await H.Client.post("/api/orders", json=_Order(client_request_id="click-3"))).json()
@@ -79,7 +79,7 @@ async def test_staff_are_told_about_new_orders_and_quote_requests_when_recipient
         O = (await H.Client.post("/api/orders", json=_Order())).json()
         Box = H.App.state.Mailer.List()
         Staff = [M for M in Box if M["to"] in ("ops@example.com", "sales@example.com")]
-        assert len(Staff) == 2 and all(O["ref"] in M["subject"] and "dana@example.com" in M["html"] for M in Staff)
+        assert len(Staff) == 2 and all(O["ref"] in M["subject"] and "dana@atelier-customer.co.il" in M["html"] for M in Staff)
         assert all("cost" not in M["html"].lower() for M in Staff)
         D = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
         assert [E["kind"] for E in D["events"]].count("staff_notified") == 2

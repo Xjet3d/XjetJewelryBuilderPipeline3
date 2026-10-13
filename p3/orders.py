@@ -33,6 +33,7 @@ from p3.accounts import Principal
 from p3.accounts.local import EmailPattern
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
+from p3.testrecords import IsTestCustomer, ReservedEmail
 
 TermsVersion = "2026-10-02"
 ShippingOptions = {
@@ -302,19 +303,24 @@ class OrderService:
         Subject, Body = OrderConfirmationEmail(Order)
         To = Order["customer"]["email"]
         Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
+        Test = ReservedEmail(To)
 
         def Event(Kind: str, Data: dict) -> None:
             self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                                 (Order["id"], Kind, Dumps(Data), "system", Now()))
 
         def Send():
-            try:
-                self.Mailer.Send(To, Subject, Body)
-                Event("email", {"to": To, "subject": Subject, "delivery": self.Mailer.Mode})
-            except Exception as E:  # noqa: BLE001 — an email problem never undoes an order
-                Event("email_failed", {"to": To, "error": str(E)[:200]})
+            if Test:                                             # a synthetic order: the customer email is never sent (p3/testrecords.py)
+                Event("email_skipped", {"to": To, "reason": "test order: the address is at a reserved test domain"})
+            else:
+                try:
+                    self.Mailer.Send(To, Subject, Body)
+                    Event("email", {"to": To, "subject": Subject, "delivery": self.Mailer.Mode})
+                except Exception as E:  # noqa: BLE001 — an email problem never undoes an order
+                    Event("email_failed", {"to": To, "error": str(E)[:200]})
             if Staff:                                            # the people who act on a new order (P3_STAFF_NOTIFY_EMAILS)
                 StaffSubject, StaffBody = StaffOrderEmail(Order)
+                StaffSubject = ("[TEST] " if Test else "") + StaffSubject
                 for Address in Staff:
                     try:
                         self.Mailer.Send(Address, StaffSubject, StaffBody)
@@ -329,6 +335,8 @@ class OrderService:
         not_configured. Never "sent" unless it was."""
         if self.Mailer is None or not To:
             return {"status": "not_configured", "to": To}
+        if ReservedEmail(To):                                    # a test order: no customer email, ever (p3/testrecords.py)
+            return {"status": "skipped", "to": To, "test": True}
         if self.Mailer.Mode != "smtp":
             return {"status": "not_sent", "to": To}
         Kinds = [E["kind"] for E in self.Ctx.Db.All("SELECT kind FROM order_events WHERE order_id = ? AND kind IN ('email', 'email_failed') "
@@ -349,6 +357,8 @@ class OrderService:
             "payment_status": O["payment_status"], "payment_label": Payments.Labels.get(O["payment_status"], O["payment_status"]),
             "payment_message": Pay.get("message") or "", "payment_provider": O["payment_provider"],
             "customer": json.loads(O["customer_json"]),
+            # A synthetic order (p3/testrecords.py): marked Test, out of the figures, its customer never emailed
+            "test": IsTestCustomer(json.loads(O["customer_json"])),
             "address": {K: Shipping.get(K, "") for K in Addressing.Fields}, "address_lines": Addressing.Lines(Shipping),
             "address_validation": O["address_validation"], "address_validation_detail": Shipping.get("validation"),
             "shipping_method": O["shipping_method"], "shipping_label": Ship.get("label"), "shipping_eta": Ship.get("eta"),
@@ -485,7 +495,8 @@ class OrderService:
                                         "size": float(Size) if Size is not None else None}, "customer")
         Out = self.QuoteRequestJson(Db.One("SELECT * FROM quote_requests WHERE id = ?", (Id,)), C)
         # What the customer may be told: "sent" only when mail really leaves the server (SMTP); the outbox keeps a copy
-        Out["email_status"] = "not_configured" if self.Mailer is None else ("pending" if self.Mailer.Mode == "smtp" else "not_sent")
+        Test = ReservedEmail(Customer.get("email"))
+        Out["email_status"] = "not_configured" if self.Mailer is None else ("skipped" if Test else "pending" if self.Mailer.Mode == "smtp" else "not_sent")
         if self.Mailer is not None:
             from p3.mail import QuoteRequestEmail, StaffQuoteEmail
             Subject, Html = QuoteRequestEmail(Out)
@@ -493,13 +504,17 @@ class OrderService:
             Mode = self.Mailer.Mode
 
             def Send():
-                try:
-                    self.Mailer.Send(Customer["email"], Subject, Html)
-                    QuoteEvent(Db, Id, "email", {"type": "request_confirmation", "to": Customer["email"], "delivery": Mode})
-                except Exception as E:  # noqa: BLE001
-                    QuoteEvent(Db, Id, "email_failed", {"type": "request_confirmation", "to": Customer["email"], "error": str(E)[:200]})
+                if Test:                                         # a synthetic request: the customer email is never sent (p3/testrecords.py)
+                    QuoteEvent(Db, Id, "email_skipped", {"type": "request_confirmation", "to": Customer["email"], "reason": "test request: reserved test domain"})
+                else:
+                    try:
+                        self.Mailer.Send(Customer["email"], Subject, Html)
+                        QuoteEvent(Db, Id, "email", {"type": "request_confirmation", "to": Customer["email"], "delivery": Mode})
+                    except Exception as E:  # noqa: BLE001
+                        QuoteEvent(Db, Id, "email_failed", {"type": "request_confirmation", "to": Customer["email"], "error": str(E)[:200]})
                 if Staff:
                     StaffSubject, StaffHtml = StaffQuoteEmail(Out)
+                    StaffSubject = ("[TEST] " if Test else "") + StaffSubject
                     for Address in Staff:
                         try:
                             self.Mailer.Send(Address, StaffSubject, StaffHtml)
@@ -999,15 +1014,18 @@ class OrderService:
         """Dashboard numbers: counts by status and payment, revenue of live orders, open quote requests.
         Since (ISO) limits the orders to a time range; None = all time."""
         Mock = Sessions.MockDesignIds(self.Ctx) if ExcludeMock else set()
-        Orders = []
+        Orders, Tests = [], 0
         for O in self.Ctx.Db.All("SELECT * FROM orders" + (" WHERE created_at >= ?" if Since else "") + " ORDER BY created_at DESC",
                                  (Since,) if Since else ()):
             Lines = self._Lines(O["id"])
             if ExcludeMock and Lines and all(L["design_id"] in Mock for L in Lines):
                 continue
+            if IsTestCustomer(json.loads(O["customer_json"] or "{}")):   # a synthetic order: counted apart, never in the figures
+                Tests += 1
+                continue
             Orders.append(O)
         Live = [O for O in Orders if O["status"] != "cancelled"]
-        return {"orders": len(Orders), "open": sum(1 for O in Live if O["status"] not in ("completed",)),
+        return {"orders": len(Orders), "test_orders": Tests, "open": sum(1 for O in Live if O["status"] not in ("completed",)),
                 "payment_pending": sum(1 for O in Live if O["payment_status"] == "pending"),
                 "revenue": round(sum(O["total"] for O in Live if O["payment_status"] == "paid"), 2),
                 "reserved_value": round(sum(O["total"] for O in Live if O["payment_status"] != "paid"), 2),

@@ -676,7 +676,7 @@
       <section class="card p-6" x-show="dash.orders">
         <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4"><p class="lbl">Orders</p><a href="#/orders" class="text-[12px] underline text-zinc-500 hover:text-black">Open Orders</a></div>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-          <div><p class="lbl mb-1">Orders</p><p class="text-2xl font-semibold" x-text="dash.orders?.orders ?? 0"></p><p class="text-[12px] text-zinc-500" x-text="(dash.orders?.open ?? 0) + ' open'"></p></div>
+          <div><p class="lbl mb-1">Orders</p><p class="text-2xl font-semibold" x-text="dash.orders?.orders ?? 0"></p><p class="text-[12px] text-zinc-500" x-text="(dash.orders?.open ?? 0) + ' open' + (dash.orders?.test_orders ? ' · ' + dash.orders.test_orders + ' test order(s) not counted' : '')"></p></div>
           <div><p class="lbl mb-1">Payment pending</p><p class="text-2xl font-semibold" :class="dash.orders?.payment_pending ? 'text-amber-700' : ''" x-text="dash.orders?.payment_pending ?? 0"></p><p class="text-[12px] text-zinc-500" x-text="money(dash.orders?.reserved_value) + ' reserved'"></p></div>
           <div><p class="lbl mb-1">Paid revenue</p><p class="text-2xl font-semibold" x-text="money(dash.orders?.revenue)"></p></div>
           <div><p class="lbl mb-1">Quote requests</p><p class="text-2xl font-semibold" :class="dash.orders?.quote_requests_open ? 'text-amber-700' : ''" x-text="dash.orders?.quote_requests_open ?? 0"></p><p class="text-[12px] text-zinc-500">gold · awaiting a reply</p></div>
@@ -1483,7 +1483,7 @@
       <ul class="md:hidden divide-y divide-zinc-100" x-show="orders.length">
         <template x-for="o in orders" :key="'m' + o.id">
           <li class="p-4 row-link" @click="go('#/orders/' + encodeURIComponent(o.id))" tabindex="0" @keydown.enter="go('#/orders/' + encodeURIComponent(o.id))" role="link">
-            <p class="flex items-center justify-between gap-2"><span class="flex items-center gap-1.5"><span class="font-mono font-semibold" x-text="o.ref"></span>
+            <p class="flex items-center justify-between gap-2"><span class="flex items-center gap-1.5"><span class="font-mono font-semibold" x-text="o.ref"></span><span x-show="o.test" class="badge !text-[10px] !px-1.5 border border-dashed border-zinc-400 bg-white text-zinc-600" title="A synthetic test order (its customer is at a reserved test domain): no customer email, kept out of the figures">Test</span>
               <template x-for="p in orderProducts(o)" :key="p"><span class="prod-chip" :class="p === 'charm' ? 'is-charm' : ''" :title="productMix(o)"><span x-html="pIcon(p, 'w-3.5 h-3.5')"></span><span x-text="pLabel(p)"></span></span></template></span>
               <span class="font-semibold tabular-nums" x-text="money(o.total)"></span></p>
             <p class="text-[13px] text-zinc-800 mt-0.5" x-text="(o.customer.first_name + ' ' + o.customer.last_name).trim() + ' · ' + orderLineText(o)"></p>
@@ -1504,7 +1504,7 @@
           <template x-for="o in orders" :key="o.id">
             <tr class="row-link align-top" @click="go('#/orders/' + encodeURIComponent(o.id))" tabindex="0" @keydown.enter="go('#/orders/' + encodeURIComponent(o.id))" :aria-label="'Open order ' + o.ref">
               <td><p class="font-mono font-semibold" x-text="o.ref"></p><p class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="dateTime(o.created_at)"></p>
-                <span x-show="o.mock" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800 mt-1">Mock</span>
+                <span x-show="o.mock" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800 mt-1">Mock</span><span x-show="o.test" class="badge !text-[10px] !px-1.5 border border-dashed border-zinc-400 bg-white text-zinc-600" title="A synthetic test order (its customer is at a reserved test domain): no customer email, kept out of the figures">Test</span>
                 <p x-show="orderProducts(o).length > 1" class="text-[11px] text-[#7A5A10] font-semibold mt-1" title="This order holds rings and charms">Mixed · Ring + Charm</p></td>
               <td><p class="font-medium" x-text="(o.customer.first_name + ' ' + o.customer.last_name).trim() || '—'"></p><p class="text-[12px] text-zinc-500" x-text="o.customer.email"></p></td>
               <td><template x-for="l in o.lines" :key="l.id">
@@ -1575,7 +1575,7 @@
           <template x-for="g in pr.orders" :key="g.order.id">
             <template x-for="(x, i) in g.lines" :key="x.line_id">
               <tr class="row-link align-top" :class="i === 0 ? 'border-t-2 border-zinc-200' : ''" tabindex="0" @click="go('#/orders/production/' + encodeURIComponent(x.line_id))" @keydown.enter="go('#/orders/production/' + encodeURIComponent(x.line_id))">
-                <td class="whitespace-nowrap"><template x-if="i === 0"><div><a class="font-mono font-medium hover:underline" :href="'#/orders/' + encodeURIComponent(g.order.id)" @click.stop x-text="g.order.ref"></a><p class="text-[12px] text-zinc-500" x-text="g.order.customer"></p>
+                <td class="whitespace-nowrap"><template x-if="i === 0"><div><a class="font-mono font-medium hover:underline" :href="'#/orders/' + encodeURIComponent(g.order.id)" @click.stop x-text="g.order.ref"></a> <span x-show="g.order.test" class="badge !text-[10px] !px-1.5 border border-dashed border-zinc-400 bg-white text-zinc-600" title="A synthetic test order (its customer is at a reserved test domain): no customer email, kept out of the figures">Test</span><p class="text-[12px] text-zinc-500" x-text="g.order.customer"></p>
                   <p class="text-[11px] text-zinc-500" x-text="g.lines_sent + ' of ' + g.lines_total + ' line(s) in Production' + (g.attention ? ' · attention' : '')"></p></div></template></td>
                 <td class="w-12"><div class="w-10 h-10 bg-zinc-100 border border-zinc-200 overflow-hidden"><img x-show="x.line.image_url" :src="small(x.line.image_url)" class="w-full h-full object-cover" alt=""></div></td>
                 <td><p class="font-medium" x-text="x.line.title"></p><p class="font-mono text-[12px] text-zinc-500" x-text="x.line.item_ref"></p></td>
@@ -1814,6 +1814,7 @@
             <div class="space-y-1">
               <div class="flex flex-wrap items-center gap-3">
                 <h1 class="cinzel text-2xl" x-text="pd.line.title"></h1>
+                <span x-show="pd.order?.test" class="badge border border-dashed border-zinc-400 bg-white text-zinc-700" title="A synthetic test order (its customer is at a reserved test domain): no customer email, kept out of the figures">Test order</span>
                 <span class="badge" :class="stageClass(pd.stage)" x-text="pd.stage_label"></span>
                 <span x-show="pd.attention" class="badge bg-amber-100 text-amber-800" x-text="'Attention: ' + (pd.attention?.kind_label || '')"></span>
                 <span x-show="pd.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
@@ -1851,7 +1852,7 @@
           </div>
           <div class="space-y-1">
             <p class="lbl">Manufacturing <span class="font-normal normal-case tracking-normal text-zinc-500">(Fulfillment)</span></p>
-            <p x-text="'Part ' + (pd.part_display_no || '—') + (pd.revision ? ' · revision ' + pd.revision.no + (pd.revision.approved ? ' approved' : ' not approved yet') : '')"></p>
+            <p :title="'A production revision is Fulfillment's specification of the part (file, size, material, production profile): a profile assignment or a revised file makes a new one. The hand-over number counts Atelier's sends of this line.'" x-text="'Part ' + (pd.part_display_no || '—') + (pd.revision ? ' · production revision ' + pd.revision.no + (pd.revision.approved ? ' approved' : ' not approved yet') : '') + (pd.handoff_no ? ' · hand-over ' + pd.handoff_no : '')"></p>
             <p x-text="quantityLine(pd)"></p>
             <p x-text="pd.build ? 'Build ' + pd.build.display_no + ' · ' + pd.build.state.toLowerCase().replace('_', ' ') : 'Not in a build yet'"></p>
             <template x-for="h in (pd.holds || [])" :key="h.id"><p class="text-[12px] text-amber-800" x-text="'On hold: ' + h.reason_label + ' · owner ' + h.owner + ' · since ' + dateTime(h.since)"></p></template>
@@ -1886,11 +1887,14 @@
           </template>
         </div>
       </section>
-      <section class="card" aria-label="Timeline">
-        <div class="px-6 py-4 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-3"><p class="lbl">Timeline</p><p class="text-[12px] text-zinc-500">Atelier's hand-over, file and version events for this line, and every Fulfillment event about its part — as recorded, in time order.</p></div>
+      <section class="card" aria-label="Timeline" x-data="{ allTimeline: false }">
+        <div class="px-6 py-4 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-3"><p class="lbl">Timeline</p>
+          <p class="text-[12px] text-zinc-500">The meaningful steps of this line in Atelier and in Fulfillment, in time order.</p>
+          <label class="flex items-center gap-1.5 text-[12px] text-zinc-600"><input type="checkbox" x-model="allTimeline"> Detailed history
+            <span x-show="!allTimeline && (pd.timeline || []).some(t => t.significant === false)" class="text-zinc-400" x-text="'(' + (pd.timeline || []).filter(t => t.significant === false).length + ' technical entries hidden)'"></span></label></div>
         <table class="w-full">
           <tbody>
-            <template x-for="(t, i) in pd.timeline" :key="i">
+            <template x-for="(t, i) in (pd.timeline || []).filter(t => allTimeline || t.significant !== false)" :key="i">
               <tr class="align-top"><td class="whitespace-nowrap text-[12px] text-zinc-500" x-text="dateTime(t.at)"></td>
                 <td><span class="badge mr-1" :class="t.source === 'fulfillment' ? 'bg-sky-100 text-sky-800' : 'bg-zinc-100 text-zinc-600'" x-text="t.source === 'fulfillment' ? 'Fulfillment' : 'Atelier'"></span><span class="font-medium" x-text="t.label"></span> <span class="text-zinc-600" x-text="t.text || ''"></span></td>
                 <td class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="t.by === 'developer-key' ? 'Admin shared-key access' : t.by"></td></tr>
@@ -1919,6 +1923,7 @@
               <span class="badge" :class="orderStatusClass(od.status)" x-text="orderStatusLabel(od.status)"></span>
               <span class="badge" :class="payClass(od.payment_status)" x-text="payLabel(od.payment_status)"></span>
               <span x-show="od.mock" class="badge bg-amber-100 text-amber-800">Mock</span>
+              <span x-show="od.test" class="badge border border-dashed border-zinc-400 bg-white text-zinc-700" title="A synthetic test order (its customer is at a reserved test domain): Atelier sends its customer no email and keeps it out of the dashboard's figures; Fulfillment marks it Test">Test order</span>
             </div>
             <p class="text-sm text-zinc-600"><span x-text="dateTime(od.created_at)"></span> · <a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(od.owner_account_id)" x-text="(od.customer.first_name + ' ' + od.customer.last_name).trim()"></a> · <span x-text="od.customer.email"></span> · <span x-text="od.customer.phone"></span></p>
             <p x-show="od.quote" class="text-[13px] text-zinc-600">From quote request <a class="underline font-mono" :href="'#/orders/quote/' + encodeURIComponent(od.quote?.id || '')" x-text="od.quote?.ref"></a></p>
@@ -1972,7 +1977,8 @@
             <span x-show="of?.enrolled" class="badge bg-emerald-100 text-emerald-800" x-text="of?.lines_sent + ' of ' + of?.lines_total + ' line(s) in Production'"></span>
             <span x-show="of?.enrolled && of?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
             <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not in Production</span></div>
-          <p x-show="!of?.eligible && of?.ineligible_reason" class="text-[12px] text-zinc-500" x-text="'Cannot be sent to Production: ' + of.ineligible_reason + '.'"></p>
+          <p x-show="!of?.eligible && of?.ineligible_reason && !of?.not_enabled" class="text-[12px] text-zinc-500" x-text="'Cannot be sent to Production: ' + of.ineligible_reason + '.'"></p>
+          <p x-show="of?.not_enabled" class="text-[12px] text-amber-800" title="P3_FULFILLMENT_ORDER_ALLOWLIST">Production is not enabled for this order yet: during the controlled phase only the orders on the integration's allowlist are sent. Each line's print file is still checked below.</p>
         </div>
         <!-- Send selected lines to Production (docs/order-to-production-review.md, K11): the eligible lines ticked, the others with their reason; the exact print version named -->
         <div x-show="of?.eligible" class="border border-zinc-200 bg-zinc-50 p-3 space-y-2 text-[13px]">
@@ -1983,7 +1989,7 @@
               <span><span class="font-mono" x-text="x.item_ref"></span> <span x-text="x.title + ' ×' + x.quantity"></span>
                 <span x-show="x.eligible" class="text-zinc-500" x-text="' · print version: ' + (x.print_version?.label || '—') + (x.pinned ? ' · pinned' : '')"></span>
                 <span x-show="!x.eligible && x.production?.sent" class="text-emerald-800"> · in Production</span>
-                <span x-show="!x.eligible && !x.production?.sent" class="text-amber-700" x-text="' · print file required: ' + (x.message || '')"></span></span>
+                <span x-show="!x.eligible && !x.production?.sent" :class="x.print_ready ? 'text-zinc-600' : 'text-amber-700'" x-text="' · ' + prodWhy(x)"></span></span>
             </label>
           </template>
           <button class="btn !py-1.5" :disabled="odBusy || !prodSelected().length" @click="sendToProduction(prodSelected())" x-text="'Send ' + prodSelected().length + ' line(s) to Production…'"></button>
@@ -2085,14 +2091,19 @@
                   <template x-if="of?.enabled && prodLine(l)">
                     <div class="mt-1.5 text-[11px]">
                       <template x-if="prodLine(l).production?.sent">
-                        <p><span class="badge bg-emerald-100 text-emerald-800">In Production</span>
-                          <span class="text-zinc-600" x-text="' sent ' + dateTime(prodLine(l).production.sent_at) + ' · ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · revision ' + prodLine(l).production.handoff_no : '')"></span>
-                          <span x-show="prodLine(l).production.part_display_no" class="font-mono text-zinc-600" x-text="' · ' + (prodLine(l).production.part_display_no || '')"></span>
-                          <span x-show="!prodLine(l).production.pinned?.file_sha256" class="text-zinc-500"> · preparing the production file…</span></p>
+                        <!-- The hand-over after Send to Production (I-32): waiting for Fulfillment, or received — its part number and a link there -->
+                        <div class="normal-case tracking-normal">
+                          <p class="flex flex-wrap items-center gap-x-2 gap-y-1"><span class="badge" :class="prodHandoff(prodLine(l))?.tone === 'green' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'" :title="prodHandoff(prodLine(l))?.hint" x-text="prodHandoff(prodLine(l))?.label"></span>
+                            <span x-show="prodLine(l).production.part_display_no" class="font-mono text-zinc-800" x-text="prodLine(l).production.part_display_no || ''"></span>
+                            <a x-show="prodLine(l).fulfillment_url" class="underline text-zinc-700 hover:text-black" :href="prodLine(l).fulfillment_url" target="_blank" rel="noopener" title="Open this part in the Fulfillment application">Open in Fulfillment ↗</a></p>
+                          <p class="text-zinc-500 mt-0.5" x-text="'Sent ' + dateTime(prodLine(l).production.sent_at) + ' · Atelier 3D ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · hand-over ' + prodLine(l).production.handoff_no : '') + (prodLine(l).production.pinned?.file_sha256 ? '' : ' · preparing the production file…')"></p>
+                          <p x-show="prodHandoff(prodLine(l))?.tone !== 'green'" class="text-zinc-500" x-text="prodHandoff(prodLine(l))?.hint"></p>
+                        </div>
                       </template>
                       <template x-if="!prodLine(l).production?.sent">
-                        <p><button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? 'Pin ' + (prodLine(l).print_version?.label || 'this version') + ' and send this line to Production' : 'Print file required before sending to Production'" @click="sendToProduction([l.id])">Send to Production</button>
-                          <span x-show="!prodLine(l).eligible" class="block text-amber-700 mt-0.5 normal-case tracking-normal" x-text="'Print file required before sending to Production — ' + (prodLine(l).message || '')"></span></p>
+                        <p><button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? 'Pin ' + (prodLine(l).print_version?.label || 'this version') + ' and send this line to Production' : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
+                          <span x-show="!prodLine(l).eligible && prodLine(l).print_ready" class="block text-emerald-800 mt-0.5 normal-case tracking-normal">✓ Print file ready</span>
+                          <span x-show="!prodLine(l).eligible" class="block mt-0.5 normal-case tracking-normal" :class="prodLine(l).print_ready ? 'text-zinc-600' : 'text-amber-700'" x-text="prodWhyLong(prodLine(l))"></span></p>
                       </template>
                     </div>
                   </template></td>

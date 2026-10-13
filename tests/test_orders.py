@@ -10,7 +10,8 @@ from tests.conftest import Harness
 
 AdminKey = "orders-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@example.com", "phone": "+972 54 123 4567"}
+# A real customer for the rules (an ordinary domain); a test customer is at a reserved one — tests/test_test_records.py
+Customer = {"first_name": "Dana", "last_name": "Levi", "email": "dana@atelier-customer.co.il", "phone": "+972 54 123 4567"}
 Address = {"recipient": "Dana Levi", "line1": "12 Rothschild Blvd", "line2": "Apt 4", "city": "Tel Aviv", "region": "",
            "postal_code": "6688112", "country": "IL"}
 
@@ -110,7 +111,7 @@ async def test_place_order_snapshots_everything_clears_the_bag_and_emails(HO):
     assert (await H.Client.post("/api/orders", json=_Order(client_request_id="click-2"))).status_code == 409   # bag empty now
     # A confirmation email went to the customer (outbox), without any internal pricing
     Mail = H.App.state.Mailer.List()[0]
-    assert Mail["to"] == "dana@example.com" and "ORD-10001" in Mail["subject"]
+    assert Mail["to"] == "dana@atelier-customer.co.il" and "ORD-10001" in Mail["subject"]
     assert "R-1001-A" in Mail["html"] and "Tel Aviv" in Mail["html"] and "Payment pending" in Mail["html"]
     assert "cost" not in Mail["html"].lower()
     # The journey reached Order; the admin sees it on the session and in the funnel
@@ -221,9 +222,9 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert [S["id"] for S in L["statuses"]][:2] == ["new", "payment_confirmed"] and L["quote_counts"]["new"] == 0
     assert (L["total"], L["offset"], L["limit"]) == (1, 0, 50)
     Row = L["orders"][0]
-    assert Row["customer"]["email"] == "dana@example.com" and Row["lines"][0]["ring_id"] == "R-1001-A" and Row["address_validation"] == "unverified"
+    assert Row["customer"]["email"] == "dana@atelier-customer.co.il" and Row["lines"][0]["ring_id"] == "R-1001-A" and Row["address_validation"] == "unverified"
     # Search by order ID, ring ID, design name, customer name and email
-    for Q in ("ORD-10001", "10001", "R-1001-A", "aurora", "Dana", "dana@example"):
+    for Q in ("ORD-10001", "10001", "R-1001-A", "aurora", "Dana", "dana@atelier-customer"):
         assert [X["ref"] for X in (await H.Client.get(f"/api/admin/orders?q={Q}", headers=Admin)).json()["orders"]] == ["ORD-10001"], Q
     assert (await H.Client.get("/api/admin/orders?q=R-1099", headers=Admin)).json()["orders"] == []
     assert (await H.Client.get("/api/admin/orders?status=shipped", headers=Admin)).json()["orders"] == []
@@ -348,9 +349,9 @@ async def test_gold_asks_for_a_quote_instead_of_ordering(HO):
     Q = R.json()
     assert Q["ref"] == "Q-5001" and Q["ring_id"] == "R-1001-B" and Q["material_label"] == "18K Yellow Gold" and Q["status"] == "new"
     Mail = H.App.state.Mailer.List()[0]
-    assert Mail["to"] == "dana@example.com" and "Q-5001" in Mail["subject"] and "Engraving inside?" in Mail["html"]
+    assert Mail["to"] == "dana@atelier-customer.co.il" and "Q-5001" in Mail["subject"] and "Engraving inside?" in Mail["html"]
     L = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()
-    assert [X["ref"] for X in L["quote_requests"]] == ["Q-5001"] and L["quote_requests"][0]["customer"]["email"] == "dana@example.com"
+    assert [X["ref"] for X in L["quote_requests"]] == ["Q-5001"] and L["quote_requests"][0]["customer"]["email"] == "dana@atelier-customer.co.il"
     assert L["total"] == 1 and L["counts"] == {"new": 1, "quoted": 0, "answered": 0, "approved": 0, "rejected": 0, "closed": 0}
     assert (await H.Client.get("/api/admin/orders", headers=Admin)).json()["quote_counts"]["new"] == 1          # the inbox badge
     assert (await H.Client.post(f"/api/admin/quote-requests/{Q['id']}/status", json={"status": "answered"}, headers=Admin)).json()["status"] == "answered"

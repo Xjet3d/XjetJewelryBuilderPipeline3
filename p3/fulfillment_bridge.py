@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from p3 import assets
 from p3 import orders as OrdersModule
+from p3.testrecords import IsTestCustomer
 from p3.admin import RequireAdmin
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
@@ -54,6 +55,10 @@ ProductionReasons = {
     "other_size": "the prepared result is for another size or material: Prepare STL on this line",
     "export_failed": "the production file cannot be exported",
 }
+# The controlled phase's allowlist says no (P3_FULFILLMENT_ORDER_ALLOWLIST): an order-level rule, never a print-file
+# problem — a line keeps its own verdict (`print_ready`) beside it (the owner's question about ORD-10001, 2026-10-13)
+NotEnabledReason = ("Production is not enabled for this order during the controlled phase — only the orders on the integration's allowlist "
+                    "(P3_FULFILLMENT_ORDER_ALLOWLIST) are sent")
 # The stages Fulfillment reports per part (its admin payload; docs/order-to-production-review.md §I), in order of progress —
 # `sent` is Atelier's own: the line is sent and Fulfillment has not reported its part yet
 ProductionStageLabels = {
@@ -78,6 +83,10 @@ FulfillmentEventLabels = {
     "fulfillment.attention_cleared": "Attention request closed", "fulfillment.note_added": "Internal note",
 }
 
+# The timeline's technical entries (the owner's request of 2026-10-13, §5): the synchronisation's generic "Updated", the
+# production file recorded, the version pinned — kept, shown under "Detailed history" only; nothing is deleted
+TechnicalTimelineKinds = frozenset({"fulfillment.request_updated", "production_file", "3d_pinned"})
+
 
 def _LineEventText(Kind: str, D: dict) -> str:
     Sha = (D.get("file_sha256") or "")[:12]
@@ -86,7 +95,9 @@ def _LineEventText(Kind: str, D: dict) -> str:
     if Kind == "production_file":
         return f"file {Sha}… ({D.get('file_bytes')} bytes)"
     if Kind == "production_revision_submitted":
-        return " · ".join(X for X in (f"revision {D.get('handoff_no')}", D.get("version_label"), D.get("reason")) if X)
+        # The hand-over number (how many times Atelier sent this line), never called a revision: Fulfillment numbers its own
+        # production revisions (file + size + material + profile), so a profile assignment there is a revision too
+        return " · ".join(X for X in (f"hand-over {D.get('handoff_no')}", D.get("version_label"), D.get("reason")) if X)
     if Kind == "3d_version_changed":
         return f"v{D.get('from_version_no') or '?'} → {D.get('label') or 'v' + str(D.get('version_no') or '?')}" + (f": {D['note']}" if D.get("note") else "")
     if Kind == "3d_version_uploaded":
@@ -345,7 +356,7 @@ class FulfillmentBridge:
             if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
                 return False, f"an order in status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' stays with the existing flow", O
             if not self.OrderAllowed(O):
-                return False, "the order is not in the integration's allowlist (P3_FULFILLMENT_ORDER_ALLOWLIST: the controlled phase takes the listed orders only)", O
+                return False, NotEnabledReason, O
             return True, None, O
         Q = self._Quote(EntityId)
         return False, "quotations are managed here; once the quote has become an order, the order is sent", Q
@@ -794,6 +805,8 @@ class FulfillmentBridge:
                                       "updated_at": PayEvent["created_at"] if PayEvent else O["created_at"]},
                           "customer": {"name": (O["customer"].get("first_name", "") + " " + O["customer"].get("last_name", "")).strip(),
                                        "email": O["customer"].get("email")},
+                          # Atelier's verdict on a synthetic order (p3/testrecords.py): Fulfillment marks it Test and keeps it apart
+                          "test": bool(O.get("test")),
                           "address": Address, "address_lines": O["address_lines"], "address_version": _Sha(Dumps(Address))[:16],
                           "address_validation": O["address_validation"], "shipping_method": O["shipping_method"], "shipping_label": O.get("shipping_label"),
                           "currency": O["currency"], "subtotal": O["subtotal"], "total": O["total"],
@@ -1100,17 +1113,24 @@ class FulfillmentBridge:
         if E:
             self._FinalizeFiles(Id)
         Rows = {R["line_id"]: R for R in self.ProductionRows(Id)}
+        NotEnabled = not Ok and Why == NotEnabledReason
         Lines = []
         for L in Record["lines"]:
             El = self.LineEligibility(Record, L, Rows.get(L["id"]), Known=True)
+            # The print file's own verdict, kept apart from the order's: a valid print file is never called "required"
+            PrintReady = bool(El["eligible"])
             if El["eligible"] and not Ok:                 # the order itself may not go (status, the controlled phase's allowlist): its lines say why
-                El = {**El, "eligible": False, "reason": "order", "message": Why}
+                El = {**El, "eligible": False, "reason": "not_enabled" if NotEnabled else "order", "message": Why}
+            Prod = Rows.get(L["id"])
             Lines.append({"line_id": L["id"], "item_ref": L["ring_id"], "title": L["title"], "quantity": L["quantity"], "eligible": El["eligible"],
-                          "reason": El["reason"], "message": El["message"], "print_version": L.get("three_d_version"), "print_state": L.get("three_d_state"),
-                          "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")), "production": self._ProductionJson(Rows.get(L["id"]))})
+                          "reason": El["reason"], "message": El["message"], "print_ready": PrintReady, "print_version": L.get("three_d_version"),
+                          "print_state": L.get("three_d_state"), "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")),
+                          "production": self._ProductionJson(Prod),
+                          # Where the part is, once Fulfillment confirmed it (I-32): the hand-over pending or confirmed, the MP number, the link
+                          "fulfillment_url": self._FulfillmentPartUrl(Prod["part_id"]) if Prod and Prod["part_id"] else None})
         Pull = self.LastPull()
         AnyEligible = any(X["eligible"] for X in Lines)
-        return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and AnyEligible,
+        return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and AnyEligible, "not_enabled": NotEnabled,
                 "ineligible_reason": Why if not Ok else (None if AnyEligible else ("every line is in Production" if Rows and len(Rows) >= len(Lines) else
                                                                                    "no line has a valid print file yet")),
                 "lines": Lines, "lines_sent": len(Rows), "lines_total": len(Lines),
@@ -1174,7 +1194,8 @@ class FulfillmentBridge:
         return {"line_id": R["line_id"],
                 "order": {"id": R["order_id"], "ref": OrdersModule.OrderRef(R["order_no"]), "status": R["order_status"],
                           "status_label": OrdersModule.StatusLabels.get(R["order_status"], R["order_status"]), "payment_status": R["payment_status"],
-                          "customer": (str(Customer.get("first_name", "")) + " " + str(Customer.get("last_name", ""))).strip(), "customer_email": Customer.get("email")},
+                          "customer": (str(Customer.get("first_name", "")) + " " + str(Customer.get("last_name", ""))).strip(), "customer_email": Customer.get("email"),
+                          "test": IsTestCustomer(Customer)},
                 "line": {"title": R["title"], "item_ref": R["ring_id"], "product_type": R["product_type"], "material_id": R["material_id"], "material_label": R["material_label"],
                          "size_label": Products.SizeLabel(R["product_type"] or Products.Ring, R["ring_size"], R["charm_size"]), "quantity": R["quantity"],
                          "position": R["position"], "image_url": self.Ctx.AssetUrl(R["image_path"])},
@@ -1303,6 +1324,8 @@ class FulfillmentBridge:
                                   "label": FulfillmentEventLabels.get(D["event_type"], D["event_type"].replace("fulfillment.", "").replace("_", " ")),
                                   "text": D.get("summary"), "by": "Fulfillment"})
         Items.sort(key=lambda X: X["at"])
+        for X in Items:
+            X["significant"] = X["kind"] not in TechnicalTimelineKinds
         return Items
 
     @staticmethod
