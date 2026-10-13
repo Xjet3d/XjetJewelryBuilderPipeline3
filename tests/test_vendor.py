@@ -58,7 +58,7 @@ async def test_page_images_are_versioned_and_cached_for_a_year(H):
     # the scripts wait for the page (in order: Alpine last), the startup requests go out together
     Index = (await H.Client.get("/")).text
     Scripts = re.findall(r'<script ([^>]*)src="[^"]*/static/([\w./-]+)\?v=\d+"', Index)
-    assert [S for _, S in Scripts] == ["metal.js", "products.js", "app.js", "showcase.js", "vendor/alpine.min.js"]
+    assert [S for _, S in Scripts] == ["consent.js", "metal.js", "products.js", "app.js", "showcase.js", "vendor/alpine.min.js"]
     assert all(A.strip() == "defer" for A, _ in Scripts)
     App = (await H.Client.get("/static/app.js")).text
     assert "await Promise.all([this.api('GET', '/api/health'" in App and "const gallery = this.loadGallery();" in App

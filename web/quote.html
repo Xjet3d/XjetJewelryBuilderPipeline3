@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="p3-base" content="{{BASE}}">
   <title>XJet Atelier — {{TITLE}}</title>
   <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
   <!-- The customer's quote (p3/quotes.py): the quote and its two answers, Approve (address + terms → an order) and Decline -->
@@ -45,14 +46,19 @@
     p.err { margin-bottom: 0.5rem; }
     .bad { border-top-color: #B4443A; }
     .bad h1 { color: #B4443A; }
+    .foot { margin-top: 1.75rem; padding-top: 1rem; border-top: 1px solid #EDE8DF; font-size: 0.78rem; color: #6F6F6F; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+    .foot a, .foot button.linkish { color: #6F6F6F; text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; padding: 0; margin: 0;
+           font: inherit; letter-spacing: normal; text-transform: none; cursor: pointer; }
     @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .quote { flex-direction: column; } .card { padding: 1.75rem 1.1rem; } }
   </style>
+  {{ANALYTICS}}
 </head>
 <body>
-  <main class="card {{CARD_CLASS}}">
+  <main class="card {{CARD_CLASS}}" data-clarity-mask="true">
     <p class="eyebrow">XJet Atelier</p>
     <h1>{{TITLE}}</h1>
 {{BODY}}
+    <p class="foot"><a href="{{BASE}}/privacy">Privacy</a><a href="{{BASE}}/terms">Terms of Service</a><button type="button" class="linkish" data-cookie-settings>Cookie Settings</button></p>
   </main>
 </body>
 </html>

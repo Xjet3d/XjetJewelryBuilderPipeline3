@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 
+from p3 import analytics as Analytics
 from p3 import assets
 from p3 import media as Media
 from p3 import products as Products
@@ -127,7 +128,7 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
     Html = (WebDir / Name).read_text(encoding="utf-8")
     if Mock is not None:
         Html = re.sub(r"<!--mock-->.*?<!--/mock-->", "", Html, flags=re.S) if not Mock else Html.replace("<!--mock-->", "").replace("<!--/mock-->", "")
-    for Asset in ("app.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
+    for Asset in ("app.js", "consent.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
         if Path_.is_file():
@@ -293,7 +294,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         H.setdefault("X-Frame-Options", "DENY")
         H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         H.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
-        H.setdefault("Content-Security-Policy", ContentSecurityPolicy)
+        # A customer page may load the analytics tools once its visitor consents (p3/analytics.py): their hosts are added
+        # only while a tool is on; the Admin, the tools, the API and every other answer keep the base policy
+        Page = (Resp.headers.get("content-type") or "").startswith("text/html") and not (
+            Rel in AdminPaths or Rel in DevPaths or Rel.startswith(("/api/", "/static/")))
+        H.setdefault("Content-Security-Policy",
+                     Analytics.Csp(ContentSecurityPolicy, Analytics.Public(Ctx.Products)) if Page else ContentSecurityPolicy)
         if AdminAuth.BrowserScheme(Req) == "https":                       # the visitor's scheme (behind proto too)
             H.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return Resp
@@ -371,7 +377,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
         Og = OgTags(request, Title, Description, Url) if not Design else ""
         Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
-        Html = _VersionedPage("index.html", Base, {**PageConfig, "view": View, "ssr": View, "titles": Titles}, PageRobots(),
+        Html = _VersionedPage("index.html", Base, {**PageConfig, "view": View, "ssr": View, "titles": Titles,
+                                                   "analytics": Analytics.Public(Ctx.Products)}, PageRobots(),
                               Description, Og, Mock=Modes.Mode == "mock")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}

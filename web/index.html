@@ -25,7 +25,9 @@
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
     <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
-    <!-- deferred: they run in this order once the page is parsed (Alpine last, so p3App() exists when it starts) -->
+    <!-- deferred: they run in this order once the page is parsed (Alpine last, so p3App() exists when it starts).
+         consent.js first: the cookie banner and Cookie Settings, and the analytics that run only after consent (docs/ANALYTICS.md) -->
+    <script defer src="{{BASE}}/static/consent.js"></script>
     <script defer src="{{BASE}}/static/metal.js"></script>
     <script defer src="{{BASE}}/static/products.js"></script>
     <script defer src="{{BASE}}/static/app.js"></script>
@@ -325,7 +327,7 @@
                     class="relative items-center gap-1.5 select-none group rounded-md px-1.5 py-1 transition hover:bg-black/[0.04]" :class="inStudio ? 'hidden md:flex' : 'flex'"
                     :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and credits">
                 <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
-                <span x-show="displayName" x-text="displayName" class="text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
+                <span x-show="displayName" x-text="displayName" data-clarity-mask="true" class="text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
                 <span x-show="displayName" class="text-[13px] text-zinc-400 px-0.5" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'" aria-hidden="true">·</span>
                 <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
@@ -335,7 +337,7 @@
                 <span x-text="quotaRemaining" class="text-sm font-semibold tabular-nums" style="color:#8A6420;"></span>
                 <svg class="hidden sm:block w-3 h-3 text-zinc-400 transition-transform" :class="accountPanelOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                 <div x-show="!accountPanelOpen" class="absolute top-full right-0 mt-2 px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-[300]">
-                    <span x-text="(displayName ? displayName + ' • ' : '') + quotaText + ' — click for details'"></span>
+                    <span data-clarity-mask="true" x-text="(displayName ? displayName + ' • ' : '') + quotaText + ' — click for details'"></span>
                     <div class="absolute -top-1 right-2.5 w-2 h-2 bg-zinc-900 rotate-45"></div>
                 </div>
             </button>
@@ -562,6 +564,7 @@
                         <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-white transition">Terms of Service</a>
                         <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-white transition">Privacy</a>
                         <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-white transition">Contact &amp; Support</a>
+                        <button type="button" data-cookie-settings class="tap-lg hover:text-white transition text-left">Cookie Settings</button>
                     </nav>
                 </div>
             </footer>
@@ -904,6 +907,7 @@
                     <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-black transition" x-show="view !== 'terms'">Terms</a>
                     <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-black transition" x-show="view !== 'privacy'">Privacy</a>
                     <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-black transition" x-show="view !== 'contact'">Contact</a>
+                    <button type="button" data-cookie-settings class="tap-lg hover:text-black transition uppercase tracking-[0.15em]">Cookie Settings</button>
                 </div>
             </article>
         </main>
@@ -961,7 +965,7 @@
                                     <div class="flex gap-3 flex-row-reverse" x-show="!openedFromList || pendingBatch">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-[12px] shrink-0 font-semibold mt-0.5 brand-font" style="background:#EEEEEE; color:#555;">U</div>
                                         <div class="px-4 py-3 rounded-2xl text-[14px] max-w-[80%] leading-relaxed" style="background:#F0F0F0; color:#333; border:1px solid #E5E5E5;">
-                                            <span x-text="bubbleBatch?.user_text"></span>
+                                            <span data-clarity-mask="true" x-text="bubbleBatch?.user_text"></span>
                                         </div>
                                     </div>
 
@@ -1162,7 +1166,7 @@
                                             <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                                             <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
                                         </svg>
-                                        <span class="text-[12px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaText"></span>
+                                        <span data-clarity-mask="true" class="text-[12px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaText"></span>
                                         <svg class="w-3 h-3 text-zinc-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                                     </button>
                                 </div>
@@ -1609,7 +1613,7 @@
          Bag — what the customer has chosen; Checkout starts here
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'checkout'">
-        <main class="flex-1 overflow-y-auto fade-in bg-white">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-2xl mx-auto px-6 pt-10 pb-28">
                 <h2 class="text-2xl brand-font mb-2">My Bag</h2>
                 <p x-show="token && bagLines.length" class="text-[13px] text-zinc-500 mb-8" x-text="bagPriceNote">Fixed prices per ring and material, in US dollars. Ring sizes are US sizes. Delivery and any promo code are added at checkout.</p>
@@ -1668,7 +1672,7 @@
          totals and validation; known profile details pre-fill but never overwrite what was typed.
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'order'">
-        <main class="flex-1 overflow-y-auto fade-in bg-white">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-5xl mx-auto px-6 pt-8 pb-36 lg:grid lg:grid-cols-[1fr_360px] lg:gap-12 lg:items-start">
                 <div class="min-w-0">
                     <ol class="flex items-center gap-2 sm:gap-3 text-[12px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
@@ -1820,7 +1824,7 @@
          Order confirmation — received (a reservation until the design review)
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'confirmation' && order">
-        <main class="flex-1 overflow-y-auto fade-in bg-white">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="text-center mb-10">
                     <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
@@ -1881,7 +1885,7 @@
 
     <!-- ── My Account → Quotes & orders (#account): every quote request and order, where each stands, its history ── -->
     <template x-if="view === 'account'">
-        <main class="flex-1 overflow-y-auto fade-in bg-white">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="mb-8">
                     <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My account</p>
@@ -2019,7 +2023,7 @@
              @resize.window="accountPanelOpen && _placeAccountPanel()" @scroll.window.passive="accountPanelOpen && _placeAccountPanel()">
             <!-- click-away layer -->
             <div class="absolute inset-0" @click="closeAccountPanel()"></div>
-            <div role="dialog" aria-modal="true" aria-label="Your account" data-testid="account-menu"
+            <div role="dialog" aria-modal="true" aria-label="Your account" data-testid="account-menu" data-clarity-mask="true"
                  class="absolute left-4 right-4 sm:left-auto sm:w-[340px] bg-white rounded-2xl overflow-y-auto overscroll-contain fade-in"
                  :style="{ top: accountPanelPos.top + 'px', right: accountPanelPos.right + 'px', maxHeight: 'calc(100dvh - ' + (accountPanelPos.top + 16) + 'px)' }"
                  style="border:1px solid #ECE6DA; box-shadow:0 22px 50px rgba(26,26,26,0.14);">
@@ -2129,7 +2133,7 @@
         <div x-show="showRegModal" x-cloak
              class="fixed inset-0 z-[200] flex items-center justify-center p-4"
              style="background:rgba(0,0,0,0.75);" @click.self="closeRegModal()" @keydown.escape.window="showRegModal && closeRegModal()">
-            <div id="reg-dialog" class="bg-white w-full max-w-md p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="reg-title" aria-describedby="reg-desc"
+            <div id="reg-dialog" data-clarity-mask="true" class="bg-white w-full max-w-md p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="reg-title" aria-describedby="reg-desc"
                  @keydown="trapFocus($event, 'reg-dialog')">
                 <button type="button" @click="closeRegModal()" class="tap-lg absolute top-3 right-3 p-2 text-zinc-400 hover:text-zinc-900 transition" aria-label="Close sign-in">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -2247,7 +2251,7 @@
     <!-- ── Gold: Request a quote (no fixed price yet; nothing is ordered or charged) ── -->
     <template x-teleport="body">
         <div x-show="quoteReq.open" x-cloak class="fixed inset-0 z-[210] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6);"
-             @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+             @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title" data-clarity-mask="true">
             <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-7 fade-in max-h-[92vh] overflow-y-auto">
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div><p class="text-[12px] uppercase tracking-[0.25em] text-zinc-400 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
