@@ -3,6 +3,7 @@ Production with Atelier's facts and Fulfillment's side of it from the projection
 from the customer-safe one, each event filed under the parts it is about, a sent line flipped to received when its
 part is reported; the list with its filters and search, grouped by order; one line's detail with its timeline."""
 
+from p3.context import HttpError
 from tests.test_fulfillment_bridge import Admin, Prefix, Service, _Enrolled, _Event, _InBag, _On, _Order, _Placed, _Prepared, _Send
 
 
@@ -163,6 +164,58 @@ async def test_a_revised_file_after_the_hand_over_is_explicit_with_a_reason_and_
         R = (await H.Client.post(Prefix + "/assets/production-stl", json={"line_id": LineId}, headers=Service)).json()
         assert R["status"] == "done" and R["pinned_sha256"] == D["pinned"]["file_sha256"] and R["handoff_no"] == 2
         assert (await H.Client.get(Prefix + f"/assets/production-stl/{Before['pinned']['three_d_id']}/stored", headers=Service)).status_code == 404   # the former result is no longer served
+    finally:
+        await H.Close()
+
+
+async def test_a_revised_stl_uploaded_from_the_production_page_is_taken_while_it_is_measured(tmp_path):
+    """§B.6 and the owner's check of 2026-10-13 (§2.2): the upload path of the Production page — the revised STL becomes a
+    version of the option and the line is re-pinned to its sized result at once, while the result is still being
+    measured (a pinned result in progress is "processing", never "another size"); the hand-over advances now, the file
+    is recorded once the result is complete and Fulfillment is told both times. A revision that cannot be a print file
+    leaves the line on the version in Production."""
+    import trimesh
+    from tests.test_fulfillment_bridge import _Enrolled
+    H = _On(tmp_path)
+    try:
+        Did, O = await _Placed(H, Qty=1)
+        await _Enrolled(H, Did, O)
+        await H.Idle()
+        LineId = H.Svc.Orders.AdminGet(O["id"])["lines"][0]["id"]
+        Before = (await H.Client.get(f"/api/admin/production/{LineId}", headers=Admin)).json()
+        Data = trimesh.creation.torus(major_radius=9.0, minor_radius=2.4).export(file_type="stl")
+        Up = (await H.Client.post("/api/admin/uploads", json={"filename": "revised.stl", "bytes": len(Data)}, headers=Admin)).json()
+        assert (await H.Client.put(f"/api/admin/uploads/{Up['id']}?offset=0", content=Data, headers=Admin)).status_code == 200
+        assert (await H.Client.post(f"/api/admin/uploads/{Up['id']}/complete", headers=Admin)).status_code == 200
+        Url = f"/api/admin/orders/{O['id']}/lines/{LineId}/production-revision"
+        R = await H.Client.post(Url, json={"upload_id": Up["id"], "scaling": "scalable", "source_tool": "Rhino", "reason": "wall thickened to 1 mm"}, headers=Admin)
+        assert R.status_code == 200, R.text
+        D = R.json()
+        assert D["handoff_no"] == 2 and D["state"] == "revised" and D["pinned"]["version_no"] == 2 and D["pinned"]["source"] == "external" and D["revision_reason"] == "wall thickened to 1 mm"
+        assert D["line"]["three_d_pinned"] and D["line"]["three_d_version"]["version_no"] == 2
+        await H.Idle()                                                                                   # the upload measured, the sized result made
+        await H.Client.get(f"/api/admin/production/{LineId}", headers=Admin)                             # this read starts the export of the result
+        await H.Idle()
+        D2 = (await H.Client.get(f"/api/admin/production/{LineId}", headers=Admin)).json()
+        assert D2["handoff_no"] == 2 and len(D2["pinned"]["file_sha256"] or "") == 64 and D2["pinned"]["file_sha256"] != Before["pinned"]["file_sha256"]
+        S = (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).json()["lines"][0]
+        assert S["production"]["handoff_no"] == 2 and S["production"]["pinned"]["file_sha256"] == D2["pinned"]["file_sha256"]
+        assert S["model"]["state"] == "complete" and S["model"]["version"]["version_no"] == 2 and S["model"]["version"]["source"] == "external"
+        Reasons = [X["reason"] for X in (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"]]
+        assert "production_revision" in Reasons and Reasons.count("production_file") == 2
+        # A revision whose file cannot be exported: refused, and the line is back on the version in Production (hand-over 2)
+        Bridge = H.App.state.Bridge
+        Keep = Bridge._ProductionFile
+        Bridge._ProductionFile = lambda Sid: (_ for _ in ()).throw(HttpError(409, "no_bore", "No ring bore was found."))
+        try:
+            R = await H.Client.post(Url, json={"mesh_id": Before["pinned"]["mesh_id"], "reason": "back to v1"}, headers=Admin)
+        finally:
+            Bridge._ProductionFile = Keep
+        assert R.status_code == 409 and R.json()["error"]["code"] == "print_file_required" and "cannot be exported" in R.json()["error"]["message"]
+        await H.Idle()
+        D3 = (await H.Client.get(f"/api/admin/production/{LineId}", headers=Admin)).json()
+        assert D3["handoff_no"] == 2 and D3["pinned"]["mesh_id"] == D2["pinned"]["mesh_id"] and D3["line"]["three_d_version"]["mesh_id"] == D2["pinned"]["mesh_id"]
+        assert D3["pinned"]["file_sha256"] == D2["pinned"]["file_sha256"]
     finally:
         await H.Close()
 

@@ -1591,7 +1591,7 @@
             </template>
           </template>
           <tr x-show="!pr.rows.length && !pr.loading"><td colspan="11" class="text-sm text-zinc-500">No line in Production.</td></tr>
-          <tr x-show="pr.loading"><td colspan="11" class="text-sm text-zinc-500">Loading…</td></tr>
+          <tr x-show="pr.loading && !pr.rows.length"><td colspan="11" class="text-sm text-zinc-500">Loading…</td></tr>
         </tbody>
       </table></div>
       <div class="px-6 py-3 flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-100"><span x-text="productionPageText()"></span>

@@ -591,3 +591,31 @@ async def test_the_lists_carry_the_fulfillment_state_and_filter_by_it(tmp_path):
         assert Rows[0]["id"] == Q["id"] and Rows[0]["fulfillment"] is None
     finally:
         await H.Close()
+
+
+async def test_the_controlled_phase_s_allowlist_is_the_server_s_rule(tmp_path):
+    """The owner's authorization of 2026-10-13 (§6): while P3_FULFILLMENT_ORDER_ALLOWLIST is set, only the listed orders
+    (by id or reference) can be sent to Production — the server refuses the others whatever the page shows, and the
+    page is told why; an order already in Production stays allowed; an empty list allows every eligible order."""
+    H = _On(tmp_path, FulfillmentOrderAllowlist=("ORD-10002",))
+    try:
+        D1, O1 = await _Placed(H, Qty=1, Click="click-a")
+        await _Prepared(H, D1, O1["id"])
+        State = (await H.Client.get(f"/api/admin/orders/{O1['id']}/fulfillment", headers=Admin)).json()
+        assert not State["eligible"] and "allowlist" in State["ineligible_reason"]
+        assert not State["lines"][0]["eligible"] and State["lines"][0]["reason"] == "order" and "allowlist" in State["lines"][0]["message"]
+        R = await H.Client.post(f"/api/admin/orders/{O1['id']}/production", json={"line_ids": [State["lines"][0]["line_id"]]}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "not_eligible" and "allowlist" in R.json()["error"]["message"]
+        assert (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"] == []
+        D2, O2 = await _Placed(H, Prompt="Another band", Qty=1, Click="click-b")
+        assert O2["ref"] == "ORD-10002"
+        await _Prepared(H, D2, O2["id"])
+        S2 = await _Send(H, O2["id"])
+        assert S2["enrolled"] and S2["lines"][0]["production"]["sent"]
+        # The list is checked again on every request: the sent order stays allowed when the list changes
+        H.Settings.FulfillmentOrderAllowlist = ("ORD-10099",)
+        assert (await H.Client.get(f"/api/admin/orders/{O2['id']}/fulfillment", headers=Admin)).json()["enrolled"]
+        R = await H.Client.post(f"/api/admin/orders/{O2['id']}/fulfillment/commands", json={"action": "cancel_line", "line_id": S2["lines"][0]["line_id"], "quantity": 1, "reason": "x"}, headers=Admin)
+        assert R.status_code == 200
+    finally:
+        await H.Close()

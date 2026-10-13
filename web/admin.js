@@ -245,6 +245,8 @@ function adminApp() {
       window.addEventListener('beforeunload', e => { if (this.qDirty) { e.preventDefault(); e.returnValue = ''; } });
       window.addEventListener('hashchange', () => this.route());
       this.startSessionsRefresh();
+      setInterval(() => this.refreshProduction(), 30 * 1000);                                   // the Production page follows Fulfillment while open
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshProduction(); });
       this.installZoom();
       try {   // the Sessions filters survive a reload
         const f = JSON.parse(sessionStorage.getItem('p3_admin_filters') || 'null');
@@ -412,8 +414,9 @@ function adminApp() {
       finally { this.ordersLoading = false; }
     },
     // ── the Production page (docs/order-to-production-review.md §H): every line sent to Production, Fulfillment's side of each ──
-    async loadProduction(offset = 0) {
-      this.pr.loading = true; this.pr.msg = '';
+    async loadProduction(offset = 0, quiet = false) {
+      if (!quiet) this.pr.loading = true;
+      this.pr.msg = '';
       try {
         const q = new URLSearchParams({ offset: String(typeof offset === 'number' ? offset : 0), limit: String(this.pr.limit) });
         for (const [k, v] of Object.entries(this.pf)) { if (v === true) q.set(k, '1'); else if (v && v !== false) q.set(k, String(v).trim()); }
@@ -438,10 +441,17 @@ function adminApp() {
       if (q.shipped) bits.push(q.shipped + ' shipped'); if (q.delivered) bits.push(q.delivered + ' delivered');
       return bits.join(' · ');
     },
-    async loadProductionDetail() {
-      this.pdError = ''; this.pd = null;
+    async loadProductionDetail(quiet = false) {
+      this.pdError = ''; if (!quiet) this.pd = null;
       try { this.pd = await this.api('GET', '/api/admin/production/' + encodeURIComponent(this.productionLineId)); }
       catch (e) { this.pdError = e.message; }
+    },
+    // The Production page follows Fulfillment's progress while it is open: a quiet re-read every 30 s and when the tab
+    // comes back — nothing is cleared meanwhile, and nothing happens while a dialog or an action is under way
+    refreshProduction() {
+      if (!this.ok || document.hidden || this.tab !== 'orders' || this.ordersView !== 'production' || this.pr.loading || this.dialog || this.xp) return;
+      if (this.productionLineId) { if (this.pd && !this.pdBusy) this.loadProductionDetail(true); }
+      else this.loadProduction(this.pr.offset, true);
     },
     // ── the Fulfillment state on lists and detail pages (docs/FULFILLMENT.md) ──
     get fulfillmentOn() { return (this.ordersMeta.fulfillment_filters || []).length > 0; },

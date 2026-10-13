@@ -313,6 +313,15 @@ class FulfillmentBridge:
         E = self.Enrollment(EntityType, EntityId)
         return bool(E and E["state"] == "enrolled")
 
+    def OrderAllowed(self, O: dict) -> bool:
+        """The controlled phase's allowlist (P3_FULFILLMENT_ORDER_ALLOWLIST, ids or references): while set, only those orders
+        go to Production — the server's rule, whatever the page shows; an order already in Production stays allowed."""
+        Allow = tuple(self.Ctx.Settings.FulfillmentOrderAllowlist or ())
+        if not Allow:
+            return True
+        Keys = {str(O.get("id") or "").strip(), str(O.get("ref") or "").strip().upper()}
+        return any(X.strip() in Keys or X.strip().upper() in Keys for X in Allow) or self.IsEnrolled("order", O["id"])
+
     def _Order(self, OrderId: str) -> dict:
         return self.Orders.AdminGet(OrderId)
 
@@ -335,6 +344,8 @@ class FulfillmentBridge:
                 return False, "the order is completed", O
             if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
                 return False, f"an order in status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' stays with the existing flow", O
+            if not self.OrderAllowed(O):
+                return False, "the order is not in the integration's allowlist (P3_FULFILLMENT_ORDER_ALLOWLIST: the controlled phase takes the listed orders only)", O
             return True, None, O
         Q = self._Quote(EntityId)
         return False, "quotations are managed here; once the quote has become an order, the order is sent", Q
@@ -369,9 +380,12 @@ class FulfillmentBridge:
             return No("not_prepared")
         if not L.get("three_d_pinned"):
             return No("not_pinned")
-        if not L.get("three_d_match"):
-            return No("other_size")
         State = L.get("three_d_state")
+        if not L.get("three_d_match"):
+            # Pinned to a result still being made (a revised STL measuring, a prepared result queued): its state, not "another size"
+            if State in ("processing", "failed", "cancelled"):
+                return No(State)
+            return No("other_size")
         if State != "complete":
             return No(State if State in ProductionReasons else "processing")
         return {"eligible": True, "reason": None, "message": None, "production": None}
@@ -542,15 +556,24 @@ class FulfillmentBridge:
         # uploaded STL is measured in the background) or flagged for review: Fulfillment receives the revision now and
         # fetches its file once the result is complete (or accepted) — exactly as it waits for any other file.
         El = self.LineEligibility(O, L, None, Known=True)
+        Problem = None
         if not El["eligible"] and El["reason"] not in ("processing", "review_required"):
-            raise HttpError(409, "print_file_required", f"The revised file is not a valid print file — {El['message']}.", {"blocked": [{"line_id": LineId, "reason": El["reason"], "message": El["message"]}]})
+            Problem = HttpError(409, "print_file_required", f"The revised file is not a valid print file — {El['message']}.", {"blocked": [{"line_id": LineId, "reason": El["reason"], "message": El["message"]}]})
         Pin = self._PinInfo(L)
         File = {}
-        if El["eligible"]:
+        if Problem is None and El["eligible"]:
             try:
                 File = self._ProductionFile(L["three_d_id"]) or {}
             except HttpError as E:
-                raise HttpError(409, "print_file_required", f"The revised file cannot be exported: {E.Message}")
+                Problem = HttpError(409, "print_file_required", f"The revised file cannot be exported: {E.Message}")
+        if Problem is not None:
+            # A refused revision changes nothing in Production: the line goes back to the version pinned there (the attempt
+            # and its reason stay in the order's history)
+            try:
+                self.Orders.UseVersion(OrderId, LineId, Prod["mesh_id"], By, f"revision refused: {Problem.Message}", ForProduction=True)
+            except HttpError:
+                pass
+            raise Problem
         T = Now()
         with self.Ctx.Db.Transaction() as Conn:
             Cur = Conn.execute("SELECT * FROM fulfillment_line_production WHERE id = ?", (Prod["id"],)).fetchone()
@@ -1080,6 +1103,8 @@ class FulfillmentBridge:
         Lines = []
         for L in Record["lines"]:
             El = self.LineEligibility(Record, L, Rows.get(L["id"]), Known=True)
+            if El["eligible"] and not Ok:                 # the order itself may not go (status, the controlled phase's allowlist): its lines say why
+                El = {**El, "eligible": False, "reason": "order", "message": Why}
             Lines.append({"line_id": L["id"], "item_ref": L["ring_id"], "title": L["title"], "quantity": L["quantity"], "eligible": El["eligible"],
                           "reason": El["reason"], "message": El["message"], "print_version": L.get("three_d_version"), "print_state": L.get("three_d_state"),
                           "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")), "production": self._ProductionJson(Rows.get(L["id"]))})
