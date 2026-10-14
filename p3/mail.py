@@ -91,6 +91,78 @@ def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
         </table>"""))
 
 
+
+# ── Account security emails (AJW-39): links carry single-use secrets; no email ever carries a password or a sign-in code ──
+
+def _LinkFooter(U: str, Hours: str) -> str:
+    return (f'''<p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">This link works once and expires in {Hours}. If you
+           didn't ask for it, you can safely ignore this email &mdash; nothing changes until the link is used.</p>
+        <p style="margin:12px 0 0;font-size:11px;color:#A0A0A0;word-break:break-all;">If the button doesn't work,
+           copy this link into your browser:<br><a href="{U}" style="color:#9A7230;">{U}</a></p>''')
+
+
+def AuthVerifyEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
+    U = html.escape(VerifyUrl, quote=True)
+    return ("Confirm your email — XJet Atelier", _Layout("Confirm your email", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">Thanks for creating your XJet Atelier account. Confirm that this is your email address
+           and you're ready to start designing.</p>
+        {_Button(U, "Confirm email")}
+        {_LinkFooter(U, "24&nbsp;hours")}"""))
+
+
+def ResetPasswordEmail(Name: str, ResetUrl: str, FirstPassword: bool = False) -> tuple[str, str]:
+    U = html.escape(ResetUrl, quote=True)
+    Lead = ("You asked to set a password for your XJet Atelier account. Your designs, credits and orders are already on it; "
+            "this just gives you a new way to sign in.") if FirstPassword else \
+           "We received a request to reset the password of your XJet Atelier account. Choose a new one with the button below."
+    return ("Set your password — XJet Atelier" if FirstPassword else "Reset your password — XJet Atelier",
+            _Layout("Set your password" if FirstPassword else "Reset your password", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">{Lead}</p>
+        {_Button(U, "Choose a password")}
+        {_LinkFooter(U, "1&nbsp;hour")}"""))
+
+
+def AccountExistsEmail(Name: str, SiteUrl: str) -> tuple[str, str]:
+    U = html.escape(SiteUrl, quote=True)
+    return ("You already have an XJet Atelier account", _Layout("You already have an account", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">Someone &mdash; hopefully you &mdash; tried to create an XJet Atelier account with this email
+           address, but it already has one. Sign in with it below; if you forgot your password, use &ldquo;Forgot password&rdquo;
+           on the sign-in page.</p>
+        {_Button(U, "Sign in")}
+        <p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">If this wasn't you, no action is needed.</p>"""))
+
+
+def ConfirmLinkEmail(Name: str, Provider: str, ConfirmUrl: str) -> tuple[str, str]:
+    U = html.escape(ConfirmUrl, quote=True)
+    P = html.escape(Provider.title())
+    return (f"Confirm your {Provider.title()} sign-in — XJet Atelier", _Layout("Connect your sign-in", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 28px;">Someone signed in to XJet Atelier with a {P} account that uses your email address. If it was
+           you, confirm below to connect it to your existing account &mdash; your designs, credits and orders stay together.</p>
+        {_Button(U, "Confirm")}
+        {_LinkFooter(U, "1&nbsp;hour")}"""))
+
+
+def PasswordChangedEmail(Name: str, Support: str = "") -> tuple[str, str]:
+    S = html.escape(Support or "XJet")
+    return ("Your XJet Atelier password was changed", _Layout("Your password was changed", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0 0 14px;">The password of your XJet Atelier account was just set or changed, and every other browser
+           was signed out.</p>
+        <p style="margin:0;font-size:13px;color:#6F6F6F;">If this wasn't you, reset your password straight away and contact {S}.</p>"""))
+
+
+def AccountUnavailableEmail(Name: str, Removed: bool, Support: str = "") -> tuple[str, str]:
+    S = html.escape(Support or "XJet")
+    What = "was removed" if Removed else "is not active"
+    return ("About your XJet Atelier account", _Layout("About your account", f"""\
+        <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
+        <p style="margin:0;">The XJet Atelier account for this email address {What}. Please contact {S} to restore access.</p>"""))
+
+
 def _Money(V, Cur="USD") -> str:
     return ("$" if Cur == "USD" else Cur + " ") + f"{float(V or 0):,.2f}"
 
@@ -273,6 +345,12 @@ def SpendWarningEmail(Spend: float, Threshold: float, Day: str, Site: str, Admin
         {_Button(AdminUrl, "Open the Admin dashboard") if AdminUrl else ""}"""))
 
 
+def _MaskTo(Email: str) -> str:
+    """dana@example.com → d***@example.com: the log never carries a whole address."""
+    Local, _, Domain = (Email or "").partition("@")
+    return f"{Local[:1]}***@{Domain}" if Domain else "***"
+
+
 class OutboxMailer:
     Mode = "outbox"
 
@@ -286,7 +364,7 @@ class OutboxMailer:
         (self.Dir / f"{Id}.json").write_text(json.dumps(
             {"id": Id, "to": To, "subject": Subject, "html": HtmlBody, "sent_at": Stamp, "delivery": Delivery},
             indent=2), encoding="utf-8")
-        Logger.info("Outbox mail %s to %s: %s", Id, To, Subject)
+        Logger.info("Outbox mail %s to %s: %s", Id, _MaskTo(To), Subject)
         return Id
 
     def List(self, Limit: int = 50) -> list[dict]:
@@ -341,7 +419,7 @@ class SmtpMailer:
         Verdict = f"smtp refused: {Refused}" if Refused else f"smtp accepted by {self.Server}:{self.Port}"
         if self.Record:
             self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict)
-        Logger.info("SMTP mail to %s: %s — %s", To, Subject, Verdict)
+        Logger.info("SMTP mail to %s: %s — %s", _MaskTo(To), Subject, Verdict)
         return Msg["Message-ID"]
 
     def List(self, Limit: int = 50) -> list[dict]:

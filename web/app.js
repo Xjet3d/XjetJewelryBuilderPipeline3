@@ -125,9 +125,15 @@ function p3App() {
     userProfile: { name: '', email: '' },
     signInNotice: null,                // {title, text} banner on the Design screen after sign-in
     showRegModal: false,
-    regMode: 'email',                  // 'email' = self-registration, 'token' = enter existing token
-    regForm: { token: '', name: '', email: '' },
-    regError: '', regInfo: '', regLoading: false,
+    regMode: 'signin',                 // signin | register | forgot | code (a six-letter code) | claim (secure a claimed account);
+                                       // legacy server mode keeps the old 'email' / 'token' dialog
+    regForm: { token: '', name: '', email: '', password: '' },
+    regError: '', regInfo: '', regLoading: false, regUnverified: false,
+    authCfg: { mode: 'dual', providers: {} },   // GET /api/auth/config
+    authCsrf: '',                      // the session's CSRF token: sent as X-CSRF-Token on every unsafe request
+    claim: { ticket: '', name: '', email: '' },  // a legacy six-letter code that was accepted: finish by attaching a real login
+    sec: { data: null, loading: false, busy: false, msg: '', err: '', newPw: '', reauthPw: '', needReauth: false, showPw: false },
+    get legacyAuth() { return this.authCfg.mode === 'legacy'; },
     quotaUsed: 0, quotaMax: 10,
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
     get token() { return (this.userSession && this.userSession.token) || ''; },
@@ -225,20 +231,9 @@ function p3App() {
         const P = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
         if (P) this.userProfile = { name: P.name || '', email: P.email || '' };
       } catch (_) {}
-      // A #token=… link (verification email / verify page) signs the user straight in and takes
-      // precedence over a saved session; otherwise restore the saved session (P2 behaviour).
-      const fromLink = this._loginFromUrlToken();
-      if (!fromLink) {
-        try {
-          const S = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-          if (S && S.token) {
-            this.userSession = S;
-            this.quotaUsed = S.quotaUsed || 0;
-            this.quotaMax = S.quotaMax || 10;
-            if (S.name && !this.userProfile.name) this._saveUserProfile(S.name, null);
-          }
-        } catch (_) { try { localStorage.removeItem(SESSION_KEY); } catch (__) {} }
-      }
+      // Who is signed in: the server's cookie session, else (while the server still allows it) a saved six-letter token.
+      const fromLink = await this._bootAuth();
+      const authStatus = this._authFragment();
       if (this.userSession) { await this._refreshQuota(); this.loadFavorites(); }
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
@@ -251,9 +246,14 @@ function p3App() {
         if (PAGE_VIEWS.includes(h)) this.navigateTo(h); else if (h === 'account') this.openAccountPage();
       });
       if (hashView === 'account') this.view = 'account';          // signed out, the page offers the sign-in
+      if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
       if (!this.token) return;
       this.refreshBag();
-      if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); }
+      if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); this.loadSecurity(); }
+      if (authStatus === 'ok' || authStatus === 'created') {
+        try { this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
+        await this._afterSignIn(false); return;
+      }
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
@@ -277,13 +277,14 @@ function p3App() {
     poster(url) { return url && ASSET_PATH.test(url) ? url.replace(ASSET_PATH, '/poster/') : ''; },
     async api(method, path, body, opts = {}) {
       const headers = {};
-      if (!opts.noAuth && this.token) headers['X-Access-Token'] = this.token;
+      if (!opts.noAuth && this.token && !this.userSession?.session) headers['X-Access-Token'] = this.token;   // a legacy six-letter token
+      if (this.authCsrf && method !== 'GET') headers['X-CSRF-Token'] = this.authCsrf;                            // a cookie session
       let payload;
       if (body instanceof FormData) payload = body;
       else if (body !== null && body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
       let resp;
       try {
-        resp = await fetch(url(path), { method, headers, body: payload });
+        resp = await fetch(url(path), { method, headers, body: payload, credentials: 'same-origin' });
       } catch (e) {
         throw new ApiError(0, 'network', 'Network error — please check your connection.');
       }
@@ -291,6 +292,11 @@ function p3App() {
       if (!resp.ok) {
         const err = data.error || {};
         if (resp.status === 402) this._refreshQuota();
+        if (resp.status === 403 && err.code === 'csrf' && !opts._retried) {          // the CSRF token went stale: fetch a fresh one once
+          const S = await fetch(url('/api/auth/session'), { credentials: 'same-origin' }).then(r => r.json()).catch(() => null);
+          if (S?.authenticated) { this.authCsrf = S.csrf; return this.api(method, path, body, { ...opts, _retried: true }); }
+        }
+        if (resp.status === 401 && err.code === 'login_required' && this.userSession && !opts.noAuth) this._sessionEnded();
         const ex = new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
         if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
         throw ex;
@@ -628,10 +634,10 @@ function p3App() {
     // ── Sign-in / registration (P2 JewelryB2C2) ───────────────────────
     // A proper dialog: focus moves inside when it opens, stays inside (Tab cycles), and returns to the
     // element that opened it when it closes; Escape and the Close button close it.
-    openRegModal(mode = 'email') {
-      this.regMode = mode;
-      this.regError = ''; this.regInfo = '';
-      this.regForm = { token: '', name: '', email: '' };
+    openRegModal(mode) {
+      this.regMode = mode || (this.legacyAuth ? 'email' : 'signin');
+      this.regError = ''; this.regInfo = ''; this.regUnverified = false;
+      this.regForm = { token: '', name: '', email: '', password: '' };
       this._returnFocus = document.activeElement;
       this.showRegModal = true;
       // The dialog is teleported to <body>, so it is found by id rather than through $refs.
@@ -653,6 +659,188 @@ function p3App() {
       if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
       else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
     },
+    // ── Sign-in with a session cookie (AJW-39): Google · Apple · email and password · a legacy six-letter code ──
+    async _bootAuth() {
+      let fromLink = false;
+      try { this.authCfg = await this.api('GET', '/api/auth/config', null, { noAuth: true }); } catch (_) {}
+      if (this.legacyAuth) fromLink = this._loginFromUrlToken();
+      else this._dropUrlToken();
+      let S = null;
+      try { S = await this.api('GET', '/api/auth/session', null, { noAuth: true }); } catch (_) {}
+      if (S && S.authenticated) {
+        this.authCsrf = S.csrf;
+        this._setSession({ token: 'session', session: true, name: S.account.name, email: S.account.email, quotaUsed: 0, quotaMax: 10 });
+        this._saveUserProfile(S.account.name || null, S.account.email || null);
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}                // nothing of a session lives in the browser's storage
+      } else if (!fromLink && this.authCfg.mode !== 'modern') {
+        try {
+          const L = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+          if (L && L.token && !L.session) {
+            this.userSession = L; this.quotaUsed = L.quotaUsed || 0; this.quotaMax = L.quotaMax || 10;
+            if (L.name && !this.userProfile.name) this._saveUserProfile(L.name, null);
+          }
+        } catch (_) { try { localStorage.removeItem(SESSION_KEY); } catch (__) {} }
+      } else if (!fromLink) {
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+      }
+      return fromLink;
+    },
+    _dropUrlToken() {          // an old "#token=…" link: the six-letter code is no longer a login; keep nothing of it in the address bar
+      try {
+        const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        if (!P.has('token')) return;
+        P.delete('token');
+        history.replaceState(history.state, '', location.pathname + location.search + (P.toString() ? '#' + P.toString() : ''));
+      } catch (_) {}
+    },
+    // "#auth=ok" … the server's redirect after a Google / Apple round trip or an emailed link
+    _authFragment() {
+      try {
+        const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        const a = P.get('auth');
+        if (!a) return '';
+        P.delete('auth');
+        history.replaceState(history.state, '', location.pathname + location.search + (P.toString() ? '#' + P.toString() : ''));
+        return a;
+      } catch (_) { return ''; }
+    },
+    AUTH_MESSAGES: {
+      failed: "That sign-in didn't complete. Please try again.", cancelled: 'Sign-in was cancelled.',
+      unavailable: 'That sign-in method is not available right now.', blocked: 'This account is not active. Please contact us to restore access.',
+      expired: 'That step took too long. Please start again.', already_linked: 'That Google or Apple account is already connected to a different XJet Atelier account.',
+      provider_present: 'A different account of that kind is already connected. Disconnect it first.', wrong_account: "That isn't the account connected here.",
+      reauth_required: 'Please confirm it\'s you first.', confirm_sent: 'We emailed you a link to confirm connecting that sign-in. Open it to continue.',
+      connected: 'Connected.', reauthenticated: 'Confirmed.',
+    },
+    _showAuthStatus(a) {
+      const text = this.AUTH_MESSAGES[a] || 'Something went wrong. Please try again.';
+      if (this.userSession) {
+        this.toast = { text, label: '', action: null }; setTimeout(() => { this.toast = null; }, 6000);
+        if (['connected', 'reauthenticated', 'already_linked', 'provider_present', 'wrong_account', 'reauth_required'].includes(a)) this.openAccountPage('security');
+        return;
+      }
+      this.openRegModal('signin');
+      if (a === 'confirm_sent') this.regInfo = text; else this.regError = text;
+    },
+    authStartUrl(provider, purpose = 'login', ticket = '') {
+      return url('/api/auth/' + provider + '/start?purpose=' + encodeURIComponent(purpose) + (ticket ? '&ticket=' + encodeURIComponent(ticket) : ''));
+    },
+    // Leave for Google / Apple: what the customer was about to do is kept across the round trip
+    startProvider(provider, purpose = 'login', ticket = '') {
+      try { sessionStorage.setItem('p3_pending_panel', this._pendingPanel || ''); } catch (_) {}
+      location.href = this.authStartUrl(provider, purpose, ticket);
+    },
+    _signedIn(R) {
+      this.authCsrf = R.csrf;
+      this._setSession({ token: 'session', session: true, name: R.account.name, email: R.account.email, quotaUsed: 0, quotaMax: 10 });
+      this._saveUserProfile(R.account.name || null, R.account.email || null);
+      this.showRegModal = false; this._returnFocus = null;
+      this.regForm = { token: '', name: '', email: '', password: '' };
+      try { localStorage.removeItem(SESSION_KEY); } catch (_) {}      // a six-letter-code session is replaced by this one
+      try { if (!this._pendingPanel) this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
+      return this._afterSignIn(false).then(() => this.refreshBag());
+    },
+    regSwitch(mode) { this.regMode = mode; this.regError = ''; this.regInfo = ''; this.regUnverified = false; this.regForm.password = ''; },
+    async _regCall(fn) {
+      this.regLoading = true; this.regError = ''; this.regInfo = ''; this.regUnverified = false;
+      try { await fn(); } catch (E) { this.regError = E.message; this.regUnverified = E.code === 'email_unverified'; } finally { this.regLoading = false; }
+    },
+    submitSignIn() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/login', { email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
+        await this._signedIn(R);
+      });
+    },
+    submitRegister() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/register', { name: this.regForm.name.trim(), email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
+        this.regInfo = R.message; this.regForm.password = '';
+      });
+    },
+    submitForgot() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/forgot', { email: this.regForm.email.trim() }, { noAuth: true });
+        this.regInfo = R.message;
+      });
+    },
+    resendVerification() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/resend-verification', { email: this.regForm.email.trim() }, { noAuth: true });
+        this.regInfo = R.message;
+      });
+    },
+    submitClaimCode() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/claim', { token: this.regForm.token.trim() }, { noAuth: true });
+        this.claim = { ticket: R.ticket, name: R.name, email: R.email };
+        this.regForm.email = R.email || ''; this.regForm.token = ''; this.regMode = 'claim';
+      });
+    },
+    submitClaimPassword() {
+      return this._regCall(async () => {
+        const R = await this.api('POST', '/api/auth/claim/password', { ticket: this.claim.ticket, email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
+        if (R.verification_sent) { this.regInfo = R.message; this.regForm.password = ''; return; }
+        await this._signedIn(R);
+      });
+    },
+
+    // ── Account page: Sign-in & security ─────────────────────────────────
+    async loadSecurity() {
+      if (!this.userSession?.session) { this.sec.data = null; return; }
+      this.sec.loading = true;
+      try { this.sec.data = await this.api('GET', '/api/auth/account'); this.authCsrf = this.sec.data.csrf; } catch (_) { /* shown empty */ }
+      finally { this.sec.loading = false; }
+    },
+    _secCall(fn) {
+      this.sec.busy = true; this.sec.msg = ''; this.sec.err = '';
+      return fn().catch(E => {
+        if (E.code === 'reauth_required') { this.sec.needReauth = true; this.sec.err = 'Please confirm it\'s you to make this change.'; }
+        else this.sec.err = E.message;
+      }).finally(() => { this.sec.busy = false; });
+    },
+    secReauth() {
+      return this._secCall(async () => {
+        await this.api('POST', '/api/auth/reauth', { password: this.sec.reauthPw });
+        this.sec.reauthPw = ''; this.sec.needReauth = false; this.sec.msg = 'Confirmed. You can make your change now.';
+        await this.loadSecurity();
+      });
+    },
+    secSetPassword() {
+      return this._secCall(async () => {
+        const R = await this.api('POST', '/api/auth/password', { new_password: this.sec.newPw });
+        this.authCsrf = R.csrf; this.sec.newPw = ''; this.sec.msg = 'Password saved. Every other browser was signed out.';
+        await this.loadSecurity();
+      });
+    },
+    secDisconnect(m) {
+      return this._secCall(async () => {
+        const R = await this.api('DELETE', '/api/auth/methods/' + encodeURIComponent(m.id));
+        this.authCsrf = R.csrf; this.sec.msg = 'Disconnected.'; await this.loadSecurity();
+      });
+    },
+    secRevokeOthers() {
+      return this._secCall(async () => {
+        const R = await this.api('POST', '/api/auth/sessions/revoke-others');
+        this.sec.msg = R.revoked ? 'Signed out of ' + R.revoked + ' other browser' + (R.revoked === 1 ? '' : 's') + '.' : 'No other browsers were signed in.';
+        await this.loadSecurity();
+      });
+    },
+    secRevoke(s) {
+      return this._secCall(async () => { await this.api('DELETE', '/api/auth/sessions/' + encodeURIComponent(s.id)); await this.loadSecurity(); });
+    },
+    // A six-letter-code session upgrades itself: the code it holds is exchanged for a claim ticket
+    async startClaimFromSession() {
+      try {
+        const R = await this.api('POST', '/api/auth/claim', { token: this.token });
+        this.claim = { ticket: R.ticket, name: R.name, email: R.email };
+        this.regMode = 'claim'; this.regError = ''; this.regInfo = '';
+        this.regForm = { token: '', name: '', email: R.email || '', password: '' };
+        this._returnFocus = document.activeElement; this.showRegModal = true;
+      } catch (E) { this.sec.err = E.message; }
+    },
+    secProviderLabel(p) { return { google: 'Google', apple: 'Apple', password: 'Email and password' }[p] || p; },
+    secWhen(iso) { return iso ? new Date(iso).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; },
+
     async submitEmailRegistration() {
       this.regLoading = true; this.regError = ''; this.regInfo = '';
       try {
@@ -691,7 +879,7 @@ function p3App() {
       this.userSession = S;
       this.quotaUsed = S.quotaUsed || 0;
       this.quotaMax = S.quotaMax || 10;
-      try { localStorage.setItem(SESSION_KEY, JSON.stringify(S)); } catch (_) {}
+      if (!S.session) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(S)); } catch (_) {} }
     },
     // Log in from a #token=… fragment (the "Continue designing" link). A fragment is never sent to
     // the server, so the token stays out of access logs. Returns true when a token was present.
@@ -720,7 +908,7 @@ function p3App() {
       Object.assign(this.userSession, { quotaUsed: Q.used, quotaMax: Q.max });
       if (Q.name) this.userSession.name = Q.name;
       if (Q.email) this.userSession.email = Q.email;
-      try { localStorage.setItem(SESSION_KEY, JSON.stringify(this.userSession)); } catch (_) {}
+      if (!this.userSession.session) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(this.userSession)); } catch (_) {} }
       if ((Q.name && !this.userProfile.name) || (Q.email && !this.userProfile.email)) {
         this._saveUserProfile(Q.name || null, Q.email || null);
       }
@@ -744,7 +932,17 @@ function p3App() {
       this.signInNotice = null;
       this.$nextTick(() => { const t = document.getElementById('p3-composer-input'); if (t) t.focus(); });
     },
+    // The server ended this browser's session (revoked, expired, account switched off): back to a signed-out page
+    _sessionEnded() {
+      if (!this.userSession) return;
+      this._localLogout = true; this.logout();
+      this.openRegModal('signin'); this.regError = 'Your session has ended. Please sign in again.';
+    },
     logout() {
+      const local = this._localLogout; this._localLogout = false;
+      if (this.userSession?.session && !local) { this.api('POST', '/api/auth/logout').catch(() => {}); }
+      this.authCsrf = '';
+      this.sec = { data: null, loading: false, busy: false, msg: '', err: '', newPw: '', reauthPw: '', needReauth: false, showPw: false };
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
       try { localStorage.removeItem(PROFILE_KEY); } catch (_) {}        // nothing of the person stays in the browser
       this.stopPolling();
@@ -1766,7 +1964,8 @@ function p3App() {
       this.closeAccountPanel(); this.menuOpen = false;
       if (!this.userSession) { this._pendingPanel = 'account'; this.openRegModal(); return; }
       this.navigateTo('account');
-      if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+      this.loadSecurity();
+      if (anchor) setTimeout(() => document.getElementById(anchor === 'security' ? 'account-security' : anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
     },
     openOrderByRef(ref) {
       const o = this.orders.find(x => x.ref === ref);

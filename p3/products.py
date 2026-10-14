@@ -314,8 +314,7 @@ def AdminPreview(Ctx: Context, Request) -> bool:
         return False
     from p3 import adminauth
     try:
-        return bool(hasattr(Request, "headers") and Ctx.Settings.AdminKey
-                    and any(adminauth.Validate(Ctx, T) for T in adminauth.Tokens(Request)))
+        return bool(hasattr(Request, "headers") and any(adminauth.Validate(Ctx, T) for T in adminauth.Tokens(Request)))
     except Exception:  # noqa: BLE001 — never let a preview check break the customer site
         return False
 

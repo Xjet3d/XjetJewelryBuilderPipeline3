@@ -173,6 +173,7 @@ function adminApp() {
   return {
     BASE,
     key: '', keyInput: '', ok: false, busy: false, error: '', mode: '',
+    authCfg: { identity_enforced: false, key_login: true, providers: {} },   // how this server lets administrators in
     users: [], search: '', showRemoved: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
     credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
@@ -247,8 +248,18 @@ function adminApp() {
         if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sGallery: f.sGallery || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started',
                                      sProduct: ['ring', 'charm'].includes(f.sProduct) ? f.sProduct : '' });
       } catch (_) {}
+      // How administrators sign in here, and what a provider round trip just answered (#auth=denied …)
+      try { this.authCfg = await (await fetch(BASE + '/api/admin/auth/config')).json(); } catch (_) {}
+      const AUTH_TEXT = { denied: 'That account is not an administrator of this site.', failed: 'The sign-in did not complete. Please try again.',
+                          cancelled: 'Sign-in was cancelled.', unavailable: 'That sign-in method is not available.' };
+      let authErr = '';
+      try {
+        const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        const a = P.get('auth');
+        if (a) { history.replaceState(null, '', location.pathname + location.search); if (a !== 'ok') authErr = AUTH_TEXT[a] || 'The sign-in did not complete.'; }
+      } catch (_) {}
       // A remembered browser: the session cookie signs in without asking for the key again.
-      try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = ''; }
+      try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = authErr; }
     },
 
     // ── dialogs & toasts (no native alert/confirm/prompt) ───────────────

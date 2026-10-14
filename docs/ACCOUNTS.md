@@ -1,5 +1,7 @@
 # Accounts, tokens and credits — current design and the shared-auth integration point
 
+> **Sign-in changed in AJW-39.** Google, Apple and email/password logins, cookie sessions and the migration of the six-letter codes are described in [AUTH-OPERATIONS-AJW-39.md](AUTH-OPERATIONS-AJW-39.md). The "Sign-in, registration and the account area" section below describes `P3_AUTH_MODE=legacy`, the behaviour before that change; the credits, usage and account-id rules on this page still apply unchanged.
+
 ## Now (Phase 1)
 
 P3 is operationally separate from P2. It has its own accounts, tokens, usage and database, and makes no connection to P2's `tokens.db` / `designs.db`.

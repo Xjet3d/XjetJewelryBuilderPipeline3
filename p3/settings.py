@@ -55,6 +55,7 @@ class Settings:
     Env: str = "development"         # P3_ENV: development | production — production enforces ValidateProduction()
     PublicBaseUrl: str = ""          # P3_PUBLIC_BASE_URL: the customer site's origin for emailed links, share links, sitemap
     AdminHost: str = ""              # P3_ADMIN_HOST: the Admin page/API (and dev tools) answer only on this host
+    AdminBaseUrl: str = ""           # P3_ADMIN_BASE_URL: where Admin sign-in returns to, e.g. http://localhost:8340 (an SSH tunnel)
     LockMode: bool = False           # P3_LOCK_MODE: the live/mock switch is refused and var/runtime.json is ignored
     SigningSecret: str | None = None  # P3_SIGNING_SECRET: HMAC secret for signed download links (falls back to the admin key)
     MailMode: str = "outbox"         # P3_MAIL_MODE: outbox | smtp (read by p3.mail; here for validation)
@@ -67,6 +68,15 @@ class Settings:
     StaffNotifyEmails: tuple = ()    # P3_STAFF_NOTIFY_EMAILS: who is emailed about a new order or quote request (comma-separated;
                                      # unset = the support address, "none" = nobody)
     ReplyTo: str = ""                # MAIL_REPLY_TO: the Reply-To of outgoing mail (unset = the support address)
+    # ── customer authentication and administrator identity (AJW-39, docs/AUTH-PROPOSAL-AJW-39.md) ──
+    AuthMode: str = "dual"           # P3_AUTH_MODE: legacy (6-letter token only) | dual (sessions and token) | modern (sessions only)
+    AdminIdentityEnforced: bool = False   # P3_ADMIN_IDENTITY_ENFORCED: the Admin opens only for enrolled Google/Apple identities
+    GoogleClientId: str = ""         # P3_GOOGLE_CLIENT_ID / P3_GOOGLE_CLIENT_SECRET: the Google OAuth web client
+    GoogleClientSecret: str = ""
+    AppleClientId: str = ""          # P3_APPLE_CLIENT_ID (the Services ID), P3_APPLE_TEAM_ID, P3_APPLE_KEY_ID,
+    AppleTeamId: str = ""            # P3_APPLE_PRIVATE_KEY (the .p8 text, "\n" allowed) or P3_APPLE_PRIVATE_KEY_PATH
+    AppleKeyId: str = ""
+    ApplePrivateKey: str = ""
 
     @property
     def Production(self) -> bool:
@@ -95,6 +105,15 @@ class Settings:
     def DevDir(self) -> Path:
         """Developer-only artifacts (meshes). Never served statically."""
         return self.DataDir / "dev"
+
+
+def _ApplePrivateKey() -> str:
+    """The Sign in with Apple private key (.p8): inline in P3_APPLE_PRIVATE_KEY, or read from P3_APPLE_PRIVATE_KEY_PATH."""
+    Inline = os.environ.get("P3_APPLE_PRIVATE_KEY", "").strip().replace("\\n", "\n")
+    if Inline:
+        return Inline
+    Path_ = os.environ.get("P3_APPLE_PRIVATE_KEY_PATH", "").strip()
+    return Path(Path_).read_text(encoding="utf-8").strip() if Path_ and Path(Path_).is_file() else ""
 
 
 def NormalizeBasePath(Raw: str | None) -> str:
@@ -138,6 +157,7 @@ def LoadSettings(**Overrides) -> Settings:
         Env=os.environ.get("P3_ENV", "development").strip().lower() or "development",
         PublicBaseUrl=os.environ.get("P3_PUBLIC_BASE_URL", "").strip().rstrip("/"),
         AdminHost=os.environ.get("P3_ADMIN_HOST", "").strip().lower(),
+        AdminBaseUrl=os.environ.get("P3_ADMIN_BASE_URL", "").strip().rstrip("/"),
         LockMode=_Bool("P3_LOCK_MODE"),
         SigningSecret=os.environ.get("P3_SIGNING_SECRET") or None,
         MailMode=os.environ.get("P3_MAIL_MODE", "outbox").strip().lower(),
@@ -147,6 +167,14 @@ def LoadSettings(**Overrides) -> Settings:
         SupportEmail=Support,
         StaffNotifyEmails=StaffRecipients(os.environ.get("P3_STAFF_NOTIFY_EMAILS", ""), Support),
         ReplyTo=os.environ.get("MAIL_REPLY_TO", "").strip() or Support,
+        AuthMode=os.environ.get("P3_AUTH_MODE", "dual").strip().lower(),
+        AdminIdentityEnforced=_Bool("P3_ADMIN_IDENTITY_ENFORCED"),
+        GoogleClientId=os.environ.get("P3_GOOGLE_CLIENT_ID", "").strip(),
+        GoogleClientSecret=os.environ.get("P3_GOOGLE_CLIENT_SECRET", "").strip(),
+        AppleClientId=os.environ.get("P3_APPLE_CLIENT_ID", "").strip(),
+        AppleTeamId=os.environ.get("P3_APPLE_TEAM_ID", "").strip(),
+        AppleKeyId=os.environ.get("P3_APPLE_KEY_ID", "").strip(),
+        ApplePrivateKey=_ApplePrivateKey(),
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])
@@ -161,6 +189,8 @@ def LoadSettings(**Overrides) -> Settings:
             S.AdminKey, S.AdminKeyFromAdmin = SavedAdmin, True
     if S.Env not in ("development", "production"):
         raise ValueError(f"P3_ENV must be 'development' or 'production', got {S.Env!r}")
+    if S.AuthMode not in ("legacy", "dual", "modern"):
+        raise ValueError(f"P3_AUTH_MODE must be legacy, dual or modern, got {S.AuthMode!r}")
     if S.Provider not in ("mock", "fal"):
         raise ValueError(f"P3_PROVIDER must be 'mock' or 'fal', got {S.Provider!r}")
     if S.Provider == "fal" and not S.FalKey:
@@ -197,6 +227,10 @@ def ValidateProduction(S: Settings) -> list[str]:
         P.append("P3_MAIL_MODE must be smtp (the outbox mode sends nothing)")
     if S.DailyAiSpendCapUsd is None or S.DailyAiSpendCapUsd <= 0:
         P.append("P3_DAILY_AI_SPEND_CAP_USD must be set (the day's paid AI submissions stop at this estimate)")
+    if S.AuthMode == "legacy":
+        P.append("P3_AUTH_MODE must be dual or modern (legacy is the pre-AJW-39 six-letter-token sign-in)")
+    if S.AuthMode == "modern" and not S.AdminIdentityEnforced:
+        P.append("P3_AUTH_MODE=modern requires P3_ADMIN_IDENTITY_ENFORCED=true (the Admin must not stay behind the shared key)")
     if "@" not in S.SupportEmail:
         P.append("P3_SUPPORT_EMAIL must be an email address (unset, the site uses the shared inbox " + DefaultSupportEmail + ")")
     try:

@@ -186,6 +186,14 @@
   <main x-show="!ok" x-cloak class="max-w-md mx-auto p-8 mt-16">
     <div class="card p-8 space-y-4">
       <h1 class="cinzel text-xl">Admin sign-in</h1>
+      <!-- Administrators: their own Google / Apple account, enrolled by the operator. Nothing else opens the Admin once this is enforced. -->
+      <div x-show="authCfg.identity_enforced || authCfg.providers.google || authCfg.providers.apple" x-cloak class="space-y-3">
+        <p class="text-sm text-zinc-500">Sign in with your administrator account. This browser stays signed in for 12 hours.</p>
+        <div x-show="authCfg.providers.google"><a :href="BASE + '/api/admin/auth/google/start'" class="btn w-full" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">Continue with Google</a></div>
+        <div x-show="authCfg.providers.apple"><a :href="BASE + '/api/admin/auth/apple/start'" class="btn w-full" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">Continue with Apple</a></div>
+        <p x-show="authCfg.identity_enforced && !authCfg.providers.google && !authCfg.providers.apple" class="text-sm text-red-600" role="alert">No administrator sign-in method is configured on this server.</p>
+      </div>
+      <div x-show="authCfg.key_login" x-cloak class="space-y-4" style="margin-top:1rem">
       <p class="text-sm text-zinc-500">Enter the P3 admin key once. This browser stays signed in — across closed tabs, a closed browser and restarts — until you sign out. The key itself is never stored in the browser.</p>
       <label class="lbl block" for="admin-key">Admin key</label>
       <div x-data="{ show: false }" style="position:relative">
@@ -196,8 +204,9 @@
           <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
         </button>
       </div>
+      </div>
       <p x-show="error" class="text-sm text-red-600" role="alert" x-text="error"></p>
-      <button class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
+      <button x-show="authCfg.key_login" class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
     </div>
   </main>
 
@@ -206,7 +215,7 @@
 
     <!-- Create -->
     <section class="card p-6">
-      <p class="lbl mb-4">Create a customer (sign-in code)</p>
+      <p class="lbl mb-4">Create a customer (one-time code)</p>
       <form class="grid grid-cols-1 md:grid-cols-[1fr_1fr_150px_auto] gap-4 items-end" @submit.prevent="create()">
         <div><label class="lbl block mb-1.5">Name <span class="text-red-500">*</span></label>
           <input class="inp" x-model="form.Name" required placeholder="Full name"></div>

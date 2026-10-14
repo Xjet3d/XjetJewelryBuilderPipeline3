@@ -11,7 +11,10 @@ implementing this same Protocol (see docs/ACCOUNTS.md) — no other module chang
 """
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from p3.accounts.identity import IdentityStore
 
 
 class AuthError(Exception):
@@ -77,6 +80,7 @@ UsagePromptCheck = "prompt_check"      # one LLM request before the images (XJet
 
 class AccountProvider(Protocol):
     Issuer: str
+    Identity: "IdentityStore"        # logins, passwords, single-use tokens and sessions (p3/accounts/identity.py, AJW-39)
 
     def Authenticate(self, Token: str | None) -> Principal:
         """Resolve an access token to a Principal or raise AuthError."""

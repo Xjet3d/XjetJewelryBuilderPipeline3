@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>{{TITLE}} — XJet Atelier</title>
+<style>
+  :root { --ink:#1A1A1A; --muted:#5C5C5C; --gold:#9A7230; --line:#E5DED0; --bg:#FAF8F4; --err:#9B1C1C; --ok:#1F6B3A; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
+         background:#fff; color:var(--ink); font:16px/1.55 Helvetica,Arial,sans-serif; }
+  main { width:100%; max-width:440px; background:var(--bg); border:1px solid #EDE8DF; border-top:3px solid #C9A96E; padding:32px 28px; }
+  .brand { margin:0 0 6px; text-transform:uppercase; letter-spacing:3px; font-size:11px; color:var(--gold); font-weight:700; }
+  h1 { margin:0 0 16px; font-size:24px; font-weight:600; }
+  p { margin:0 0 16px; }
+  label { display:block; font-size:14px; font-weight:600; margin:0 0 6px; }
+  input { width:100%; min-height:44px; padding:10px 12px; font:inherit; border:1px solid #8a8a8a; border-radius:4px; background:#fff; color:var(--ink); }
+  input:focus-visible, button:focus-visible, a:focus-visible { outline:3px solid #1A1A1A; outline-offset:2px; }
+  .hint { font-size:13px; color:var(--muted); margin:6px 0 16px; }
+  button, .btn { display:block; width:100%; min-height:48px; padding:12px 16px; border:0; border-radius:4px; background:var(--gold); color:#fff;
+         font:700 15px Helvetica,Arial,sans-serif; letter-spacing:1.5px; text-transform:uppercase; text-align:center; text-decoration:none; cursor:pointer; }
+  button[disabled] { opacity:.6; cursor:progress; }
+  .msg { padding:12px 14px; border-radius:4px; margin:0 0 16px; font-size:14px; }
+  .msg.err { background:#FDECEC; color:var(--err); border:1px solid #F3B8B8; }
+  .msg.ok { background:#EAF6EE; color:var(--ok); border:1px solid #B7DFC4; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main data-mode="{{MODE}}">
+  <p class="brand">XJet Atelier</p>
+  <h1 id="title">{{TITLE}}</h1>
+  <div id="msg" role="status" aria-live="polite" class="msg" hidden></div>
+  <form id="form" novalidate>
+    <div id="pw-wrap" hidden>
+      <label for="pw">New password</label>
+      <input id="pw" type="password" autocomplete="new-password" minlength="10" maxlength="128" aria-describedby="pw-hint">
+      <p class="hint" id="pw-hint">At least 10 characters. A password manager can create one for you.</p>
+    </div>
+    <p id="intro"></p>
+    <button id="go" type="submit">{{BUTTON}}</button>
+  </form>
+  <p style="margin:20px 0 0;font-size:14px;"><a id="home" href="{{BASE}}/" style="color:var(--gold);">Back to XJet Atelier</a></p>
+</main>
+<script>
+(function () {
+  var BASE = "{{BASE}}", MODE = document.querySelector('main').dataset.mode;
+  var $ = function (id) { return document.getElementById(id); };
+  var token = '';
+  try { token = new URLSearchParams(location.hash.replace(/^#/, '')).get('token') || ''; history.replaceState(null, '', location.pathname); } catch (e) {}
+  var intro = { verify: 'Press the button to confirm this email address and sign in.',
+                reset: '', confirm: 'Press the button to connect this sign-in to your existing XJet Atelier account.' };
+  $('intro').textContent = intro[MODE] || '';
+  if (MODE === 'reset') $('pw-wrap').hidden = false;
+  function say(text, kind) { var m = $('msg'); m.textContent = text; m.className = 'msg ' + kind; m.hidden = false; }
+  var endpoint = { verify: '/api/auth/verify-email', reset: '/api/auth/reset', confirm: '/api/auth/confirm-link' }[MODE];
+  if (!token) { say('This link is not valid. Request a new one from the sign-in page.', 'err'); $('go').hidden = true; $('intro').hidden = true; $('pw-wrap').hidden = true; }
+  $('form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var body = { token: token };
+    if (MODE === 'reset') { body.password = $('pw').value; if (!body.password) { say('Choose a password.', 'err'); $('pw').focus(); return; } }
+    $('go').disabled = true;
+    fetch(BASE + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        if (r.ok) {
+          say(MODE === 'reset' ? 'Your password is saved. Taking you to the studio…' : 'Done. Taking you to the studio…', 'ok');
+          $('form').hidden = true; setTimeout(function () { location.replace(BASE + '/#auth=ok'); }, 900);
+        } else {
+          say((r.j && r.j.error && r.j.error.message) || 'Something went wrong. Please try again.', 'err');
+          $('go').disabled = false;
+          if (r.j && r.j.error && /^link_/.test(r.j.error.code)) { $('form').hidden = true; }
+        }
+      })
+      .catch(function () { say('Network error. Check your connection and try again.', 'err'); $('go').disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

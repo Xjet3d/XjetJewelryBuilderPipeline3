@@ -19,6 +19,7 @@ is cleared and never read.
 
 import hashlib
 import hmac
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -28,9 +29,13 @@ from fastapi.responses import JSONResponse
 from p3.context import Context
 from p3.db import NewId, Now
 
+Log = logging.getLogger("p3.adminauth")
+
 CookieName = "atelier_admin_session"          # unique to the Atelier Admin: no other app on the host sets or reads it
 LegacyCookieNames = ("p3_admin_session",)     # the generic name of before 2026-10-07: cleared on sign-in/out, never read
-SessionDays = 180                 # sliding: refreshed while the admin keeps visiting
+SessionDays = 180                 # key sessions: sliding, refreshed while the admin keeps visiting
+IdentityHours = 12                # identity sessions: a fixed window from the provider sign-in (no sliding)
+IdentityProviders = ("google", "apple")
 TouchMinutes = 60                 # last_seen_at is written at most this often
 
 
@@ -49,7 +54,45 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     user_agent    TEXT,
     revoked_at    TEXT
 );
+
+-- Administrators (AJW-39): an enrolled provider identity per person. Only an operator (CLI) writes this table.
+CREATE TABLE IF NOT EXISTS admin_identities (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    provider  TEXT NOT NULL CHECK (provider IN ('google', 'apple')),
+    subject   TEXT NOT NULL,                 -- the provider's stable user id (not the email)
+    email     TEXT NOT NULL,                 -- shown to the operator and re-checked at every sign-in
+    enabled   INTEGER NOT NULL DEFAULT 1,
+    added_at  TEXT NOT NULL,
+    added_by  TEXT NOT NULL,
+    UNIQUE (provider, subject)
+);
+
+-- Every attempt to sign in to the Admin with a provider: how an operator finds the subject to enrol.
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider  TEXT NOT NULL,
+    subject   TEXT NOT NULL,
+    email     TEXT,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    name      TEXT,
+    outcome   TEXT NOT NULL,                 -- ok | not_enrolled | disabled | email_mismatch | unverified
+    created_at TEXT NOT NULL
+);
+
+-- What an identity-signed administrator changed (every unsafe request) and the operator's CLI actions.
+CREATE TABLE IF NOT EXISTS admin_audit (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin     TEXT NOT NULL,
+    action    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
+
+_SessionColumns = {
+    "admin_identity_id": "ALTER TABLE admin_sessions ADD COLUMN admin_identity_id TEXT",   # NULL: a session opened with the key
+    "hard_expires_at":   "ALTER TABLE admin_sessions ADD COLUMN hard_expires_at TEXT",     # identity sessions: no sliding past this
+}
 
 
 def _Hash(Token: str) -> str:
@@ -63,6 +106,10 @@ def _Iso(Dt: datetime) -> str:
 def Install(Ctx: Context) -> None:
     with Ctx.Db.Connect() as Conn:
         Conn.executescript(Schema)
+        Existing = {R[1] for R in Conn.execute("PRAGMA table_info(admin_sessions)")}
+        for Column, Sql in _SessionColumns.items():
+            if Column not in Existing:
+                Conn.execute(Sql)
 
 
 def Login(Ctx: Context, Key: str, UserAgent: str | None) -> str | None:
@@ -84,20 +131,96 @@ def NewSession(Ctx: Context, UserAgent: str | None) -> str:
     return Token
 
 
-def Validate(Ctx: Context, Token: str | None) -> bool:
-    """True for a live, unexpired, unrevoked session; slides the expiry while it is in use."""
+def Validate(Ctx: Context, Token: str | None) -> dict | None:
+    """The live session row (truthy) or None. A key session slides its expiry while in use and stops working when identity
+    enforcement is on; an identity session lasts IdentityHours from the sign-in and only while its administrator is enabled."""
     if not Token:
-        return False
+        return None
     Row = Ctx.Db.One("SELECT * FROM admin_sessions WHERE session_hash = ?", (_Hash(Token),))
     if Row is None or Row["revoked_at"]:
-        return False
+        return None
     T = datetime.now(timezone.utc)
     if Row["expires_at"] < _Iso(T):
-        return False
+        return None
+    if Row["admin_identity_id"]:
+        Who = Ctx.Db.One("SELECT * FROM admin_identities WHERE id = ?", (Row["admin_identity_id"],))
+        if Who is None or not Who["enabled"] or (Row["hard_expires_at"] or "") < _Iso(T):
+            return None
+        return {**Row, "admin_name": Who["name"]}
+    if Ctx.Settings.AdminIdentityEnforced:                 # the shared key opens nothing through the web any more
+        return None
     if Row["last_seen_at"] < _Iso(T - timedelta(minutes=TouchMinutes)):
         Ctx.Db.Execute("UPDATE admin_sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?",
                        (_Iso(T), _Iso(T + timedelta(days=SessionDays)), Row["id"]))
-    return True
+    return Row
+
+
+def NewIdentitySession(Ctx: Context, IdentityId: str, UserAgent: str | None) -> str:
+    """A session for an enrolled administrator who has just signed in with the provider."""
+    Token = secrets.token_urlsafe(32)
+    T = datetime.now(timezone.utc)
+    Hard = _Iso(T + timedelta(hours=IdentityHours))
+    Ctx.Db.Execute("INSERT INTO admin_sessions (id, session_hash, created_at, last_seen_at, expires_at, user_agent, admin_identity_id, "
+                   "hard_expires_at) VALUES (?,?,?,?,?,?,?,?)",
+                   (NewId("adm"), _Hash(Token), _Iso(T), _Iso(T), Hard, (UserAgent or "")[:200], IdentityId, Hard))
+    return Token
+
+
+def Candidates(Db, Limit: int = 30) -> list[dict]:
+    """Recent provider sign-in attempts to the Admin that were not (or are no longer) enrolled: what an operator reads to
+    find the identity to enrol, after confirming with the person that the shown email is theirs."""
+    return Db.All("SELECT provider, subject, email, email_verified, name, outcome, MAX(created_at) AS last_seen FROM admin_login_attempts "
+                  "WHERE outcome != 'ok' GROUP BY provider, subject ORDER BY last_seen DESC LIMIT ?", (Limit,))
+
+
+def Enroll(Db, Name: str, Provider: str, Subject: str, Email: str, By: str) -> dict:
+    """Allow one provider identity to open the Admin. Operator-only (the CLI); an existing row is re-enabled."""
+    if Provider not in IdentityProviders or not Subject.strip() or "@" not in Email:
+        raise ValueError("Provider must be google or apple, with the provider's subject id and the person's email.")
+    Email = Email.strip().lower()
+    Row = Db.One("SELECT id FROM admin_identities WHERE provider = ? AND subject = ?", (Provider, Subject.strip()))
+    if Row:
+        Db.Execute("UPDATE admin_identities SET enabled = 1, name = ?, email = ? WHERE id = ?", (Name.strip(), Email, Row["id"]))
+        Id = Row["id"]
+    else:
+        Id = NewId("adi")
+        Db.Execute("INSERT INTO admin_identities (id, name, provider, subject, email, added_at, added_by) VALUES (?,?,?,?,?,?,?)",
+                   (Id, Name.strip(), Provider, Subject.strip(), Email, Now(), By))
+    Db.Execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)", (By, f"enrol {Provider} {Email}", Now()))
+    return Db.One("SELECT * FROM admin_identities WHERE id = ?", (Id,))
+
+
+def SetEnabled(Db, IdentityId: str, Enabled: bool, By: str) -> bool:
+    N = Db.Execute("UPDATE admin_identities SET enabled = ? WHERE id = ?", (1 if Enabled else 0, IdentityId))
+    Db.Execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)", (By, f"{'enable' if Enabled else 'disable'} {IdentityId}", Now()))
+    return N > 0
+
+
+def Administrators(Db) -> list[dict]:
+    return Db.All("SELECT id, name, provider, email, enabled, added_at, added_by FROM admin_identities ORDER BY added_at")
+
+
+def SignInOutcome(Ctx: Context, Provider: str, Claims) -> tuple[str, dict | None]:
+    """('ok', identity) when this provider identity is an enabled administrator whose verified email is the enrolled one;
+    otherwise (reason, None). Every attempt is recorded."""
+    Row = Ctx.Db.One("SELECT * FROM admin_identities WHERE provider = ? AND subject = ?", (Provider, Claims.Subject))
+    if Row is None:
+        Why = "not_enrolled"
+    elif not Row["enabled"]:
+        Why = "disabled"
+    elif not Claims.EmailVerified:
+        Why = "unverified"
+    elif Claims.Email.strip().lower() != Row["email"]:
+        Why = "email_mismatch"
+    else:
+        Why = "ok"
+    Ctx.Db.Execute("INSERT INTO admin_login_attempts (provider, subject, email, email_verified, name, outcome, created_at) VALUES (?,?,?,?,?,?,?)",
+                   (Provider, Claims.Subject, Claims.Email, 1 if Claims.EmailVerified else 0, Claims.Name, Why, Now()))
+    return Why, (Row if Why == "ok" else None)
+
+
+def Audit(Ctx: Context, Admin: str, Action: str) -> None:
+    Ctx.Db.Execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)", (Admin, Action[:300], Now()))
 
 
 def Revoke(Ctx: Context, Token: str | None) -> bool:
@@ -153,22 +276,40 @@ def Tokens(Req: Request) -> list[str]:
 
 
 def InstallMiddleware(App_, Ctx: Context) -> None:
-    """A valid session cookie on /api/admin/* (and /api/dev/*) becomes the Bearer admin key for that
-    request, so RequireAdmin() / RequireDeveloper() need not know about cookies."""
+    """A valid session cookie on /api/admin/* (and /api/dev/*) becomes a Bearer credential for that request, so
+    RequireAdmin() / RequireDeveloper() need not know about cookies: the shared key for a key session, or the process-local
+    secret (plus the administrator's id) for an identity session."""
 
     @App_.middleware("http")
     async def _CookieToBearer(Req: Request, CallNext):
         Path = Req.url.path
         Rel = Path[len(Ctx.Settings.BasePath):] if Ctx.Settings.BasePath and Path.startswith(Ctx.Settings.BasePath) else Path
+        Who = None
         if (Rel.startswith("/api/admin/") or Rel.startswith("/api/dev/")) and not Rel.endswith("/login"):
             # Only a Bearer counts as a supplied key. A browser that once answered a Basic-auth challenge from
             # another app on the same host keeps sending "Authorization: Basic …" to every request here — that is
             # not ours, so the session cookie decides, and the header is dropped so the routes never see it.
             Raw = (Req.headers.get("authorization") or "").strip()
             Bearer = Raw[len("Bearer "):].strip() if Raw.lower().startswith("bearer ") else ""
-            if not Bearer and Ctx.Settings.AdminKey:
-                Headers = [(K, V) for K, V in Req.scope["headers"] if K != b"authorization"]
-                if any(Validate(Ctx, T) for T in Tokens(Req)):
+            if Bearer.startswith(InternalPrefix):                 # the internal credential is never accepted from a client
+                Bearer = ""
+            Headers = list(Req.scope["headers"])
+            if not Bearer:
+                Headers = [(K, V) for K, V in Headers if K != b"authorization"]
+                Session = next((R for R in (Validate(Ctx, T) for T in Tokens(Req)) if R), None)
+                if Session and Session["admin_identity_id"]:
+                    Who = Session["admin_name"]
+                    Headers.append((b"authorization", f"Bearer {InternalPrefix}{Ctx.AdminInternal}.{Session['admin_identity_id']}".encode("latin-1")))
+                elif Session and Ctx.Settings.AdminKey:
                     Headers.append((b"authorization", ("Bearer " + Ctx.Settings.AdminKey).encode("latin-1")))
-                Req.scope["headers"] = Headers
-        return await CallNext(Req)
+            Req.scope["headers"] = Headers
+        Resp = await CallNext(Req)
+        if Who and Req.method in ("POST", "PUT", "PATCH", "DELETE"):
+            try:
+                Audit(Ctx, Who, f"{Req.method} {Rel} → {Resp.status_code}")
+            except Exception:                                      # the audit trail must never break the request
+                Log.exception("admin audit write failed")
+        return Resp
+
+
+InternalPrefix = "p3-internal-"

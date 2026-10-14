@@ -1895,14 +1895,97 @@
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="mb-8">
                     <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My account</p>
-                    <h2 class="text-3xl brand-font text-zinc-900">Quotes &amp; orders</h2>
-                    <p class="text-[14px] text-zinc-600 mt-2">Every quote you asked for and every order you placed, and where each one stands.</p>
+                    <h2 class="text-3xl brand-font text-zinc-900">Your account</h2>
+                    <p class="text-[14px] text-zinc-600 mt-2">How you sign in, and every quote you asked for and order you placed, and where each one stands.</p>
                 </div>
                 <div x-show="!userSession" class="rounded-xl p-6 text-[14px] text-zinc-700" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                     <p class="mb-4">Sign in to see your quotes and orders.</p>
                     <button type="button" @click="openAccountPage()" class="btn-gold px-6 py-3">Sign in</button>
                 </div>
                 <div x-show="userSession" class="space-y-8">
+                    <!-- Sign-in & security -->
+                    <section id="account-security" aria-labelledby="sec-title" class="border border-zinc-200 rounded-sm p-5 scroll-mt-20">
+                        <h3 id="sec-title" class="flbl">Sign-in &amp; security</h3>
+
+                        <!-- Still on a six-letter code: move to a real login -->
+                        <div x-show="userSession && !userSession.session" class="text-[14px] text-zinc-700">
+                            <p class="mb-3">You are signed in with a 6-letter code. Replace it with Google, Apple or an email and password: your designs, credits and orders stay exactly as they are.</p>
+                            <button type="button" @click="startClaimFromSession()" class="btn-gold px-6 py-3">Secure my account</button>
+                        </div>
+
+                        <div x-show="userSession && userSession.session">
+                            <p x-show="sec.loading && !sec.data" class="text-[14px] text-zinc-500">Loading…</p>
+                            <div x-show="sec.msg" role="status" class="mb-3 px-3 py-2 text-[13px] border" style="background:#FBF7EF;border-color:#C9A96E;color:#3A2E12;" x-text="sec.msg"></div>
+                            <div x-show="sec.err" role="alert" class="mb-3 px-3 py-2 text-[13px] border" style="background:#fff5f5;border-color:#fca5a5;color:#b91c1c;" x-text="sec.err"></div>
+
+                            <template x-if="sec.data">
+                                <div class="space-y-6">
+                                    <!-- Confirm it's you (after a while, before a sensitive change) -->
+                                    <div x-show="sec.needReauth" class="p-4 border border-zinc-200 bg-zinc-50">
+                                        <p class="text-[13px] text-zinc-700 mb-3">For your security, confirm it's you before changing how you sign in.</p>
+                                        <form x-show="sec.data.has_password" @submit.prevent="secReauth()" class="flex flex-wrap gap-2 items-end">
+                                            <div class="flex-1" style="min-width:12rem"><label for="sec-reauth" class="flbl">Your password</label>
+                                                <input id="sec-reauth" type="password" x-model="sec.reauthPw" autocomplete="current-password" class="fld"></div>
+                                            <button type="submit" :disabled="sec.busy || !sec.reauthPw" class="btn-gold px-5 py-3 text-[12px] uppercase tracking-[0.15em]">Confirm</button>
+                                        </form>
+                                        <div class="flex flex-wrap gap-3 mt-3">
+                                            <a x-show="authCfg.providers.google && sec.data.methods.some(m => m.provider === 'google')" :href="authStartUrl('google', 'reauth')" class="btn-outline px-5 py-2.5 !text-[13px]">Confirm with Google</a>
+                                            <a x-show="authCfg.providers.apple && sec.data.methods.some(m => m.provider === 'apple')" :href="authStartUrl('apple', 'reauth')" class="btn-outline px-5 py-2.5 !text-[13px]">Confirm with Apple</a>
+                                        </div>
+                                    </div>
+
+                                    <!-- Connected sign-in methods -->
+                                    <div>
+                                        <p class="text-[13px] text-zinc-600 mb-2">Ways you can sign in</p>
+                                        <ul class="divide-y divide-zinc-100 border border-zinc-100">
+                                            <template x-for="m in sec.data.methods" :key="m.id">
+                                                <li class="flex items-center justify-between gap-3 px-4 py-3">
+                                                    <span class="min-w-0"><span class="text-[14px] font-medium text-zinc-900" x-text="secProviderLabel(m.provider)"></span>
+                                                        <span class="block text-[12px] text-zinc-500 truncate" x-text="m.email || 'Connected ' + secWhen(m.created_at)"></span></span>
+                                                    <button type="button" @click="secDisconnect(m)" :disabled="sec.busy || !m.can_disconnect" class="btn-outline shrink-0 px-4 py-2 !text-[12px]"
+                                                            :title="m.can_disconnect ? '' : 'This is your only way to sign in'" :aria-label="'Disconnect ' + secProviderLabel(m.provider)">Disconnect</button>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                        <div class="flex flex-wrap gap-3 mt-3">
+                                            <a x-show="authCfg.providers.google && !sec.data.methods.some(m => m.provider === 'google')" :href="authStartUrl('google', 'link')" class="btn-outline px-5 py-2.5 !text-[13px]">Connect Google</a>
+                                            <a x-show="authCfg.providers.apple && !sec.data.methods.some(m => m.provider === 'apple')" :href="authStartUrl('apple', 'link')" class="btn-outline px-5 py-2.5 !text-[13px]">Connect Apple</a>
+                                        </div>
+                                    </div>
+
+                                    <!-- Password -->
+                                    <form @submit.prevent="secSetPassword()" novalidate>
+                                        <label for="sec-pw" class="flbl" x-text="sec.data.has_password ? 'Change your password' : 'Add a password'"></label>
+                                        <p x-show="!sec.data.email_verified" class="text-[12px] text-zinc-500 mb-2">A password needs a confirmed email address on your account. Sign in once with Google or Apple using that address, or use “Forgot password” on the sign-in page.</p>
+                                        <div class="flex flex-wrap gap-2 items-start">
+                                            <div class="flex-1" style="min-width:12rem">
+                                                <input id="sec-pw" :type="sec.showPw ? 'text' : 'password'" x-model="sec.newPw" autocomplete="new-password" minlength="10" aria-describedby="sec-pw-hint" class="fld" :disabled="!sec.data.email_verified">
+                                                <p id="sec-pw-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters. Changing it signs every other browser out.</p>
+                                            </div>
+                                            <button type="submit" :disabled="sec.busy || !sec.data.email_verified || sec.newPw.length < 10" class="btn-gold px-5 py-3 text-[12px] uppercase tracking-[0.15em]">Save</button>
+                                        </div>
+                                    </form>
+
+                                    <!-- Browsers -->
+                                    <div>
+                                        <div class="flex items-center justify-between gap-3 mb-2">
+                                            <p class="text-[13px] text-zinc-600">Browsers signed in</p>
+                                            <button type="button" @click="secRevokeOthers()" :disabled="sec.busy || sec.data.sessions.length < 2" class="underline text-[13px] text-zinc-700 disabled:opacity-40">Sign out of all other browsers</button>
+                                        </div>
+                                        <ul class="divide-y divide-zinc-100 border border-zinc-100">
+                                            <template x-for="s in sec.data.sessions" :key="s.id">
+                                                <li class="flex items-center justify-between gap-3 px-4 py-3">
+                                                    <span class="min-w-0"><span class="text-[13px] text-zinc-900" x-text="s.current ? 'This browser' : 'Another browser'"></span>
+                                                        <span class="block text-[12px] text-zinc-500 truncate" x-text="'Active ' + secWhen(s.last_seen_at) + ' · ' + (s.user_agent || '')"></span></span>
+                                                    <button type="button" x-show="!s.current" @click="secRevoke(s)" :disabled="sec.busy" class="btn-outline shrink-0 px-4 py-2 !text-[12px]">Sign out</button>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </section>
                     <p x-show="(ordersLoading || myQuotesLoading) && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-500">Loading…</p>
                     <p x-show="!ordersLoading && !myQuotesLoading && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-600">No quotes or orders yet. Quote requests (for gold) and orders appear here.</p>
                     <!-- Quote requests -->
@@ -2073,8 +2156,8 @@
                         </div>
                     </div>
 
-                    <!-- Sign-in code -->
-                    <div>
+                    <!-- Sign-in code (a six-letter token session only: a cookie session has none) -->
+                    <div x-show="userSession && !userSession.session">
                         <div class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-1.5" style="color:#8A6420;">Your sign-in code</div>
                         <div class="flex items-center gap-2">
                             <code class="flex-1 px-3 py-2 rounded-lg text-[14px] font-semibold tracking-[0.18em] tabular-nums truncate"
@@ -2123,6 +2206,12 @@
                         <span x-show="favorites.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="favorites.length"></span>
                     </button>
                 </div>
+                <!-- Sign-in & security — connected logins, password, browsers -->
+                <div class="py-1.5" style="border-top:1px solid #F0ECE4;">
+                    <button type="button" @click="openAccountPage('security')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
+                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke-linecap="round"/></svg>Sign-in &amp; security
+                    </button>
+                </div>
                 <!-- Sign out — the last option -->
                 <div style="border-top:1px solid #F0ECE4;">
                     <button type="button" @click="signOutFromAccount()" class="w-full flex items-center gap-3 px-5 py-3 text-[13px] text-left transition hover:bg-[#FBF8F3] hover:text-black" style="color:#5F5F5F;">
@@ -2145,6 +2234,140 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
 
+                <!-- ── Sign-in (AJW-39): Google · Apple · email and password · a six-letter code from before ── -->
+                <div x-show="!legacyAuth">
+                    <div class="mb-6 text-center">
+                        <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
+                        <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;"
+                            x-text="{ signin: 'Sign in', register: 'Create your account', forgot: 'Reset your password', code: 'Use your sign-in code', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
+                        <p id="reg-desc" class="text-[13px] text-zinc-600 mt-2 leading-relaxed"
+                           x-text="{ signin: 'Sign in to start designing. Your designs, credits and orders stay with your account.',
+                                     register: 'Your designs are saved to your account.',
+                                     forgot: 'Enter your email and we send you a link to choose a new password.',
+                                     code: 'Enter the 6-letter code from your welcome email — once — and we move your account to a real sign-in.',
+                                     claim: 'Your designs, credits and orders are safe. Choose how you want to sign in from now on.' }[regMode] || ''"></p>
+                    </div>
+
+                    <div x-show="regError" role="alert" class="mb-4 px-4 py-3 border text-sm" style="background:#fff5f5;border-color:#fca5a5;color:#b91c1c;">
+                        <span x-text="regError"></span>
+                        <button type="button" x-show="regUnverified" @click="resendVerification()" class="block mt-2 underline font-semibold">Send the confirmation link again</button>
+                    </div>
+                    <div x-show="regInfo" role="status" class="mb-4 px-4 py-3 border text-sm text-center" style="background:#FBF7EF;border-color:#C9A96E;color:#3A2E12;" x-text="regInfo"></div>
+
+                    <!-- Google / Apple (only the ones this server has credentials for; a claim carries its ticket along) -->
+                    <div x-show="!regInfo && ['signin', 'register', 'claim'].includes(regMode) && (authCfg.providers.google || authCfg.providers.apple)" class="space-y-3 mb-5">
+                        <a x-show="authCfg.providers.google" :href="authStartUrl('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           @click.prevent="startProvider('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition hover:bg-zinc-50"
+                           style="min-height:48px;background:#fff;border:1px solid #747775;color:#1F1F1F;border-radius:4px;">
+                            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+                            <span>Continue with Google</span>
+                        </a>
+                        <a x-show="authCfg.providers.apple" :href="authStartUrl('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           @click.prevent="startProvider('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition"
+                           style="min-height:48px;background:#000;border:1px solid #000;color:#fff;border-radius:4px;">
+                            <svg width="17" height="20" viewBox="0 0 814 1000" fill="#fff" aria-hidden="true"><path d="M788 340c-6 5-110 63-110 192 0 150 131 203 135 204-1 3-21 72-69 142-43 62-88 124-157 124s-87-40-167-40c-78 0-106 41-170 41s-108-58-158-128C49 770 0 641 0 518c0-198 129-303 255-303 67 0 123 44 165 44 40 0 102-47 178-47 29 0 133 3 190 98zM555 160c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 33-146 75-28 32-55 83-55 135 0 8 1 15 2 17 3 1 8 1 12 1 45 0 101-30 136-69z"/></svg>
+                            <span>Continue with Apple</span>
+                        </a>
+                        <div class="flex items-center gap-3 text-[12px] text-zinc-500" aria-hidden="true"><span class="flex-1 h-px bg-zinc-200"></span><span>or with your email</span><span class="flex-1 h-px bg-zinc-200"></span></div>
+                    </div>
+
+                    <!-- Sign in -->
+                    <form x-show="regMode === 'signin' && !regInfo" @submit.prevent="submitSignIn()" novalidate>
+                        <div class="mb-4">
+                            <label for="si-email" class="flbl">Email</label>
+                            <input id="si-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="username" inputmode="email" placeholder="you@example.com" class="fld">
+                        </div>
+                        <div class="mb-2">
+                            <label for="si-password" class="flbl">Password</label>
+                            <input id="si-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required :disabled="regLoading" autocomplete="current-password" class="fld">
+                        </div>
+                        <div class="flex items-center justify-between mb-5 text-[13px]">
+                            <label class="inline-flex items-center gap-2 text-zinc-600"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                            <button type="button" @click="regSwitch('forgot')" class="underline underline-offset-2 hover:text-black">Forgot password?</button>
+                        </div>
+                        <button type="submit" :disabled="regLoading || !regForm.email || !regForm.password" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                            <span x-show="!regLoading">Sign in</span><span x-show="regLoading">Signing in…</span>
+                        </button>
+                        <p class="text-center text-[13px] text-zinc-600 mt-5">New to XJet Atelier?
+                            <button type="button" @click="regSwitch('register')" class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Create an account</button></p>
+                        <p class="text-center text-[13px] text-zinc-600 mt-2">Have a 6-letter code from before?
+                            <button type="button" @click="regSwitch('code')" class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Use it here</button></p>
+                    </form>
+
+                    <!-- Create an account -->
+                    <form x-show="regMode === 'register' && !regInfo" @submit.prevent="submitRegister()" novalidate>
+                        <div class="mb-4">
+                            <label for="rg-name" class="flbl">Name <span class="text-zinc-400 normal-case tracking-normal font-normal">(optional)</span></label>
+                            <input id="rg-name" x-model="regForm.name" type="text" :disabled="regLoading" autocomplete="name" placeholder="Your name" class="fld">
+                        </div>
+                        <div class="mb-4">
+                            <label for="rg-email" class="flbl">Email</label>
+                            <input id="rg-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="username" inputmode="email" placeholder="you@example.com" class="fld">
+                        </div>
+                        <div class="mb-2">
+                            <label for="rg-password" class="flbl">Password</label>
+                            <input id="rg-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="rg-hint" class="fld">
+                            <p id="rg-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                            <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
+                        </button>
+                        <p class="text-center text-[13px] text-zinc-600 mt-5">Already have an account?
+                            <button type="button" @click="regSwitch('signin')" class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Sign in</button></p>
+                    </form>
+
+                    <!-- Forgot password -->
+                    <form x-show="regMode === 'forgot' && !regInfo" @submit.prevent="submitForgot()" novalidate>
+                        <div class="mb-5">
+                            <label for="fp-email" class="flbl">Email</label>
+                            <input id="fp-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="username" inputmode="email" placeholder="you@example.com" class="fld">
+                        </div>
+                        <button type="submit" :disabled="regLoading || !regForm.email" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                            <span x-show="!regLoading">Email me a link</span><span x-show="regLoading">Sending…</span>
+                        </button>
+                        <p class="text-center text-[13px] text-zinc-600 mt-5"><button type="button" @click="regSwitch('signin')" class="underline underline-offset-2 hover:text-black">Back to sign in</button></p>
+                    </form>
+
+                    <!-- A six-letter code from before: used once, to move the account to a real login -->
+                    <form x-show="regMode === 'code' && !regInfo" @submit.prevent="submitClaimCode()" novalidate>
+                        <div class="mb-5">
+                            <label for="cl-code" class="flbl">Sign-in code</label>
+                            <input id="cl-code" x-model="regForm.token" @input="regForm.token = regForm.token.toUpperCase()" type="text" required maxlength="6" autocomplete="one-time-code" spellcheck="false"
+                                   placeholder="e.g. XAJKLM" :disabled="regLoading" class="fld uppercase tracking-widest font-mono">
+                            <p class="text-[12px] text-zinc-500 mt-1.5">Lost it? No problem — use “Forgot password” with your email and your account is found by it.</p>
+                        </div>
+                        <button type="submit" :disabled="regLoading || regForm.token.trim().length < 6" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                            <span x-show="!regLoading">Continue</span><span x-show="regLoading">Checking…</span>
+                        </button>
+                        <p class="text-center text-[13px] text-zinc-600 mt-5"><button type="button" @click="regSwitch('signin')" class="underline underline-offset-2 hover:text-black">Back to sign in</button></p>
+                    </form>
+
+                    <!-- Code accepted: attach a login (Google / Apple above, or an email and password here) -->
+                    <form x-show="regMode === 'claim' && !regInfo" @submit.prevent="submitClaimPassword()" novalidate>
+                        <div class="mb-4">
+                            <label for="cp-email" class="flbl">Email</label>
+                            <input id="cp-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="username" inputmode="email" placeholder="you@example.com" class="fld">
+                        </div>
+                        <div class="mb-2">
+                            <label for="cp-password" class="flbl">Choose a password</label>
+                            <input id="cp-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="cp-hint" class="fld">
+                            <p id="cp-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters.</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                            <span x-show="!regLoading">Save and continue</span><span x-show="regLoading">Saving…</span>
+                        </button>
+                    </form>
+
+                    <!-- After a message was sent -->
+                    <button type="button" x-show="regInfo" @click="regSwitch('signin')" class="btn-outline w-full py-3.5 text-[12px] uppercase tracking-[0.2em]">Back to sign in</button>
+                </div>
+
+                <!-- Servers still in the older mode keep the earlier dialog -->
+                <div x-show="legacyAuth">
                 <!-- Header -->
                 <div class="mb-6 text-center">
                     <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
@@ -2222,6 +2445,7 @@
                     Enter sign-in code
                     <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                 </button>
+                </div>
 
                 <!-- Discovery is not gated: the gallery, materials and the process are open to everyone -->
                 <p class="text-center text-[12px] text-zinc-500 mt-6 pt-5 border-t border-zinc-100">

@@ -21,12 +21,13 @@ class Harness:
     def __init__(self, TmpPath: Path, Profile: Path = ShippedProfile, AllowUnapproved=False,
                  AdminKey=None, Provider=None, BasePath="", FalKey=None, Factories=None, **SettingsOverrides):
         self.TmpPath = TmpPath
+        # The existing suite runs in the pre-AJW-39 sign-in mode ("legacy"); tests/test_auth*.py pass AuthMode="dual" / "modern".
         # Tests run without the per-IP / per-account throttles unless a test asks for them (RateLimits=True), and
         # without team notifications unless a test names recipients (StaffNotifyEmails=...)
         self.Settings = LoadSettings(DataDir=TmpPath / "var", Provider="mock", PricingProfilePath=Profile,
                                      AllowUnapprovedPricing=AllowUnapproved, AdminKey=AdminKey,
                                      PollIntervalS=0.005, MaxTransientPollErrors=5, MockLatencyS=0.0,
-                                     BasePath=BasePath, FalKey=FalKey, **{"RateLimits": False, "StaffNotifyEmails": (), **SettingsOverrides})
+                                     BasePath=BasePath, FalKey=FalKey, **{"RateLimits": False, "StaffNotifyEmails": (), "AuthMode": "legacy", **SettingsOverrides})
         self.Base = self.Settings.BasePath
         self.Provider = Provider or MockProvider(LatencyS=0.0, RenderVideo=False)
         self.App = CreateApp(self.Settings, None if Factories else self.Provider, ProviderFactories=Factories)
