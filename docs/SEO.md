@@ -158,7 +158,8 @@ curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/ | grep -i robots    [nothin
   access to a Domain property `xjet3d.com` (Search Console: "you don't have access to this property"), and
   `https://xjet3d.com/` does not cover the `xjetatelier` host — hence a property of Atelier's own.
 - **Verification:** HTML tag. Its `content` is saved in Atelier Admin → Settings → System → *Google Search Console
-  verification*, and the home page `https://xjetatelier.xjet3d.com/JewelryB2C3/` carries
+  verification* (Admin through the SSH tunnel: `docs/AUTH-OPERATIONS-AJW-39.md` §3a), and the home page
+  `https://xjetatelier.xjet3d.com/JewelryB2C3/` carries
   `<meta name="google-site-verification" content="…">`. **Keep it** — clearing the field (or a new Atelier database)
   makes the property unverified. A second method can be added in Search Console → Settings → Ownership verification.
 - **Sitemap:** `https://xjetatelier.xjet3d.com/JewelryB2C3/sitemap.xml` submitted on 2026-10-12 (status "Couldn't

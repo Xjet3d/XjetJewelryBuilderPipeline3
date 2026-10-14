@@ -12,10 +12,11 @@ A bundle is a directory:
   manifest.json   format, source, the gallery items, every file with its SHA-256, size and modification time
   rows.json       the rows per table, allow-listed columns only
   files/<sha256>  the files, content-addressed: a name never comes from the source, a file shared by two rows is stored once
-It reaches another site through that site's own Admin API (`push`; HTTPS only, the site's Admin key, in pieces small
-enough for Cloudflare and nginx; only the files the site does not have yet are sent), or as a directory on a target with a
-shell (`import`). Never through the GitHub repository: it is public, and a bundle holds what the site keeps private
-(prompts, refinement words, reference images).
+It reaches another site through that site's own Admin API (`push`; HTTPS, the site's Admin key, in pieces small enough
+for Cloudflare and nginx; only the files the site does not have yet are sent), or as a directory on a target with a
+shell (`import`) — atelier's way, since its Admin is not public: scripts/gallery-sync.sh push with P3_TARGET_SSH copies
+the bundle to its server over SSH and imports it there. Never through the GitHub repository: it is public, and a bundle
+holds what the site keeps private (prompts, refinement words, reference images).
 
 Import is idempotent. Rows are matched by id and written only when they differ, files only when their content differs, and
 every row the sync wrote is recorded (gallery_sync_items), so a second run changes nothing and a later run brings what
@@ -792,12 +793,23 @@ async def Push(BundleDir: Path, Base: str, Key: str, Client=None, Out=sys.stdout
                 continue
             return R
 
+    # A site whose Admin takes no key over the web: the bundle goes over SSH and the site's own server imports it
+    OverSsh = ("Push over SSH instead: P3_TARGET_SSH=<ssh host> bash scripts/gallery-sync.sh push [PUBLIC_URL] "
+               "(deploy/README.md, atelier)")
+
     def Ok(R, What: str) -> dict:
         if R.status_code >= 400:
             try:
-                Msg = R.json()["error"]["message"]
-            except Exception:  # noqa: BLE001 — a proxy's page is not JSON
-                Msg = R.text[:200]
+                Err = R.json()["error"]
+                Msg = Err["message"]
+            except ValueError:                               # a proxy's page is not JSON
+                Err, Msg = {}, R.text[:200]
+                if R.status_code == 404:                     # the proxy's own 404 page, never the app's answer (JSON)
+                    Msg = f"the site's Admin is not public (its proxy answered 404 for {Api}). {OverSsh}"
+            except Exception:  # noqa: BLE001 — JSON, but not the app's own error
+                Err, Msg = {}, R.text[:200]
+            if Err.get("code") == "admin_identity_required":  # administrator sign-in enforced: no key opens the API
+                Msg = f"the site's Admin takes no key over the web (administrator sign-in is enforced). {OverSsh}"
             if not (Msg or "").strip():
                 Msg = ("an empty answer from the proxy in front of the site (Cloudflare or nginx): the request was refused "
                        "before it reached the site")

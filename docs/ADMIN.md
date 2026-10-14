@@ -1,6 +1,7 @@
 # P3 Admin — Dashboard · Sessions · Users · AI Prompts & Params
 
 - **Page:** `{base}/admin/`, i.e. `http://proto/JewelryB2C3/admin/`.
+  - On atelier it is not public (since 2026-10-14): only through an SSH tunnel, `docs/AUTH-OPERATIONS-AJW-39.md` §3a.
   - The customer site never links to it.
   - It is served with `X-Robots-Tag: noindex, nofollow`.
 - **API:** `{base}/api/admin/*`.
@@ -94,9 +95,10 @@ other customers: they see its images and its name; a refinement forked from it k
 The share link name is assigned at publication (a share GET never writes).
 
 **On atelier (since 2026-10-08).** XJet's published masters reach atelier's gallery and homepage story through the
-Gallery sync: `bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3` sends it to atelier's Admin
-API with atelier's Admin key. Only gallery content moves; customers' designs, uses, favourites and everything else stay
-on proto. See `deploy/README.md` → atelier.
+Gallery sync: `P3_TARGET_SSH=atelier bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3`
+copies it to atelier's server over SSH and imports it there, then checks the public pages. atelier's Admin is not public,
+so no Admin key or Admin API is used. Only gallery content moves; customers' designs, uses, favourites and everything
+else stay on proto. See `deploy/README.md` → atelier.
 
 The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 

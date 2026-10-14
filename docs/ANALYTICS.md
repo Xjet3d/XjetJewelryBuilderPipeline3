@@ -74,8 +74,9 @@ GA4 and Clarity measure **Atelier production only** (the owner's decision of 202
 project of its own. Proto tests the consent and analytics code with the placeholder IDs `G-TEST0000` and `test0000`:
 the banner, the choice and every event run in the page, but neither tool is loaded, nothing is sent, and the page's
 policy stays closed to both (`window.dataLayer` and `window.clarity.q` show what would have been sent). Atelier's IDs
-are entered in Atelier's Admin only, after the owner approved the release. Production reports can also filter on
-hostname = `xjetatelier.xjet3d.com` as a second guard.
+are entered in Atelier's Admin only (Admin through the SSH tunnel: `docs/AUTH-OPERATIONS-AJW-39.md` §3a), after the
+owner approved the release. Production reports can also filter on hostname = `xjetatelier.xjet3d.com` as a second
+guard.
 
 ### GA4 property settings
 
