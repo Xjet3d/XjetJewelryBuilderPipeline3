@@ -389,10 +389,8 @@ exec bash -c "$*"
 def _OnServer(Dir: str = "", Checkout: str = "~/'git/XjetJewelryBuilderPipeline3'") -> list[str]:
     """What the script runs on the site's server, as the stand-in ssh records it (Dir: the temporary directory there)."""
     return [f"atelier cd {Checkout} && test -f scripts/gallery-sync.sh && " + 'mktemp -d "${TMPDIR:-/tmp}/p3-gallery-import.XXXXXX"',
-            f"atelier tar -C '{Dir}' -xf -",
-            f"atelier cd {Checkout} && " + 'P3_BACKUP_DIR="${P3_BACKUP_DIR:-$HOME/p3-backups}" '
-            f"bash scripts/gallery-sync.sh import '{Dir}'",
-            f"atelier rm -rf '{Dir}'"]
+            f"atelier tar -C '{Dir}' -xf - && cd {Checkout} && " + 'P3_BACKUP_DIR="${P3_BACKUP_DIR:-$HOME/p3-backups}" '
+            f"bash scripts/gallery-sync.sh import '{Dir}'; Rc=$?; rm -rf '{Dir}'; exit $Rc"]   # two connections: two prompts at most
 
 
 def _Bash() -> str | None:
@@ -500,7 +498,7 @@ async def test_a_push_over_ssh_imports_on_the_sites_server_and_makes_no_admin_re
         Out = Run.stdout + Run.stderr
         assert Run.returncode == 0, Out
         Ssh = (tmp_path / "ssh.log").read_text(encoding="utf-8").splitlines()
-        assert Ssh == _OnServer(re.fullmatch(r"atelier tar -C '([^']+)' -xf -", Ssh[1])[1]), Ssh
+        assert Ssh == _OnServer(re.match(r"atelier tar -C '([^']+)' -xf - && ", Ssh[1])[1]), Ssh
         assert not list((tmp_path / "home" / "tmp").iterdir())             # the temporary directory is gone
         assert len(list((tmp_path / "home" / "p3-backups").glob("*/pipeline3.db"))) == 1    # backed up before the import
         assert "Imported." in Out and f"Verifying {Local}" in Out and f"Verifying {Public}" in Out, Out

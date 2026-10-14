@@ -64,7 +64,8 @@ It backs up all three files to `/var/backups/p3-proto-<timestamp>/` and refuses 
 atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: the public site is HTTPS only) runs Pipeline 3 under
 `/JewelryB2C3/` as the user systemd service `xjet-jewelry-b2c3` in `~/git/XjetJewelryBuilderPipeline3` (127.0.0.1:8340,
 data in `var/`), next to Pipeline 2's live shop. Staff reach the server itself with `ssh atelier` (a host alias in
-`~/.ssh/config`).
+`~/.ssh/config` whose HostName is the server's own address: `xjetatelier.xjet3d.com` is Cloudflare, which carries no
+SSH, so an alias pointing there times out).
 
 **The Admin on atelier is private (since 2026-10-14).** On the public domain nginx answers 404 for
 `/JewelryB2C3/admin`, `/JewelryB2C3/api/admin/…` and the developer tools, by design. Keep it that way: never expose the
@@ -105,7 +106,8 @@ line, in shell history or over the web.
    it works whether or not administrator sign-in is enforced. The running service shows the new gallery at once (it
    reads the gallery from the database on every request; the sitemap follows within a minute): nothing is restarted.
    The whole bundle is copied each time, and only what changed is written: pushing unchanged content changes nothing.
-   Without a working `ssh atelier` it stops before anything is exported.
+   Without a working `ssh atelier` it stops before anything is exported. It connects to atelier twice (the check,
+   then the copy with the import), so an SSH password is asked for twice; an SSH key needs none.
 
    A site whose Admin API does answer (not atelier) can take the bundle over HTTPS instead:
    `bash scripts/gallery-sync.sh push BASE_URL` sends it to that Admin API with the site's Admin key (asked for, or read

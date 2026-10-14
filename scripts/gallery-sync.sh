@@ -135,12 +135,14 @@ case "$Cmd" in
         ssh "$HostS" "tar -C '$Remote' -cf - ." | tar -C "$Local/bundle" -xf -
     fi
     if [[ -n "${P3_TARGET_SSH:-}" ]]; then
-        echo "3. check, then copy to $P3_TARGET_SSH:$TargetDir"
+        echo "3. check the bundle"
         "$PY" -m p3.gallerysync check "$Local/bundle"
-        tar -C "$Local/bundle" -cf - . | ssh "$P3_TARGET_SSH" "tar -C '$TargetDir' -xf -"
-        echo "4. on $P3_TARGET_SSH: plan, back up, import, check the site there"
+        echo "4. on $P3_TARGET_SSH: copy into $TargetDir, plan, back up, import, check the site there"
+        # One connection copies, imports and removes the temporary directory (ssh asks for a password, if it uses one,
+        # here and in step 0 only); CleanTarget tries again only when this connection did not finish
         Backups="P3_BACKUP_DIR=\"\${P3_BACKUP_DIR:-\$HOME/p3-backups}\""     # where the server's auto-deploy keeps them
-        ssh "$P3_TARGET_SSH" "$(TargetCd) && $Backups bash scripts/gallery-sync.sh import '$TargetDir'"
+        tar -C "$Local/bundle" -cf - . | ssh "$P3_TARGET_SSH" "tar -C '$TargetDir' -xf - && $(TargetCd) && $Backups bash scripts/gallery-sync.sh import '$TargetDir'; Rc=\$?; rm -rf '$TargetDir'; exit \$Rc"
+        TargetDir=""
         if [[ -n "$Public" ]]; then
             echo "5. check the public pages at $Public"
             "$PY" -m p3.gallerysync verify "$Public"
