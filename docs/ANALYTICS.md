@@ -23,17 +23,56 @@ before the owner approves the tested commit.
 
 | Part | Where |
 |---|---|
-| Settings (on/off, host, GA4 ID, Clarity ID) and the Content-Security-Policy additions | `p3/analytics.py` |
+| Settings (on/off, host, each tool's ID and on/off), the tools (`Providers`) and the Content-Security-Policy additions | `p3/analytics.py` |
 | Admin card: *Settings → System → Analytics & cookies* (changes logged) | `p3/admin.py`, `web/admin.html`, `web/admin.js` |
 | The banner, Privacy preferences (Cookie Settings in the footers), the GA4 and Clarity loaders, the event allowlist, clean addresses | `web/consent.js` |
 | The site's screens and funnel events | `web/app.js` (`measure`, `measureScreen`) |
 | The quote page: consent, its events (viewed, approved + order, declined), never Clarity | `p3/quotes.py`, `web/quote.html` |
 
-- A customer page gets `window.__p3.analytics = {version, host, ga4, clarity}` only while analytics is on, a host is set
-  and at least one ID exists; otherwise `null`, no banner, and the policy stays `script-src 'self'`, `connect-src 'self'`.
-- With a tool on, customer pages (never `/admin`, `/dev`, `/api/…`, `/static/…`) add that tool's hosts to the
-  Content-Security-Policy — Google's list for Analytics without Ads features, Microsoft's for Clarity.
+- A tool may load only when **all** of these hold: analytics is offered on this environment, the visitor accepted
+  Analytics, the page is on the configured host, the tool is switched on, and its ID is valid. There is no fallback ID.
+- A customer page gets `window.__p3.analytics = {version, host, ga4, clarity}` only while at least one tool may load;
+  a tool that may not load is `null` there, never its ID. Otherwise the whole value is `null`, there is no banner, and
+  the policy stays `script-src 'self'`, `connect-src 'self'`.
+- Customer pages (never `/admin`, `/dev`, `/api/…`, `/static/…`) add the hosts of the tools that may load, and only
+  theirs, to the Content-Security-Policy — Google's list for Analytics without Ads features, Microsoft's for Clarity. So
+  with GA4 configured and Clarity empty, no Clarity script or request can even be attempted.
 - The browser starts a tool only when `location.hostname` equals the configured host, so an ID cannot run elsewhere.
+
+### Settings: entered in the Admin, never in the code
+
+The IDs belong to each environment and live only in its database (`product_settings`, key `analytics`, every change in
+`product_settings_log`):
+
+```json
+{"enabled": true, "host": "xjetatelier.xjet3d.com",
+ "providers": {"ga4": {"enabled": true, "id": "G-…"}, "clarity": {"enabled": true, "id": "…"}}}
+```
+
+Nothing copies one environment's IDs to another, and no ID is written in the application
+(`tests/test_analytics.py` checks the code). A configuration saved before 2026-10-14 in the flat shape
+(`{"ga4": …, "clarity": …}`, a tool on whenever its ID was set) is read as exactly that until the Admin saves again.
+
+**The Admin card** (*Settings → System → Analytics & cookies*) has these parts:
+
+- **Offer Analytics to visitors** (the switch) and the **Allowed site host** (one click fills in this server's own host).
+- One block per tool, listed from `Providers`. Each has its ID field (with its format, e.g. `G-XXXXXXXXXX`), *Use … after
+  consent*, and its saved state: *Not configured*, *Configured · off*, *Test ID · nothing sent*, *Configured ·
+  analytics off* or *Configured · on after consent*.
+- **Save changes** sends the whole form, then reads the server back. It says *Saved* only when the server holds what was
+  entered; otherwise it says *Not saved as entered* and shows what the server holds. A tool cannot be switched on without
+  its ID, and analytics cannot be offered without the host.
+- **Saved on this server** always shows what the database holds: the switch, the host, each tool's ID and on/off, and
+  who changed it and when.
+
+**A marketing tool later** (Google Ads, Meta Pixel …) needs no change to this model. It takes:
+
+- one more entry in `Providers` with `category: "marketing"`, its ID format and its policy hosts (the Admin card lists it
+  and its ID is entered there like the others);
+- its loader in `web/consent.js`, behind a real *Marketing & Advertising* switch, with its own Consent Mode signals;
+- a new `ConsentVersion`, so every visitor is asked again.
+
+Until then there is no marketing tool: the Admin says so, and visitors see *Not currently used* with no switch.
 
 ### The consent record
 
@@ -48,8 +87,8 @@ or a new tool.
 ### What the visitor sees (the owner's wording, 2026-10-14)
 
 Two layers, in Atelier's own look (warm ivory surface, beige hairline, Cinzel title, Inter text, spaced capitals on
-buttons, 6 px corners; the primary action a warm charcoal, never pure black). The styles live in `consent.js` itself, so
-the quote page shows the same.
+buttons, 6 px corners). The primary action wears Atelier's gold, the site's `btn-gold`: a warm gold gradient with dark
+text. The styles live in `consent.js` itself, so the quote page shows the same.
 
 - **The banner** (a card in the bottom-left corner; a sheet along the bottom on phones): *Your privacy matters* — what
   the site uses and why, in one paragraph, and a Privacy Policy link. It names no tool, cookie or retention period.
@@ -58,16 +97,25 @@ the quote page shows the same.
 - **Privacy preferences** (Manage preferences, or Cookie Settings at the foot of every page; a dialog, a bottom sheet on
   phones):
   - **Essential** — *Always active*: sign-in, designs, bag, checkout, security and the privacy choice itself.
-  - **Analytics & Performance** — the one switch (On / Off). *Learn more* names the tools switched on (Google
-    Analytics 4, Microsoft Clarity), says they start only after consent, are never used for advertising, receive no
-    customer details or design prompts, and that Clarity masks sensitive information.
+  - **Analytics & Performance** — the one switch (On / Off). *Learn more* names only the tools that may load (Google
+    Analytics 4, Microsoft Clarity). It says they start only after consent, are not used for advertising and receive
+    no customer details or design prompts, and that Clarity is configured to mask sensitive information.
   - **Marketing & Advertising** — *Not currently used*: no tool and no switch. Adding Google Ads, Meta Pixel or another
     marketing platform later means a real switch here, a new consent version and its own Consent Mode signals.
   - Actions: **Reject optional**, **Save preferences**, **Accept all** (primary). Accept all allows Analytics &
     Performance only; `marketing` stays `false`.
 
-The Privacy page (`web/index.html`, view `privacy`) carries the details: the three categories, the tools by name, what
-Clarity masks, retention, the withdrawal, and a *Cookie details* box with the names below.
+The Privacy page (`web/index.html`, view `privacy`) is written for customers:
+
+- the three categories, the tools by name, what Clarity masks, and how to withdraw consent;
+- a summary of each technology with its purpose and how long it lasts, only with verified figures:
+  - Google's default cookie lifetime, up to 2 years, and this property's 14-month data retention;
+  - Microsoft's documented Clarity retention: recordings 30 days, or 9 months when kept; heatmaps and page statistics
+    9 months;
+  - the sign-in cookie's 30 days after the last visit, 180 days at most;
+- the exact names, only behind *View technical cookie names*.
+
+The page names no staff cookie and none of Microsoft's own cookies, whose use with this configuration is not verified.
 
 ### Essential storage (no consent needed)
 

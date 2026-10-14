@@ -1249,11 +1249,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     # ── Analytics & cookies: GA4 and Microsoft Clarity, only after a visitor's consent (p3/analytics.py) ──
     def _AnalyticsState(request: Request) -> dict:
+        """What this server holds, read from its database: the switch, the host, each tool (name, ID format, saved
+        ID, on or off, configured, active) — and, as before, the IDs flat ("ga4", "clarity") for scripts."""
         R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Analytics.Key,))
         Public = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
         C = Analytics.Stored(Ctx.Products)
-        return {**C, "active": Analytics.Public(Ctx.Products) is not None,
-                "placeholder": {T: Analytics.Placeholder(T, C[T]) for T in ("ga4", "clarity")},
+        return {"enabled": C["enabled"], "host": C["host"], **{T: P["id"] for T, P in C["providers"].items()},
+                "providers": Analytics.AdminProviders(C), "marketing_providers": [],     # none exists (docs/ANALYTICS.md)
+                "active": Analytics.Public(Ctx.Products) is not None,
+                "placeholder": {T: Analytics.Placeholder(T, P["id"]) for T, P in C["providers"].items()},
                 "consent_version": Analytics.ConsentVersion, "production": bool(Ctx.Settings.Production),
                 "site_host": re.sub(r"^https?://", "", Public).split("/", 1)[0].split(":", 1)[0].lower(),
                 "changed_at": R["updated_at"] if R else None, "changed_by": R["updated_by"] if R else None}
@@ -1265,12 +1269,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.put("/api/admin/analytics")
     async def SetAnalytics(request: Request, Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """{"enabled", "host", "ga4", "clarity"} — any of them; logged with the product settings. The IDs are public
-        (they are in the page once a visitor consents); each environment has its own (Proto never uses Atelier's)."""
+        """{"enabled", "host", "providers": {"ga4" | "clarity": {"enabled", "id"}}} — any of them (the flat "ga4" /
+        "clarity" IDs of before still work); logged with the product settings. Answers what the database then holds.
+        The IDs are public (they are in the page once a visitor consents); each environment has its own."""
         Who = Admin(authorization)
         New = Analytics.Validate(Body_, Analytics.Stored(Ctx.Products))
-        Ctx.Products.Set(Analytics.Key, New, Who.Id, "analytics " + ("on" if New["enabled"] else "off") + f" · host {New['host'] or '—'}"
-                         + f" · GA4 {New['ga4'] or '—'} · Clarity {New['clarity'] or '—'}")
+        Ctx.Products.Set(Analytics.Key, New, Who.Id, Analytics.Note(New))
         return _AnalyticsState(request)
 
     # ── Products: rings and charms (customer availability per product, charm sizes) ──

@@ -228,8 +228,9 @@
 
   // ── the banner and Privacy preferences ────────────────────────────────
   // Atelier's own look (web/index.html): warm ivory surfaces, beige hairlines, Cinzel titles, Inter text, small spaced
-  // capitals on the buttons, 6 px corners. Accept all is a warm charcoal (never pure black); Reject optional sits beside
-  // it at the same size, outlined; Manage preferences is a quiet text action. The styles are the script's own, so the
+  // capitals on the buttons, 6 px corners. Accept all wears Atelier's gold (the site's btn-gold: a warm gold gradient,
+  // dark text); Reject optional sits beside it at the same size, outlined; Manage preferences is a quiet gold text
+  // action. The same order and weight in Privacy preferences. The styles are the script's own, so the
   // quote page (none of the site's stylesheets) shows the same. The banner names no tool: Google Analytics 4 and
   // Microsoft Clarity are named under Analytics & Performance → Learn more, and on the Privacy page. Marketing &
   // Advertising is shown so the choices are complete, as "Not currently used": no tool, no switch.
@@ -250,18 +251,19 @@
     '.ac-bar a:hover,.ac-card a:hover{color:#8A6420}',
     '.ac-row{display:flex;gap:10px}.ac-row .ac-btn{flex:1 1 0}',
     '.ac-bar .ac-btn,.ac-card .ac-btn{-webkit-appearance:none;appearance:none;margin:0;display:inline-flex;align-items:center;',
-    'justify-content:center;min-height:44px;padding:0 18px;border:1px solid #2A2520;border-radius:6px;background:#2A2520;color:#FBF7EF;',
+    'justify-content:center;min-height:44px;padding:0 18px;border:1px solid #B48A4C;border-radius:6px;',
+    'background:linear-gradient(90deg,#C9A96E 0%,#B08040 100%);color:#1A1A1A;box-shadow:0 4px 12px rgba(138,86,27,.22);',
     'font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;text-align:center;cursor:pointer;',
-    'transition:background-color .2s,border-color .2s,color .2s}',
-    '.ac-bar .ac-btn:hover,.ac-card .ac-btn:hover{background:#3D362E;border-color:#3D362E}',
-    '.ac-bar .ac-soft,.ac-card .ac-soft{background:transparent;color:#2A2520;border-color:#9C8A6C}',
-    '.ac-bar .ac-soft:hover,.ac-card .ac-soft:hover{background:#F2EBDD;border-color:#7E6D52;color:#1A1A1A}',
+    'transition:background-color .2s,border-color .2s,color .2s,filter .2s}',
+    '.ac-bar .ac-btn:hover,.ac-card .ac-btn:hover{filter:brightness(1.06)}',
+    '.ac-bar .ac-soft,.ac-card .ac-soft{background:transparent;color:#2A2520;border-color:#9C8A6C;box-shadow:none}',
+    '.ac-bar .ac-soft:hover,.ac-card .ac-soft:hover{background:#F2EBDD;border-color:#7E6D52;color:#1A1A1A;filter:none}',
     '.ac-bar .ac-quiet,.ac-card .ac-quiet{-webkit-appearance:none;appearance:none;margin:0;padding:10px 0;min-height:40px;border:0;',
     'background:none;color:#8A6420;font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;cursor:pointer;',
     'text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}',
     '.ac-bar .ac-quiet:hover,.ac-card .ac-quiet:hover{color:#5E430F}',
     '.ac-bar .ac-quiet{margin-top:4px}',
-    '.ac-bar :focus-visible,.ac-card :focus-visible{outline:2px solid #C9A96E;outline-offset:2px}',
+    '.ac-bar :focus-visible,.ac-card :focus-visible{outline:2px solid #8A6420;outline-offset:2px}',
     '.ac-card:focus{outline:none}',
     // Privacy preferences: a dialog in the middle on wide screens, a sheet from the bottom on phones
     '.ac-shade{position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;padding:16px;',
@@ -289,7 +291,7 @@
     'background:#968669;cursor:pointer;flex-shrink:0;transition:background-color .2s}',
     '.ac-card .ac-sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#FFFDF9;',
     'box-shadow:0 1px 3px rgba(42,37,32,.35);transition:transform .2s}',
-    '.ac-card .ac-sw:checked{background:#2A2520}.ac-card .ac-sw:checked::after{transform:translateX(20px)}',
+    '.ac-card .ac-sw:checked{background:#8A6420}.ac-card .ac-sw:checked::after{transform:translateX(20px)}',
     '.ac-card .ac-more{margin-top:4px;padding:8px 0;min-height:36px;display:inline-flex;align-items:center;gap:7px;text-decoration:none;',
     'letter-spacing:.12em}',
     '.ac-more svg{transition:transform .2s}.ac-more[aria-expanded="true"] svg{transform:rotate(180deg)}',
@@ -325,7 +327,7 @@
   function analyticsDetail() {
     var names = VENDORS.map(function (v) { return NAMES[v]; }), many = names.length > 1;
     return 'Includes ' + names.join(' and ') + '. ' + (many ? 'These services are' : 'This service is') + ' activated only after ' +
-      'you give consent and ' + (many ? 'are' : 'is') + ' never used for advertising. Customer details and design prompts are not ' +
+      'you give consent and ' + (many ? 'are' : 'is') + ' not used for advertising. Customer details and design prompts are not ' +
       'sent to ' + (many ? 'them' : 'it') + (CFG.clarity ? ', and Microsoft Clarity is configured to mask sensitive customer information' : '') +
       '. More in our <a href="' + privacyUrl + '">Privacy Policy</a>.';
   }
@@ -382,7 +384,7 @@
                  'Learn more' + CHEVRON + '</button><p class="ac-detail" id="ac-an-more" hidden>' + analyticsDetail() + '</p>' : '') +
       category('ac-mk', 'Marketing &amp; Advertising', '<span class="ac-status">Not currently used</span>',
         'Used to measure advertising campaigns and, when enabled, help make advertising more relevant.',
-        '<p class="ac-note">Atelier does not currently use any marketing or advertising technology.</p>') +
+        '<p class="ac-note">Atelier does not currently use marketing or advertising technology.</p>') +
       '</div><div class="ac-foot">' + (ACTIVE
         ? '<button type="button" class="ac-btn ac-soft" data-ac="reject">Reject optional</button>' +
           '<button type="button" class="ac-btn ac-soft" data-ac="save">Save preferences</button>' +
