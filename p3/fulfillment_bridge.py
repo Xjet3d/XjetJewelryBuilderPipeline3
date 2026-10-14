@@ -38,8 +38,32 @@ Prefix = "/api/integrations/fulfillment/v1"
 ProjectionStatuses = ("production", "qc", "shipped", "completed")    # written by the projection; never a commercial change
 EligibleOrderStatuses = ("new", "payment_confirmed", "three_d_ready")   # a quotation is never enrolled (D-10): its order is
 MaxChanges, MaxEvents, MaxCheckItems = 500, 200, 100
-# Why an order line cannot be sent to Production now (docs/order-to-production-review.md §B.2): the page shows the
-# message under the disabled button, the server answers it as 409 print_file_required / already_sent
+# The print file of an order line (the owner's decisions of 2026-10-14, Fulfillment I-35): judged from the line's 3D
+# version, result, link and state only — never from its order — each state with what the Admin sees and what to do.
+# "Required" is said only when no 3D model exists; a valid STL is never called missing.
+StlLabels = {
+    "ready": ("STL ready", None),
+    "ready_unlinked": ("STL ready — not yet linked to this line", "Send to Production links it; the confirmation names the exact file"),
+    "ambiguous": ("STL ready — several different results for {size}", "choose which one is this line's STL (Link STL…)"),
+    "needs_preparation": ("STL exists — preparation required for {size}", "Prepare STL: scaled from the existing 3D model, no AI cost"),
+    "preparing": ("STL being prepared for {size}", "the result is being measured — usually a few seconds"),
+    "review_required": ("STL flagged — review required", "accept it on the session page, or prepare it again"),
+    "failed": ("STL preparation failed", "prepare it again"),
+    "file_missing": ("STL file missing on disk", "the record exists but the file does not: upload the STL again (Upload revised STL…)"),
+    "other_option": ("3D model is of another option", "generate a model of the ordered option on the session page (a paid Hi3D request)"),
+    "missing": ("STL missing — generation required", "generate the 3D model on the session page (a paid Hi3D request), or upload an STL"),
+}
+# Whether the line's ORDER may hand it over now: commercial status, the pilot allowlist, an earlier hand-over
+HandoverLabels = {
+    "allowed": (None, None),
+    "sent": ("In Production", None),
+    "order_cancelled": ("Order cancelled — production disabled", None),
+    "order_completed": ("Order completed — production disabled", "Reopen for Production, with a reason, if it must be made"),
+    "legacy_status": ("In the existing production flow — not handed over", "its status was set by hand before the integration"),
+    "not_enabled": ("Production hand-over restricted by the pilot allowlist", "only the orders on the pilot allowlist are handed over"),
+}
+# Why an order line cannot be sent to Production now (docs/order-to-production-review.md §B.2) — the former single
+# verdict; kept for the codes Fulfillment's side and the history know
 ProductionReasons = {
     "already_sent": "already sent to Production",
     "order_cancelled": "the order is cancelled",
@@ -56,9 +80,9 @@ ProductionReasons = {
     "export_failed": "the production file cannot be exported",
 }
 # The controlled phase's allowlist says no (P3_FULFILLMENT_ORDER_ALLOWLIST): an order-level rule, never a print-file
-# problem — a line keeps its own verdict (`print_ready`) beside it (the owner's question about ORD-10001, 2026-10-13)
-NotEnabledReason = ("Production is not enabled for this order during the controlled phase — only the orders on the integration's allowlist "
-                    "(P3_FULFILLMENT_ORDER_ALLOWLIST) are sent")
+# problem — a line keeps its own verdict (`stl`) beside it (the owner's question about ORD-10001, 2026-10-13; I-35)
+NotEnabledReason = ("Production hand-over restricted by the pilot allowlist — during the controlled phase only the orders on it "
+                    "(P3_FULFILLMENT_ORDER_ALLOWLIST) are handed over")
 # The stages Fulfillment reports per part (its admin payload; docs/order-to-production-review.md §I), in order of progress —
 # `sent` is Atelier's own: the line is sent and Fulfillment has not reported its part yet
 ProductionStageLabels = {
@@ -350,11 +374,12 @@ class FulfillmentBridge:
         if EntityType == "order":
             O = self._Order(EntityId)
             if O["status"] == "cancelled":
-                return False, "the order is cancelled", O
+                return False, "Order cancelled — production disabled", O
             if O["status"] == "completed":
-                return False, "the order is completed", O
+                return False, "Order completed — production disabled" + (" (Reopen for Production first)" if self.Reopenable(O)[0] else ""), O
             if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
-                return False, f"an order in status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' stays with the existing flow", O
+                return False, (f"In the existing production flow — its status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' was set by hand; "
+                               "not handed over"), O
             if not self.OrderAllowed(O):
                 return False, NotEnabledReason, O
             return True, None, O
@@ -368,38 +393,94 @@ class FulfillmentBridge:
     def ProductionRows(self, OrderId: str) -> list[dict]:
         return self.Ctx.Db.All("SELECT * FROM fulfillment_line_production WHERE order_id = ? ORDER BY sent_at, id", (OrderId,))
 
-    def LineEligibility(self, O: dict, L: dict, Prod: dict | None = None, Known: bool = False) -> dict:
-        """Whether this order line may be sent to Production now: pinned to a 3D version, with a complete sized result
-        (measured, closed or accepted) for the ordered size and material — "Print file required" otherwise, with the
-        exact reason. Prod = its production row when it was sent already (Known: the caller looked it up)."""
-        Prod = Prod if Known else self.LineProduction(L["id"])
+    def LineStl(self, L: dict) -> dict:
+        """The print file of one order line (I-35) — from its 3D version, result, link and state, never from its order:
+        ready (linked) · ready, not yet linked (one validated file: Send to Production links it with the Admin's
+        confirmation) · ambiguous (several different files: the Admin chooses) · preparation required · being prepared
+        · review required · preparation failed · file missing on disk · model of another option · missing."""
+        Size = f"{L.get('size_label') or ''} · {L.get('material_label') or ''}".strip(" ·")
 
-        def No(Reason: str, Message: str | None = None) -> dict:
-            return {"eligible": False, "reason": Reason, "message": Message or ProductionReasons[Reason], "production": Prod}
+        def V(State: str, **More) -> dict:
+            Label, Action = StlLabels[State]
+            return {"state": State, "label": Label.format(size=Size), "action": Action.format(size=Size) if Action else None,
+                    "ready": State in ("ready", "ready_unlinked"), "linked": bool(L.get("three_d_pinned")), **More}
+
+        if not L.get("has_model"):
+            return V("missing")
+        if L.get("three_d_pinned"):
+            T = self.Ctx.Db.One("SELECT mesh_id FROM session_3d WHERE id = ?", (L["three_d_id"],))
+            if self.Orders.MasterPresent(T["mesh_id"] if T else None) is False:
+                return V("file_missing")
+            State = L.get("three_d_state")
+            if State == "complete" and L.get("three_d_match"):
+                return V("ready")
+            if State == "review_required":
+                return V("review_required")
+            if State in ("failed", "cancelled"):
+                return V("failed")
+            return V("preparing")
+        if not L.get("three_d_version"):
+            return V("other_option")
+        C = self.Orders.StlCandidates(L)
+        if C["candidates"]:
+            if C["same_file"]:
+                return V("ready_unlinked", link=C["candidates"][0], duplicates=len(C["candidates"]) - 1)
+            return V("ambiguous", choices=C["candidates"])
+        if C["master_present"] is False:
+            return V("file_missing")
+        if C["pending"]:
+            return V("preparing")
+        if C["flagged"]:
+            return V("review_required")
+        if C["failed"]:
+            return V("failed")
+        return V("needs_preparation")
+
+    def Reopenable(self, O: dict) -> tuple[bool, str | None]:
+        """A completed order may be reopened for Production only when nothing of it was ever handed over — no line sent,
+        no enrollment — so the same order is never manufactured twice through it (I-35); a remake of an order that went
+        through Production is a new order."""
+        if O["status"] != "completed":
+            return False, "only a completed order is reopened for Production"
+        if self.Ctx.Db.One("SELECT 1 AS x FROM fulfillment_line_production WHERE order_id = ?", (O["id"],)) or self.Enrollment("order", O["id"]):
+            return False, "it went through Production already — a remake is a new order"
+        return True, None
+
+    def LineHandover(self, O: dict, L: dict, Prod: dict | None) -> dict:
+        """Whether the line's ORDER may hand it over now (I-35): sent already · cancelled · completed (reopenable or
+        not) · a status set by hand before the integration · outside the pilot allowlist · allowed."""
+        def V(State: str, **More) -> dict:
+            Label, Action = HandoverLabels[State]
+            return {"state": State, "label": Label, "action": Action, "allowed": State == "allowed", **More}
 
         if Prod:
-            return No("already_sent")
+            return V("sent")
         if O["status"] == "cancelled":
-            return No("order_cancelled")
+            return V("order_cancelled")
         if O["status"] == "completed":
-            return No("order_completed")
+            Ok, Why = self.Reopenable(O)
+            return V("order_completed", reopenable=Ok, **({} if Ok else {"action": f"cannot be reopened: {Why}"}))
         if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
-            return No("legacy_production")
-        if not L.get("has_model"):
-            return No("no_model")
-        if not L.get("three_d_id"):
-            return No("not_prepared")
-        if not L.get("three_d_pinned"):
-            return No("not_pinned")
-        State = L.get("three_d_state")
-        if not L.get("three_d_match"):
-            # Pinned to a result still being made (a revised STL measuring, a prepared result queued): its state, not "another size"
-            if State in ("processing", "failed", "cancelled"):
-                return No(State)
-            return No("other_size")
-        if State != "complete":
-            return No(State if State in ProductionReasons else "processing")
-        return {"eligible": True, "reason": None, "message": None, "production": None}
+            return V("legacy_status")
+        if not self.OrderAllowed(O):
+            return V("not_enabled")
+        return V("allowed")
+
+    def LineEligibility(self, O: dict, L: dict, Prod: dict | None = None, Known: bool = False) -> dict:
+        """Whether this order line may be sent to Production now (I-35): its print file ready — linked, or one validated
+        file the hand-over links — and its order allowing the hand-over. Both verdicts are returned (`stl`, `handover`)
+        and named together in `message`, the print file first. Prod = its production row when it was sent already
+        (Known: the caller looked it up)."""
+        Prod = Prod if Known else self.LineProduction(L["id"])
+        Stl = self.LineStl(L)
+        Hand = self.LineHandover(O, L, Prod)
+        Eligible = Hand["allowed"] and Stl["ready"]
+        if Hand["state"] == "sent":
+            Reason, Message = "already_sent", Hand["label"]
+        else:
+            Reason = None if Eligible else (Stl["state"] if not Stl["ready"] else Hand["state"])
+            Message = " · ".join(X for X in (Stl["label"], Hand["label"]) if X)
+        return {"eligible": Eligible, "reason": Reason, "message": Message, "stl": Stl, "handover": Hand, "production": Prod}
 
     def _PinInfo(self, L: dict) -> dict:
         """The exact geometry a line is produced from: its pinned 3D version (number, source, scaling, the master
@@ -430,11 +511,16 @@ class FulfillmentBridge:
                      (O["id"], "fulfillment", Dumps({"action": "enrolled", "by": By, "note": Note or None, "inherited_from": None}), By, T))
         return 1
 
-    def SendToProduction(self, OrderId: str, LineIds, By: str, Note: str = "") -> dict:
+    def SendToProduction(self, OrderId: str, LineIds, By: str, Note: str = "", Links=None) -> dict:
         """The explicit hand-over of order lines to Production: every line checked again on the server, the order
         enrolled on its first line, one production row per line with the pinned version and the file's hash, one
         outbox row, one history line per line — all in one transaction. A line already sent is refused, never
-        duplicated; a retry after a timeout finds the rows and is told so. Nothing is sent by itself, ever."""
+        duplicated; a retry after a timeout finds the rows and is told so. Nothing is sent by itself, ever.
+
+        A line whose print file is ready but not yet linked (one validated file, I-35) is linked here — only when the
+        Admin confirmed that exact result (Links: {line_id: result id}, from the confirmation that named it); the link
+        is recorded in the order's history, in the same transaction. A linked line keeps its link; an ambiguous one is
+        refused (the Admin chooses with Link STL first)."""
         self._Require()
         O = self._Order(OrderId)
         Ids = list(dict.fromkeys(X for X in (LineIds or []) if isinstance(X, str) and X)) if isinstance(LineIds, list) else []
@@ -448,20 +534,32 @@ class FulfillmentBridge:
         Ok, Why, _ = self.Eligibility("order", O["id"])
         if not Ok:
             raise HttpError(409, "not_eligible", f"{O['ref']} cannot be sent to Production: {Why}.")
-        Blocked, Pins = [], {}
+        Links = Links if isinstance(Links, dict) else {}
+        Blocked, Pins, ToLink = [], {}, {}
         for Id in Ids:
             El = self.LineEligibility(O, Lines[Id])
             if not El["eligible"]:
-                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": El["reason"], "message": El["message"]})
+                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": El["reason"], "message": El["message"],
+                                **({"action": El["stl"]["action"]} if El["stl"]["action"] and not El["stl"]["ready"] else {})})
                 continue
+            Sid = Lines[Id]["three_d_id"]
+            if El["stl"]["state"] == "ready_unlinked":
+                Want = El["stl"]["link"]
+                if Links.get(Id) != Want["id"]:
+                    Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "link_confirmation_required", "link": Want,
+                                    "message": f"STL ready — not yet linked: confirm linking {Want['version_label']} · {Want['size_label']} · {Want['material_label']} to this line"})
+                    continue
+                ToLink[Id], Sid = Want, Want["id"]
             try:                                              # the export is started (or found) before the transaction: never a paid call
-                Pins[Id] = {**self._PinInfo(Lines[Id]), "file": self._ProductionFile(Lines[Id]["three_d_id"])}
+                Pins[Id] = {**self._PinInfo({**Lines[Id], "three_d_id": Sid}), "file": self._ProductionFile(Sid)}
             except HttpError as E:
                 Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "export_failed", "message": f"{ProductionReasons['export_failed']}: {E.Message}"})
         if Blocked:
-            Code = "already_sent" if all(B["reason"] == "already_sent" for B in Blocked) else "print_file_required"
+            Reasons = {B["reason"] for B in Blocked}
+            Code = ("already_sent" if Reasons == {"already_sent"} else "link_confirmation_required" if Reasons == {"link_confirmation_required"}
+                    else "export_failed" if Reasons == {"export_failed"} else "stl_not_ready")
             Text = "; ".join(f"{B['item_ref']}: {B['message']}" for B in Blocked)
-            raise HttpError(409, Code, (f"{Text}." if Code == "already_sent" else f"Print file required before sending to Production — {Text}."), {"blocked": Blocked})
+            raise HttpError(409, Code, f"Not sent to Production — {Text}.", {"blocked": Blocked})
         T = Now()
         with self.Ctx.Db.Transaction() as Conn:
             for Id in Ids:                                    # a double click, or a retry that already landed
@@ -476,6 +574,14 @@ class FulfillmentBridge:
                 Conn.execute("UPDATE fulfillment_enrollments SET source_version = ?, updated_at = ? WHERE id = ?", (Version, T, E["id"]))
                 Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('updated', 'order', ?, ?, 'production', ?)",
                              (O["id"], Version, T))
+            for Id, Want in ToLink.items():                   # the confirmed link, never over an existing one
+                N = Conn.execute("UPDATE order_lines SET three_d_id = ?, mesh_id = ? WHERE id = ? AND order_id = ? AND three_d_id IS NULL",
+                                 (Want["id"], Pins[Id]["mesh_id"], Id, O["id"])).rowcount
+                if N != 1:
+                    raise HttpError(409, "already_linked", f"{Lines[Id]['ring_id']} was linked to an STL meanwhile; reload the order and check it.")
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (O["id"], "3d_pinned", Dumps({"line_id": Id, "session_3d_id": Want["id"], "mesh_id": Pins[Id]["mesh_id"], "version_no": Pins[Id]["version_no"],
+                                                           "linked_at_handover": True, "size_label": Want["size_label"], "material_id": Lines[Id]["material_id"]}), By, T))
             for Id in Ids:
                 P, L = Pins[Id], Lines[Id]
                 F = P["file"] or {}
@@ -488,6 +594,42 @@ class FulfillmentBridge:
                              (O["id"], "production_sent", Dumps({"line_id": Id, "item_ref": L["ring_id"], "title": L["title"], "mesh_id": P["mesh_id"],
                                                                  "version_no": P["version_no"], "version_label": P["version_label"], "session_3d_id": P["three_d_id"],
                                                                  "file_sha256": F.get("sha256"), "handoff_no": 1, "note": Note or None, "source_version": Version}), By, T))
+        return self.AdminState("order", O["id"])
+
+    def ReopenTarget(self, O: dict) -> str:
+        """The status a reopened order returns to: the one it had before it was marked completed, when the hand-over
+        accepts it (New, Payment confirmed, 3D ready), else New."""
+        Before = None
+        for R in self.Ctx.Db.All("SELECT data_json FROM order_events WHERE order_id = ? AND kind = 'status' ORDER BY id", (O["id"],)):
+            D = json.loads(R["data_json"] or "{}")
+            if D.get("to") == "completed":
+                Before = D.get("from")
+        return Before if Before in EligibleOrderStatuses else "new"
+
+    def ReopenForProduction(self, OrderId: str, Reason: str, By: str) -> dict:
+        """Admin only (I-35): a completed order that was never handed over goes back to the status it had before it was
+        completed (else New), so its lines can be sent to Production — with a reason, recorded in the order's history as
+        a status change. Refused for any other status, and for an order that went through Production (a remake is a new
+        order): the same order is never handed over twice. Every hand-over rule still applies afterwards (a ready STL,
+        the pilot allowlist)."""
+        self._Require()
+        Reason = " ".join(str(Reason or "").split())[:500]
+        if len(Reason) < 3:
+            raise HttpError(400, "reason_required", "Say why the completed order is reopened for Production (kept in its history).")
+        O = self._Order(OrderId)
+        Ok, Why = self.Reopenable(O)
+        if not Ok:
+            raise HttpError(409, "not_reopenable", f"{O['ref']} cannot be reopened for Production: {Why}.")
+        To, T = self.ReopenTarget(O), Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            if (Conn.execute("SELECT 1 FROM fulfillment_line_production WHERE order_id = ?", (O["id"],)).fetchone()
+                    or Conn.execute("SELECT 1 FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (O["id"],)).fetchone()):
+                raise HttpError(409, "not_reopenable", f"{O['ref']} went through Production meanwhile — a remake is a new order.")
+            if Conn.execute("UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND status = 'completed'", (To, T, O["id"])).rowcount != 1:
+                raise HttpError(409, "not_reopenable", f"{O['ref']} changed meanwhile; reload it.")
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (O["id"], "status", Dumps({"from": "completed", "to": To, "note": f"Reopened for Production: {Reason}", "reopened_for_production": True,
+                                                    "reason": Reason}), By, T))
         return self.AdminState("order", O["id"])
 
     def _RecordFile(self, Row: dict, F: dict) -> None:
@@ -566,13 +708,14 @@ class FulfillmentBridge:
         # The new pin must be a real result of the line's option. Unlike the first hand-over it may still be measuring (an
         # uploaded STL is measured in the background) or flagged for review: Fulfillment receives the revision now and
         # fetches its file once the result is complete (or accepted) — exactly as it waits for any other file.
-        El = self.LineEligibility(O, L, None, Known=True)
+        Stl = self.LineStl(L)
         Problem = None
-        if not El["eligible"] and El["reason"] not in ("processing", "review_required"):
-            Problem = HttpError(409, "print_file_required", f"The revised file is not a valid print file — {El['message']}.", {"blocked": [{"line_id": LineId, "reason": El["reason"], "message": El["message"]}]})
+        if Stl["state"] not in ("ready", "preparing", "review_required"):
+            Problem = HttpError(409, "print_file_required", f"The revised file is not a valid print file — {Stl['label']}.",
+                                {"blocked": [{"line_id": LineId, "reason": Stl["state"], "message": Stl["label"]}]})
         Pin = self._PinInfo(L)
         File = {}
-        if Problem is None and El["eligible"]:
+        if Problem is None and Stl["state"] == "ready":
             try:
                 File = self._ProductionFile(L["three_d_id"]) or {}
             except HttpError as E:
@@ -1118,18 +1261,18 @@ class FulfillmentBridge:
         Rows = {R["line_id"]: R for R in self.ProductionRows(Id)}
         Proj = self.Projection("order", Id) or {} if E else {}
         NotEnabled = not Ok and Why == NotEnabledReason
+        Allow = tuple(self.Ctx.Settings.FulfillmentOrderAllowlist or ())
         Lines = []
         for L in Record["lines"]:
             El = self.LineEligibility(Record, L, Rows.get(L["id"]), Known=True)
-            # The print file's own verdict, kept apart from the order's: a valid print file is never called "required"
-            PrintReady = bool(El["eligible"])
-            if El["eligible"] and not Ok:                 # the order itself may not go (status, the controlled phase's allowlist): its lines say why
-                El = {**El, "eligible": False, "reason": "not_enabled" if NotEnabled else "order", "message": Why}
+            # The print file's own verdict, kept apart from the order's (I-35): a valid print file is never called "required"
+            PrintReady = bool(El["stl"]["ready"])
             Prod = Rows.get(L["id"])
             Part = self._PartOf(Proj, L["id"]) if Prod else None
             Stage = (Part or {}).get("stage")
             Lines.append({"line_id": L["id"], "item_ref": L["ring_id"], "title": L["title"], "quantity": L["quantity"], "eligible": El["eligible"],
-                          "reason": El["reason"], "message": El["message"], "print_ready": PrintReady, "print_version": L.get("three_d_version"),
+                          "reason": El["reason"], "message": El["message"], "stl": El["stl"], "handover": El["handover"],
+                          "print_ready": PrintReady, "print_version": L.get("three_d_version"),
                           "print_state": L.get("three_d_state"), "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")),
                           "production": self._ProductionJson(Prod),
                           # Fulfillment's stage of the line's part once it reports one (the staff view: approved, planned, in production …)
@@ -1138,9 +1281,15 @@ class FulfillmentBridge:
                           "fulfillment_url": self._FulfillmentPartUrl(Prod["part_id"]) if Prod and Prod["part_id"] else None})
         Pull = self.LastPull()
         AnyEligible = any(X["eligible"] for X in Lines)
+        Reopen = None
+        if Record["status"] == "completed":
+            Can, CannotWhy = self.Reopenable(Record)
+            Reopen = {"possible": Can, "to": self.ReopenTarget(Record) if Can else None, "why_not": CannotWhy}
         return {"enabled": True, "enrolled": bool(E and E["state"] == "enrolled"), "eligible": Ok and AnyEligible, "not_enabled": NotEnabled,
                 "ineligible_reason": Why if not Ok else (None if AnyEligible else ("every line is in Production" if Rows and len(Rows) >= len(Lines) else
-                                                                                   "no line has a valid print file yet")),
+                                                                                   "no line is ready to send yet — each line says why")),
+                # The controlled phase, said as such (I-35): the allowlist and whether this order is on it
+                "pilot": {"active": bool(Allow), "orders": list(Allow), "allowed": self.OrderAllowed(Record)}, "reopen": Reopen,
                 "lines": Lines, "lines_sent": len(Rows), "lines_total": len(Lines),
                 "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
                 "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions),
@@ -1451,7 +1600,13 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
     @App_.post("/api/admin/orders/{OrderId}/production")
     async def SendToProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""))
+        return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""), Links=Body_.get("links"))
+
+    @App_.post("/api/admin/orders/{OrderId}/reopen-for-production")
+    async def ReopenForProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """Admin only (I-35): a completed order that was never handed over, back to its status before completion."""
+        Who = Admin(authorization)
+        return Bridge.ReopenForProduction(OrderId, str(Body_.get("reason") or ""), Who.Id)
 
     # The Production page (§H): the lines sent, with Fulfillment's side of each; one line's detail and timeline
     @App_.get("/api/admin/production")

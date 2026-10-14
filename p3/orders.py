@@ -23,6 +23,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from p3 import addressing as Addressing
+from p3 import assets
 from p3 import charmprices as CharmPrices
 from p3 import payments as Payments
 from p3 import products as Products
@@ -599,6 +600,88 @@ class OrderService:
                 "three_d_latest": {"id": Latest["id"], "size": Latest["production_size"], "material_id": Latest["material_id"],
                                    "state": ProductionState(Latest["status"], Latest["integrity"], bool(Latest["accepted_at"]))} if Latest and not Chosen else None}
 
+    def MasterPresent(self, MeshId: str | None) -> bool | None:
+        """Whether a 3D version's master STL is on disk with its recorded size (None: the version has no master record
+        yet — still downloading or measuring)."""
+        Raw = self.Ctx.Db.One("SELECT stl_path, bytes FROM raw_geometry WHERE mesh_id = ?", (MeshId,)) if MeshId else None
+        if Raw is None:
+            return None
+        try:
+            Path_ = assets.Resolve(self.Ctx.Settings.DevDir, Raw["stl_path"])
+        except Exception:  # noqa: BLE001 — a path that escapes the root is no file
+            return False
+        return Path_.is_file() and (Raw["bytes"] is None or Path_.stat().st_size == Raw["bytes"])
+
+    def StlCandidates(self, L: dict) -> dict:
+        """The finished 3D results that may become an unlinked line's print file (the owner's decisions of 2026-10-14,
+        Fulfillment I-35): made from the line's own 3D version (the one fixed when it was ordered, else its option's
+        current version) at exactly its size and material, production-complete (measured and unflagged, or flagged and
+        accepted), the master STL on disk, and any file of its own present. Newest first. `same_file`: every candidate
+        exports the very same file (the same master scaled by the same method, no bore made round, no stored file of its
+        own) — linking the newest is then no choice at all; otherwise the Admin chooses, never silently. `pending`,
+        `flagged`, `failed`: the line's other results at that size and material."""
+        from p3.production3d import ProductionState
+        Db = self.Ctx.Db
+        Version = (Db.One("SELECT * FROM meshes WHERE id = ?", (L.get("pinned_mesh_id"),)) if L.get("pinned_mesh_id") else None) \
+            or Versions.MeshFor(Db, L["design_id"], L.get("candidate_id"))
+        Out = {"version": Versions.Brief(Version), "candidates": [], "same_file": False, "pending": [], "flagged": [], "failed": [],
+               "master_present": self.MasterPresent(Version["id"]) if Version else None}
+        Size = LineSize(L)
+        if Version is None or Size is None:
+            return Out
+        Rows = Db.All("SELECT s.id, s.status, s.accepted_at, s.created_at, s.updated_at, r.integrity FROM session_3d s LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id "
+                      "WHERE s.design_id = ? AND s.mesh_id = ? AND s.material_id = ? AND s.production_size = ? ORDER BY s.created_at DESC",
+                      (L["design_id"], Version["id"], L["material_id"], float(Size)))
+        Keys = set()
+        for R in Rows:
+            State = ProductionState(R["status"], R["integrity"], bool(R["accepted_at"]))
+            Brief = {"id": R["id"], "state": State, "created_at": R["created_at"], "measured_at": R["updated_at"], "accepted": bool(R["accepted_at"]),
+                     "version_label": Versions.Label(Version), "size_label": L.get("size_label"), "material_label": L.get("material_label")}
+            if State in ("failed", "cancelled"):
+                Out["failed"].append(Brief)
+                continue
+            if State == "processing":
+                Out["pending"].append(Brief)
+                continue
+            if State == "review_required":
+                Out["flagged"].append(Brief)
+                continue
+            G = Db.One("SELECT method_version, checks_json, stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (R["id"],)) or {}
+            Corrected = bool(json.loads(G.get("checks_json") or "{}").get("bore_corrected"))
+            Own = G.get("stl_path")
+            if Own:
+                try:
+                    if not assets.Resolve(self.Ctx.Settings.DevDir, Own).is_file():
+                        continue                                  # its own file is gone: not a print file
+                except Exception:  # noqa: BLE001
+                    continue
+            if not Out["master_present"]:
+                continue
+            Keys.add((G.get("method_version"), Corrected, Own or ""))
+            Out["candidates"].append({**Brief, "bore_corrected": Corrected, "own_file": bool(Own)})
+        Out["same_file"] = bool(Out["candidates"]) and len(Keys) == 1
+        return Out
+
+    def LinkLine3D(self, OrderId: str, LineId: str, ThreeDId: str, By: str) -> dict:
+        """Link one finished result to a line as its print file — the Admin's explicit choice when several different
+        results exist (I-35). Never replaces a line's existing link: a different file for a linked line is a revised
+        version (Use another version / Upload revised STL), and a line in Production changes only through a revision."""
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if self.LineGuard:
+            self.LineGuard(O, L)
+        if L.get("three_d_pinned"):
+            raise HttpError(409, "already_linked", f"{L['ring_id']} is already linked to its STL ({(L.get('three_d_version') or {}).get('label') or 'its version'}); "
+                                                   "a different file is a revised version — Use another version or Upload revised STL.")
+        C = self.StlCandidates(L)
+        if ThreeDId not in [X["id"] for X in C["candidates"]]:
+            raise HttpError(409, "not_a_candidate", f"That result is not a finished STL of {L['ring_id']}'s 3D version at {L.get('size_label')} · {L.get('material_label')}.")
+        self._Pin(O["id"], L, ThreeDId, By, linked="chosen", size_label=L.get("size_label"), material_id=L["material_id"])
+        Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
+        return {"line": Fresh, "three_d_id": ThreeDId}
+
     def _Pin(self, OrderId: str, Line: dict, ThreeDId: str, By: str, Kind: str = "3d_pinned", **Data) -> None:
         """Pin a line to a 3D result and its version (an order event says which, who and when)."""
         Db = self.Ctx.Db
@@ -620,7 +703,14 @@ class OrderService:
             raise HttpError(404, "order_line_not_found", "Order line not found.")
         if L["three_d_id"]:
             if not L["three_d_pinned"]:
-                self._Pin(O["id"], L, L["three_d_id"], By)
+                # A finished result exists for the line's size and material: link it — the newest when they are all the
+                # very same file, never a choice among different ones (I-35: the Admin chooses with Link STL)
+                C = self.StlCandidates(L)
+                if C["candidates"] and not C["same_file"]:
+                    raise HttpError(409, "stl_ambiguous", f"{L['ring_id']} has {len(C['candidates'])} different finished STLs at {L.get('size_label')} · "
+                                                          f"{L.get('material_label')}: choose which one to link (Link STL).", {"choices": C["candidates"]})
+                Sid = C["candidates"][0]["id"] if C["candidates"] else L["three_d_id"]
+                self._Pin(O["id"], L, Sid, By)
                 L = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
             return {"line": L, "three_d_id": L["three_d_id"], "prepared": False}
         if not L["has_model"]:

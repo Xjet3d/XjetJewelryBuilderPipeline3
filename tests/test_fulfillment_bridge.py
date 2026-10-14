@@ -129,8 +129,9 @@ async def test_the_hand_over_the_changes_feed_and_the_snapshot(tmp_path):
         Did, O = await _Placed(H)
         State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=Admin)).json()
         assert State["enabled"] and not State["eligible"] and not State["enrolled"] and State["projection"] is None
-        assert State["lines"][0]["reason"] == "no_model" and not State["lines"][0]["eligible"] and State["lines_sent"] == 0 and State["lines_total"] == 1
-        assert "no line has a valid print file" in State["ineligible_reason"] and "Hi3D" in State["lines"][0]["message"]
+        assert State["lines"][0]["reason"] == "missing" and not State["lines"][0]["eligible"] and State["lines_sent"] == 0 and State["lines_total"] == 1
+        assert State["lines"][0]["stl"]["label"] == "STL missing — generation required" and "Hi3D" in State["lines"][0]["stl"]["action"]
+        assert "no line is ready to send" in State["ineligible_reason"] and State["lines"][0]["handover"]["allowed"]
         assert (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).status_code == 404     # not enrolled: nothing to read
         # A print file makes the line eligible — and nothing more: nothing is ever sent by itself
         Line = await _Prepared(H, Did, O["id"])
@@ -237,18 +238,19 @@ async def test_the_production_file_is_pinned_at_the_hand_over_and_served_with_it
     try:
         Did, O = await _Placed(H, "A twisted band", Size=10, Material="silver", Qty=1)
         LineId = H.Svc.Orders.AdminGet(O["id"])["lines"][0]["id"]
-        # No model: "print file required", with the reason — nothing is enrolled, nothing prepared, nothing exported
+        # No model: the STL is missing — the only state that says "required" (I-35); nothing enrolled, prepared or exported
         R = await H.Client.post(f"/api/admin/orders/{O['id']}/production", json={"line_ids": [LineId]}, headers=Admin)
-        assert R.status_code == 409 and R.json()["error"]["code"] == "print_file_required" and "Print file required" in R.json()["error"]["message"]
-        assert R.json()["error"]["blocked"] == [{"line_id": LineId, "item_ref": "R-1001-A", "reason": "no_model", "message": R.json()["error"]["blocked"][0]["message"]}]
+        assert R.status_code == 409 and R.json()["error"]["code"] == "stl_not_ready" and "STL missing — generation required" in R.json()["error"]["message"]
+        assert [(B["line_id"], B["item_ref"], B["reason"]) for B in R.json()["error"]["blocked"]] == [(LineId, "R-1001-A", "missing")]
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_enrollments")["n"] == 0 and H.Ctx.Db.One("SELECT COUNT(*) AS n FROM geometry_jobs WHERE kind = 'export'")["n"] == 0
         # The Admin generates the model on the session page (mock Hi3D here) at another size and material: still no print file for THIS line
         T = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7, "material_id": "vermeil"}, headers=Admin)
         assert T.status_code == 200, T.text
         await H.Idle()
         State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=Admin)).json()
-        assert State["lines"][0]["reason"] == "not_prepared" and not State["eligible"]
-        assert (await _Send(H, O["id"], [LineId], Expect=409))["error"]["blocked"][0]["reason"] == "not_prepared"
+        assert State["lines"][0]["reason"] == "needs_preparation" and not State["eligible"]
+        assert State["lines"][0]["stl"]["label"] == "STL exists — preparation required for US 10 · Silver" and "no AI cost" in State["lines"][0]["stl"]["action"]
+        assert (await _Send(H, O["id"], [LineId], Expect=409))["error"]["blocked"][0]["reason"] == "needs_preparation"
         # Prepare STL on the line: the ordered size and material by arithmetic (no paid call), the line pinned — eligible now
         assert (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{LineId}/3d", headers=Admin)).status_code == 200
         await H.Idle()
@@ -306,13 +308,13 @@ async def test_send_selected_lines_a_partly_sent_order_keeps_its_commercial_stat
         await _Prepared(H, D1, O["id"], Size=7, Material="silver", LineIndex=0)
         # Both at once: refused as a whole, the blocked line named with its reason — nothing sent, nothing enrolled
         R = await H.Client.post(f"/api/admin/orders/{O['id']}/production", json={"line_ids": [L1["id"], L2["id"]]}, headers=Admin)
-        assert R.status_code == 409 and R.json()["error"]["code"] == "print_file_required"
-        assert [(B["line_id"], B["reason"]) for B in R.json()["error"]["blocked"]] == [(L2["id"], "no_model")]
+        assert R.status_code == 409 and R.json()["error"]["code"] == "stl_not_ready"
+        assert [(B["line_id"], B["reason"]) for B in R.json()["error"]["blocked"]] == [(L2["id"], "missing")]
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_line_production")["n"] == 0
         # The eligible line alone: 1 of 2 in Production; the other stays commercial-only and is still eligible later
         State = await _Send(H, O["id"], [L1["id"]], Note="complimentary sample — approved for production")
         assert State["enrolled"] and State["lines_sent"] == 1 and State["lines_total"] == 2 and not State["eligible"]
-        assert State["lines"][0]["production"]["sent"] and not State["lines"][1]["production"]["sent"] and State["lines"][1]["reason"] == "no_model"
+        assert State["lines"][0]["production"]["sent"] and not State["lines"][1]["production"]["sent"] and State["lines"][1]["reason"] == "missing"
         S = (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).json()
         assert [X["production"]["sent"] for X in S["lines"]] == [True, False] and S["lines"][1]["model"]["state"] == "no_model"
         # The legacy statuses are refused already (a line is in Production); Fulfillment's order status is not applied yet (K1)
@@ -603,9 +605,10 @@ async def test_the_controlled_phase_s_allowlist_is_the_server_s_rule(tmp_path):
         await _Prepared(H, D1, O1["id"])
         State = (await H.Client.get(f"/api/admin/orders/{O1['id']}/fulfillment", headers=Admin)).json()
         assert not State["eligible"] and "allowlist" in State["ineligible_reason"] and State["not_enabled"]
-        # The line's own print file is ready: the order-level rule is said apart, never as "print file required" (ORD-10001)
+        # The line's own print file is ready: the order-level rule is said apart, never as "print file required" (ORD-10001, I-35)
         L0 = State["lines"][0]
-        assert not L0["eligible"] and L0["reason"] == "not_enabled" and L0["print_ready"] and "allowlist" in L0["message"] and "not enabled" in L0["message"]
+        assert not L0["eligible"] and L0["reason"] == "not_enabled" and L0["print_ready"] and L0["stl"]["state"] == "ready"
+        assert L0["message"] == "STL ready · Production hand-over restricted by the pilot allowlist" and State["pilot"] == {"active": True, "orders": ["ORD-10002"], "allowed": False}
         R = await H.Client.post(f"/api/admin/orders/{O1['id']}/production", json={"line_ids": [State["lines"][0]["line_id"]]}, headers=Admin)
         assert R.status_code == 409 and R.json()["error"]["code"] == "not_eligible" and "allowlist" in R.json()["error"]["message"]
         assert (await H.Client.get(Prefix + "/changes?cursor=0", headers=Service)).json()["changes"] == []

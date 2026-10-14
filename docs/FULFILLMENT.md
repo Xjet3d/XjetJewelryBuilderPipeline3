@@ -36,6 +36,11 @@ Fulfillment never writes to `pipeline3.db`; Pipeline 3 never writes to Fulfillme
   the sized result, the measurement method and the production file's SHA-256 (recorded as soon as its export
   finished — a change with reason `production_file`). Nothing is ever sent by itself when a file appears.
   **Quotations are never enrolled** (D-10); the order a quote becomes carries the quote as a reference.
+  **Which lines may be sent** (2026-10-14, Fulfillment's I-35): `LineStl` judges the print file from the line's 3D version,
+  result, link and state only; `LineHandover` judges the order (cancelled, completed — `Reopen for Production` when it
+  was never handed over —, a hand-set legacy status, the pilot allowlist, sent). A ready STL not yet linked is linked by
+  `SendToProduction` only when the page confirms that exact result (`links: {line_id: result id}`), in the hand-over's
+  transaction; different results are chosen with `POST /api/admin/orders/{id}/lines/{line}/link-stl`, never silently.
   **There is no un-send** (K7): a wrong file is replaced through an explicit revision, a line leaves Production only
   through the cancellation request Operations decide. The one exception is an operator's tool for pilot trials, never
   a page (2026-10-14, Fulfillment's I-34): `python -m p3.fulfillment_trialreset ORD-… --db var/pipeline3.db --apply

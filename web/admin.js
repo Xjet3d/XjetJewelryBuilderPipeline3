@@ -637,17 +637,52 @@ function adminApp() {
     },
     // ── Order → Production (docs/order-to-production-review.md): the explicit, per-line hand-over ──
     prodLine(l) { return (this.of?.lines || []).find(x => x.line_id === l.id) || null; },
-    // Why a line cannot be sent now — a ready print file is never called "required" (the owner's question about ORD-10001, 2026-10-13)
+    // Why a line cannot be sent now (the owner's decisions of 2026-10-14, I-35): its STL and its order's hand-over, judged
+    // apart and named together — a valid STL is never called "required"
     prodWhy(x) {
-      if (!x || x.eligible) return '';
-      if (x.reason === 'already_sent') return 'already in Production';
-      if (x.print_ready) return x.reason === 'not_enabled' ? 'print file ready · Production not enabled for this order (controlled phase)' : 'print file ready · ' + (x.message || '');
-      return 'print file required — ' + (x.message || '');
+      if (!x) return '';
+      if (x.production?.sent) return 'in Production';
+      if (x.eligible) return x.stl?.state === 'ready_unlinked' ? 'STL ready — linked at the hand-over' : '';
+      return x.message || '';
     },
     prodWhyLong(x) {
-      if (!x || x.eligible) return '';
-      if (x.print_ready) return x.reason === 'not_enabled' ? 'Not enabled for this order: during the controlled phase only the orders on the integration\'s allowlist are sent to Production.' : 'Cannot be sent now: ' + (x.message || '') + '.';
-      return 'Print file required before sending to Production — ' + (x.message || '');
+      if (!x || x.eligible || x.production?.sent) return '';
+      const bits = [];
+      if (x.stl && !x.stl.ready && x.stl.action) bits.push(x.stl.action);          // the STL's own words are on its badge above
+      if (x.handover && !x.handover.allowed && x.handover.state !== 'sent') bits.push(x.handover.label + (x.handover.action ? ' — ' + x.handover.action : ''));
+      return bits.join(' · ');
+    },
+    stlClass(x) {
+      const s = x?.stl?.state;
+      return ['ready', 'ready_unlinked'].includes(s) ? 'bg-emerald-100 text-emerald-800' : s === 'preparing' ? 'bg-sky-100 text-sky-800'
+           : ['needs_preparation', 'ambiguous', 'review_required'].includes(s) ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
+    },
+    stlLinkLine(c) { return c ? c.version_label + ' · ' + c.size_label + ' · ' + c.material_label + ' · measured ' + this.dateTime(c.measured_at) : ''; },
+    // Several different finished STLs for the line's size and material: the Admin chooses which one is its print file (never silently)
+    async linkStl(l) {
+      const x = this.prodLine(l), choices = x?.stl?.choices || [];
+      if (!choices.length || this.odBusy) return;
+      const r = await this.ask({ title: 'Which STL is ' + l.ring_id + '’s print file?',
+        text: choices.length + ' different finished STLs exist for ' + this.sizeOf(l) + ' · ' + l.material_label + '. The one you choose is linked to this line and recorded in the order history; the others stay as they are.',
+        choices: choices.map(c => ({ value: c.id, label: this.stlLinkLine(c) + (c.bore_corrected ? ' · bore made round' : '') + (c.accepted ? ' · accepted after review' : '') })),
+        confirmLabel: 'Link this STL' });
+      if (!r) return;
+      this.odBusy = true; this.odError = '';
+      try { await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(l.id)}/link-stl`, { three_d_id: r.choice }); this.notify(l.ring_id + ': STL linked.'); await this.loadOrder(); }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // A completed order that never went to Production, reopened for it — Admin only, with a reason (I-35)
+    async reopenForProduction() {
+      const R = this.of?.reopen; if (!this.od || !R?.possible || this.odBusy) return;
+      const r = await this.ask({ title: 'Reopen ' + this.od.ref + ' for Production?',
+        text: this.od.ref + ' is Completed and was never handed over to Production. Reopening sets it back to ' + this.orderStatusLabel(R.to) + ' so its lines can be sent to Production — each still needs a ready STL and, during the pilot, the order must be on the allowlist. The reason is kept in the order history.',
+        confirmLabel: 'Reopen for Production', cancelLabel: 'Keep it completed',
+        input: { label: 'Reason (required)', value: '', placeholder: 'For example: marked completed by mistake — it still has to be made', max: 500 } });
+      if (!r) return;
+      if ((r.value || '').trim().length < 3) { this.notify('Say why the order is reopened — the reason is kept in its history.', 'error'); return; }
+      this.odBusy = true; this.odError = '';
+      try { await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/reopen-for-production`, { reason: r.value.trim() }); this.notify(this.od.ref + ' reopened for Production.'); await this.loadOrder(); }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     // The hand-over after Send to Production (I-32): pending until Fulfillment confirms the part, then received with its number
     prodHandoff(x) {
@@ -666,15 +701,18 @@ function adminApp() {
       if (!this.od || !this.of || this.odBusy) return;
       const lines = (this.of.lines || []).filter(x => lineIds.includes(x.line_id));
       if (!lines.length) return;
-      const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — print version: ' + (x.print_version?.label || '—') + (x.pinned ? ' · pinned' : '')).join('\n');
+      // A ready STL not yet linked to its line (I-35) is named here exactly and linked with the hand-over — the link is confirmed to the server
+      const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — ' + (x.stl?.state === 'ready_unlinked'
+        ? 'links STL: ' + this.stlLinkLine(x.stl.link) : 'STL: ' + (x.print_version?.label || '—') + (x.pinned ? ' · linked' : ''))).join('\n');
+      const links = Object.fromEntries(lines.filter(x => x.stl?.state === 'ready_unlinked').map(x => [x.line_id, x.stl.link.id]));
       const r = await this.ask({ title: 'Send ' + (lines.length === 1 ? lines[0].item_ref : lines.length + ' lines of ' + this.od.ref) + ' to Production?',
-        text: what + '\n\nFulfillment takes over the manufacturing of these lines: the exact print file is pinned now, and a later version of the design never changes it. Production, QC and shipping are recorded there and shown here as progress; payment, notes and cancellation stay here. A wrong file is replaced through an explicit revision; a line leaves Production only through a cancellation request.',
+        text: what + (Object.keys(links).length ? '\n\n“Links STL”: that exact file becomes the line’s print file now; the link is recorded in the order history.' : '') + '\n\nFulfillment takes over the manufacturing of these lines: the exact print file is pinned now, and a later version of the design never changes it. Production, QC and shipping are recorded there and shown here as progress; payment, notes and cancellation stay here. A wrong file is replaced through an explicit revision; a line leaves Production only through a cancellation request.',
         confirmLabel: 'Send to Production', cancelLabel: 'Not now',
         input: { label: 'Note for the operations team (optional — not a signature)', value: this.prodNote || '', placeholder: 'For example: complimentary sample — approved for production', max: 500 } });
       if (!r) return;
       this.odBusy = true; this.odError = '';
       try {
-        this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/production`, { line_ids: lineIds, note: (r.value || '').trim() });
+        this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/production`, { line_ids: lineIds, note: (r.value || '').trim(), links });
         this.prodSel = {}; this.prodNote = '';
         this.notify((lines.length === 1 ? lines[0].item_ref : lines.length + ' lines') + ' sent to Production.');
         await this.loadOrder();
@@ -1512,11 +1550,11 @@ function adminApp() {
     orderEventText(e) {
       const d = e.data || {}, line = (this.od?.lines || []).find(l => l.id === d.line_id), who = line ? line.ring_id + ' · ' : '';
       const v = n => n ? 'v' + n : 'a 3D version';
-      return { placed: 'Order placed', status: 'Status → ' + this.orderStatusLabel(d.to), payment: 'Payment → ' + this.payLabel(d.to) + (d.manual ? ' (manual)' : ''),
+      return { placed: 'Order placed', status: (d.reopened_for_production ? 'Reopened for Production → ' : 'Status → ') + this.orderStatusLabel(d.to), payment: 'Payment → ' + this.payLabel(d.to) + (d.manual ? ' (manual)' : ''),
                note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed', email_skipped: 'Confirmation email not sent — test order',
                production_reset: 'Production hand-over reset · ' + (d.item_ref || 'the order') + ' — a trial cleared; the line can be sent again',
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
-               '3d_pinned': '3D pinned · ' + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
+               '3d_pinned': (d.linked_at_handover ? 'STL linked at the hand-over · ' : d.linked === 'chosen' ? 'STL linked (chosen) · ' : '3D pinned · ') + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
                '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s version in use' : ' · this order only') }[e.kind] || e.kind;
     },

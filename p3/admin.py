@@ -723,6 +723,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Who = Admin(authorization)
         return Orders.PrepareLine3D(OrderId, LineId, Who.Id)
 
+    # Link one finished STL to a line — the Admin's explicit choice among different results (never over an existing link)
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/link-stl")
+    async def AdminOrderLineLinkStl(OrderId: str, LineId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.LinkLine3D(OrderId, LineId, str(Body_.get("three_d_id") or ""), Who.Id)
+
     @App_.get("/api/admin/promo-codes")
     async def AdminPromos(authorization: str | None = Header(None)):
         Admin(authorization)

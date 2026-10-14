@@ -1978,7 +1978,10 @@
             <span x-show="of?.enrolled && of?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
             <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not in Production</span></div>
           <p x-show="!of?.eligible && of?.ineligible_reason && !of?.not_enabled" class="text-[12px] text-zinc-500" x-text="'Cannot be sent to Production: ' + of.ineligible_reason + '.'"></p>
-          <p x-show="of?.not_enabled" class="text-[12px] text-amber-800" title="P3_FULFILLMENT_ORDER_ALLOWLIST">Production is not enabled for this order yet: during the controlled phase only the orders on the integration's allowlist are sent. Each line's print file is still checked below.</p>
+          <p x-show="of?.not_enabled" class="text-[12px] text-amber-800" title="P3_FULFILLMENT_ORDER_ALLOWLIST" x-text="'Production hand-over restricted by the pilot allowlist: during the controlled phase only ' + (of?.pilot?.orders || []).join(', ') + ' are handed over. Each line’s STL is still checked below.'"></p>
+          <p x-show="of?.reopen" class="text-[12px] text-zinc-600 w-full flex flex-wrap items-center gap-2">
+            <span x-text="of?.reopen?.possible ? 'Completed without a hand-over to Production: it can be reopened for Production (Admin, with a reason).' : 'Completed — ' + (of?.reopen?.why_not || '') + '.'"></span>
+            <button x-show="of?.reopen?.possible" class="btn2 !py-1 !text-[11px]" :disabled="odBusy" @click="reopenForProduction()">Reopen for Production…</button></p>
         </div>
         <!-- Send selected lines to Production (docs/order-to-production-review.md, K11): the eligible lines ticked, the others with their reason; the exact print version named -->
         <div x-show="of?.eligible" class="border border-zinc-200 bg-zinc-50 p-3 space-y-2 text-[13px]">
@@ -1987,7 +1990,7 @@
             <label class="flex items-start gap-2" :class="x.eligible ? 'cursor-pointer' : 'text-zinc-400'">
               <input type="checkbox" class="mt-0.5" :disabled="!x.eligible" :checked="x.eligible && prodSel[x.line_id] !== false" @change="prodSel[x.line_id] = $event.target.checked">
               <span><span class="font-mono" x-text="x.item_ref"></span> <span x-text="x.title + ' ×' + x.quantity"></span>
-                <span x-show="x.eligible" class="text-zinc-500" x-text="' · print version: ' + (x.print_version?.label || '—') + (x.pinned ? ' · pinned' : '')"></span>
+                <span x-show="x.eligible" class="text-zinc-500" x-text="x.stl?.state === 'ready_unlinked' ? ' · links STL: ' + stlLinkLine(x.stl.link) : ' · STL: ' + (x.print_version?.label || '—') + (x.pinned ? ' · linked' : '')"></span>
                 <span x-show="!x.eligible && x.production?.sent" class="text-emerald-800"> · in Production</span>
                 <span x-show="!x.eligible && !x.production?.sent" :class="x.print_ready ? 'text-zinc-600' : 'text-amber-700'" x-text="' · ' + prodWhy(x)"></span></span>
             </label>
@@ -2075,6 +2078,7 @@
                 <td class="max-w-[260px]">
                   <!-- Only a result for THIS size and material counts as the line's 3D; anything else is "not prepared yet" -->
                   <span x-show="l.three_d_state && l.three_d_match" class="badge" :class="prodClass(l.three_d_state)" x-text="l.three_d_state === 'review_required' ? 'Review required' : prodLabel(l.three_d_state)"></span>
+                  <span x-show="l.three_d_state && l.three_d_match && !l.three_d_pinned" class="text-[11px] text-zinc-600"> · not yet linked to this line</span>
                   <span x-show="l.three_d_state && !l.three_d_match" class="badge bg-sky-100 text-sky-800">Preparing…</span>
                   <span x-show="!l.three_d_state && l.has_model" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to ' + sizeOf(l) + ' · ' + l.material_label"></span>
                   <span x-show="!l.three_d_state && !l.has_model" class="text-[12px] text-amber-700">No 3D model yet — generate it on the session page (paid Hi3D call)</span>
@@ -2101,9 +2105,19 @@
                         </div>
                       </template>
                       <template x-if="!prodLine(l).production?.sent">
-                        <p><button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? 'Pin ' + (prodLine(l).print_version?.label || 'this version') + ' and send this line to Production' : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
-                          <span x-show="!prodLine(l).eligible && prodLine(l).print_ready" class="block text-emerald-800 mt-0.5 normal-case tracking-normal">✓ Print file ready</span>
-                          <span x-show="!prodLine(l).eligible" class="block mt-0.5 normal-case tracking-normal" :class="prodLine(l).print_ready ? 'text-zinc-600' : 'text-amber-700'" x-text="prodWhyLong(prodLine(l))"></span></p>
+                        <!-- The line's STL and its order's hand-over, apart and together (I-35); what to do, right on the line -->
+                        <div class="normal-case tracking-normal space-y-1">
+                          <p class="flex flex-wrap items-center gap-2">
+                            <button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? (prodLine(l).stl?.state === 'ready_unlinked' ? 'Link the STL named in the confirmation and send this line to Production' : 'Send this line to Production with its linked STL') : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
+                            <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span></p>
+                          <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
+                          <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
+                          <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
+                            <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
+                            <button x-show="prodLine(l).stl?.state === 'ambiguous'" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="linkStl(l)">Link STL…</button>
+                            <a x-show="['review_required', 'missing', 'other_option'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)" x-text="prodLine(l).stl?.state === 'review_required' ? 'Review it on the session page' : 'Open the session page'"></a>
+                            <button x-show="prodLine(l).handover?.state === 'order_completed' && of?.reopen?.possible" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="reopenForProduction()">Reopen for Production…</button></p>
+                        </div>
                       </template>
                     </div>
                   </template></td>
