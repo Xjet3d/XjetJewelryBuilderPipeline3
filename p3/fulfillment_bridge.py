@@ -63,11 +63,11 @@ NotEnabledReason = ("Production is not enabled for this order during the control
 # `sent` is Atelier's own: the line is sent and Fulfillment has not reported its part yet
 ProductionStageLabels = {
     "sent": "Sent to Production", "received": "Received by Fulfillment", "attention": "Attention required", "rejected": "Rejected — cannot produce",
-    "on_hold": "On hold", "planned": "Production planned", "in_production": "In production", "post_processing": "Post-processing", "qc": "QC",
+    "on_hold": "On hold", "approved": "Approved for production", "planned": "Production planned", "in_production": "In production", "post_processing": "Post-processing", "qc": "QC",
     "rework": "Rework / reprint", "ready_to_ship": "Ready to ship", "partially_shipped": "Partially shipped", "shipped": "Shipped",
     "delivered": "Delivered", "cancelled": "Cancelled",
 }
-LineEventLabels = {"production_sent": "Sent to Production", "production_file": "Production file recorded", "production_revision_submitted": "Revised file submitted to Production",
+LineEventLabels = {"production_reset": "Production hand-over reset (a trial cleared)", "production_sent": "Sent to Production", "production_file": "Production file recorded", "production_revision_submitted": "Revised file submitted to Production",
                    "3d_prepared": "STL prepared", "3d_pinned": "3D version pinned", "3d_version_changed": "3D version changed", "3d_version_uploaded": "Revised STL uploaded"}
 FulfillmentEventLabels = {
     "fulfillment.request_enrolled": "Received by Fulfillment", "fulfillment.request_updated": "Updated", "fulfillment.review_started": "Manufacturing review started",
@@ -1063,7 +1063,10 @@ class FulfillmentBridge:
         Shipments = [{K: S.get(K) for K in ("display_no", "state", "carrier", "tracking_no", "tracking_url", "shipped_at", "delivered_at", "alternative_delivery")}
                      for S in (Proj.get("shipments") or []) if isinstance(S, dict)]
         Timeline, Last = [], None
-        for R in self.Ctx.Db.All("SELECT data_json, created_at FROM order_events WHERE order_id = ? AND kind = 'fulfillment' ORDER BY id", (OrderId,)):
+        # Only the current enrollment's milestones: a trial reset (p3/fulfillment_trialreset.py) leaves the earlier ones in the
+        # Admin's history, never in the customer's
+        for R in self.Ctx.Db.All("SELECT data_json, created_at FROM order_events WHERE order_id = ? AND kind = 'fulfillment' AND created_at >= ? ORDER BY id",
+                                 (OrderId, E["enrolled_at"])):
             D = json.loads(R["data_json"] or "{}")
             Label = self.CustomerLabels.get(D.get("event_type"))
             if Label and Label != Last:
@@ -1113,6 +1116,7 @@ class FulfillmentBridge:
         if E:
             self._FinalizeFiles(Id)
         Rows = {R["line_id"]: R for R in self.ProductionRows(Id)}
+        Proj = self.Projection("order", Id) or {} if E else {}
         NotEnabled = not Ok and Why == NotEnabledReason
         Lines = []
         for L in Record["lines"]:
@@ -1122,10 +1126,14 @@ class FulfillmentBridge:
             if El["eligible"] and not Ok:                 # the order itself may not go (status, the controlled phase's allowlist): its lines say why
                 El = {**El, "eligible": False, "reason": "not_enabled" if NotEnabled else "order", "message": Why}
             Prod = Rows.get(L["id"])
+            Part = self._PartOf(Proj, L["id"]) if Prod else None
+            Stage = (Part or {}).get("stage")
             Lines.append({"line_id": L["id"], "item_ref": L["ring_id"], "title": L["title"], "quantity": L["quantity"], "eligible": El["eligible"],
                           "reason": El["reason"], "message": El["message"], "print_ready": PrintReady, "print_version": L.get("three_d_version"),
                           "print_state": L.get("three_d_state"), "print_match": bool(L.get("three_d_match")), "pinned": bool(L.get("three_d_pinned")),
                           "production": self._ProductionJson(Prod),
+                          # Fulfillment's stage of the line's part once it reports one (the staff view: approved, planned, in production …)
+                          "stage": Stage, "stage_label": ProductionStageLabels.get(Stage, Stage) if Stage else None, "stage_detail": (Part or {}).get("stage_detail"),
                           # Where the part is, once Fulfillment confirmed it (I-32): the hand-over pending or confirmed, the MP number, the link
                           "fulfillment_url": self._FulfillmentPartUrl(Prod["part_id"]) if Prod and Prod["part_id"] else None})
         Pull = self.LastPull()

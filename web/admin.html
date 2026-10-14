@@ -2093,11 +2093,11 @@
                       <template x-if="prodLine(l).production?.sent">
                         <!-- The hand-over after Send to Production (I-32): waiting for Fulfillment, or received — its part number and a link there -->
                         <div class="normal-case tracking-normal">
-                          <p class="flex flex-wrap items-center gap-x-2 gap-y-1"><span class="badge" :class="prodHandoff(prodLine(l))?.tone === 'green' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'" :title="prodHandoff(prodLine(l))?.hint" x-text="prodHandoff(prodLine(l))?.label"></span>
+                          <p class="flex flex-wrap items-center gap-x-2 gap-y-1"><span class="badge" :class="prodHandoff(prodLine(l))?.cls || (prodHandoff(prodLine(l))?.tone === 'green' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800')" :title="prodHandoff(prodLine(l))?.hint" x-text="prodHandoff(prodLine(l))?.label"></span>
                             <span x-show="prodLine(l).production.part_display_no" class="font-mono text-zinc-800" x-text="prodLine(l).production.part_display_no || ''"></span>
                             <a x-show="prodLine(l).fulfillment_url" class="underline text-zinc-700 hover:text-black" :href="prodLine(l).fulfillment_url" target="_blank" rel="noopener" title="Open this part in the Fulfillment application">Open in Fulfillment ↗</a></p>
                           <p class="text-zinc-500 mt-0.5" x-text="'Sent ' + dateTime(prodLine(l).production.sent_at) + ' · Atelier 3D ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · hand-over ' + prodLine(l).production.handoff_no : '') + (prodLine(l).production.pinned?.file_sha256 ? '' : ' · preparing the production file…')"></p>
-                          <p x-show="prodHandoff(prodLine(l))?.tone !== 'green'" class="text-zinc-500" x-text="prodHandoff(prodLine(l))?.hint"></p>
+                          <p x-show="prodHandoff(prodLine(l))?.tone !== 'green' || prodLine(l).stage_detail" class="text-zinc-500" x-text="prodHandoff(prodLine(l))?.hint"></p>
                         </div>
                       </template>
                       <template x-if="!prodLine(l).production?.sent">

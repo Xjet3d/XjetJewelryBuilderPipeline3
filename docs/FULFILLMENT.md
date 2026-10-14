@@ -37,7 +37,13 @@ Fulfillment never writes to `pipeline3.db`; Pipeline 3 never writes to Fulfillme
   finished — a change with reason `production_file`). Nothing is ever sent by itself when a file appears.
   **Quotations are never enrolled** (D-10); the order a quote becomes carries the quote as a reference.
   **There is no un-send** (K7): a wrong file is replaced through an explicit revision, a line leaves Production only
-  through the cancellation request Operations decide. From the first line on, the legacy production / qc / shipped /
+  through the cancellation request Operations decide. The one exception is an operator's tool for pilot trials, never
+  a page (2026-10-14, Fulfillment's I-34): `python -m p3.fulfillment_trialreset ORD-… --db var/pipeline3.db --apply
+  --checkpoint <empty dir> --reason "…"` — after Fulfillment cleared the same order — takes a verified checkpoint, then
+  clears that order's hand-over rows, enrollment and projection, keeps its history with a *Production hand-over reset*
+  entry, and refuses an order whose status Fulfillment's progress already moved or that has a pending command; the
+  customer's timeline then starts over with the next hand-over, and a late event of the cleared trial is never
+  projected. From the first line on, the legacy production / qc / shipped /
   completed status changes of that order are refused (`owned_by_fulfillment`); those statuses are written by the
   projection instead, and only once every line of the order is in Production (K1). Payment, notes and cancellation
   stay with the Admin.

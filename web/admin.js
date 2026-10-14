@@ -433,7 +433,7 @@ function adminApp() {
     productionPageText() { const p = this.pr; if (!p.total) return 'No line'; const a = p.offset + 1, b = Math.min(p.offset + p.rows.length, p.total); return a + '–' + b + ' of ' + p.total; },
     stageClass(s) {
       return { attention: 'bg-amber-100 text-amber-800', rejected: 'bg-red-100 text-red-700', on_hold: 'bg-amber-100 text-amber-800', cancelled: 'bg-zinc-200 text-zinc-600',
-               sent: 'bg-zinc-100 text-zinc-600', received: 'bg-sky-100 text-sky-800', planned: 'bg-sky-100 text-sky-800', in_production: 'bg-violet-100 text-violet-800',
+               sent: 'bg-zinc-100 text-zinc-600', received: 'bg-sky-100 text-sky-800', approved: 'bg-emerald-100 text-emerald-800', planned: 'bg-sky-100 text-sky-800', in_production: 'bg-violet-100 text-violet-800',
                post_processing: 'bg-violet-100 text-violet-800', qc: 'bg-indigo-100 text-indigo-800', rework: 'bg-amber-100 text-amber-800', ready_to_ship: 'bg-emerald-100 text-emerald-800',
                partially_shipped: 'bg-emerald-100 text-emerald-800', shipped: 'bg-emerald-100 text-emerald-800', delivered: 'bg-emerald-100 text-emerald-800' }[s] || 'bg-zinc-100 text-zinc-600';
     },
@@ -653,7 +653,9 @@ function adminApp() {
     prodHandoff(x) {
       const p = x && x.production; if (!p || !p.sent) return null;
       if (p.state === 'revised') return { tone: 'amber', label: 'Revised file sent — waiting for Fulfillment', hint: 'Fulfillment confirms the new revision within about a minute (it reads Atelier every 30 seconds).' };
-      if (p.state === 'received' || p.part_display_no) return { tone: 'green', label: 'Received by Fulfillment', hint: 'Fulfillment confirmed the part' + (p.received_at ? ' · ' + this.dateTime(p.received_at) : '') + '.' };
+      // Beyond "received", Fulfillment's own stage of the part: approved for production, planned, in production … (I-34)
+      if (x.stage && !['sent', 'received'].includes(x.stage)) return { tone: ['attention', 'rejected', 'on_hold', 'rework'].includes(x.stage) ? 'amber' : 'green', cls: this.stageClass(x.stage), label: x.stage_label || x.stage, hint: (x.stage_detail ? x.stage_detail + ' · ' : '') + 'as Fulfillment reports it.' };
+      if (p.state === 'received' || p.part_display_no) return { tone: 'green', label: 'Received by Fulfillment', hint: (x.stage_detail ? x.stage_detail + ' · ' : '') + 'Fulfillment confirmed the part' + (p.received_at ? ' · ' + this.dateTime(p.received_at) : '') + '.' };
       return { tone: 'amber', label: 'Sent — waiting for Fulfillment', hint: 'Fulfillment confirms within about a minute (it reads Atelier every 30 seconds); the part number and the link appear here then.' };
     },
     prodEligible() { return (this.of?.lines || []).filter(x => x.eligible); },
@@ -1512,6 +1514,7 @@ function adminApp() {
       const v = n => n ? 'v' + n : 'a 3D version';
       return { placed: 'Order placed', status: 'Status → ' + this.orderStatusLabel(d.to), payment: 'Payment → ' + this.payLabel(d.to) + (d.manual ? ' (manual)' : ''),
                note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed', email_skipped: 'Confirmation email not sent — test order',
+               production_reset: 'Production hand-over reset · ' + (d.item_ref || 'the order') + ' — a trial cleared; the line can be sent again',
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
                '3d_pinned': '3D pinned · ' + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
