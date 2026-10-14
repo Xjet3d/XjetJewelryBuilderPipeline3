@@ -5,11 +5,13 @@ quote page offers the same consent, never Clarity, and states its funnel events 
 
 import json
 import re
+from pathlib import Path
 
 from tests.conftest import Harness
 from tests.test_quotes import AdminKey, Address, Customer, _Link, _Offer, _Request      # the quote helpers act as this Admin
 
 Admin = {"Authorization": f"Bearer {AdminKey}"}
+WebDir = Path(__file__).resolve().parent.parent / "web"
 Google = ("https://www.googletagmanager.com", "https://*.google-analytics.com")
 Clarity = ("https://*.clarity.ms", "https://c.bing.com")
 
@@ -141,3 +143,43 @@ async def test_the_quote_page_offers_consent_never_clarity_and_states_events_wit
         assert json.loads(Raw) == [{"name": "quote_declined", "params": {"product_type": "ring"}}] and "Dana" not in Raw
     finally:
         await H.Close()
+
+
+async def test_the_privacy_page_tells_customers_what_is_used_with_no_draft_notice(tmp_path):
+    """The Privacy page as served (its live copy): no draft notice; the three categories, both tools by name with what
+    Clarity masks, the retention, the withdrawal from Cookie Settings, a Cookie details box with the names; Marketing &
+    Advertising said not to be used; nothing claimed "anonymous"."""
+    from tests.test_seo import _Live
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Live = _Live((await H.Client.get("/privacy")).text, "privacy")
+        assert "Draft pending legal review" not in Live and "adapted for this preview" not in Live
+        for Text in ("Cookies and similar technologies", "Essential — always active.", "Analytics &amp; Performance — only with your consent.",
+                     "Google Analytics 4", "Microsoft Clarity", "configured to mask sensitive information", "14 months",
+                     "Atelier does not currently use marketing or advertising cookies.", "Cookie details", ">_ga<", ">_clck<", ">_clsk<",
+                     "atelier@xjet3d.com"):
+            assert Text in Live, Text
+        assert "data-cookie-settings" in Live and "anonym" not in Live.lower()
+    finally:
+        await H.Close()
+
+
+def test_the_banner_names_no_tool_and_marketing_is_shown_as_not_used():
+    """The first layer says what for, never which tool, cookie or retention; Privacy preferences names the tools under
+    Analytics & Performance only, shows Marketing & Advertising as not used (no switch), and the stored choice keeps
+    marketing false. No marketing tag exists in the script."""
+    Js = (WebDir / "consent.js").read_text(encoding="utf-8")
+    Banner = Js[Js.index("function showBanner()"):Js.index("function closeBanner()")]
+    for Text in ("Your privacy matters", "Accept all", "Reject optional", "Manage preferences", "Privacy Policy"):
+        assert Text in Banner, Text
+    for Word in ("Google", "Clarity", "Microsoft", "_ga", "_cl", "month", "year"):
+        assert Word not in Banner, Word
+    Settings = Js[Js.index("function openSettings()"):Js.index("function closeSettings()")]
+    for Text in ("Privacy preferences", "Essential", "Always active", "Analytics &amp; Performance", "Marketing &amp; Advertising",
+                 "Not currently used", "Save preferences", "Reject optional", "Accept all", "data-ac=\"learn\""):
+        assert Text in Settings, Text
+    Marketing = Settings[Settings.index("'Marketing &amp; Advertising'"):]
+    assert 'class="ac-sw"' not in Marketing                                    # no switch for a category that is not used
+    assert "marketing: false" in Js[Js.index("function save("):Js.index("function decide(")]
+    for Tag in ("fbq(", "connect.facebook", "googleadservices", "doubleclick", "AW-", "ads_data_redaction"):
+        assert Tag not in Js, Tag

@@ -855,27 +855,56 @@
                 <template x-if="view === 'privacy'">
                     <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
                         <h1 class="text-4xl brand-font text-zinc-900">Privacy</h1>
-                        <p class="text-[13px] text-zinc-500">Draft pending legal review · adapted for this preview</p>
                         <h3 class="text-lg font-semibold text-zinc-900">What we collect</h3>
                         <ul class="list-disc pl-5 space-y-1">
                             <li>Your sign-in code (stored hashed) and the name and email you registered with.</li>
                             <li>The descriptions and images you upload, the designs and movies generated for you, and your saved designs and bag.</li>
                             <li>Technical logs (requests, errors) needed to run and secure the service.</li>
                             <li><strong class="font-semibold text-zinc-900">Records of the service.</strong> We keep a record of the steps you take in Atelier — for example a design created, an option chosen, an order placed — to run the service, prevent misuse and help you when you contact us.</li>
-                            <li><strong class="font-semibold text-zinc-900">How you use the site — only if you allow Analytics.</strong> The pages and steps of the design journey you visit, the kind of device and browser you use, and your approximate region. With Microsoft Clarity, also how you interact with pages — clicks, scrolling and session replays — with personal details masked. Analytics never receives your descriptions, uploaded images or files, your name, email, postal address or phone number.</li>
+                            <li><strong class="font-semibold text-zinc-900">How you use the site — only if you allow Analytics &amp; Performance.</strong> The pages and steps of the design journey you visit, the type of device and browser you use, and your approximate region. With Microsoft Clarity, also how you interact with pages — clicks, scrolling and session recordings — with sensitive information masked. Analytics never receives your design descriptions, uploaded images or files, or your name, email address, postal address or phone number.</li>
                         </ul>
                         <h3 class="text-lg font-semibold text-zinc-900">How we use it</h3>
-                        <p>To generate your designs, to keep the service working, and to improve it. With your consent, to understand how the site is used and to improve it (analytics); you can withdraw your consent at any time — see Cookies and storage. We do not sell your data.</p>
+                        <p>To generate your designs, to keep the service working and to improve it. With your consent, we also use analytics to understand how the site is used and to improve it; you can withdraw your consent at any time (see Cookies and similar technologies below). We do not sell your personal data.</p>
                         <h3 class="text-lg font-semibold text-zinc-900">Third parties</h3>
                         <p>Design generation runs on AI providers that process your descriptions and images to produce the results; they do not receive your contact details.</p>
-                        <p><strong class="font-semibold text-zinc-900">Analytics providers — only if you allow Analytics.</strong> Google Analytics 4 (Google) and Microsoft Clarity (Microsoft) process information about how the site is used on our behalf, to give us statistics and anonymized replays. Advertising features are switched off. These providers may process data outside your country, including in the United States.</p>
-                        <h3 class="text-lg font-semibold text-zinc-900">Cookies and storage</h3>
-                        <p><strong class="font-semibold text-zinc-900">Necessary — always on.</strong> Atelier keeps in your browser what it needs to work: your sign-in, your current design and bag, and your cookie choice. Staff signing in to Atelier’s administration area also receive a session cookie. These cannot be switched off and are never used for analytics or advertising.</p>
-                        <p><strong class="font-semibold text-zinc-900">Analytics — only with your consent.</strong> If you choose Accept all, or switch Analytics on in Cookie Settings: Google Analytics stores <span class="font-mono text-[13px]">_ga</span> and <span class="font-mono text-[13px]">_ga_&lt;ID&gt;</span> on our site, to tell visits apart (up to 2 years). Microsoft Clarity stores <span class="font-mono text-[13px]">_clck</span> and <span class="font-mono text-[13px]">_clsk</span> on our site, to connect the pages of a visit; Microsoft may also set its own cookies on its domains (such as CLID and MUID). Google Analytics keeps the statistics for 14 months; Clarity keeps recordings for the period Microsoft sets.</p>
-                        <p><strong class="font-semibold text-zinc-900">Marketing.</strong> Atelier uses no marketing or advertising cookies.</p>
-                        <p><strong class="font-semibold text-zinc-900">Your choice.</strong> Nothing optional runs until you choose, and Reject non-essential leaves the site fully working. You can change your choice at any time with <button type="button" data-cookie-settings class="underline underline-offset-2 hover:text-black">Cookie Settings</button> at the foot of every page; withdrawing consent removes the analytics cookies stored on our site.</p>
+                        <p><strong class="font-semibold text-zinc-900">Analytics providers — only with your consent.</strong> Google Analytics 4 (Google) and Microsoft Clarity (Microsoft) process information about how the site is used on our behalf, so that we can see usage statistics and session recordings in which sensitive information is masked. Their advertising features are switched off. These providers may process data outside your country, including in the United States.</p>
+                        <h3 class="text-lg font-semibold text-zinc-900">Cookies and similar technologies</h3>
+                        <p>Atelier uses cookies and similar technologies, such as your browser’s local storage, in three categories. Essential technologies are always active; optional ones are used only if you allow them.</p>
+                        <p><strong class="font-semibold text-zinc-900">Essential — always active.</strong> These are required for the site to work: keeping you signed in, saving your designs and your bag, checkout, security, and remembering your privacy preferences. Staff who sign in to Atelier’s administration area also receive a session cookie. Essential technologies are never used for analytics or advertising.</p>
+                        <p><strong class="font-semibold text-zinc-900">Analytics &amp; Performance — only with your consent.</strong> These help us understand how visitors use Atelier, measure site performance and improve the design and shopping experience. Google Analytics 4 shows us which pages and steps are used, on which kinds of device and from which regions. Microsoft Clarity shows how pages are used — clicks, scrolling and session recordings — and is configured to mask sensitive information such as your name, contact details and design descriptions. Neither service is loaded before you consent, and neither is used for advertising. Google Analytics keeps this information for 14 months; Microsoft Clarity keeps recordings for the period Microsoft sets.</p>
+                        <p><strong class="font-semibold text-zinc-900">Marketing &amp; Advertising.</strong> Atelier does not currently use marketing or advertising cookies.</p>
+                        <p><strong class="font-semibold text-zinc-900">Your choices.</strong> Nothing optional is used until you choose, and Reject optional leaves the site fully working. You can change your choice at any time in <button type="button" data-cookie-settings class="underline underline-offset-2 hover:text-black">Cookie Settings</button>, at the foot of every page. When you withdraw your consent, the analytics services stop and the analytics cookies stored on our site are removed.</p>
+                        <details class="rounded-xl p-5 text-[14px]" style="background:#FBF7EF; border:1px solid #E8DCC4;">
+                            <summary class="cursor-pointer font-semibold text-zinc-900">Cookie details</summary>
+                            <div class="mt-4 space-y-4">
+                                <div>
+                                    <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Essential · always active</p>
+                                    <ul class="space-y-1">
+                                        <li><span class="font-mono text-[13px]">atelier_session</span> — keeps you signed in (a cookie; it ends after 30 days without a visit, and after 180 days at most).</li>
+                                        <li><span class="font-mono text-[13px]">atelier_oauth</span> — completes a sign-in with Google or Apple (a cookie, for 10 minutes).</li>
+                                        <li><span class="font-mono text-[13px]">p3_session</span>, <span class="font-mono text-[13px]">p3_profile</span>, <span class="font-mono text-[13px]">p3_state</span> — your sign-in, the account details shown on the page, your current design and your bag (this browser’s local storage, until you sign out or clear it).</li>
+                                        <li><span class="font-mono text-[13px]">atelier_consent</span> — your privacy preferences (local storage, until you change them).</li>
+                                        <li><span class="font-mono text-[13px]">atelier_admin_session</span> — sign-in to the administration area, for Atelier staff only (a cookie).</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Analytics &amp; Performance · only with your consent</p>
+                                    <ul class="space-y-1">
+                                        <li><span class="font-mono text-[13px]">_ga</span> — Google Analytics: tells visitors apart (up to 2 years).</li>
+                                        <li><span class="font-mono text-[13px]">_ga_&lt;ID&gt;</span> — Google Analytics: keeps the state of a visit (up to 2 years).</li>
+                                        <li><span class="font-mono text-[13px]">_clck</span> — Microsoft Clarity: recognises a returning browser (up to 1 year).</li>
+                                        <li><span class="font-mono text-[13px]">_clsk</span> — Microsoft Clarity: connects the pages of one visit (1 day).</li>
+                                        <li>Microsoft may also set its own cookies on its own domains, such as MUID.</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Marketing &amp; Advertising</p>
+                                    <p>None — Atelier does not currently use marketing or advertising cookies.</p>
+                                </div>
+                            </div>
+                        </details>
                         <h3 class="text-lg font-semibold text-zinc-900">Your rights</h3>
-                        <p>You can withdraw your analytics consent at any time with Cookie Settings. For any other request — to see, correct or delete your data — write to <a href="mailto:atelier@xjet3d.com" class="underline underline-offset-2 hover:text-black">atelier@xjet3d.com</a>.</p>
+                        <p>You can withdraw your consent to Analytics &amp; Performance at any time in Cookie Settings. To access, correct or delete your personal data, or for any other privacy question, write to <a href="mailto:atelier@xjet3d.com" class="underline underline-offset-2 hover:text-black">atelier@xjet3d.com</a>.</p>
                     </div>
                 </template>
 

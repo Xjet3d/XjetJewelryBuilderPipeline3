@@ -15,6 +15,10 @@
  * the events run as usual, but neither tool is loaded and nothing is sent anywhere; what would have been sent stays in
  * the page (window.dataLayer, window.clarity.q) for checks.
  *
+ * The banner names no tool and says what for: Accept all, Reject optional, Manage preferences. Privacy preferences shows
+ * Essential (always active), Analytics & Performance (the switch; Learn more names the tools) and Marketing & Advertising
+ * (not currently used: no tool, no switch). Accept all therefore allows Analytics & Performance only.
+ *
  * Events go through AtelierAnalytics.track(): only the events and fields listed below, with values from fixed lists,
  * numbers or design references — never free text, names, emails, addresses, phone numbers, prompts or file names — and
  * page addresses without their query string or fragment (UTM campaign tags excepted).
@@ -222,28 +226,88 @@
     window.__p3Events.forEach(function (e) { if (e && typeof e.name === 'string') track(e.name, e.params || {}); });
   }
 
-  // ── the banner and Cookie Settings ────────────────────────────────────
+  // ── the banner and Privacy preferences ────────────────────────────────
+  // Atelier's own look (web/index.html): warm ivory surfaces, beige hairlines, Cinzel titles, Inter text, small spaced
+  // capitals on the buttons, 6 px corners. Accept all is a warm charcoal (never pure black); Reject optional sits beside
+  // it at the same size, outlined; Manage preferences is a quiet text action. The styles are the script's own, so the
+  // quote page (none of the site's stylesheets) shows the same. The banner names no tool: Google Analytics 4 and
+  // Microsoft Clarity are named under Analytics & Performance → Learn more, and on the Privacy page. Marketing &
+  // Advertising is shown so the choices are complete, as "Not currently used": no tool, no switch.
+  var SANS = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif", SERIF = "Cinzel,Georgia,'Times New Roman',serif";
   var CSS = [
-    '.ac-bar{position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483000;max-width:760px;margin:0 auto;background:#fff;color:#1A1A1A;',
-    'border:1px solid #E4E4E7;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:16px 18px;font:14px/1.5 Inter,Helvetica,Arial,sans-serif}',
-    '.ac-bar p{margin:0 0 12px}.ac-bar a{color:inherit;text-decoration:underline;text-underline-offset:2px}',
-    '.ac-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
-    '.ac-btn{appearance:none;border:1px solid #1A1A1A;background:#1A1A1A;color:#fff;padding:10px 16px;font:600 11px/1 Inter,Helvetica,Arial,sans-serif;',
-    'letter-spacing:.15em;text-transform:uppercase;cursor:pointer;min-height:40px}',
-    '.ac-btn.ac-out{background:#fff;color:#1A1A1A}.ac-link{appearance:none;border:0;background:none;color:#1A1A1A;padding:10px 6px;',
-    'font:600 11px/1 Inter,Helvetica,Arial,sans-serif;letter-spacing:.15em;text-transform:uppercase;text-decoration:underline;cursor:pointer;min-height:40px}',
-    '.ac-btn:focus-visible,.ac-link:focus-visible,.ac-sw:focus-visible{outline:2px solid #C9A96E;outline-offset:2px}',
-    '.ac-shade{position:fixed;inset:0;z-index:2147483001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}',
-    '.ac-card{background:#fff;color:#1A1A1A;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:24px;font:14px/1.55 Inter,Helvetica,Arial,sans-serif;',
-    'box-shadow:0 20px 60px rgba(0,0,0,.25)}',
-    '.ac-card h2{font:600 20px/1.3 Cinzel,Georgia,serif;margin:0 0 8px}.ac-card p{margin:0 0 12px;color:#3F3F46}',
-    '.ac-cat{border-top:1px solid #E4E4E7;padding:14px 0;display:flex;gap:14px;align-items:flex-start;justify-content:space-between}',
-    '.ac-cat h3{font-size:14px;font-weight:600;margin:0 0 4px}.ac-cat p{font-size:13px;margin:0}.ac-fixed{font-size:12px;color:#52525B;white-space:nowrap;padding-top:2px}',
-    '.ac-sw{appearance:none;width:44px;height:24px;border-radius:12px;background:#D4D4D8;position:relative;cursor:pointer;flex-shrink:0;transition:background .15s}',
-    '.ac-sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}',
-    '.ac-sw:checked{background:#1A1A1A}.ac-sw:checked::after{left:23px}.ac-sw:disabled{opacity:.5;cursor:not-allowed}',
-    '.ac-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;border-top:1px solid #E4E4E7;padding-top:16px}',
-    '@media (max-width:560px){.ac-bar{left:8px;right:8px;bottom:8px}.ac-row .ac-btn{flex:1 1 40%}}'
+    '@keyframes ac-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
+    '@keyframes ac-fade{from{opacity:0}to{opacity:1}}',
+    '.ac-bar,.ac-card{box-sizing:border-box;background:#FBF8F3;color:#2A2520;border:1px solid #E8DCC4;border-radius:10px;',
+    'font:400 13.5px/1.6 ' + SANS + ';text-align:left;-webkit-font-smoothing:antialiased}',
+    '.ac-bar *,.ac-card *{box-sizing:border-box}',
+    // the first layer: a card in the corner on wide screens, a sheet along the bottom on phones
+    '.ac-bar{position:fixed;left:24px;bottom:24px;z-index:2147483000;width:424px;max-width:calc(100vw - 48px);padding:22px 22px 12px;',
+    'box-shadow:0 18px 44px -18px rgba(58,46,18,.32),0 2px 8px rgba(58,46,18,.06);animation:ac-in .32s cubic-bezier(.2,.7,.2,1) both}',
+    '.ac-bar .ac-title{margin:0 0 8px;padding:0;font:600 15px/1.35 ' + SERIF + ';letter-spacing:.06em;color:#1A1A1A;text-transform:none}',
+    '.ac-bar p,.ac-card p{margin:0;padding:0;color:#4A443B;font-size:13.5px;line-height:1.6}',
+    '.ac-bar .ac-text{margin:0 0 16px}',
+    '.ac-bar a,.ac-card a{color:#2A2520;text-decoration:underline;text-decoration-color:#C9A96E;text-decoration-thickness:1px;text-underline-offset:3px}',
+    '.ac-bar a:hover,.ac-card a:hover{color:#8A6420}',
+    '.ac-row{display:flex;gap:10px}.ac-row .ac-btn{flex:1 1 0}',
+    '.ac-bar .ac-btn,.ac-card .ac-btn{-webkit-appearance:none;appearance:none;margin:0;display:inline-flex;align-items:center;',
+    'justify-content:center;min-height:44px;padding:0 18px;border:1px solid #2A2520;border-radius:6px;background:#2A2520;color:#FBF7EF;',
+    'font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;text-align:center;cursor:pointer;',
+    'transition:background-color .2s,border-color .2s,color .2s}',
+    '.ac-bar .ac-btn:hover,.ac-card .ac-btn:hover{background:#3D362E;border-color:#3D362E}',
+    '.ac-bar .ac-soft,.ac-card .ac-soft{background:transparent;color:#2A2520;border-color:#9C8A6C}',
+    '.ac-bar .ac-soft:hover,.ac-card .ac-soft:hover{background:#F2EBDD;border-color:#7E6D52;color:#1A1A1A}',
+    '.ac-bar .ac-quiet,.ac-card .ac-quiet{-webkit-appearance:none;appearance:none;margin:0;padding:10px 0;min-height:40px;border:0;',
+    'background:none;color:#8A6420;font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;cursor:pointer;',
+    'text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}',
+    '.ac-bar .ac-quiet:hover,.ac-card .ac-quiet:hover{color:#5E430F}',
+    '.ac-bar .ac-quiet{margin-top:4px}',
+    '.ac-bar :focus-visible,.ac-card :focus-visible{outline:2px solid #C9A96E;outline-offset:2px}',
+    '.ac-card:focus{outline:none}',
+    // Privacy preferences: a dialog in the middle on wide screens, a sheet from the bottom on phones
+    '.ac-shade{position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;padding:16px;',
+    'background:rgba(32,26,18,.42);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:ac-fade .2s ease-out both}',
+    '.ac-card{position:relative;display:flex;flex-direction:column;width:100%;max-width:580px;max-height:calc(100vh - 32px);',
+    'max-height:calc(100dvh - 32px);box-shadow:0 30px 80px -24px rgba(32,26,18,.5);animation:ac-in .28s cubic-bezier(.2,.7,.2,1) both}',
+    '.ac-body{overflow:auto;-webkit-overflow-scrolling:touch;padding:28px 28px 6px}',
+    '.ac-card h2{margin:0 44px 10px 0;padding:0;font:600 21px/1.3 ' + SERIF + ';letter-spacing:.05em;color:#1A1A1A;text-transform:none}',
+    '.ac-card .ac-intro{margin:0 0 18px}',
+    '.ac-card .ac-x{-webkit-appearance:none;appearance:none;position:absolute;top:12px;right:12px;width:40px;height:40px;margin:0;',
+    'padding:0;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:#FBF8F3;color:#4A443B;',
+    'cursor:pointer;z-index:1}',                              // over the text that scrolls beneath it
+    '.ac-card .ac-x:hover{background:#F2EBDD;color:#1A1A1A}',
+    '.ac-cat{border-top:1px solid #EAE0CC;padding:16px 0}',
+    '.ac-head{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:28px;margin:0 0 6px}',
+    '.ac-card h3{margin:0;padding:0;font:600 11.5px/1.4 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;color:#1A1A1A}',
+    '.ac-card .ac-note{margin-top:4px;color:#6F6A60;font-size:12.5px}',
+    '.ac-status{flex-shrink:0;font:600 10.5px/1.2 ' + SANS + ';letter-spacing:.12em;text-transform:uppercase;color:#6F6A60;text-align:right}',
+    '.ac-status.ac-on{color:#8A6420}',
+    '.ac-status.ac-on::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#C9A96E;margin:0 7px 1px 0;',
+    'vertical-align:middle}',
+    '.ac-card .ac-switch{display:flex;align-items:center;gap:10px;flex-shrink:0;margin:0;cursor:pointer;font-weight:400}',
+    '.ac-state{font:600 10.5px/1 ' + SANS + ';letter-spacing:.12em;text-transform:uppercase;color:#4A443B;min-width:26px;text-align:right}',
+    '.ac-card .ac-sw{-webkit-appearance:none;appearance:none;position:relative;width:46px;height:26px;margin:0;border:0;border-radius:13px;',
+    'background:#968669;cursor:pointer;flex-shrink:0;transition:background-color .2s}',
+    '.ac-card .ac-sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#FFFDF9;',
+    'box-shadow:0 1px 3px rgba(42,37,32,.35);transition:transform .2s}',
+    '.ac-card .ac-sw:checked{background:#2A2520}.ac-card .ac-sw:checked::after{transform:translateX(20px)}',
+    '.ac-card .ac-more{margin-top:4px;padding:8px 0;min-height:36px;display:inline-flex;align-items:center;gap:7px;text-decoration:none;',
+    'letter-spacing:.12em}',
+    '.ac-more svg{transition:transform .2s}.ac-more[aria-expanded="true"] svg{transform:rotate(180deg)}',
+    '.ac-card .ac-detail{margin:6px 0 2px;padding:12px 14px;border-radius:6px;background:#F3EDE2;color:#4A443B;font-size:13px}',
+    '.ac-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 28px 22px;border-top:1px solid #EAE0CC}',
+    '.ac-foot .ac-btn{min-width:150px}.ac-foot .ac-end{margin-left:auto}',
+    '@media (max-width:640px){',
+    '.ac-bar{left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;max-width:none;padding:18px 16px 8px}',
+    '.ac-bar p{font-size:13px}',
+    '.ac-bar .ac-row .ac-btn{padding:0 10px;font-size:11px;letter-spacing:.08em}',      // both labels on one line from 360 px
+    '.ac-bar .ac-quiet{display:block;margin:4px auto 0}',
+    '.ac-shade{align-items:flex-end;padding:0}',
+    '.ac-card{max-width:none;max-height:92vh;max-height:92dvh;border-radius:12px 12px 0 0;border-bottom:0}',
+    '.ac-body{padding:24px 20px 6px}',
+    '.ac-foot{flex-direction:column;align-items:stretch;padding:14px 20px calc(16px + env(safe-area-inset-bottom,0px))}',
+    '.ac-foot .ac-btn{width:100%;min-width:0}.ac-foot .ac-end{margin-left:0}}',
+    '@media (max-width:359px){.ac-row{flex-direction:column}}',
+    '@media (prefers-reduced-motion:reduce){.ac-bar,.ac-shade,.ac-card{animation:none}.ac-card .ac-sw,.ac-card .ac-sw::after,.ac-more svg{transition:none}}'
   ].join('');
   function style() {
     if (document.getElementById('ac-style')) return;
@@ -255,56 +319,78 @@
     if (html != null) e.innerHTML = html;
     return e;
   }
-  function toolNames() {
-    return VENDORS.map(function (v) { return v === 'ga4' ? 'Google Analytics' : 'Microsoft Clarity'; }).join(' and ');
-  }
   var privacyUrl = BASE + '/privacy';
+  var NAMES = { ga4: 'Google Analytics 4', clarity: 'Microsoft Clarity' };
+  // Behind Analytics & Performance → Learn more: the tools this site has switched on, by name
+  function analyticsDetail() {
+    var names = VENDORS.map(function (v) { return NAMES[v]; }), many = names.length > 1;
+    return 'Includes ' + names.join(' and ') + '. ' + (many ? 'These services are' : 'This service is') + ' activated only after ' +
+      'you give consent and ' + (many ? 'are' : 'is') + ' never used for advertising. Customer details and design prompts are not ' +
+      'sent to ' + (many ? 'them' : 'it') + (CFG.clarity ? ', and Microsoft Clarity is configured to mask sensitive customer information' : '') +
+      '. More in our <a href="' + privacyUrl + '">Privacy Policy</a>.';
+  }
+  var X_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  var CHEVRON = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 3.5L5 7l3.5-3.5" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   var bar = null;
   function showBanner() {
     if (bar || !ACTIVE) return;
     style();
-    bar = el('div', { 'class': 'ac-bar', role: 'region', 'aria-label': 'Cookie consent', 'data-clarity-mask': 'true' },
-      '<p>Atelier uses the storage it needs to work: your sign-in, your current design and your bag. With your permission ' +
-      'we would also use analytics (' + toolNames() + ') to see how the site is used and improve it. ' +
-      '<a href="' + privacyUrl + '">Privacy</a></p>' +
-      '<div class="ac-row"><button type="button" class="ac-btn" data-ac="reject">Reject non-essential</button>' +
-      '<button type="button" class="ac-btn" data-ac="accept">Accept all</button>' +
-      '<button type="button" class="ac-link" data-ac="customize">Customize</button></div>');
+    bar = el('div', { 'class': 'ac-bar', role: 'region', 'aria-labelledby': 'ac-bar-title', 'data-clarity-mask': 'true' },
+      '<h2 class="ac-title" id="ac-bar-title">Your privacy matters</h2>' +
+      '<p class="ac-text">Atelier uses essential cookies and similar technologies to make the site work. With your permission, we also ' +
+      'use optional technologies to understand how the site is used and improve your experience. You can change your choices at any ' +
+      'time. <a href="' + privacyUrl + '">Privacy Policy</a></p>' +
+      '<div class="ac-row"><button type="button" class="ac-btn ac-soft" data-ac="reject">Reject optional</button>' +
+      '<button type="button" class="ac-btn" data-ac="accept">Accept all</button></div>' +
+      '<button type="button" class="ac-quiet" data-ac="manage">Manage preferences</button>');
     document.body.appendChild(bar);
   }
   function closeBanner() { if (bar) { bar.remove(); bar = null; } }
 
+  // One category of Privacy preferences: its name, what is on the right (a status or the switch), its words, more below
+  function category(id, name, side, text, more) {
+    return '<div class="ac-cat" role="group" aria-labelledby="' + id + '"><div class="ac-head"><h3 id="' + id + '">' + name + '</h3>' +
+      side + '</div><p id="' + id + '-d">' + text + '</p>' + (more || '') + '</div>';
+  }
   var shade = null, returnFocus = null;
   function openSettings() {
     style();
     closeSettings();
     returnFocus = document.activeElement;
-    var d = read(), on = !!(d && d.analytics);
-    var analyticsText = !ACTIVE ? 'Not used on this site right now.'
-      : (CFG.ga4 ? 'Google Analytics: which pages and steps of the design journey are used, and on which kinds of device. ' : '') +
-        (CFG.clarity ? 'Microsoft Clarity: how pages are used — clicks, scrolling and session replays, with personal details masked. ' : '') +
-        'Never used for advertising.';
+    var d = read(), on = ACTIVE && !!(d && d.analytics);
+    var analyticsSide = ACTIVE
+      ? '<label class="ac-switch"><span class="ac-state" id="ac-state" aria-hidden="true">' + (on ? 'On' : 'Off') + '</span>' +
+        '<input type="checkbox" role="switch" class="ac-sw" id="ac-analytics" aria-labelledby="ac-an" aria-describedby="ac-an-d"' +
+        (on ? ' checked' : '') + '></label>'
+      : '<span class="ac-status">Not currently used</span>';
     shade = el('div', { 'class': 'ac-shade', 'data-clarity-mask': 'true' });
-    var card = el('div', { 'class': 'ac-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ac-title' },
-      '<h2 id="ac-title">Cookie settings</h2>' +
-      '<p>Choose which optional storage Atelier may use. You can change this at any time from Cookie Settings at the foot of the page. ' +
-      '<a href="' + privacyUrl + '" style="color:inherit;text-decoration:underline">Privacy</a></p>' +
-      '<div class="ac-cat"><div><h3>Necessary</h3><p>Sign-in, your current design, your bag and checkout, and security. Kept in your ' +
-      'browser by Atelier only; the site does not work without it.</p></div><span class="ac-fixed">Always on</span></div>' +
-      '<div class="ac-cat"><div><h3 id="ac-an">Analytics</h3><p>' + analyticsText + '</p></div>' +
-      '<input type="checkbox" class="ac-sw" id="ac-analytics" aria-label="Analytics" aria-labelledby="ac-an"' + (on && ACTIVE ? ' checked' : '') + (ACTIVE ? '' : ' disabled') + '></div>' +
-      '<div class="ac-cat"><div><h3 id="ac-mk">Marketing</h3><p>Not used on this site.</p></div>' +
-      '<input type="checkbox" class="ac-sw" aria-label="Marketing (not used)" aria-labelledby="ac-mk" disabled></div>' +
-      '<div class="ac-foot">' + (ACTIVE
-        ? '<button type="button" class="ac-btn ac-out" data-ac="reject">Reject non-essential</button>' +
-          '<button type="button" class="ac-btn ac-out" data-ac="save">Save choices</button>' +
-          '<button type="button" class="ac-btn" data-ac="accept">Accept all</button>'
-        : '<button type="button" class="ac-btn" data-ac="close">Close</button>') + '</div>');
+    var card = el('div', { 'class': 'ac-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ac-title', tabindex: '-1' },
+      '<button type="button" class="ac-x" data-ac="close" aria-label="Close">' + X_ICON + '</button>' +
+      '<div class="ac-body"><h2 id="ac-title">Privacy preferences</h2>' +
+      '<p class="ac-intro">Choose how Atelier may use optional cookies and similar technologies. Essential technologies are always ' +
+      'active because they are required for the site to function. You can change your preferences at any time. ' +
+      '<a href="' + privacyUrl + '">Privacy Policy</a></p>' +
+      category('ac-es', 'Essential', '<span class="ac-status ac-on">Always active</span>',
+        'Required for sign-in, your designs, bag, checkout, security and your privacy preferences.',
+        '<p class="ac-note">This category cannot be switched off.</p>') +
+      category('ac-an', 'Analytics &amp; Performance', analyticsSide,
+        'Helps us understand how visitors use Atelier, measure site performance and improve the design and shopping experience.',
+        ACTIVE ? '<button type="button" class="ac-quiet ac-more" data-ac="learn" aria-expanded="false" aria-controls="ac-an-more">' +
+                 'Learn more' + CHEVRON + '</button><p class="ac-detail" id="ac-an-more" hidden>' + analyticsDetail() + '</p>' : '') +
+      category('ac-mk', 'Marketing &amp; Advertising', '<span class="ac-status">Not currently used</span>',
+        'Used to measure advertising campaigns and, when enabled, help make advertising more relevant.',
+        '<p class="ac-note">Atelier does not currently use any marketing or advertising technology.</p>') +
+      '</div><div class="ac-foot">' + (ACTIVE
+        ? '<button type="button" class="ac-btn ac-soft" data-ac="reject">Reject optional</button>' +
+          '<button type="button" class="ac-btn ac-soft" data-ac="save">Save preferences</button>' +
+          '<button type="button" class="ac-btn ac-end" data-ac="accept">Accept all</button>'
+        : '<button type="button" class="ac-btn ac-end" data-ac="close">Close</button>') + '</div>');
     shade.appendChild(card);
     document.body.appendChild(shade);
-    var first = card.querySelector('input:not([disabled]), button');
-    if (first) first.focus();
+    card.focus();                                            // the dialog is announced by its title; Tab reaches its controls
   }
   function closeSettings() {
     if (!shade) return;
@@ -318,21 +404,31 @@
     if (!t) { if (shade && e.target === shade) closeSettings(); return; }
     if (t.hasAttribute('data-cookie-settings')) { e.preventDefault(); openSettings(); return; }
     var a = t.getAttribute('data-ac');
-    if (a === 'accept') decide(true);
+    if (a === 'accept') decide(true);                        // Analytics & Performance; Marketing is not used
     else if (a === 'reject') decide(false);
-    else if (a === 'customize') openSettings();
+    else if (a === 'manage') openSettings();
     else if (a === 'save') decide(!!(document.getElementById('ac-analytics') || {}).checked);
     else if (a === 'close') closeSettings();
+    else if (a === 'learn') {
+      var box = document.getElementById(t.getAttribute('aria-controls') || ''), open = t.getAttribute('aria-expanded') !== 'true';
+      if (box) { box.hidden = !open; t.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    }
+  });
+  document.addEventListener('change', function (e) {         // the switch's visible On / Off
+    if (!e.target || e.target.id !== 'ac-analytics') return;
+    var s = document.getElementById('ac-state');
+    if (s) s.textContent = e.target.checked ? 'On' : 'Off';
   });
   document.addEventListener('keydown', function (e) {
     if (!shade) return;
     if (e.key === 'Escape') { closeSettings(); return; }
     if (e.key !== 'Tab') return;                             // focus stays inside the dialog
-    var items = Array.prototype.slice.call(shade.querySelectorAll('a[href], button, input:not([disabled])'));
+    var items = Array.prototype.slice.call(shade.querySelectorAll('a[href], button, input:not([disabled])'))
+      .filter(function (x) { return x.offsetParent !== null; });
     if (!items.length) return;
-    var first = items[0], last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    var i = items.indexOf(document.activeElement);
+    if (e.shiftKey && i <= 0) { e.preventDefault(); items[items.length - 1].focus(); }
+    else if (!e.shiftKey && (i < 0 || i === items.length - 1)) { e.preventDefault(); items[0].focus(); }
   });
 
   // ── what the app and the pages call ──────────────────────────────────
