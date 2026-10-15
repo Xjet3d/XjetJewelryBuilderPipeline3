@@ -101,13 +101,13 @@ async def test_every_public_page_has_its_own_url_title_description_canonical_and
             if Path_:
                 assert f'href="/{Path_}"' in Home and f"pageLink($event, '{View}')" in Home, View
         App = (await H.Client.get("/static/app.js")).text
-        assert "if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView);" in App
-        assert "history.replaceState(null, '', this.pageUrl(v));" in App and "P3_PAGE === 'home'" in App
-        # one chain: a page's URL, else My Account's, else the home URL (the Design screens) — then the tab's title
-        Nav = App[App.index("    navigateTo(v) {"):App.index("    pageUrl(v)")]
-        Chain = [L.strip().split("history")[0].strip() for L in Nav.splitlines() if "history.replaceState" in L]
-        assert Chain == ["if (PAGE_VIEWS.includes(v))", "else if (v === 'account')", "else"], Chain
-        assert Nav.index("document.title") > Nav.rindex("history.replaceState")
+        assert "if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView, { history: 'replace' });" in App
+        # every screen at its own address — a page's, My Account's, a step of the journey's — then the tab's title
+        Nav = App[App.index("    navigateTo(v, { history = 'push' } = {}) {"):App.index("    pageUrl(v)")]
+        assert "this._route(history);" in Nav and Nav.index("document.title") > Nav.index("this._route(history);")
+        Route = App[App.index("    routePath() {"):App.index("    _goBackOr(v) {")]
+        assert "if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);" in Route and "if (v === 'account') return BASE + '/#account';" in Route
+        assert "if (!to || how === 'none' || to === here) return;" in Route                 # the same address adds no step
         assert (await H.Client.get("/faq/")).status_code in (200, 307)                     # a trailing slash still finds it
     finally:
         await H.Close()

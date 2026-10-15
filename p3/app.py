@@ -288,12 +288,14 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
         elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/", "/gallery/")) \
-                or Rel.strip("/") in SitePages.Views:
+                or Rel.strip("/") in SitePages.Views or Rel.strip("/") in SitePages.FlowPaths:
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
         H = Resp.headers
         if Rel in ("/admin", "/admin/", "/dev", "/showcase", "/verify") or Rel in ApiDocs or Rel.startswith(("/api/", "/static/admin", "/static/dev")):
             H.setdefault("X-Robots-Tag", "noindex, nofollow")       # the Admin, the tools and the API are never indexed
+        if Rel.strip("/") in SitePages.FlowPaths:
+            H.setdefault("X-Robots-Tag", "noindex")                 # a step of a customer's journey is never indexed
         H.setdefault("X-Content-Type-Options", "nosniff")
         H.setdefault("X-Frame-Options", "DENY")
         H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -373,10 +375,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                             **({"available": False} if Tile.get("available") is False else {})})
         return Out
 
-    def RenderPage(request: Request, View: str, Design: dict | None = None) -> str:
+    def RenderPage(request: Request, View: str, Design: dict | None = None, Flow: str = "") -> str:
         """A public page (p3/sitepages.py): index.html with the page's own title, description, canonical link, Open Graph
         tags, robots and structured data, the FAQ, and the page itself as real markup. Design: a gallery design's own page
-        (/gallery/<name>) — the Gallery opening on that design, with the design's name as its heading."""
+        (/gallery/<name>) — the Gallery opening on that design, with the design's name as its heading. Flow: a step of the
+        customer's journey (/design, /bag …: SitePages.FlowPaths) — the app alone, which shows the step for the signed-in
+        customer: never indexed; no canonical link, social tags, structured data or server-side copy; nothing of a
+        customer is in the page."""
         Visible = Products.VisibleProducts(Ctx, request)
         Origin = S.PublicBaseUrl or PublicOrigin(request)
         Home = f"{Origin}{Base}/"
@@ -384,9 +389,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Url = Home + SitePages.Paths[View]
         Faq = SitePages.Faq(Ctx, Visible)
         Data = [SitePages.FaqPage(Faq)] if View == "faq" else []
-        if View == "home" and not Design:
+        if View == "home" and not Design and not Flow:
             Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
-        Og = OgTags(request, Title, Description, Url) if not Design else ""
+        Og = OgTags(request, Title, Description, Url) if not Design and not Flow else ""
         Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
         # The products on offer as this page says them, and on the Gallery the number of its designs: the app starts from
         # them (the filter, the wording, the grid's loading squares), so nothing moves when the catalog and the cards arrive
@@ -394,10 +399,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   "products": list(Visible)}
         if View == "inspiration":
             Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
-        Html = _VersionedPage("index.html", Base, Config, PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
+        if Flow:                                       # the app starts on no page and shows the step once it knows who asks
+            Config.update({"view": "", "ssr": "", "route": Flow})
+        Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
-        if View in ("home", "inspiration"):
+        if View in ("home", "inspiration") and not Flow:
             Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
             Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
         if View == "inspiration":                      # the grid's room from the first paint (CLS)
@@ -406,15 +413,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
         if Design:
             Before[Design.get("anchor") or '<section class="hero-section'] = Design["block"]     # the view's top
-        Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
-        Html = SitePages.ServerView(Html, View, Fill, Before)
+        if not Flow:
+            Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
+            Html = SitePages.ServerView(Html, View, Fill, Before)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
             Html = SitePages.DesignHeading(Html)
         if View != "home":
             Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{html.escape(Title, quote=False)}</title>", Html, count=1, flags=re.S)
         if Data:
             Html = Html.replace("</head>", "    " + SitePages.JsonLd(*Data) + "\n</head>", 1)
-        Verification = Ctx.Products.Get(SitePages.VerificationKey) if View == "home" and not Design else ""
+        Verification = Ctx.Products.Get(SitePages.VerificationKey) if View == "home" and not Design and not Flow else ""
         if Verification and SitePages.VerificationPattern.fullmatch(Verification):    # Search Console's ownership check
             Html = Html.replace("</head>", f'    <meta name="google-site-verification" content="{Verification}">\n</head>', 1)
         return Html
@@ -440,6 +448,17 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     for _View, _Path in SitePages.Paths.items():
         if _Path:
             App_.add_api_route("/" + _Path, _PageRoute(_View), methods=["GET"], include_in_schema=False)
+
+    # The customer's journey at its own addresses (/design, /my-designs, /favorites, /customize, /bag, /checkout): the app,
+    # which restores the step for the signed-in customer or asks them to sign in first (web/app.js _openFlow)
+    def _FlowRoute(Flow: str):
+        async def Route(request: Request):
+            return HTMLResponse(RenderPage(request, "home", Flow=Flow))
+        Route.__name__ = "Flow_" + Flow.replace("-", "_")
+        return Route
+
+    for _Flow in SitePages.FlowPaths:
+        App_.add_api_route("/" + _Flow, _FlowRoute(_Flow), methods=["GET"], include_in_schema=False)
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():

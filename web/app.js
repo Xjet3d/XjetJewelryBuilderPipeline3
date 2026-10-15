@@ -35,9 +35,18 @@ const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'hom
 // The products on offer as the server rendered the page — the app's until the catalog says so itself, so the Gallery's
 // filter, the badges and the wording are right from the first frame and nothing moves when the catalog arrives
 const SERVER_PRODUCTS = Array.isArray(window.__p3?.products) ? window.__p3.products : null;
-// This page load's own history steps (a gallery design opened from its card) carry this mark: Back may step through
-// them in place. A step kept from before a reload belongs to the page load that is gone.
+// This page load's own history steps (a screen the visitor went to, a gallery design opened from its card) carry this
+// mark: Back may step through them in place. A step kept from before a reload belongs to the page load that is gone.
 const PAGE_LOAD = Math.random().toString(36).slice(2);
+// The customer's journey, each major screen at its own address (never indexed: p3/sitepages.py FlowPaths); the browser's
+// Back and Forward walk it. A design is never in an address — its id is its customer's own, and an address reaches the
+// analytics tools — so the journey's saved state (STORE_KEY: the current design) restores it after a reload. My Designs
+// and Favorites are the Design screen's side panel, open on that tab; an order's confirmation keeps the address it was
+// reached at.
+const FLOW_PATHS = { design: 'design', 'my-designs': 'my-designs', favorites: 'favorites', customize: 'customize', bag: 'bag', checkout: 'checkout' };
+const FLOW_OF = { 'ai-studio': 'design', review: 'customize', checkout: 'bag', order: 'checkout' };      // a screen's own step
+const flowOf = p => { const r = (p || '').slice(BASE.length).replace(/^\/+|\/+$/g, ''); return Object.keys(FLOW_PATHS).find(k => FLOW_PATHS[k] === r) || ''; };
+const P3_FLOW = flowOf(location.pathname);               // the step this page was opened at (F5, a link): restored at init
 
 // Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
 // as proto the older selection copy still works inside a click. Returns whether the text was copied.
@@ -121,7 +130,7 @@ function p3App() {
     SUPPORT_EMAIL: (window.__p3 && window.__p3.support_email) || '',   // P3_SUPPORT_EMAIL (the server never invents one)
 
     // ── app / session ────────────────────────────────────────────────
-    view: P3_PAGE,
+    view: P3_FLOW ? '' : P3_PAGE,                    // a step of the journey shows once its customer is known (init)
     ssrView: window.__p3?.ssr || '',          // the view the server's copy shows (p3/sitepages.py ServerView)
     health: null,
     catalog: null,
@@ -172,6 +181,7 @@ function p3App() {
     galleryMetal: '', shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: metal preview (visual only) and Share
     cardMetal: {},                                                             // Gallery cards: the metal each card is previewed in (visual only)
     favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
+    panelRoute: '', _pendingRoute: '',     // the side panel's own address when opened as such; a step asked for before sign-in
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
@@ -244,18 +254,18 @@ function p3App() {
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
-      if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView);                      // an old #faq link: the page at its URL
+      if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView, { history: 'replace' });  // an old #faq link: the page at its URL
       else if (this.view === 'materials') this.loadMaterialQuotes();
       // …also when such a link changes only the hash of the page already open
       window.addEventListener('hashchange', () => {
         const h = (location.hash || '').replace('#', '');
-        if (PAGE_VIEWS.includes(h)) this.navigateTo(h); else if (h === 'account') this.openAccountPage();
+        if (PAGE_VIEWS.includes(h)) this.navigateTo(h, { history: 'replace' }); else if (h === 'account') this.openAccountPage('', { history: 'replace' });
       });
-      // Back / Forward through gallery designs: the address says which design is open (/gallery/<slug>), or none
-      window.addEventListener('popstate', () => this._onGalleryHistory());
+      // Back / Forward: the address names the screen (a page, a step of the journey) and the gallery design that is open
+      window.addEventListener('popstate', () => this._onHistory());
       if (hashView === 'account') this.view = 'account';          // signed out, the page offers the sign-in
       if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
-      if (!this.token) return;
+      if (!this.token) { if (P3_FLOW) this._signInFor(P3_FLOW); return; }          // a step of the journey: sign in first
       this.refreshBag();
       if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); this.loadSecurity(); }
       if (authStatus === 'ok' || authStatus === 'created') {
@@ -269,11 +279,9 @@ function p3App() {
         await this._afterSignIn(true);
         return;
       }
-      // A page's URL (/materials, /terms from the checkout …) or an old #page link wins over restoring the studio.
-      if (st.designId && STUDIO_VIEWS.includes(st.view) && P3_PAGE === 'home' && !PAGE_VIEWS.includes(hashView) && hashView !== 'account') {
-        try { await this.openDesign(st.designId, { restoreView: st.view }); }
-        catch { this.persist({ designId: null }); }
-      }
+      // A step of the journey opened at its address (F5, a link, a new tab) comes back as the customer left it. The home
+      // page is the home page: the Design screen has its own address.
+      if (P3_FLOW) await this._openFlow(P3_FLOW, { history: 'replace', restore: true });
     },
 
     persist(patch) { saveStore({ ...loadStore(), ...patch }); },
@@ -361,13 +369,13 @@ function p3App() {
     },
 
     // ── navigation ────────────────────────────────────────────────────
-    navigateTo(v) {
+    // history: 'push' (the visitor went there: Back returns), 'replace' (a correction, a reload's restore), 'none' (Back /
+    // Forward: the address already moved)
+    navigateTo(v, { history = 'push' } = {}) {
       if (this.previewOpen) this.closePreview();
       this.menuOpen = false; this.aboutOpen = false;
-      this.view = v;
-      if (PAGE_VIEWS.includes(v)) history.replaceState(null, '', this.pageUrl(v));         // a page at its own URL
-      else if (v === 'account') history.replaceState(null, '', BASE + '/#account');     // My Account → Quotes & orders (never indexed)
-      else history.replaceState(null, '', BASE + '/');                                  // the Design screens live at the home URL
+      this.view = v; this.panelRoute = '';
+      this._route(history);                                                              // the screen's own address
       const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
       if (titles[v] || titles.home) document.title = titles[v] || titles.home;
       this.measureScreen(v);
@@ -379,6 +387,32 @@ function p3App() {
       if (v === 'account') { this.loadOrders(); this.loadMyQuotes(); }
     },
     pageUrl(v) { return BASE + '/' + (PAGE_PATHS[v] || ''); },
+    // The address of the screen in front: a page at its own URL, a step of the journey, My Account (never indexed), or
+    // null — an order's confirmation keeps the address it was reached at
+    routePath() {
+      const v = this.view;
+      if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);
+      if (v === 'account') return BASE + '/#account';
+      if (v === 'ai-studio' && this.sidebarOpen && this.panelRoute) return BASE + '/' + FLOW_PATHS[this.panelRoute];
+      return FLOW_OF[v] ? BASE + '/' + FLOW_PATHS[FLOW_OF[v]] : null;
+    },
+    // The screen in front into the address bar. A new step remembers the address it left (p3Prev), so the app's own Back
+    // buttons can step back rather than add a step; the same address never adds one.
+    _route(how = 'push') {
+      const to = this.routePath(), here = location.pathname + location.hash;
+      if (!to || how === 'none' || to === here) return;
+      try {
+        if (how === 'push') history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);
+        else history.replaceState(history.state, '', to);
+      } catch (_) {}
+    },
+    // The app's own Back (Customize → Design, Checkout → Bag, the bag's Continue): one step back when the visitor came from
+    // that screen in this page load — where the browser's Back goes too — else to it as a new step
+    _goBackOr(v) {
+      const s = history.state;
+      if (s && s.p3Pushed === PAGE_LOAD && s.p3Prev === BASE + '/' + FLOW_PATHS[FLOW_OF[v]]) { history.back(); return; }
+      this.navigateTo(v);
+    },
     // A page link: a plain click opens the page in place; Ctrl/⌘/Shift/middle click opens its URL as the browser does
     pageLink(e, v) {
       if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0)) return;
@@ -413,9 +447,9 @@ function p3App() {
       if (!this.userSession) { this.openRegModal(); return; }
       this._doResetAIFlow();
     },
-    _doResetAIFlow() {
-      this.startNew();
-      this.navigateTo('ai-studio');
+    _doResetAIFlow({ history = 'push' } = {}) {
+      this.startNew({ history });
+      this.navigateTo('ai-studio', { history });
       this._refreshQuota();             // authoritative count every time the Design screen opens
     },
 
@@ -586,23 +620,24 @@ function p3App() {
     },
     _pendingFav() { try { return localStorage.getItem(FAV_KEY) || ''; } catch { return ''; } },
     _setPendingFav(id) { try { id ? localStorage.setItem(FAV_KEY, id) : localStorage.removeItem(FAV_KEY); } catch {} },
-    // how: 'user' (the dialog's own controls — Escape, the backdrop, Back to gallery), 'popstate' (Back / Forward,
-    // the address already moved), '' (the app closes it: Make it yours, a sign-in first). The visitor's close steps back
-    // when opening it added the step, so Back and Forward stay in order; otherwise the page's own address takes its place.
+    // how: 'user' (the dialog's own controls — Escape, the backdrop, Back to gallery), '' (the app closes it for a
+    // sign-in first), 'popstate' (Back / Forward: the address already moved), 'navigate' (Make it yours: the Design screen
+    // takes the dialog's step). A close steps back when opening the dialog added the step, so Back and Forward stay in
+    // order; otherwise the screen's own address takes its place.
     closeGallery(how = '') {
       const wasOpen = !!this.galleryItem;
       this.galleryItem = null; this.galleryBusy = false;
       this._resumeStory();
       if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // the page's own title again
-      if (!wasOpen || how === 'popstate' || !this._isGalleryPath(location.pathname)) return;
+      if (!wasOpen || how === 'popstate' || how === 'navigate' || !this._isGalleryPath(location.pathname)) return;
       try {
-        if (how === 'user' && history.state && history.state.p3Pushed === PAGE_LOAD) history.back();
-        else history.replaceState(null, '', this.pageUrl(PAGE_VIEWS.includes(this.view) ? this.view : 'home'));
+        if (history.state && history.state.p3Pushed === PAGE_LOAD) history.back();
+        else history.replaceState(null, '', this.routePath() || BASE + '/');
       } catch (_) {}
     },
-    // Back / Forward: open the design the address names, or close the dialog — and, when the step went past the dialog
-    // to another page, show that page (a Design screen lives at the home address and stays where it is)
-    _onGalleryHistory() {
+    // Back / Forward: the address names the screen — a page, a step of the journey, My Account — and the gallery design
+    // that is open; the screen in front follows it (the address already moved)
+    _onHistory() {
       const p = location.pathname;
       if (this._isGalleryPath(p)) {
         let slug = '';
@@ -611,13 +646,59 @@ function p3App() {
         if (g) { if (this.galleryItem !== g) this.openGallery(g, { address: 'none' }); return; }
         this.closeGallery('popstate');                                      // no longer in this visitor's gallery
         try { history.replaceState(null, '', BASE + '/gallery'); } catch (_) {}
-        if (this.view !== 'inspiration') this.navigateTo('inspiration');
+        if (this.view !== 'inspiration') this.navigateTo('inspiration', { history: 'replace' });
         return;
       }
       if (this.galleryItem) this.closeGallery('popstate');
+      if (this.routePath() === p + location.hash) return;                 // that screen is already in front
+      const flow = flowOf(p);
+      if (flow) { this._openFlow(flow, { history: 'none' }); return; }
       const rel = p.slice(BASE.length).replace(/^\/+|\/+$/g, '');
+      if (!rel && location.hash === '#account') { this.openAccountPage('', { history: 'none' }); return; }
       const v = Object.keys(PAGE_PATHS).find(k => PAGE_PATHS[k] === rel);
-      if (v && v !== this.view && (v !== 'home' || PAGE_VIEWS.includes(this.view))) this.navigateTo(v);
+      if (v) this.navigateTo(v, { history: 'none' });
+    },
+    // A step of the journey by its address — F5, a link, a new tab (restore: the page was just loaded) or Back / Forward.
+    // Signed out: sign in first, then this step. A reload brings the journey's design back from its saved state; the
+    // server answers only for the customer's own designs (and refuses every production step of a design switched OFF),
+    // so a design they can no longer open gives a fresh Design screen and a step it cannot show gives the one before.
+    async _openFlow(flow, { history = 'push', restore = false } = {}) {
+      if (!this.userSession) { this._signInFor(flow); return; }
+      if (restore) {
+        const at = { customize: 'review', bag: 'checkout', checkout: 'checkout' }[flow] || 'ai-studio';
+        const id = loadStore().designId;
+        if (id) { try { await this.openDesign(id, { restoreView: at, history: 'replace' }); } catch (_) { this.persist({ designId: null }); } }
+        if (!this.design && at !== 'checkout') this._doResetAIFlow({ history: 'replace' });
+      }
+      if (flow === 'design') {
+        if (window.innerWidth < 1024) this.sidebarOpen = false; else this.sidebarTab = 'designs';
+        if (!restore) this.navigateTo('ai-studio', { history });
+      } else if (flow === 'my-designs' || flow === 'favorites') {
+        this.openPanel(flow === 'favorites' ? 'favorites' : 'designs', { history: restore ? 'replace' : history });
+      } else if (flow === 'customize') {
+        if (restore) return;                                                 // Customize, or the Design screen without one
+        if (this.cust && this.design) this.navigateTo('review', { history }); else this._openFlow('design', { history: 'replace' });
+      } else if (flow === 'bag') {
+        if (!restore || this.view !== 'checkout') this.navigateTo('checkout', { history: restore ? 'replace' : history });
+      } else if (flow === 'checkout') {
+        if (!restore && this.checkout && this.co.requestId) { this.navigateTo('order', { history }); return; }
+        await this.refreshBag();
+        if (this.bag?.checkout_available) await this.startCheckout({ history: 'replace' });
+        else this.navigateTo('checkout', { history: 'replace' });            // nothing to check out now: the bag says why
+      }
+    },
+    // A step of the journey asked for while signed out (a link, F5 after the session ended): the home page behind the
+    // sign-in, then that step — kept across a Google / Apple round trip. Dismissed: the home page's address.
+    _signInFor(flow) {
+      this._pendingRoute = flow;
+      try { sessionStorage.setItem('p3_pending_route', flow); } catch (_) {}
+      if (!this.view) this.view = 'home';
+      if (!this.showRegModal) this.openRegModal();
+    },
+    _takePendingRoute() {
+      let r = this._pendingRoute; this._pendingRoute = '';
+      try { r = r || sessionStorage.getItem('p3_pending_route') || ''; sessionStorage.removeItem('p3_pending_route'); } catch (_) {}
+      return FLOW_PATHS[r] ? r : '';
     },
     // The homepage story (showcase.js) waits while the lightbox covers it, as the hero rotation does: nothing animates under
     // the dialog, and a design page's story does not reach its larger pictures behind it. It resumes only if this paused it.
@@ -673,8 +754,9 @@ function p3App() {
         const d = await this.api('POST', `/api/gallery/${encodeURIComponent(id)}/start`, { client_request_id: newRequestId() });
         this.measure('design_session_started', { product_type: (this.gallery.find(x => x.id === id) || {}).product_type || 'ring', entry: 'gallery' });
         this._setPendingGallery('');
-        this.closeGallery(); this.galleryGridOpen = false; this.showRegModal = false; this.closePreview(); this.signInNotice = null;
-        await this.openDesign(d.id);
+        const fromDialog = !!this.galleryItem && this._isGalleryPath(location.pathname);
+        this.closeGallery('navigate'); this.galleryGridOpen = false; this.showRegModal = false; this.closePreview(); this.signInNotice = null;
+        await this.openDesign(d.id, { history: fromDialog ? 'replace' : 'push' });      // the dialog's step becomes the Design screen
         this.loadDesigns(); this.loadFavorites(); this._refreshQuota();
       } catch (e) {
         this.galleryBusy = false;
@@ -704,9 +786,16 @@ function p3App() {
         const g = this.galleryFind(x => x.id === fav);
         if (g) { if (!this.isFav(g)) await this.toggleFav(g); this.openGallery(g); return; }
       }
+      const route = this._takePendingRoute();     // they opened a step's address (a link, F5): that step, at its address
+      if (route) {
+        this._pendingPanel = ''; this.showRegModal = false; this.signInNotice = null; this.closePreview();
+        this.loadDesigns(); this.loadFavorites();
+        await this._openFlow(route, { history: 'replace', restore: true });
+        return;
+      }
       const panel = this._pendingPanel;       // they asked for My Designs, ♥ Favorites or the bag before signing in
       this._pendingPanel = '';
-      this._enterDesignAfterSignIn(fromVerification);
+      this._enterDesignAfterSignIn(fromVerification, { history: panel ? 'none' : 'push' });   // one step: the screen asked for
       if (panel === 'bag') { this.signInNotice = null; this.goToCheckout(); }
       else if (panel === 'account') { this.signInNotice = null; this.openAccountPage(); }
       else if (panel) this.openPanel(panel);
@@ -727,6 +816,7 @@ function p3App() {
     closeRegModal() {
       this.showRegModal = false;
       this._setPendingGallery(''); this._setPendingFav(''); this._pendingPanel = '';
+      if (this._takePendingRoute() && !this.userSession) this._route('replace');   // a step's address, not signed in: home's
       const el = this._returnFocus; this._returnFocus = null;
       if (el && el.isConnected) setTimeout(() => el.focus(), 0);
     },
@@ -999,10 +1089,10 @@ function p3App() {
       try { localStorage.setItem(PROFILE_KEY, JSON.stringify(this.userProfile)); } catch (_) {}
     },
     // Where a freshly signed-in user lands: the Design screen, with a clear confirmation.
-    _enterDesignAfterSignIn(fromVerification = false) {
+    _enterDesignAfterSignIn(fromVerification = false, { history = 'push' } = {}) {
       this.showRegModal = false;
       this.closePreview();
-      this._doResetAIFlow();
+      this._doResetAIFlow({ history });
       this.signInNotice = {
         title: fromVerification ? 'Your email has been verified successfully.' : "You're signed in.",
         text: 'You can now continue designing your jewelry.',
@@ -1037,7 +1127,7 @@ function p3App() {
                   address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
                   promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '' };
       this.persist({ designId: null, view: 'home' });
-      this.navigateTo('home');
+      this.navigateTo('home', { history: 'replace' });         // the journey's steps need a sign-in again
     },
 
     // ── Account panel (opens from the token coin / balance line) ───────
@@ -1081,13 +1171,31 @@ function p3App() {
     // My Designs and ♥ Favorites live in the Design screen's side panel. The header, the studio toolbar, the phone
     // menu and the account panel all open it on the right tab; signed out, sign in first and it opens right after.
     get inStudio() { return STUDIO_VIEWS.includes(this.view); },
-    openPanel(tab = 'designs') {
+    openPanel(tab = 'designs', { history = 'push' } = {}) {
       this.menuOpen = false; this.closeAccountPanel();
       if (!this.userSession) { this._pendingPanel = tab; this.openRegModal(); return; }
-      if (this.view !== 'ai-studio') { if (this.design) this.navigateTo('ai-studio'); else this._doResetAIFlow(); }
+      if (this.view !== 'ai-studio') { if (this.design) this.navigateTo('ai-studio', { history: 'none' }); else this._doResetAIFlow({ history: 'none' }); }
       this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';
       this.sidebarOpen = true;
+      this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';      // its own address
+      this._route(history);
       if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
+    },
+    // The panel's tabs are its two screens, each at its own address
+    panelTab(tab) {
+      if (this.sidebarTab === tab && this.panelRoute) return;
+      this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';
+      this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';
+      if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
+      this._route('push');
+    },
+    // Closing the panel (×, the backdrop): the Design screen's address — one step back when the visitor came from there
+    closePanel() {
+      this.sidebarOpen = false;
+      if (!this.panelRoute) return;
+      this.panelRoute = '';
+      const s = history.state;
+      if (s && s.p3Pushed === PAGE_LOAD && s.p3Prev === BASE + '/' + FLOW_PATHS.design) history.back(); else this._route('replace');
     },
     signOutFromAccount() { this.closeAccountPanel(); this.logout(); },
 
@@ -1358,7 +1466,7 @@ function p3App() {
       }
     },
 
-    startNew() {
+    startNew({ history = 'push' } = {}) {
       // Clears the active selection/associations only. Saved designs and the bag are untouched.
       this.track('new_design_clicked');
       this.stopPolling();
@@ -1366,11 +1474,11 @@ function p3App() {
       this.actionError = ''; this.composeError = ''; this.closePreview();
       this.userInput = ''; this.clearUpload();
       this.persist({ designId: null, view: 'ai-studio' });
-      if (this.view !== 'ai-studio' && STUDIO_VIEWS.includes(this.view)) this.view = 'ai-studio';
+      if (this.view !== 'ai-studio' && STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio', { history });
     },
 
     // ── design state ──────────────────────────────────────────────────
-    async openDesign(designId, { restoreView } = {}) {
+    async openDesign(designId, { restoreView, history = 'push' } = {}) {
       this.stopPolling();
       const d = await this.api('GET', `/api/designs/${designId}`);
       this.design = d; this.cust = null; this.pendingRefineBatchId = null;
@@ -1383,11 +1491,11 @@ function p3App() {
       if (last.id !== shown.id) this.pendingRefineBatchId = last.id;
       this.persist({ designId });
       if (restoreView === 'review' && d.customization) {
-        this.showCustomization(d.customization);
+        this.showCustomization(d.customization, { history });
       } else if (['checkout', 'order', 'confirmation'].includes(restoreView)) {
-        this.navigateTo('checkout');                      // a reload lands on the bag, never mid-order
+        this.navigateTo('checkout', { history });         // a reload lands on the bag, never mid-order
       } else {
-        this.navigateTo('ai-studio');
+        this.navigateTo('ai-studio', { history });
       }
       if (window.innerWidth < 1024) this.sidebarOpen = false;
       this.ensurePolling();
@@ -1609,7 +1717,7 @@ function p3App() {
           this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
           this.actionError = ''; this.composeError = ''; this.closePreview();
           this.persist({ designId: null });
-          if (STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio');
+          if (STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio', { history: 'replace' });
         }
       } catch (e) { this.designsError = e.message; }
     },
@@ -1695,7 +1803,7 @@ function p3App() {
       }
     },
 
-    showCustomization(c) {
+    showCustomization(c, { history = 'push' } = {}) {
       const same = this.cust?.id && this.cust.id === c.id;
       this.cust = c;
       // A ring opens on a suggested size until the customer confirms it; a charm has no suggestion — its size was chosen
@@ -1704,7 +1812,7 @@ function p3App() {
       const g = this.groupOfMaterial(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
       this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
-      if (this.view !== 'review') this.navigateTo('review');
+      if (this.view !== 'review') this.navigateTo('review', { history });
       if (!same && ['queued', 'running'].includes(c.movie?.status)) this.measure('movie_generation_started', { product_type: c.product_type || 'ring', retry: false });
       this.pollCustomization();
     },
@@ -1894,7 +2002,9 @@ function p3App() {
       } catch (e) { this.custError = e.message; }
     },
 
-    backToDesign() { this.navigateTo('ai-studio'); },
+    backToDesign() { this._goBackOr('ai-studio'); },
+    // The bag's "← Continue": back to the screen the visitor came from — Customize, else the Design screen
+    continueFromBag() { if (this.cust) this._goBackOr('review'); else if (this.design) this._goBackOr('ai-studio'); else this.resetAIFlow(); },
 
     // ── bag ───────────────────────────────────────────────────────────
     get bagLines() { return this.bag?.lines || []; },
@@ -1931,7 +2041,7 @@ function p3App() {
     coProblem(field) { return this.co.problems[field] || ''; },
     _setProblems(list) { this.co.problems = Object.fromEntries((list || []).map(p => [p.field, p.message])); },
     _scrollTop() { window.scrollTo({ top: 0 }); document.querySelector('main')?.scrollTo?.({ top: 0 }); },
-    async startCheckout() {
+    async startCheckout({ history = 'push' } = {}) {
       if (!this.bag?.checkout_available || this.co.busy) return;
       this.track('checkout_clicked');
       this.co.busy = true; this.co.error = '';
@@ -1945,7 +2055,7 @@ function p3App() {
         if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
         this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
-        this.navigateTo('order');
+        this.navigateTo('order', { history });
       } catch (e) { this.co.error = e.message; }
       finally { this.co.busy = false; }
     },
@@ -1954,7 +2064,7 @@ function p3App() {
       if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this._scrollTop(); }
     },
     coBack() {
-      if (this.co.step === 'details') { this.navigateTo('checkout'); return; }
+      if (this.co.step === 'details') { this._goBackOr('checkout'); return; }
       this.co.step = this.co.step === 'review' ? 'shipping' : 'details'; this.co.error = ''; this._scrollTop();
     },
     coNext() { return this.co.step === 'details' ? this.coDetailsNext() : this.co.step === 'shipping' ? this.coShippingNext() : this.placeOrder(); },
@@ -2027,7 +2137,7 @@ function p3App() {
           const f = e.problems.map(p => p.field);
           this.co.step = f.some(x => CUSTOMER_FIELDS.includes(x)) ? 'details' : f.some(x => ADDRESS_FIELDS.includes(x) || x === 'shipping_method') ? 'shipping' : 'review';
         }
-        if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout'); }
+        if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
       } finally { this.co.busy = false; }
     },
     async loadOrders() {
@@ -2044,10 +2154,10 @@ function p3App() {
       finally { this.myQuotesLoading = false; }
     },
     // My Account → Quotes & orders (#account); anchor: a quote or order on it ("quote-Q-5001", "order-ORD-10001")
-    openAccountPage(anchor = '') {
+    openAccountPage(anchor = '', { history = 'push' } = {}) {
       this.closeAccountPanel(); this.menuOpen = false;
       if (!this.userSession) { this._pendingPanel = 'account'; this.openRegModal(); return; }
-      this.navigateTo('account');
+      this.navigateTo('account', { history });
       this.loadSecurity();
       if (anchor) setTimeout(() => document.getElementById(anchor === 'security' ? 'account-security' : anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
     },

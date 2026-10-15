@@ -100,7 +100,7 @@ async def test_my_designs_and_favorites_are_one_tap_away_on_every_screen(HG):
     assert "openPanel('designs')" in Panel and "openPanel('favorites')" in Panel
     # signed out: sign in first, then the panel opens on the tab they asked for
     App = (await H.Client.get("/static/app.js")).text
-    Open = App[App.index("openPanel(tab = 'designs') {"):]
+    Open = App[App.index("openPanel(tab = 'designs', { history = 'push' } = {}) {"):]
     Open = Open[:Open.index("\n    },")]
     assert "this._pendingPanel = tab; this.openRegModal(); return;" in Open
     assert "this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';" in Open and "this.sidebarOpen = true;" in Open

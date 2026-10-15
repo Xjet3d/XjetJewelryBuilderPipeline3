@@ -192,9 +192,9 @@ def test_the_cards_are_links_and_the_dialog_keeps_the_design_address():
     Open = Js[Js.index("    openGallery(g, { address = 'push' } = {}) {"):Js.index("    metalLabel(id)")]
     assert "history.pushState({ p3Gallery: g.id, p3Pushed: PAGE_LOAD }, '', href)" in Open          # Back closes it
     assert "document.title = this._galleryTitle(g);" in Open
-    Close = Js[Js.index("    closeGallery(how = '') {"):Js.index("    _onGalleryHistory() {")]
+    Close = Js[Js.index("    closeGallery(how = '') {"):Js.index("    _onHistory() {")]
     assert "history.state.p3Pushed === PAGE_LOAD) history.back();" in Close     # only through this page load's own step
-    assert "window.addEventListener('popstate', () => this._onGalleryHistory());" in Js
+    assert "window.addEventListener('popstate', () => this._onHistory());" in Js
     Shared = Js[Js.index("    _openSharedGallery() {"):Js.index("    async startFromGallery(id) {")]
     assert "(BASE || '') + '/'" not in Shared and "this.openGallery(g, { address: 'replace' });" in Shared   # the address stays
     # the dialog's own controls are the visitor's close (Back and Forward stay in order)

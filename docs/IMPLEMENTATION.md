@@ -564,6 +564,49 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
   23 prompts plus a Rolex-inspired ring, a Chanel-logo charm and a Mickey Mouse charm: 26 of 26 as intended. Proto runs
   them as any-llm v6 and any-llm-charm v5; the same texts went to atelier with its switch on (approved the same day).
 
+## 8e. Browser routing: the customer's journey at its own addresses (2026-10-15)
+
+- **Route map.**
+  - Public pages, as before: `/`, `/gallery`, `/gallery/<slug>`, `/materials`, `/technology`, `/faq`, `/about` and the
+    legal pages.
+  - The journey (`FLOW_PATHS`; never indexed, never in the sitemap):
+    - `/design`: the Design screen;
+    - `/my-designs` and `/favorites`: its side panel, open on that tab;
+    - `/customize`;
+    - `/bag`: the `checkout` view;
+    - `/checkout`: the `order` view, with its details, shipping and review steps.
+  - My Account stays `/#account`. An order's confirmation keeps the address it was reached at.
+- **History.**
+  - `navigateTo(view, { history })` puts each screen at its address (`routePath`):
+    - `push`: the visitor went there, so Back returns;
+    - `replace`: a correction or a reload's restore;
+    - `none`: Back / Forward, where the address already moved.
+  - The same address never adds a step.
+  - `popstate` → `_onHistory`: the screen the address names, or the gallery design, comes to the front.
+  - The app's own Back buttons (`_goBackOr`: Customize → Design, Checkout → Bag, the bag's Continue, the panel's ×)
+    step back when the visitor came from that screen, so they agree with the browser's Back.
+  - The Gallery dialog keeps its own step (docs/SEO.md). Make it yours replaces the dialog's step with `/design`, so
+    Back returns to the Gallery, the home page or Favorites.
+- **No design in an address.** A design id is its customer's own, and an address reaches GA4's first page view and
+  Clarity. Ring IDs are sequential. `/design/<slug>` is the public gallery's old address, which 301s. So the journey's
+  saved state (`STORE_KEY`: the current design) restores the step after F5 or in a new tab (`_openFlow`, restore):
+  - Design: the design, or a fresh Design screen;
+  - Customize: its customization, else the Design screen;
+  - Bag: the bag;
+  - Checkout: checkout again while the bag can be checked out, else the bag. The form's typed details are not kept
+    across a reload; the profile fills them.
+  - The server answers only for the customer's own or gallery-linked designs. A design of a product switched OFF is not
+    opened, and every production step stays refused server-side (`products.RequireOffered`).
+- **Signed out.** A journey address shows the home page behind the sign-in, and that step follows the sign-in. The step
+  is kept across a Google / Apple round trip (`sessionStorage` `p3_pending_route`). Dismissing the sign-in leaves the
+  home page's address. The authentication policy is unchanged.
+- **Server.** `p3/app.py` `_FlowRoute` serves the app (`RenderPage(..., Flow=...)`) with `noindex` meta and header,
+  `Cache-Control: no-cache`, and `window.__p3.route`. The page has no canonical link, social tags, structured data or
+  server-side copy, and nothing of a customer.
+- **Analytics.** Unchanged: the same `page()` calls — the page's own address on load, `measureScreen` per screen. GA4's
+  "page changes based on browser history events" stays OFF (owner, 2026-10-15), so a new address sends nothing by
+  itself.
+
 ## 9. Verification evidence
 
 **Automated** (`pytest`, 50 tests; **all provider calls mocked** by `p3/providers/mock.py`; no network):

@@ -1225,7 +1225,7 @@
 
                 <!-- Phones and tablets: the panel is a drawer over the whole screen, above the sticky header (z-50), so its
                      My Designs | Favorites tabs and its close button are never covered -->
-                <div x-show="sidebarOpen" class="fixed inset-0 bg-black/40 z-[55] lg:hidden" @click="sidebarOpen = false"></div>
+                <div x-show="sidebarOpen" class="fixed inset-0 bg-black/40 z-[55] lg:hidden" @click="closePanel()"></div>
 
                 <!-- My Designs sidebar -->
                 <aside class="flex-shrink-0 overflow-hidden flex flex-col transition-all duration-300 border-l bg-white"
@@ -1237,17 +1237,17 @@
                             <!-- Icon-first tabs: the open one keeps the selected look (black pill / gold on cream); the name appears
                                  beside the icon on hover or focus -->
                             <div class="flex items-center gap-1 min-w-0" role="tablist" aria-label="My Designs and Favorites">
-                                <button type="button" role="tab" @click="sidebarTab = 'designs'" :aria-selected="sidebarTab === 'designs'" class="tap nav-icon" :class="{ 'is-on': sidebarTab === 'designs' }" aria-label="My Designs">
+                                <button type="button" role="tab" @click="panelTab('designs')" :aria-selected="sidebarTab === 'designs'" class="tap nav-icon" :class="{ 'is-on': sidebarTab === 'designs' }" aria-label="My Designs">
                                     <span class="ico"><svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></span>
                                     <span class="nav-label" aria-hidden="true">My Designs</span>
                                 </button>
-                                <button type="button" role="tab" @click="sidebarTab = 'favorites'; loadFavorites()" :aria-selected="sidebarTab === 'favorites'" class="tap nav-icon is-gold" :class="{ 'is-on': sidebarTab === 'favorites' }" aria-label="Favorites">
+                                <button type="button" role="tab" @click="panelTab('favorites')" :aria-selected="sidebarTab === 'favorites'" class="tap nav-icon is-gold" :class="{ 'is-on': sidebarTab === 'favorites' }" aria-label="Favorites">
                                     <span class="ico"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path class="heart" d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg></span>
                                     <span class="nav-label" aria-hidden="true">Favorites</span>
                                 </button>
                             </div>
                             <!-- Panel icons reveal their name on hover (.tip-host / .icon-tip), like the header's -->
-                            <button @click="sidebarOpen = false" class="tap-lg tip-host transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#1A1A1A] hover:bg-black/[0.04]" aria-label="Close My Designs and Favorites">
+                            <button @click="closePanel()" class="tap-lg tip-host transition p-1 rounded-lg text-[#6F6F6F] hover:text-[#1A1A1A] hover:bg-black/[0.04]" aria-label="Close My Designs and Favorites">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                 <span class="icon-tip is-left" aria-hidden="true">Close</span>
                             </button>
@@ -1691,7 +1691,7 @@
                     <p class="text-[12px] text-zinc-500 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
                 </div>
                 <div x-show="bagLines.length > 0" class="flex flex-col sm:flex-row gap-3">
-                    <button @click="cust ? navigateTo('review') : (design ? navigateTo('ai-studio') : resetAIFlow())" class="flex-1 border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
+                    <button @click="continueFromBag()" class="flex-1 border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
                     <button @click="startCheckout()" :disabled="!bag?.checkout_available || co.busy" class="flex-1 btn-gold py-3.5 stream-glow" x-text="co.busy ? 'Opening checkout…' : 'Checkout'"></button>
                 </div>
                 <p x-show="bag && !bag.checkout_available && bagLines.length" class="mt-3 text-[13px] text-center" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
