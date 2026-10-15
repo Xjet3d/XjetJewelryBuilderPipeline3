@@ -2,7 +2,9 @@
 
 **Code:** `p3/sitepages.py` (pages, titles, descriptions, the FAQ, structured data, the server copy of a page),
 `p3/app.py` (`RenderPage`, the page routes, `robots.txt`, `sitemap.xml`), `p3/admin.py` (`/api/admin/site-indexing`),
-`web/app.js` (`PAGE_PATHS`, `pageLink`, `navigateTo`). **Tests:** `tests/test_seo.py`.
+`web/app.js` (`PAGE_PATHS`, `pageLink`, `navigateTo`; the gallery dialog's address: `galleryHref`, `galleryClick`,
+`openGallery`, `closeGallery`, `_onGalleryHistory`). **Tests:** `tests/test_seo.py`, `tests/test_seo_sitemap.py`,
+`tests/test_gallery_routes.py`, `tests/test_sharing.py`.
 
 ## Indexing is a switch, off by default
 
@@ -24,7 +26,7 @@ Only the public production site (Atelier) turns it on.
 | technology | `/technology` | NanoParticle Jetting™ |
 | designers | `/about` | The Inkjet Revolution |
 | shipping-returns, terms, privacy, contact | `/shipping-returns`, `/terms`, `/privacy`, `/contact` | the page's name |
-| a gallery design | `/design/<name>` | the design's name |
+| a gallery design | `/gallery/<name>` (below) | the design's name |
 
 Each has its own `<title>`, meta description (true, following the products on offer), canonical link (the public origin:
 `P3_PUBLIC_BASE_URL`, else the request's), Open Graph / Twitter tags and a sitemap entry. The links in the header, the
@@ -47,6 +49,57 @@ can read a page's `noindex` only if it may fetch the page, and a disallowed URL 
 is open to search engines (production, or Search engines ON) they answer 404; on proto and development copies they stay,
 always `noindex`.
 
+## Gallery design pages: `/gallery/<name>` (since 2026-10-15)
+
+Every design in the public Inspiration Gallery has its own address, `/gallery/<name>` (`designs.share_slug`: set at
+publication, never changed by a rename). The page is the Gallery with that design's dialog open
+(`p3/app.py` `GalleryDesignPage`, `_DesignPage`):
+
+- **Head:** its own `<title>` (`<name> · Custom Ring Design · XJet Atelier`, or Charm), meta description, one canonical
+  link to itself, Open Graph / Twitter tags with the design's picture, `CreativeWork` and `BreadcrumbList` (Home →
+  Inspiration Gallery → the design), and a preload of the dialog's picture.
+- **For readers that run no scripts:** the design's name as the H1, its description and picture, a link back to the
+  Gallery, and every *other* gallery design as a link (never a link to itself). On this page the Gallery's own heading
+  is an H2; once the scripts run, the dialog's design name is the H1.
+- **The cards** (home, Gallery, "See all designs") are real `<a href="…/gallery/<name>">` links (`galleryHref`). A
+  plain click opens the dialog in place and adds a history step (`galleryClick` → `openGallery`); Ctrl/⌘/Shift/middle
+  click and "Open link in new tab" open the design's page as links do. The address and the tab's title follow the dialog.
+- **History:** Back closes the dialog (the page behind it, at its own address); Forward opens it again
+  (`_onGalleryHistory`). The dialog's own controls (Escape, the backdrop, Back to gallery) step back through the step
+  the click added, so Back / Forward stay in order; when the app closes it (Make it yours, a sign-in first), or after a
+  reload, the page's own address takes the step's place. A reload or a copied address opens the same design again.
+- **Share / Copy link** (customer and Admin) give `/gallery/<name>`.
+- **Another spelling** (capitals, the design's current name after a rename): **301** to the canonical address, one hop.
+- **Not found** (never published, taken out of the gallery, or of a product not on offer): **404**, `noindex` — the
+  Gallery, saying "This design is no longer in the Inspiration Gallery". A design that is not in the public gallery (a
+  customer's own, a fork, a hidden product's) is never reachable by name.
+- **The address before, `/design/<name>`** (links already shared, bookmarks, the sitemap until 2026-10-15): **301** to
+  `/gallery/<name>` (the query string kept: campaign tags), and only when the name belongs to a public gallery design;
+  any other `/design/…` is a 404 `noindex` as before. No blanket redirect, no chain. Redirects answer
+  `Cache-Control: no-cache`, so browsers ask again each time (a rollback is not stuck in their caches); search engines
+  treat a 301 as permanent and move the old URL's standing to the new one.
+- **Sitemap:** `/gallery/<name>` only, `<lastmod>` as below. The `/design/` URLs left the sitemap with this change; search
+  engines follow their 301 when they next crawl them.
+- **Analytics:** unchanged. Opening a design in place sends `gallery_design_opened`, not a page view; a design's page
+  loaded directly is a page view of `/gallery/<name>` (as `/design/<name>` was). The app sends its own page views
+  (`send_page_view: false`): GA4's *Enhanced measurement → Page changes based on browser history events* should be off,
+  or GA4 may also count the address changes.
+
+### When a product is switched off — a proposal for the owner (2026-10-15, not implemented)
+
+Today a design's page, its 301 and its sitemap entry exist only while its product is on offer (Admin → Settings →
+Products): switching a product off makes its design pages 404 `noindex` and drops them from the sitemap, so search
+engines drop them within days to weeks, and switching it back on brings them back only as they are crawled again.
+
+| Situation | Design page | Sitemap |
+|---|---|---|
+| A product never launched, or seen only in the Admin preview | 404 `noindex` (as today) | not listed |
+| Paused after launch (temporarily not on offer) | 200, indexable, "Not available to order right now", no Make it yours | listed |
+| Withdrawn for good | 410 Gone, or 301 to the Gallery | removed |
+
+It needs a per-product Admin choice ("paused" or "withdrawn") and the owner's approval. Nothing deletes or redirects
+indexed URLs automatically.
+
 ## The sitemap's `<lastmod>`
 
 Every URL carries the date its own content last changed (`page_lastmod`): a fingerprint of the page's title,
@@ -63,10 +116,11 @@ way is renewed without moving its date. The sitemap is rebuilt at most once a mi
 - Home: `Organization` (XJet Ltd., xjet3d.com, the XJet Atelier brand; the support address when one is configured) and
   `WebSite` (XJet Atelier).
 - `/faq`: `FAQPage` with the ten questions and answers exactly as the page shows them.
-- `/design/<name>`: `Product` with the design's name, image, description, category (Rings / Charms) and brand.
+- `/gallery/<name>`: `CreativeWork` (the design's name, picture, description and kind — Rings / Charms — made by XJet
+  Ltd.) and `BreadcrumbList` (Home → Inspiration Gallery → the design).
 
-No reviews, ratings, prices or availability anywhere. (Google shows product rich results only with offers or reviews;
-the Product data is valid without them, it is simply not eligible for that rich result.)
+No reviews, ratings, prices or availability anywhere, and no `Product`: the pages show no price (2026-10-13), Google's
+product snippets need an offer, reviews or a rating, and a price is never invented to satisfy them.
 
 ## Atelier host and Cloudflare — changes outside the P3 repository
 
@@ -166,7 +220,8 @@ curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/ | grep -i robots    [nothin
   fetch" right after submission, while Googlebot's live tests of the pages passed — re-check after a day or two).
 - **Request indexing:** done 2026-10-12 for `…/JewelryB2C3/`, `/gallery`, `/faq`, `/materials`, `/technology`, `/about`
   and `/design/serpent-scale`; `/design/aurora-line` hit "Something went wrong — try again in a few hours" twice (it is
-  in the sitemap anyway). Re-requesting a URL does not move it up the queue.
+  in the sitemap anyway). Re-requesting a URL does not move it up the queue. Since 2026-10-15 the design pages are
+  `/gallery/<name>` (the `/design/…` URLs answer 301): inspect one and resubmit the sitemap after the release.
 - **Next:** after a few days, **Pages** (indexed / not indexed and why), **Sitemaps** (read, URLs discovered),
   **Enhancements** (FAQ — Google shows FAQ rich results only for a few authoritative sites; Product snippets report
   missing offers by design), **Core Web Vitals** once there is field data.
@@ -182,6 +237,8 @@ Keep proto's switch OFF; never add proto to Search Console.
 curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/robots.txt
 curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/sitemap.xml
 curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/faq | grep -E '<title>|name="robots"|rel="canonical"|<h1|ld\+json'
+curl -sI https://xjetatelier.xjet3d.com/JewelryB2C3/design/serpent-scale       [301, location: /JewelryB2C3/gallery/serpent-scale]
+curl -s https://xjetatelier.xjet3d.com/JewelryB2C3/gallery/serpent-scale | grep -E '<title>|rel="canonical"|<h1'
 ```
 
 ## Core Web Vitals
@@ -190,7 +247,8 @@ Lab measurements (no field data until Search Console has traffic): the local Chr
 cold cache; phone = 412x823 with Lighthouse's applied mobile throttling (Slow 4G, 4x CPU), desktop = 1366x800 without
 throttling; at least 12 s after the load event (a large image can finish late).
 
-A design page (`/design/<name>`) opens the homepage with the design in the Inspiration Gallery lightbox. Before
+A design page (`/design/<name>` until 2026-10-15) opened the homepage with the design in the Inspiration Gallery
+lightbox; since then `/gallery/<name>` opens the Gallery under it (to be measured again after the release). Before
 2026-10-12 a phone saw the dialog grow by about 350 px when the picture arrived (CLS 0.42) and the picture was the
 950 KB original PNG (LCP about 12.7 s). Since then (53d3aa6, 6ff4c97, ae44f06):
 

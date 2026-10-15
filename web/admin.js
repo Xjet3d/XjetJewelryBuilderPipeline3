@@ -1790,7 +1790,7 @@ function adminApp() {
       try { const r = await this.api('GET', `/api/admin/gallery/usage/${encodeURIComponent(g.design_id)}`); this.galleryUsage = { ...this.galleryUsage, [g.design_id]: r.uses }; }
       catch (e) { this.galleryMsg = e.message; }
     },
-    // The customer share link by design name (/design/aurora-twist) — the same link the Share button gives customers
+    // The customer share link by design name (/gallery/aurora-twist) — the same link the Share button gives customers
     async galleryLink(g) {
       let url;
       try { url = (await this.api('GET', `/api/gallery/${encodeURIComponent(g.id)}/share`)).url; }

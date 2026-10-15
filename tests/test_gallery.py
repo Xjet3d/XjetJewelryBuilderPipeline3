@@ -34,7 +34,7 @@ async def test_gallery_lists_curated_designs_publicly_and_is_curated_by_the_admi
     Did, Cand, Item = await _Curated(H)
     Items = (await H.Client.get("/api/gallery", headers={"X-Access-Token": "NOPE00"})).json()["items"]   # no sign-in needed
     assert [I["id"] for I in Items] == [Item["id"]] and Items[0]["image_url"] == Cand["image_url"]
-    assert set(Items[0]) == {"id", "design_id", "title", "image_url"}        # nothing about the owner leaks
+    assert set(Items[0]) == {"id", "design_id", "title", "image_url", "slug"}   # nothing about the owner leaks (slug: its page)
     assert (await H.Client.post("/api/admin/gallery", json={"design_id": Did})).status_code == 403   # customers can't curate
     # Admin: list with statistics, reorder, remove
     B2 = await H.NewDesign("Plain polished band")

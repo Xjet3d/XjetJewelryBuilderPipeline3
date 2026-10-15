@@ -48,7 +48,8 @@ class GalleryService:
         for R in self._Rows():
             if R["candidate_status"] != "ready" or not R["asset_path"] or (R["product_type"] or "ring") not in Visible:
                 continue
-            Tile = {"id": R["id"], "design_id": R["design_id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"])}
+            Tile = {"id": R["id"], "design_id": R["design_id"], "title": R["title"], "image_url": self.Ctx.AssetUrl(R["asset_path"]),
+                    "slug": R["share_slug"] or ShareSlug(R["title"]) or ""}      # its public page: /gallery/<slug>
             if WithProduct:
                 Tile["product_type"] = R["product_type"] or "ring"
             Out.append(Tile)

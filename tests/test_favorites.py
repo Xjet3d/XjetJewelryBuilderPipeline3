@@ -7,7 +7,7 @@ async def test_favorites_are_saved_references_to_gallery_masters_per_account(HG)
     H = HG
     Did, Cand, Item = await _Curated(H)
     Tiles = (await H.Client.get("/api/gallery", headers={"X-Access-Token": "NOPE00"})).json()["items"]
-    assert Tiles[0]["design_id"] == Did and set(Tiles[0]) == {"id", "design_id", "title", "image_url"}
+    assert Tiles[0]["design_id"] == Did and set(Tiles[0]) == {"id", "design_id", "title", "image_url", "slug"}
     Other, _ = H.Ctx.Accounts.IssueToken("other")
     Me = {"X-Access-Token": Other}
     assert (await H.Client.get("/api/favorites", headers={"X-Access-Token": "NOPE00"})).status_code in (401, 403)

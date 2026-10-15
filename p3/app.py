@@ -13,6 +13,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -286,7 +287,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = Immutable if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
-        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")) \
+        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/", "/gallery/")) \
                 or Rel.strip("/") in SitePages.Views:
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
@@ -358,7 +359,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return "\n    ".join(Tags)
 
     def GalleryLinks(request: Request) -> list[dict]:
-        """The gallery designs this visitor may see, each with its own page (/design/<name>)."""
+        """The gallery designs this visitor may see, each with its own page (/gallery/<name>)."""
         Out = []
         for Tile in Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True):
             Row = Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Tile["design_id"],))
@@ -370,7 +371,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     def RenderPage(request: Request, View: str, Design: dict | None = None) -> str:
         """A public page (p3/sitepages.py): index.html with the page's own title, description, canonical link, Open Graph
         tags, robots and structured data, the FAQ, and the page itself as real markup. Design: a gallery design's own page
-        (/design/<name>) — the home page opening on that design, with the design's name as its heading."""
+        (/gallery/<name>) — the Gallery opening on that design, with the design's name as its heading."""
         Visible = Products.VisibleProducts(Ctx, request)
         Origin = S.PublicBaseUrl or PublicOrigin(request)
         Home = f"{Origin}{Base}/"
@@ -388,12 +389,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration"):
-            Links = SitePages.DesignLinks(Base, GalleryLinks(request))
+            Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
             Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
         if View == "materials":
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
         if Design:
-            Before['<section class="hero-section'] = Design["block"]           # before the hero
+            Before[Design.get("anchor") or '<section class="hero-section'] = Design["block"]     # the view's top
         Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
         Html = SitePages.ServerView(Html, View, Fill, Before)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
@@ -484,7 +485,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         for L in GalleryLinks(request):
             Row = Ctx.Db.One("SELECT g.created_at FROM gallery_items g JOIN designs d ON d.id = g.design_id WHERE d.share_slug = ?",
                              (L["slug"],))
-            Entries.append(("/design/" + L["slug"], SitePages.DesignFingerprint(L), Row["created_at"] if Row else None))
+            Entries.append(("/gallery/" + L["slug"], SitePages.DesignFingerprint(L), Row["created_at"] if Row else None))
         Dates = PageDates(Entries)
         Body_ = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
             "".join(f"  <url><loc>{html.escape(f'{Origin}{Base}{P}')}</loc><lastmod>{SitePages.W3cDate(Dates[P])}</lastmod></url>\n"
@@ -497,18 +498,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return FileResponse(WebDir / "images" / "favicon.ico", media_type="image/x-icon",
                             headers={"Cache-Control": "public, max-age=604800"})
 
-    @App_.get("/design/{Slug}", include_in_schema=False)
-    async def SharedDesignPage(Slug: str, request: Request):
-        """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
-        the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
-        that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
-        if Found is None:
-            Html = RenderPage(request, "home").replace('<meta name="robots" content="index,follow">', '<meta name="robots" content="noindex">')
-            SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
-            return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
+    def _MissingDesign(request: Request, View: str) -> HTMLResponse:
+        """A design name no public gallery design answers to (never published, taken out of the gallery, or of a product
+        this visitor cannot see): the page behind it, not indexed, telling the visitor the design is no longer there."""
+        Html = RenderPage(request, View).replace('<meta name="robots" content="index,follow">', '<meta name="robots" content="noindex">')
+        return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
+
+    def _DesignAddress(request: Request, Slug: str) -> str:
+        """A gallery design's page, path only, with the query string kept (campaign tags on a shared link)."""
+        return f"{Base}/gallery/{quote(Slug)}" + (f"?{request.url.query}" if request.url.query else "")
+
+    def _DesignPage(request: Request, Found: dict) -> HTMLResponse:
+        """A gallery design's own page, /gallery/<slug>: the Gallery opening on that design's preview — the address stays
+        the design's, so a reload or a copied link opens it again. Its title, description, picture, canonical address,
+        the social-preview tags that messaging apps read before anyone taps, structured data (the design as a creative
+        work, its place under the Gallery) and, for readers that run no scripts, its name, words and picture. Only what
+        a published gallery design shows anyway: never its prompt, its owner or a Ring ID."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)        # the canonical public origin when configured
-        Url = f"{Origin}{Base}/design/{Found['slug']}"
+        Home = f"{Origin}{Base}/"
+        Url = f"{Origin}{Base}/gallery/{Found['slug']}"
         Title = html.escape(Found["title"], quote=True)
         ImageRaw = f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}"
         Image = html.escape(ImageRaw, quote=True)
@@ -516,17 +524,14 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         DescriptionText = (f"{Found['title']} — a {Noun} designed with XJet Atelier, from the Inspiration Gallery. "
                            "See it in 360°, choose your metal and make it yours.")
         Description = html.escape(DescriptionText, quote=True)
-        # Other gallery designs (same product first): links between the design pages, for crawlers
-        Others = sorted((L for L in GalleryLinks(request) if L["slug"] != Found["slug"]),
-                        key=lambda L: (L.get("product_type") or Products.Ring) != (Found.get("product_type") or Products.Ring))[:6]
-        Related = " · ".join(f'<a href="{html.escape(Base, quote=True)}/design/{html.escape(L["slug"], quote=True)}">'
-                             f'{html.escape(L["title"], quote=False)}</a>' for L in Others)
         Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"
                                        f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier" loading="lazy">'
-                                       + (f"<p>More designs: {Related}</p>" if Related else "")
-                                       + f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
-        Html = RenderPage(request, "home", Design={"block": Block})
-        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
+                                       f'<p><a href="{html.escape(Base, quote=True)}/gallery">See every design in the Inspiration Gallery</a></p>')
+        Html = RenderPage(request, "inspiration", Design={"block": Block, "anchor": SitePages.GalleryAnchor, "slug": Found["slug"]})
+        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))     # the Gallery's, after the dialog
+        Data = SitePages.JsonLd(
+            SitePages.DesignWork(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring),
+            SitePages.Breadcrumbs(("Home", Home), ("Inspiration Gallery", Home + "gallery"), (Found["title"], Url)))
         Tags = "\n".join([
             f'<meta property="og:type" content="website">',
             f'<meta property="og:site_name" content="XJet Atelier">',
@@ -541,8 +546,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
             SitePages.LightboxPreload(Found["image_url"]),
-            SitePages.JsonLd(SitePages.DesignWork(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
-            f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
+            Data,
+            f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "slug": Found["slug"], "site_title": SiteTitle})};</script>',
         ])
         # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)
         Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{Title} · Custom {Noun.title()} Design · XJet Atelier</title>", Html,
@@ -550,6 +555,28 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Html = re.sub(r'<meta name="description" content="[^"]*">',
                       lambda _M: f'<meta name="description" content="{Description}">\n    {Tags}', Html, count=1)
         return HTMLResponse(Html)
+
+    @App_.get("/gallery/{Slug}", include_in_schema=False)
+    async def GalleryDesignPage(Slug: str, request: Request):
+        """A public gallery design by name (/gallery/aurora-line). Another spelling of its name — capitals, or the name it
+        has now when its link name was given under an earlier one — goes in one permanent hop to the canonical address."""
+        Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
+        if Found is None:
+            return _MissingDesign(request, "inspiration")
+        if Slug != Found["slug"]:
+            return RedirectResponse(_DesignAddress(request, Found["slug"]), status_code=301)
+        return _DesignPage(request, Found)
+
+    @App_.get("/design/{Slug}", include_in_schema=False)
+    async def LegacyDesignLink(Slug: str, request: Request):
+        """The address gallery designs had until 2026-10-15 (/design/<slug>), in links already shared, bookmarks and search
+        engines: one permanent hop to the design's page in the Gallery. Only a name a public gallery design answers to is
+        redirected; any other answers as before (404, not indexed) — /design/ held nothing else, and nothing else is sent
+        anywhere."""
+        Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
+        if Found is None:
+            return _MissingDesign(request, "home")
+        return RedirectResponse(_DesignAddress(request, Found["slug"]), status_code=301)
 
     @App_.get("/showcase", include_in_schema=False)
     async def ShowcasePage():
@@ -712,7 +739,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if Share is None:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
-                "url": f"{S.PublicBaseUrl or PublicOrigin(request)}{Base}/design/{Share['slug']}"}
+                "url": f"{S.PublicBaseUrl or PublicOrigin(request)}{Base}/gallery/{Share['slug']}"}
 
     # ── ♥ favorites: saved references to gallery masters, per account ──
     @App_.get("/api/favorites")
