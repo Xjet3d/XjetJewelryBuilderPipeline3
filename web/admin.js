@@ -521,6 +521,19 @@ function adminApp() {
       this.openPartForLine({ id: pd.line.id, title: pd.line.title, ring_id: pd.line.item_ref, three_d_version: pd.line.three_d_version, design_id: pd.line.design_id, candidate_id: pd.line.candidate_id });
       if (this.xp) { this.xp.forProduction = { order_id: pd.order.id, answers_request_id: answersRequestId, handoff_no: pd.handoff_no }; }
     },
+    // The active corrected STL of the line's pair as a revised file (the owner's decision of 2026-10-15, §7): explicit, with a reason;
+    // Fulfillment withdraws the approval and reviews the part again. Offered only before a build (pd.active_stl.eligible).
+    async useActiveStlForProduction(pd, answersRequestId = null) {
+      const a = pd.active_stl; if (!a || !a.eligible || this.pdBusy) return;
+      const r = await this.ask({ title: 'Use ' + a.label + ' for ' + pd.line.item_ref + ' in Production?',
+        text: 'The line is produced from ' + (pd.pinned.version_label || '—') + (a.bore_corrected ? ', the file before the bore correction' : ', the bore-corrected file') + ', now. '
+              + (a.bore_corrected ? 'The bore-corrected STL (accepted by ' + (a.accepted_by || 'admin') + (a.file_sha256 ? ', sha256 ' + a.file_sha256.slice(0, 12) + '…' : '') + ')' : 'The original STL')
+              + ' is submitted as hand-over ' + (pd.handoff_no + 1) + ': Fulfillment makes a new revision, keeps the former one and its file, withdraws the manufacturing approval and reviews the part again. Nothing already printed is replaced.',
+        confirmLabel: 'Submit to Production', cancelLabel: 'Not now',
+        input: { label: 'Why the file changes (required — kept with the order and sent to Fulfillment)', value: '', placeholder: 'For example: the bore made round (FixBore) after the approval', max: 300 } });
+      if (!r || !(r.value || '').trim()) { if (r) this.notify('A reason is required.', 'error'); return; }
+      await this.productionRevision(pd, { three_d_id: a.three_d_id, reason: r.value.trim(), answers_request_id: answersRequestId });
+    },
     async productionRevision(pd, body) {
       this.pdBusy = true; this.pdError = '';
       try {
@@ -693,8 +706,9 @@ function adminApp() {
     actNote(a) {
       if (!a) return '';
       const what = a.kind === 'restore' ? 'Restore of the STL' : 'Bore correction accepted';
+      if (a.followed_by === 'revised_file') return what + ' — not changed then (' + (a.reason || '') + '); submitted later as a revised file to Production · ' + this.dateTime(a.created_at);
       return { switched: what + ' — this line now uses that STL', linked: what + ' — this line was linked to that STL',
-               pending: what + ' — asked of Fulfillment: the line switches once Fulfillment confirms (its part is in review)',
+               pending: what + ' — update pending: asked of Fulfillment, the line switches once Fulfillment confirms (its part is in review)',
                applied: what + ' — Fulfillment confirmed; this line now uses that STL' + (a.revision_no ? ' (revision ' + a.revision_no + ' there)' : ''),
                refused: what + ' — Fulfillment kept the former STL: ' + (a.reason || 'refused'),
                skipped: what + ' — not changed: ' + (a.reason || '') }[a.outcome] + ' · ' + this.dateTime(a.updated_at || a.created_at) + ' · ' + (a.by || 'admin');

@@ -930,8 +930,16 @@ class Production3D:
         if Db.Execute("UPDATE bore_fixes SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ?, updated_at = ? WHERE id = ? AND status = 'proposed'",
                       (By, T, Note, T, Pid)) != 1:
             raise HttpError(409, "not_proposed", "This correction was decided meanwhile.")
-        if F["file_path"]:
-            assets.Resolve(self.Ctx.Settings.DevDir, F["file_path"]).unlink(missing_ok=True)
+        # The decision is recorded (above, committed): the proposal's own file is deleted — only a file of the proposals'
+        # folder that no result uses (never an original, never an accepted revision's STL); its record, numbers and hash stay
+        Rel = F["file_path"] or ""
+        if Rel:
+            Used = Db.One("SELECT 1 AS x FROM geometry_results WHERE stl_path = ?", (Rel,)) or Db.One(
+                "SELECT 1 AS x FROM bore_fixes WHERE file_path = ? AND id <> ? AND status IN ('proposed', 'accepted')", (Rel, Pid))
+            if Used or not Rel.startswith(BoreFixDir + "/"):
+                Logger.warning("Rejected bore correction %s: its file %s is in use or outside %s — kept", Pid, Rel, BoreFixDir)
+            else:
+                assets.Resolve(self.Ctx.Settings.DevDir, Rel).unlink(missing_ok=True)
         Row = self._Row(F["session_3d_id"])
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
         Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_rejected", Row["design_id"], session_3d_id=Row["id"], bore_fix_id=Pid,
@@ -1292,6 +1300,9 @@ class Production3D:
             J = Db.One("SELECT output_path FROM geometry_jobs WHERE id = ? AND kind = 'export' AND session_3d_id = ? "
                        "AND status = 'done'", (Stage[len("export-"):], Sid))
             Rel = J and J["output_path"]
+        elif Stage == "bore-fix":                               # the open FixBore proposal's corrected STL, for the Admin's review
+            F = Db.One("SELECT file_path FROM bore_fixes WHERE session_3d_id = ? AND status = 'proposed' ORDER BY created_at DESC LIMIT 1", (Sid,))
+            Rel = F and F["file_path"]
         elif Stage in ("production", "preview"):
             G = Db.One("SELECT stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,))
             Legacy = G and G["stl_path"]
@@ -1327,6 +1338,8 @@ class Production3D:
             Parts += [OrderRef or "", SlugPart(CharmPrices.Label(self.Ctx.Catalog, R["material_id"])), f"{R['production_size']:g}mm"]
         elif Stage.startswith("export-") or Stage == "production":
             Parts += [OrderRef or "", SlugPart(Mat.Label if Mat else R["material_id"]), f"US{R['production_size']:g}"]
+        elif Stage == "bore-fix":
+            Parts += [SlugPart(Mat.Label if Mat else R["material_id"]), f"US{R['production_size']:g}", "FixBore-proposal"]
         else:                                  # the model as it came: which 3D version, from the second one or an external part
             M = Db.One("SELECT version_no, source FROM meshes WHERE id = ?", (R["mesh_id"],))
             if M and M["version_no"] and (M["source"] == "external" or M["version_no"] > 1):

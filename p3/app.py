@@ -608,6 +608,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Svc.Orders.LineGuard = Bridge.GuardLineVersionChange
     Svc.Orders.FulfillmentView = Bridge.CustomerView
     Svc.Activations.Bridge = Bridge                       # a line with Fulfillment takes a corrected STL only once Fulfillment confirms (I-38)
+    Bridge.Activations = Svc.Activations                  # … and an approved part, as a revised file (Submit revised file)
     App_.state.Bridge = Bridge
     RegisterBridge(App_, Ctx, Bridge)
 

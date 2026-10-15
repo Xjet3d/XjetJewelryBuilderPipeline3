@@ -123,7 +123,8 @@ def _LineEventText(Kind: str, D: dict) -> str:
     if Kind == "production_revision_submitted":
         # The hand-over number (how many times Atelier sent this line), never called a revision: Fulfillment numbers its own
         # production revisions (file + size + material + profile), so a profile assignment there is a revision too
-        return " · ".join(X for X in (f"hand-over {D.get('handoff_no')}", D.get("version_label"), D.get("reason")) if X)
+        Src = ("the active bore-corrected STL" if D.get("bore_corrected") else "the active STL (restored)") if D.get("source") == "active_stl" else None
+        return " · ".join(X for X in (f"hand-over {D.get('handoff_no')}", D.get("version_label"), Src, D.get("reason")) if X)
     if Kind == "3d_version_changed":
         return f"v{D.get('from_version_no') or '?'} → {D.get('label') or 'v' + str(D.get('version_no') or '?')}" + (f": {D['note']}" if D.get("note") else "")
     if Kind == "3d_version_uploaded":
@@ -312,6 +313,7 @@ def _Sha(Text: str) -> str:
 class FulfillmentBridge:
     def __init__(self, Ctx: Context, Orders, Production):
         self.Ctx, self.Orders, self.Production = Ctx, Orders, Production
+        self.Activations = None                 # StlActivations (p3/stl_activation.py), wired in p3/app.py
         self._ShaCache: dict = {}
         with Ctx.Db.Connect() as Conn:
             Conn.executescript(Schema)
@@ -781,6 +783,76 @@ class FulfillmentBridge:
             Conn.execute("UPDATE stl_activation_lines SET outcome = ?, reason = ?, revision_no = ?, part_display_no = COALESCE(?, part_display_no), updated_at = ? WHERE id = ?",
                          (Outcome, Why, Rev, Cmd.get("part"), T, Acl["id"]))
 
+    def ActiveStlFor(self, Prod: dict | None) -> dict | None:
+        """The active file of the pair a sent line's production file belongs to, when the line still has the other one — a
+        bore correction accepted after the part was approved (or a restore after it was switched): offered as a revised
+        file, explicitly, with whether this part's stage allows it (Submit revised file; never in a build or further)."""
+        if not Prod or self.Activations is None:
+            return None
+        P = self.Activations.Pair(Prod["three_d_id"])
+        if not P or P["active"] == Prod["three_d_id"]:
+            return None
+        from p3.stl_activation import LockReason
+        L = self.Ctx.Db.One("SELECT * FROM order_lines WHERE id = ?", (Prod["line_id"],))
+        Stage, Part = self.Activations._Stage(L, Prod)
+        Why = LockReason(Stage, Part, AllowApproved=True)
+        Pending = self.PendingFileReplacement(Prod["line_id"])
+        F = self.Ctx.Db.One("SELECT file_sha256, file_bytes, decided_by, decided_at FROM bore_fixes WHERE id = ?", (P["bore_fix_id"],))
+        Corrected = P["active"] == P["revision"]
+        return {"three_d_id": P["active"], "bore_fix_id": P["bore_fix_id"], "bore_corrected": Corrected,
+                "label": "the bore-corrected STL" if Corrected else "the original STL (restored)",
+                "file_sha256": F["file_sha256"] if Corrected and F else None, "accepted_by": F["decided_by"] if F else None,
+                "accepted_at": F["decided_at"] if F else None, "stage": Stage, "eligible": not Why and not Pending,
+                "why_not": (f"{(Part or {}).get('display_no') or 'the part'} is {Why}: the corrected STL is submitted only before a build "
+                            "— take it out of the build in Fulfillment first, or keep the current file" if Why else
+                            "a change of this line's STL waits for Fulfillment's answer" if Pending else None)}
+
+    def _SubmitActiveStl(self, OrderId: str, LineId: str, Prod: dict, ThreeDId: str, By: str, Reason: str, Answers: str | None) -> dict:
+        """Submit revised file with the active corrected STL (the owner's decision of 2026-10-15, §7): the existing controlled
+        revision — the line re-pinned, the next hand-over number, Fulfillment told through the snapshot (production_revision).
+        Fulfillment makes a new revision, keeps the former one and its file, withdraws the manufacturing approval and reviews
+        the part again; a manual feasibility assessment is marked as needing review again. Only before a build."""
+        Alt = self.ActiveStlFor(Prod)
+        if not Alt or Alt["three_d_id"] != ThreeDId:
+            raise HttpError(409, "not_the_active_stl", "That is not the active STL of this line's design, material and size.")
+        if not Alt["eligible"]:
+            raise HttpError(409, "stage_not_eligible", f"Not submitted — {Alt['why_not']}.", {"stage": Alt["stage"]})
+        O = self._Order(OrderId)
+        L = next(X for X in O["lines"] if X["id"] == LineId)
+        Info = self.Orders._ThreeDForLine({**L, "pinned_three_d_id": ThreeDId})
+        if Info["three_d_state"] not in ("complete", "review_required"):
+            raise HttpError(409, "print_file_required", f"The active STL is not a valid print file now ({Info['three_d_state']}).")
+        Pin = self._PinInfo({**L, "three_d_id": ThreeDId})
+        try:
+            File = (self._ProductionFile(ThreeDId) or {}) if Info["three_d_state"] == "complete" else {}
+        except HttpError as E:
+            raise HttpError(409, "print_file_required", f"The active STL cannot be exported: {E.Message}")
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT * FROM fulfillment_line_production WHERE id = ?", (Prod["id"],)).fetchone()
+            if Cur["three_d_id"] != Prod["three_d_id"] or Cur["handoff_no"] != Prod["handoff_no"]:
+                raise HttpError(409, "changed_meanwhile", "The line's production file changed meanwhile; reload it.")
+            if Conn.execute("UPDATE order_lines SET three_d_id = ?, mesh_id = ? WHERE id = ? AND order_id = ?", (ThreeDId, Pin["mesh_id"], LineId, OrderId)).rowcount != 1:
+                raise HttpError(404, "line_not_found", "No such line on this order.")
+            E = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (OrderId,)).fetchone()
+            Version = E["source_version"] + 1
+            Conn.execute("UPDATE fulfillment_enrollments SET source_version = ?, updated_at = ? WHERE id = ?", (Version, T, E["id"]))
+            Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES ('updated', 'order', ?, ?, 'production_revision', ?)",
+                         (OrderId, Version, T))
+            Conn.execute("UPDATE fulfillment_line_production SET handoff_no = handoff_no + 1, mesh_id = ?, version_no = ?, version_label = ?, source = ?, scaling = ?, "
+                         "master_sha256 = ?, three_d_id = ?, method_version = ?, file_sha256 = ?, file_bytes = ?, file_job_id = ?, revision_reason = ?, answers_request_id = ?, "
+                         "state = 'revised', updated_at = ? WHERE id = ?",
+                         (Pin["mesh_id"], Pin["version_no"], Pin["version_label"], Pin["source"], Pin["scaling"], Pin["master_sha256"], ThreeDId, Pin["method_version"],
+                          File.get("sha256"), File.get("bytes"), File.get("job_id"), Reason, Answers, T, Prod["id"]))
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (OrderId, "production_revision_submitted", Dumps({"line_id": LineId, "item_ref": L["ring_id"], "handoff_no": Cur["handoff_no"] + 1,
+                                                                           "mesh_id": Pin["mesh_id"], "version_no": Pin["version_no"], "version_label": Pin["version_label"],
+                                                                           "session_3d_id": ThreeDId, "file_sha256": File.get("sha256"), "reason": Reason,
+                                                                           "answers_request_id": Answers, "from_mesh_id": Cur["mesh_id"], "from_version_no": Cur["version_no"],
+                                                                           "from_three_d_id": Cur["three_d_id"], "source": "active_stl", "bore_fix_id": Alt["bore_fix_id"],
+                                                                           "bore_corrected": Alt["bore_corrected"], "source_version": Version}), By, T))
+        return self.ProductionDetail(LineId)
+
     def PendingFileReplacement(self, LineId: str) -> dict | None:
         return self.Ctx.Db.One("SELECT * FROM stl_activation_lines WHERE line_id = ? AND outcome = 'pending' ORDER BY created_at DESC LIMIT 1", (LineId,))
 
@@ -807,6 +879,8 @@ class FulfillmentBridge:
         Reason = " ".join(str(Body.get("reason") or "").split())[:300]
         if not Reason:
             raise HttpError(400, "reason_required", "Say why the production file changes (kept with the order and sent to Fulfillment).")
+        if isinstance(Body.get("three_d_id"), str) and Body["three_d_id"]:             # the active corrected STL of the line's pair (§7)
+            return self._SubmitActiveStl(OrderId, LineId, Prod, Body["three_d_id"], By, Reason, str(Body.get("answers_request_id") or "") or None)
         MeshId, UploadId = Body.get("mesh_id"), Body.get("upload_id")
         if not (isinstance(MeshId, str) and MeshId) and not (isinstance(UploadId, str) and UploadId):
             raise HttpError(400, "version_required", "Choose another 3D version or upload a revised STL.")
@@ -1650,7 +1724,10 @@ class FulfillmentBridge:
                          "three_d_versions": L.get("three_d_versions") or [], "three_d_pinned": bool(L.get("three_d_pinned"))},
                 "notes": Notes, "commands": [C for C in self.CommandList("order", O["id"]) if C["payload"].get("line_id") == LineId],
                 "timeline": self._LineTimeline(O, LineId, DisplayNo), "order_lines_sent": self.Ctx.Db.One("SELECT COUNT(*) AS n FROM fulfillment_line_production WHERE order_id = ?", (O["id"],))["n"],
-                "order_lines_total": len(O["lines"])}
+                "order_lines_total": len(O["lines"]),
+                # the active corrected STL of the line's pair, when the line still has the other file: Submit revised file offers it (§7)
+                "active_stl": self.ActiveStlFor(self.LineProduction(LineId)),
+                "stl_activation": self.Activations.LineNote(LineId) if self.Activations is not None else None}
 
     def _LineTimeline(self, O: dict, LineId: str, DisplayNo: str | None) -> list[dict]:
         """The line's history from the order's events (K9: no second history): Atelier's hand-over, file, version and

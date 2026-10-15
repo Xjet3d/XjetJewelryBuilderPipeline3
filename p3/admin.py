@@ -893,7 +893,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return hmac.new(Secret.encode(), f"3d-download:{Sid}:{Stage}:{Exp}".encode(), hashlib.sha256).hexdigest()
 
     def _Stage(Stage: str) -> str:
-        if Stage in ("raw", "production", "preview", "thumbnail") or Stage.startswith("export-"):
+        if Stage in ("raw", "production", "preview", "thumbnail", "bore-fix") or Stage.startswith("export-"):
             return Stage
         raise HttpError(404, "geometry_not_found", "Unknown file.")
 

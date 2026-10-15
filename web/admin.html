@@ -1312,7 +1312,8 @@
                           <span class="text-zinc-500" x-show="x.reason" x-text="' · ' + x.reason"></span></p>
                       </template>
                     </div>
-                    <div class="flex flex-wrap gap-2"><button class="btn !py-1.5" @click="acceptBoreFix(t)">Accept and activate…</button><button class="btn2 !py-1.5" @click="rejectBoreFix(t)">Reject…</button></div>
+                    <div class="flex flex-wrap gap-2"><button class="btn !py-1.5" @click="acceptBoreFix(t)">Accept and activate…</button><button class="btn2 !py-1.5" @click="rejectBoreFix(t)">Reject…</button>
+                      <button class="btn2 !py-1.5" title="The corrected STL exactly as proposed (its sha256 above) — to inspect its geometry before deciding" @click="downloadStl(t.id, 'bore-fix')">Download the corrected STL</button></div>
                   </div>
                 </template>
                 <p x-show="t.bore_fix.status === 'accepted'" class="text-[12px] text-emerald-900" x-text="'Accepted by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + ' — saved as a new revision, listed with this design’s 3D results. This result is unchanged.' + (t.bore_fix.decision_note ? ' Note: ' + t.bore_fix.decision_note : '')"></p>
@@ -1913,6 +1914,7 @@
           <div class="flex flex-wrap gap-2 pt-1" x-show="pd.attention?.state === 'open'">
             <button class="btn !py-1.5" :disabled="pdBusy" @click="submitRevisionForProduction(pd, pd.attention?.id)">Submit a revised file to Production…</button>
             <button x-show="(pd.line.three_d_versions || []).length > 1" class="btn2 !py-1.5" :disabled="pdBusy" @click="useVersionForProduction(pd, pd.attention?.id)">Use another version for Production…</button>
+            <button x-show="pd.active_stl" class="btn2 !py-1.5" :disabled="pdBusy || !pd.active_stl?.eligible" :title="pd.active_stl?.why_not || ''" @click="useActiveStlForProduction(pd, pd.attention?.id)" x-text="'Use ' + (pd.active_stl?.label || 'the active STL') + ' for Production…'"></button>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-zinc-100 text-sm">
@@ -1925,7 +1927,9 @@
             <div class="flex flex-wrap gap-3 text-[11px] uppercase tracking-widest pt-1" x-show="!pd.attention && pd.stage !== 'cancelled'">
               <button class="underline text-zinc-600 hover:text-black" :disabled="pdBusy" @click="submitRevisionForProduction(pd)">Submit a revised file to Production…</button>
               <button x-show="(pd.line.three_d_versions || []).length > 1" class="underline text-zinc-600 hover:text-black" :disabled="pdBusy" @click="useVersionForProduction(pd)">Use another version for Production…</button>
+              <button x-show="pd.active_stl" class="underline text-zinc-600 hover:text-black" :disabled="pdBusy || !pd.active_stl?.eligible" :title="pd.active_stl?.why_not || ''" @click="useActiveStlForProduction(pd)" x-text="'Use ' + (pd.active_stl?.label || 'the active STL') + ' for Production…'"></button>
             </div>
+            <p x-show="pd.active_stl" class="text-[12px]" :class="pd.active_stl?.eligible ? 'text-sky-800' : 'text-amber-800'" x-text="pd.active_stl?.eligible ? (pd.active_stl.bore_corrected ? 'A bore correction of this file was accepted after the part was approved: it can be submitted as a revised file (Fulfillment then reviews and approves the part again).' : 'The original STL was restored for this design, material and size: it can be submitted as a revised file.') : 'Not offered now: ' + (pd.active_stl?.why_not || '') + '.'"></p>
           </div>
           <div class="space-y-1">
             <p class="lbl">Manufacturing <span class="font-normal normal-case tracking-normal text-zinc-500">(Fulfillment)</span></p>
@@ -2182,7 +2186,7 @@
                             <a x-show="prodLine(l).fulfillment_url" class="underline text-zinc-700 hover:text-black" :href="prodLine(l).fulfillment_url" target="_blank" rel="noopener" title="Open this part in the Fulfillment application">Open in Fulfillment ↗</a></p>
                           <p class="text-zinc-500 mt-0.5" x-text="'Sent ' + dateTime(prodLine(l).production.sent_at) + ' · Atelier 3D ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · hand-over ' + prodLine(l).production.handoff_no : '') + (prodLine(l).production.pinned?.file_sha256 ? '' : ' · preparing the production file…')"></p>
                           <p x-show="prodHandoff(prodLine(l))?.tone !== 'green' || prodLine(l).stage_detail" class="text-zinc-500" x-text="prodHandoff(prodLine(l))?.hint"></p>
-                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
+                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.followed_by ? 'switched' : l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
                         </div>
                       </template>
                       <template x-if="!prodLine(l).production?.sent">
@@ -2190,10 +2194,11 @@
                         <div class="normal-case tracking-normal space-y-1">
                           <p class="flex flex-wrap items-center gap-2">
                             <button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? (prodLine(l).stl?.state === 'ready_unlinked' ? 'Link the STL named in the confirmation and send this line to Production' : 'Send this line to Production with its linked STL') : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
-                            <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span></p>
+                            <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span>
+                            <span x-show="l.stl_revision" class="badge bg-emerald-100 text-emerald-800" :title="'The bore-corrected STL (FixBore), stored: sha256 ' + (l.stl_revision?.file_sha256 || '').slice(0, 12) + '…'">Accepted revision · FixBore</span></p>
                           <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
                           <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
-                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
+                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.followed_by ? 'switched' : l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
                           <p x-show="(prodLine(l).duplicates || []).length" class="text-amber-800" x-text="'Possible duplicate: ' + dupText(prodLine(l)) + '. Send to Production asks you to confirm; nothing is cancelled.'"></p>
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
                             <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>

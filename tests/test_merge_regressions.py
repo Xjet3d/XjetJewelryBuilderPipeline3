@@ -79,3 +79,32 @@ async def test_the_integration_keeps_its_own_service_credential_under_the_sessio
         assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
     finally:
         await H.Close()
+
+
+async def test_tron_keeps_today_s_sign_in_in_legacy_mode_behind_proto(tmp_path, monkeypatch):
+    """tron and proto keep today's sign-in (the owner's message of 2026-10-15, §3): the integrated code with
+    P3_AUTH_MODE=legacy and tron's own P3_PUBLIC_BASE_URL (http://proto) — the old dialog (no provider), /api/register
+    mails a code, a six-letter code signs in and writes; the Admin's key; Fulfillment's calls (no Origin). Customer
+    writes through proto (proto sends Host: tron; tron's nginx overwrites X-Forwarded-Host) and on tron itself pass
+    main's Origin check. A browser on proto's IP address does not — today it does: the release plan's decision."""
+    monkeypatch.setenv("P3_PUBLIC_BASE_URL", "http://proto")
+    H = _On(tmp_path, AuthMode="legacy", PublicBaseUrl="http://proto")
+    try:
+        Cfg = (await H.Client.get("/api/auth/config")).json()
+        assert Cfg["mode"] == "legacy" and not any(Cfg["providers"].values())
+
+        def Via(Origin: str, Token: str = "") -> dict:
+            return {"Host": "tron", "X-Forwarded-Host": "tron", "Origin": Origin, "X-Access-Token": Token}
+        for N, Origin in enumerate(("http://proto", "https://proto", "https://tron", "http://tron")):
+            R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": f"pilot{N}@atelier-customer.co.il"}, headers=Via(Origin))
+            assert R.status_code == 200 and R.json()["status"] == "verification_sent", (Origin, R.text)
+        assert (await H.Client.post("/api/events", json={"kind": "bag_viewed"}, headers=Via("http://proto", H.Token))).status_code == 200
+        # A browser on proto's IP address (seen in tron's log, 4–8 Oct): refused by the Origin check of the integrated code
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip@atelier-customer.co.il"}, headers=Via("http://172.16.10.27"))
+        assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
+        # The Admin's key and Fulfillment's service credential, as on tron
+        assert (await H.Client.get("/api/admin/orders", headers={**Admin, "Host": "tron"})).status_code == 200
+        assert (await H.Client.get(Prefix + "/identity", headers={**Service, "Host": "tron"})).status_code == 200
+        assert (await H.Client.post(Prefix + "/events", json={"events": []}, headers={**Service, "Host": "tron"})).status_code == 200
+    finally:
+        await H.Close()

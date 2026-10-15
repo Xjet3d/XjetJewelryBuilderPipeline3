@@ -879,6 +879,9 @@ class OrderService:
             L.update(self._ThreeDForLine(L))
             # what the activation of a bore-corrected STL did with this line, if it concerned it (FixBore update, 2026-10-15)
             L["stl_activation"] = self.Activations.LineNote(L["id"]) if self.Activations is not None else None
+            # the line's STL is an accepted FixBore revision (the bore-corrected file, stored)
+            Of = self.Production.BoreFixOf(L["pinned_three_d_id"]) if self.Production is not None and L.get("pinned_three_d_id") else None
+            L["stl_revision"] = {"bore_fix_id": Of["id"], "revision_of": Of["session_3d_id"], "file_sha256": Of["file_sha256"]} if Of else None
             Use = self.Ctx.Db.One("SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (L["design_id"], O["owner_account_id"]))
             L["session_id"] = Use["id"] if Use else L["design_id"]       # the customer's journey in Sessions
         J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])

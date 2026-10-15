@@ -358,3 +358,85 @@ async def test_an_open_or_accepted_correction_is_never_proposed_twice_and_a_revi
         assert (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{L['id']}/use-bore-correction", json={"revision_id": Rev["id"]}, headers=Admin)).status_code in (404, 405)
     finally:
         await H.Close()
+
+
+async def test_an_approved_part_takes_the_active_corrected_stl_only_as_a_revised_file_and_never_in_a_build(tmp_path, monkeypatch):
+    """The owner's decision of 2026-10-15 (§7): a part approved before the correction was accepted keeps its STL (never
+    replaced by itself); Submit revised file offers the active corrected STL — explicit, with a reason — through the
+    existing controlled revision (the next hand-over, Fulfillment told by the snapshot). A part in a build is refused."""
+    from p3.providers import mock
+    monkeypatch.setattr(mock, "_MeshBytes", _Oval)
+    H = _On(tmp_path)
+    try:
+        Did, A = await _Placed(H, Qty=1, Click="bf-r-a")
+        LA = await _Prepared(H, Did, A["id"])
+        Orig, Cand = LA["three_d_id"], LA["candidate_id"]
+        assert (await H.Client.post(f"/api/admin/3d/{Orig}/accept", json={}, headers=Admin)).status_code == 200
+        await _Send(H, A["id"])
+        await _Report(H, A["id"], 1, "approved", Review="approved")
+        Bo = await _Another(H, Did, Cand, "bf-r-b", Link=Orig)
+        await _SendAcknowledged(H, Bo["id"])
+        await _Report(H, Bo["id"], 2, "planned", Review="approved", Build={"display_no": "B-0001", "state": "DRAFT"})
+        Pid = (await _Propose(H, Orig))["id"]
+        Rev = (await H.Client.post(f"/api/admin/bore-fixes/{Pid}/accept", json={}, headers=Admin)).json()["revision"]["id"]
+        Sha = H.Ctx.Db.One("SELECT file_sha256 FROM bore_fixes WHERE id = ?", (Pid,))["file_sha256"]
+        assert _Line(H, A["id"])["three_d_id"] == Orig and _Line(H, Bo["id"])["three_d_id"] == Orig       # never replaced by itself
+        # The Production page offers it to A (approved, no build), not to B (in a draft build)
+        DA = (await H.Client.get(f"/api/admin/production/{LA['id']}", headers=Admin)).json()
+        assert DA["active_stl"]["three_d_id"] == Rev and DA["active_stl"]["eligible"] is True and DA["active_stl"]["bore_corrected"] is True
+        LB = _Line(H, Bo["id"])
+        DB = (await H.Client.get(f"/api/admin/production/{LB['id']}", headers=Admin)).json()
+        assert DB["active_stl"]["eligible"] is False and "assigned to a build" in DB["active_stl"]["why_not"]
+        Url = f"/api/admin/orders/{A['id']}/lines/{LA['id']}/production-revision"
+        R = await H.Client.post(Url, json={"three_d_id": Rev}, headers=Admin)
+        assert R.status_code == 400 and R.json()["error"]["code"] == "reason_required"
+        R = await H.Client.post(Url, json={"three_d_id": Orig, "reason": "x"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "not_the_active_stl"
+        R = await H.Client.post(f"/api/admin/orders/{Bo['id']}/lines/{LB['id']}/production-revision", json={"three_d_id": Rev, "reason": "round"}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "stage_not_eligible"
+        assert _Line(H, Bo["id"])["three_d_id"] == Orig
+        # Submitted for A, with the reason: the next hand-over, the corrected file, Fulfillment told by the snapshot
+        Before = H.Ctx.Db.One("SELECT MAX(seq) AS s FROM fulfillment_outbox")["s"]
+        R = await H.Client.post(Url, json={"three_d_id": Rev, "reason": "the bore made round after the approval"}, headers=Admin)
+        assert R.status_code == 200, R.text
+        Prod = H.Ctx.Db.One("SELECT * FROM fulfillment_line_production WHERE line_id = ?", (LA["id"],))
+        assert (Prod["three_d_id"], Prod["handoff_no"], Prod["file_sha256"], Prod["state"]) == (Rev, 2, Sha, "revised")
+        assert Prod["revision_reason"] == "the bore made round after the approval" and _Line(H, A["id"])["three_d_id"] == Rev
+        assert [X["reason"] for X in H.Ctx.Db.All("SELECT reason FROM fulfillment_outbox WHERE seq > ?", (Before,))] == ["production_revision"]
+        Ev = [E for E in H.Svc.Orders.AdminGet(A["id"])["events"] if E["kind"] == "production_revision_submitted"][-1]["data"]
+        assert (Ev["source"], Ev["bore_fix_id"], Ev["from_three_d_id"], Ev["session_3d_id"]) == ("active_stl", Pid, Orig, Rev)
+        Snap = (await H.Client.get(Prefix + f"/requests/order/{A['id']}", headers=Service)).json()["lines"][0]
+        assert Snap["production"]["handoff_no"] == 2 and Snap["production"]["pinned"]["geometry_sha256"] == Sha and Snap["model"]["session_3d_id"] == Rev
+        N = _Line(H, A["id"])["stl_activation"]
+        assert N["followed_by"] == "revised_file" and N["outcome_label"] == "Submitted as a revised file"
+        assert _Line(H, A["id"])["stl_revision"]["bore_fix_id"] == Pid
+        assert (await H.Client.get(f"/api/admin/production/{LA['id']}", headers=Admin)).json()["active_stl"] is None    # nothing more to offer
+    finally:
+        await H.Close()
+
+
+async def test_the_proposal_s_stl_is_downloadable_for_review_and_a_rejected_file_is_deleted_only_when_unused(tmp_path, monkeypatch):
+    from p3.providers import mock
+    monkeypatch.setattr(mock, "_MeshBytes", _Oval)
+    H = _On(tmp_path)
+    try:
+        Did, A = await _Placed(H, Qty=1, Click="bf-dl")
+        Orig = (await _Prepared(H, Did, A["id"]))["three_d_id"]
+        F = await _Propose(H, Orig)
+        # The corrected STL exactly as proposed: a signed link, the bytes whose hash the comparison names
+        R = await H.Client.post(f"/api/admin/3d/{Orig}/download-link", json={"stage": "bore-fix"}, headers=Admin)
+        assert R.status_code == 200, R.text
+        Got = await H.Client.get(R.json()["url"].replace(H.Ctx.Settings.BasePath, "", 1))
+        assert Got.status_code == 200 and hashlib.sha256(Got.content).hexdigest() == F["file_sha256"]
+        assert "FixBore-proposal" in Got.headers.get("content-disposition", "")
+        # Rejected while another record names the same file (never the case in practice): the file is kept
+        Path_ = H.Ctx.Settings.DevDir / F["file_path"]
+        H.Ctx.Db.Execute("UPDATE geometry_results SET stl_path = ? WHERE session_3d_id = ? AND stage = 'production'", (F["file_path"], Orig))
+        assert (await H.Client.post(f"/api/admin/bore-fixes/{F['id']}/reject", json={"note": "not wanted"}, headers=Admin)).status_code == 200
+        assert Path_.is_file()
+        Rec = H.Ctx.Db.One("SELECT status, decided_by, decision_note, file_sha256, after_json FROM bore_fixes WHERE id = ?", (F["id"],))
+        assert (Rec["status"], Rec["decided_by"], Rec["decision_note"], Rec["file_sha256"]) == ("rejected", "developer-key", "not wanted", F["file_sha256"]) and Rec["after_json"]
+        # No open proposal: nothing to download
+        assert (await H.Client.post(f"/api/admin/3d/{Orig}/download-link", json={"stage": "bore-fix"}, headers=Admin)).status_code == 404
+    finally:
+        await H.Close()

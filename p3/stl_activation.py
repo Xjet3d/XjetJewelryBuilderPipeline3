@@ -31,9 +31,22 @@ LockedStages = {
     "post_processing": "in post-processing", "qc": "in QC", "rework": "in rework", "ready_to_ship": "ready to ship (packing)",
     "partially_shipped": "partly shipped", "shipped": "shipped", "delivered": "delivered", "cancelled": "cancelled",
 }
-Outcomes = {"switched": "Switched", "linked": "Linked", "pending": "Waiting for Fulfillment", "applied": "Switched — Fulfillment confirmed",
+Outcomes = {"switched": "Switched", "linked": "Linked", "pending": "Update pending — waiting for Fulfillment", "applied": "Switched — Fulfillment confirmed",
             "refused": "Kept — Fulfillment refused", "skipped": "Not changed"}
 Never = "its STL is never replaced by itself — a revised file, with a reason, is the way"
+
+
+def LockReason(Stage: str | None, Part: dict | None, AllowApproved: bool = False) -> str | None:
+    """Why a part's STL may not be changed at this stage (None: it may). The activation never changes an approved part
+    (AllowApproved=False); Submit revised file may offer the active corrected STL to an approved part, never to one
+    assigned to a build or further along (AllowApproved=True) — the owner's decisions of 2026-10-15."""
+    if Stage in LockedStages and not (AllowApproved and Stage == "approved"):
+        return LockedStages[Stage]
+    if not AllowApproved and (Part or {}).get("review_status") == "approved":
+        return "approved for manufacturing"
+    if (Part or {}).get("build"):
+        return "assigned to a build"
+    return None
 
 
 class StlActivations:
@@ -101,8 +114,7 @@ class StlActivations:
                 return Do("skip", "with Fulfillment, and the integration is off on this site — its STL is not changed")
             if L["order_status"] == "cancelled":
                 return Do("skip", "order cancelled")
-            Locked = LockedStages.get(Stage) or ("approved for manufacturing" if (Part or {}).get("review_status") == "approved" else None) \
-                or ("assigned to a build" if (Part or {}).get("build") else None)
+            Locked = LockReason(Stage, Part)
             if Locked:
                 return Do("skip", f"{Locked} — {Never}")
             if Db.One("SELECT 1 AS x FROM stl_activation_lines WHERE line_id = ? AND outcome = 'pending'", (L["id"],)):
@@ -264,7 +276,13 @@ class StlActivations:
                             "JOIN stl_activations a ON a.id = x.activation_id WHERE x.line_id = ? ORDER BY x.created_at DESC, x.rowid DESC LIMIT 1", (LineId,))
         if R is None:
             return None
-        return {**R, "outcome_label": Outcomes.get(R["outcome"], R["outcome"])}
+        Out = {**R, "outcome_label": Outcomes.get(R["outcome"], R["outcome"])}
+        if R["outcome"] in ("skipped", "refused"):
+            # Not changed by the activation, but submitted later as a revised file (an approved part): said as such
+            Now_ = self.Ctx.Db.One("SELECT three_d_id FROM order_lines WHERE id = ?", (LineId,))
+            if Now_ and Now_["three_d_id"] == R["to_three_d_id"]:
+                Out.update({"followed_by": "revised_file", "outcome_label": "Submitted as a revised file"})
+        return Out
 
 
 def Inactive(Pair: dict | None, Sid: str) -> bool:
