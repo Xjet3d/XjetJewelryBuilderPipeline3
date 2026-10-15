@@ -963,7 +963,7 @@ def _Print(Report: dict, Out=sys.stdout) -> None:
         print(f"  left behind on {S['name']}: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')}: {X['why']}", file=Out)
     for I in Report.get("items") or []:
         Moved = "" if I.get("ring_id_here") == I.get("ring_id") else f" (was {I.get('ring_id')} on {S['name']})"
-        print(f"  {I.get('ring_id_here') or '-':<8} {I['title']}{Moved} | /design/{I.get('slug_here') or ''}", file=Out)
+        print(f"  {I.get('ring_id_here') or '-':<8} {I['title']}{Moved} | /gallery/{I.get('slug_here') or ''}", file=Out)
     print("Imported." if Report["applied"] else "Plan only: nothing written yet (--apply imports it).", file=Out)
 
 

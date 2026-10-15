@@ -101,9 +101,10 @@ async def test_ring_and_charm_gallery_items_both_open_as_their_product(HG):
     # Charms hidden again: the charm tile and every product field are gone; the ring tile keeps working
     H.Ctx.Products.Set("charms_available", False, "test")
     Tiles = (await H.Client.get("/api/gallery", headers=Customer)).json()["items"]
-    assert [T["id"] for T in Tiles] == [RingItem["id"]] and set(Tiles[0]) == {"id", "design_id", "title", "image_url"}
+    assert [T["id"] for T in Tiles] == [RingItem["id"]] and set(Tiles[0]) == {"id", "design_id", "title", "image_url", "slug"}
     assert (await H.Client.post(f"/api/gallery/{RingItem['id']}/start", json={}, headers=Customer)).status_code == 200
-    assert (await H.Client.post(f"/api/gallery/{CharmItem['id']}/start", json={}, headers=Customer)).status_code == 404
+    R = await H.Client.post(f"/api/gallery/{CharmItem['id']}/start", json={}, headers=Customer)
+    assert R.status_code == 409 and R.json()["error"]["code"] == "design_unavailable"   # launched, then paused: viewable, not made
     # The All | Rings | Charms filter (the Gallery page and dialog) is shown only while products are offered and
     # filters by product; with charms hidden the catalog has no products, so badges and filter stay away
     Page = (await H.Client.get("/")).text

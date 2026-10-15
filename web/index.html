@@ -438,11 +438,11 @@
                     <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                     <template x-for="g in homeGallery" :key="g.id">
                         <div class="relative group">
-                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                             <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                        </button>
+                        </a>
                         <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                         <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                             <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
@@ -589,14 +589,14 @@
                     </div>
                 </div>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
-                <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                <template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                 <template x-for="g in galleryShown" :key="g.id">
                     <div class="relative group">
-                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                         <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                         <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                    </button>
+                    </a>
                         <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                         <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                             <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
@@ -1274,7 +1274,7 @@
                                         </div>
                                         <div class="flex-1 min-w-0">
                                             <p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="f.title"></p>
-                                            <p class="text-[12px] mt-0.5" style="color:#6F6F6F;">Inspiration Gallery</p>
+                                            <p class="text-[12px] mt-0.5 leading-snug" style="color:#6F6F6F;" x-text="isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'">Inspiration Gallery</p>
                                         </div>
                                         <button type="button" @click.stop="toggleFav(f)" :disabled="favBusy === f.design_id" class="tap-lg tip-host shrink-0 p-1.5 rounded-lg transition hover:bg-[#FBF7EF]" style="color:#B8873A;" :aria-label="'Remove ' + f.title + ' from Favorites'">
                                             <svg class="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg>
@@ -1672,7 +1672,7 @@
                                 <div class="flex flex-wrap gap-1.5 mt-2">
                                     <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
                                     <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
-                                    <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;">Cannot be ordered yet</span>
+                                    <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;" x-text="l.unavailable ? 'Currently unavailable for customization or ordering' : 'Cannot be ordered yet'">Cannot be ordered yet</span>
                                 </div>
                                 <button @click="removeLine(l)" class="tap-lg mt-3 text-[12px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
                             </div>
@@ -2589,11 +2589,11 @@
                     <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                     <template x-for="g in galleryShown" :key="g.id">
                         <div class="relative group">
-                        <button type="button" @click="openGallery(g)" class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
                             <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                             <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                        </button>
+                        </a>
                         <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                         <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                             <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
@@ -2616,7 +2616,7 @@
 
     <!-- Inspiration Gallery lightbox: a shared XJet design; "Make it yours" links the customer to it -->
     <template x-if="galleryItem">
-        <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery()" @keydown.escape.window="closeGallery()" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
+        <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery('user')" @keydown.escape.window="closeGallery('user')" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
             <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
                 <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4 relative">
                     <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
@@ -2641,25 +2641,27 @@
                             <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(galleryItem) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
                         </button>
                     </div>
-                    <p class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
-                    <p class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
+                    <p x-show="!isOff(galleryItem)" class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
+                    <p x-show="!isOff(galleryItem)" class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
+                    <!-- Its product is switched OFF: the design stays viewable, read-only (app.js isOff) -->
+                    <p x-show="isOff(galleryItem)" class="text-sm text-zinc-500 leading-relaxed" role="status" data-unavailable>Currently unavailable for customization or ordering.</p>
                     <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>
                     <div class="flex flex-col gap-3 pt-1">
-                        <button @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
+                        <button x-show="!isOff(galleryItem)" @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
                         <div class="flex gap-3">
                             <button @click="shareGallery(galleryItem)" :disabled="shareBusy" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em] inline-flex items-center justify-center gap-2" :title="canNativeShare ? 'Share this design' : 'Copy a link to this design'">
                                 <svg x-show="canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0-11-3.5 3.5M12 4l3.5 3.5M6 12v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6"/></svg>
                                 <svg x-show="!canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
                                 <span x-text="shareBusy ? 'Preparing…' : (canNativeShare ? 'Share' : (shareCopied ? 'Link copied' : 'Copy link'))"></span>
                             </button>
-                            <button @click="closeGallery()" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
+                            <button @click="closeGallery('user')" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
                         </div>
                         <div x-show="shareUrl" x-cloak class="flex items-center gap-2 text-left">
                             <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[12px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
                             <span class="text-[12px] text-zinc-500 shrink-0">Copy this link</span>
                         </div>
                     </div>
-                    <p x-show="!userSession" class="text-[12px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
+                    <p x-show="!userSession && !isOff(galleryItem)" class="text-[12px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
                 </div>
             </div>
         </div>

@@ -103,7 +103,7 @@ class OrderService:
         self.Activations = None               # StlActivations (p3/stl_activation.py): the active file of a result and its bore-corrected revision
 
     # ── checkout: what the customer sees before ordering ─────────────────
-    def CheckoutInfo(self, Who: Principal) -> dict:
+    def CheckoutInfo(self, Who: Principal, Visible: tuple | None = None) -> dict:
         Profile = self.Ctx.Accounts.Profile(Who)
         Name = (Profile.get("name") or "").strip()
         First, _, Last = Name.partition(" ")
@@ -116,12 +116,13 @@ class OrderService:
             "payment": {"available": self.Payment.Available, "provider": self.Payment.Name if self.Payment.Available else None,
                         "message": getattr(self.Payment, "Message", "")},
             "address_validation": {"provider": self.Validator.Name if self.Validator.Name != "none" else None},
-            "quote": self.Quote(Who),
+            "quote": self.Quote(Who, Visible=Visible),
         }
 
-    def _BagLines(self, Who: Principal) -> list[dict]:
-        """The bag at today's prices: a line is orderable only with a purchasable material, an available
-        price and a standard size. The snapshot price is kept for the "repriced" flag only."""
+    def _BagLines(self, Who: Principal, Visible: tuple | None = None) -> list[dict]:
+        """The bag at today's prices: a line is orderable only with a product on offer (Visible: to this browser; None:
+        every product), a purchasable material, an available price and a standard size. The snapshot price is kept for
+        the "repriced" flag only."""
         Out = []
         for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b JOIN candidates c ON c.id = b.candidate_id "
                                  "JOIN designs d ON d.id = b.design_id WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
@@ -129,7 +130,9 @@ class OrderService:
             Product = L.get("product_type") or Products.Ring
             Q = CharmPrices.QuoteFor(self.Ctx, Product, L["material_id"], L.get("charm_size")) if Mat else None
             Problem = None
-            if Product == Products.Charm:
+            if Visible is not None and Product not in Visible:      # its product is switched OFF: kept, never ordered
+                Problem = Products.UnavailableText
+            elif Product == Products.Charm:
                 # a charm's price depends on its size: the size is checked first
                 if Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
                     Problem = "Gold charms are quoted individually — remove this line and use Request a quote."
@@ -156,8 +159,9 @@ class OrderService:
                         "snapshot_unit_price": L["unit_price"], "problem": Problem})
         return Out
 
-    def Quote(self, Who: Principal, PromoCode: str | None = None, ShippingMethod: str = "standard") -> dict:
-        Lines = self._BagLines(Who)
+    def Quote(self, Who: Principal, PromoCode: str | None = None, ShippingMethod: str = "standard",
+              Visible: tuple | None = None) -> dict:
+        Lines = self._BagLines(Who, Visible)
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Lines}))
         for L in Lines:
             L["ring_id"] = Refs.get(L["candidate_id"])
@@ -209,7 +213,7 @@ class OrderService:
                 "validation": {**Result, "provider": self.Validator.Name if self.Validator.Name != "none" else None}}
 
     # ── place an order ───────────────────────────────────────────────────
-    def Create(self, Who: Principal, Body: dict, SendMail=None) -> dict:
+    def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None) -> dict:
         Db = self.Ctx.Db
         Rid = (Body.get("client_request_id") or "").strip() or None
         if Rid:
@@ -226,7 +230,7 @@ class OrderService:
             Problems.append({"field": "terms_accepted", "message": "Please accept the Terms of Service to place the order."})
         if Problems:
             raise _Invalid(Problems)
-        Q = self.Quote(Who, Body.get("promo_code"), Method)
+        Q = self.Quote(Who, Body.get("promo_code"), Method, Visible)
         if not Q["lines"]:
             raise HttpError(409, "bag_empty", "Your bag is empty.")
         if Q["promo_error"]:
@@ -453,13 +457,15 @@ class OrderService:
         return Out
 
     # ── gold: request a quote instead of ordering ────────────────────────
-    def RequestQuote(self, Who: Principal, Body: dict, SendMail=None) -> dict:
+    def RequestQuote(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None) -> dict:
         Db = self.Ctx.Db
         Customer, Problems = self.ValidateCustomer(Body.get("customer"))
         if Problems:
             raise _Invalid(Problems)
         DesignId, CandidateId = str(Body.get("design_id") or ""), str(Body.get("candidate_id") or "")
         D = self.Customize.Images.RequireDesign(Who, DesignId)
+        if Visible is not None:                                       # a quote is an order step: not while switched OFF
+            Products.RequireOffered(D.get("product_type") or Products.Ring, Visible)
         C = self.Customize.Images.RequireReadyCandidate(DesignId, CandidateId)
         Mat = self.Ctx.Catalog.Get(str(Body.get("material_id") or ""))
         if Mat is None:

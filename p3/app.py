@@ -14,6 +14,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -302,7 +303,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = Immutable if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
-        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/")) \
+        elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/", "/gallery/")) \
                 or Rel.strip("/") in SitePages.Views:
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
         # Security headers on every answer (also set by nginx in production; the app never relies on it)
@@ -373,20 +374,25 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                      f'<meta property="og:image:alt" content="{html.escape(Tiles[0]["title"], quote=True)} — designed with XJet Atelier">']
         return "\n    ".join(Tags)
 
-    def GalleryLinks(request: Request) -> list[dict]:
-        """The gallery designs this visitor may see, each with its own page (/design/<name>)."""
+    def GalleryLinks(request: Request, IncludePaused: bool = False) -> list[dict]:
+        """The gallery designs this visitor may see, each with its own page (/gallery/<name>). IncludePaused: also the
+        designs of a product paused after launch — their pages stay up, read-only (the sitemap lists them)."""
         Out = []
-        for Tile in Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True):
+        Tiles = Svc.Gallery.List(Visible=Products.VisibleProducts(Ctx, request), WithProduct=True)
+        if IncludePaused:
+            Tiles += Svc.Gallery.PausedTiles(Products.PausedProducts(Ctx, request))
+        for Tile in Tiles:
             Row = Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Tile["design_id"],))
             if Row and Row["share_slug"]:
                 Out.append({"slug": Row["share_slug"], "title": Tile["title"], "image_url": Tile["image_url"],
-                            "product_type": Tile.get("product_type") or Products.Ring})
+                            "product_type": Tile.get("product_type") or Products.Ring,
+                            **({"available": False} if Tile.get("available") is False else {})})
         return Out
 
     def RenderPage(request: Request, View: str, Design: dict | None = None) -> str:
         """A public page (p3/sitepages.py): index.html with the page's own title, description, canonical link, Open Graph
         tags, robots and structured data, the FAQ, and the page itself as real markup. Design: a gallery design's own page
-        (/design/<name>) — the home page opening on that design, with the design's name as its heading."""
+        (/gallery/<name>) — the Gallery opening on that design, with the design's name as its heading."""
         Visible = Products.VisibleProducts(Ctx, request)
         Origin = S.PublicBaseUrl or PublicOrigin(request)
         Home = f"{Origin}{Base}/"
@@ -398,18 +404,24 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
         Og = OgTags(request, Title, Description, Url) if not Design else ""
         Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
-        Html = _VersionedPage("index.html", Base, {**PageConfig, "view": View, "ssr": View, "titles": Titles,
-                                                   "analytics": Analytics.Public(Ctx.Products)}, PageRobots(),
-                              Description, Og, Mock=Modes.Mode == "mock")
+        # The products on offer as this page says them, and on the Gallery the number of its designs: the app starts from
+        # them (the filter, the wording, the grid's loading squares), so nothing moves when the catalog and the cards arrive
+        Config = {**PageConfig, "view": View, "ssr": View, "titles": Titles, "analytics": Analytics.Public(Ctx.Products),
+                  "products": list(Visible)}
+        if View == "inspiration":
+            Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
+        Html = _VersionedPage("index.html", Base, Config, PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration"):
-            Links = SitePages.DesignLinks(Base, GalleryLinks(request))
+            Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
             Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
+        if View == "inspiration":                      # the grid's room from the first paint (CLS)
+            Before[SitePages.GalleryLoading] = SitePages.GalleryPlaceholders(Config["gallery_count"])
         if View == "materials":
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
         if Design:
-            Before['<section class="hero-section'] = Design["block"]           # before the hero
+            Before[Design.get("anchor") or '<section class="hero-section'] = Design["block"]     # the view's top
         Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
         Html = SitePages.ServerView(Html, View, Fill, Before)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
@@ -491,16 +503,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         """Every public page and every gallery design's own page — never the Admin, the API, My Account or a link — each
         with the date its own content last changed (<lastmod>; PageDates). Built at most once a minute (crawlers only)."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)
-        Key = (id(Ctx), Origin, tuple(Products.VisibleProducts(Ctx, request)))
+        Key = (id(Ctx), Origin, tuple(Products.VisibleProducts(Ctx, request)), tuple(Products.PausedProducts(Ctx, request)))
         Hit = SitemapCache.get(Key)
         if Hit and time.monotonic() - Hit[0] < 60:
             return PlainTextResponse(Hit[1], media_type="application/xml")
         Entries = [("/" + P, SitePages.PageFingerprint(RenderPage(request, View), View, Origin), None)
                    for View, P in SitePages.Paths.items()]
-        for L in GalleryLinks(request):
+        for L in GalleryLinks(request, IncludePaused=True):         # a paused product's designs stay listed (read-only pages)
             Row = Ctx.Db.One("SELECT g.created_at FROM gallery_items g JOIN designs d ON d.id = g.design_id WHERE d.share_slug = ?",
                              (L["slug"],))
-            Entries.append(("/design/" + L["slug"], SitePages.DesignFingerprint(L), Row["created_at"] if Row else None))
+            Entries.append(("/gallery/" + L["slug"], SitePages.DesignFingerprint(L), Row["created_at"] if Row else None))
         Dates = PageDates(Entries)
         Body_ = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
             "".join(f"  <url><loc>{html.escape(f'{Origin}{Base}{P}')}</loc><lastmod>{SitePages.W3cDate(Dates[P])}</lastmod></url>\n"
@@ -513,36 +525,41 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return FileResponse(WebDir / "images" / "favicon.ico", media_type="image/x-icon",
                             headers={"Cache-Control": "public, max-age=604800"})
 
-    @App_.get("/design/{Slug}", include_in_schema=False)
-    async def SharedDesignPage(Slug: str, request: Request):
-        """A shared gallery design by name (/design/aurora-twist): the site opens with that design's preview, and
-        the page carries the social-preview tags — design name, "Designed with XJet Atelier", the ring image —
-        that messaging apps and social networks read before anyone taps. No Ring ID anywhere in it."""
-        Found = Svc.Gallery.Resolve(Slug, Products.VisibleProducts(Ctx, request))
-        if Found is None:
-            Html = RenderPage(request, "home").replace('<meta name="robots" content="index,follow">', '<meta name="robots" content="noindex">')
-            SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
-            return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
+    def _MissingDesign(request: Request, View: str) -> HTMLResponse:
+        """A design name no public gallery design answers to (never published, taken out of the gallery, or of a product
+        this visitor cannot see): the page behind it, not indexed, telling the visitor the design is no longer there."""
+        Html = RenderPage(request, View).replace('<meta name="robots" content="index,follow">', '<meta name="robots" content="noindex">')
+        return HTMLResponse(Html.replace("</head>", '<script>window.__p3Open = {"gallery": null};</script>\n</head>', 1), status_code=404)
+
+    def _DesignAddress(request: Request, Slug: str) -> str:
+        """A gallery design's page, path only, with the query string kept (campaign tags on a shared link)."""
+        return f"{Base}/gallery/{quote(Slug)}" + (f"?{request.url.query}" if request.url.query else "")
+
+    def _DesignPage(request: Request, Found: dict) -> HTMLResponse:
+        """A gallery design's own page, /gallery/<slug>: the Gallery opening on that design's preview — the address stays
+        the design's, so a reload or a copied link opens it again. Its title, description, picture, canonical address,
+        the social-preview tags that messaging apps read before anyone taps, structured data (the design as a creative
+        work, its place under the Gallery) and, for readers that run no scripts, its name, words and picture. Only what
+        a published gallery design shows anyway: never its prompt, its owner or a Ring ID."""
         Origin = S.PublicBaseUrl or PublicOrigin(request)        # the canonical public origin when configured
-        Url = f"{Origin}{Base}/design/{Found['slug']}"
+        Home = f"{Origin}{Base}/"
+        Url = f"{Origin}{Base}/gallery/{Found['slug']}"
         Title = html.escape(Found["title"], quote=True)
         ImageRaw = f"{Origin}{Media.ThumbUrl(Found['image_url'], 800, 'jpg')}"
         Image = html.escape(ImageRaw, quote=True)
         Noun = "charm" if Found.get("product_type") == Products.Charm else "ring"
+        Off = Found.get("available") is False                     # its product is paused: the page stays, read-only
         DescriptionText = (f"{Found['title']} — a {Noun} designed with XJet Atelier, from the Inspiration Gallery. "
-                           "See it in 360°, choose your metal and make it yours.")
+                           + (Products.UnavailableText if Off else "See it in 360°, choose your metal and make it yours."))
         Description = html.escape(DescriptionText, quote=True)
-        # Other gallery designs (same product first): links between the design pages, for crawlers
-        Others = sorted((L for L in GalleryLinks(request) if L["slug"] != Found["slug"]),
-                        key=lambda L: (L.get("product_type") or Products.Ring) != (Found.get("product_type") or Products.Ring))[:6]
-        Related = " · ".join(f'<a href="{html.escape(Base, quote=True)}/design/{html.escape(L["slug"], quote=True)}">'
-                             f'{html.escape(L["title"], quote=False)}</a>' for L in Others)
         Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"
                                        f'<img src="{Image}" alt="{Title} — a {Noun} designed with XJet Atelier" loading="lazy">'
-                                       + (f"<p>More designs: {Related}</p>" if Related else "")
-                                       + f'<p><a href="{html.escape(Base, quote=True)}/gallery">More designs in the Inspiration Gallery</a></p>')
-        Html = RenderPage(request, "home", Design={"block": Block})
-        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))
+                                       f'<p><a href="{html.escape(Base, quote=True)}/gallery">See every design in the Inspiration Gallery</a></p>')
+        Html = RenderPage(request, "inspiration", Design={"block": Block, "anchor": SitePages.GalleryAnchor, "slug": Found["slug"]})
+        SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))     # the Gallery's, after the dialog
+        Data = SitePages.JsonLd(
+            SitePages.DesignWork(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring),
+            SitePages.Breadcrumbs(("Home", Home), ("Inspiration Gallery", Home + "gallery"), (Found["title"], Url)))
         Tags = "\n".join([
             f'<meta property="og:type" content="website">',
             f'<meta property="og:site_name" content="XJet Atelier">',
@@ -557,8 +574,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             f'<meta name="twitter:image" content="{Image}">',
             f'<link rel="canonical" href="{html.escape(Url, quote=True)}">',
             SitePages.LightboxPreload(Found["image_url"]),
-            SitePages.JsonLd(SitePages.DesignWork(Found["title"], Url, ImageRaw, DescriptionText, Found.get("product_type") or Products.Ring)),
-            f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "site_title": SiteTitle})};</script>',
+            Data,
+            f'<script>window.__p3Open = {_ScriptJson({"gallery": Found["item_id"], "slug": Found["slug"], "site_title": SiteTitle, **({"available": False} if Off else {})})};</script>',
         ])
         # Literal replacements (a function, so nothing in a title or the JSON is read as a regex escape)
         Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{Title} · Custom {Noun.title()} Design · XJet Atelier</title>", Html,
@@ -566,6 +583,37 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Html = re.sub(r'<meta name="description" content="[^"]*">',
                       lambda _M: f'<meta name="description" content="{Description}">\n    {Tags}', Html, count=1)
         return HTMLResponse(Html)
+
+    def _ResolveDesign(request: Request, Slug: str) -> dict | None:
+        """A public gallery design by name — of a product on offer, or of one paused after launch (its page stays up,
+        read-only: "available" False). Not a design of a product never yet on offer, nor one removed from the gallery."""
+        Visible = Products.VisibleProducts(Ctx, request)
+        Found = Svc.Gallery.Resolve(Slug, Visible + Products.PausedProducts(Ctx, request))
+        if Found is not None and Found["product_type"] not in Visible:
+            Found["available"] = False
+        return Found
+
+    @App_.get("/gallery/{Slug}", include_in_schema=False)
+    async def GalleryDesignPage(Slug: str, request: Request):
+        """A public gallery design by name (/gallery/aurora-line). Another spelling of its name — capitals, or the name it
+        has now when its link name was given under an earlier one — goes in one permanent hop to the canonical address."""
+        Found = _ResolveDesign(request, Slug)
+        if Found is None:
+            return _MissingDesign(request, "inspiration")
+        if Slug != Found["slug"]:
+            return RedirectResponse(_DesignAddress(request, Found["slug"]), status_code=301)
+        return _DesignPage(request, Found)
+
+    @App_.get("/design/{Slug}", include_in_schema=False)
+    async def LegacyDesignLink(Slug: str, request: Request):
+        """The address gallery designs had until 2026-10-15 (/design/<slug>), in links already shared, bookmarks and search
+        engines: one permanent hop to the design's page in the Gallery. Only a name a public gallery design answers to is
+        redirected; any other answers as before (404, not indexed) — /design/ held nothing else, and nothing else is sent
+        anywhere."""
+        Found = _ResolveDesign(request, Slug)
+        if Found is None:
+            return _MissingDesign(request, "home")
+        return RedirectResponse(_DesignAddress(request, Found["slug"]), status_code=301)
 
     @App_.get("/showcase", include_in_schema=False)
     async def ShowcasePage():
@@ -725,36 +773,41 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/gallery")
     async def GalleryTiles(request: Request):
-        return {"items": Svc.Gallery.List(*Seen(request))}
+        # items: the Gallery's listing (the products on offer); paused: the designs of a product switched OFF after its
+        # launch — never listed, viewable read-only by their link, from Favorites or history
+        return {"items": Svc.Gallery.List(*Seen(request)), "paused": Svc.Gallery.PausedTiles(Products.PausedProducts(Ctx, request))}
 
     @App_.post("/api/gallery/{ItemId}/start")
     async def GalleryStart(ItemId: str, request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
-        return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None, Seen(request)[0]))
+        return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None, Seen(request)[0],
+                                                      Products.PausedProducts(Ctx, request)))
 
     @App_.get("/api/gallery/{ItemId}/share")
     async def GalleryShare(ItemId: str, request: Request):
         """What the Share button (and Admin's Copy link) uses: the design name, the line under it and the clean
         customer link by name — no Ring ID in anything a customer passes on."""
-        Share = Svc.Gallery.ShareFor(ItemId, Seen(request)[0])
+        Visible = Seen(request)[0]
+        Share = Svc.Gallery.ShareFor(ItemId, Visible + Products.PausedProducts(Ctx, request))     # a paused design too
         if Share is None:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         return {"slug": Share["slug"], "title": Share["title"], "text": "Designed with XJet Atelier",
-                "url": f"{S.PublicBaseUrl or PublicOrigin(request)}{Base}/design/{Share['slug']}"}
+                "url": f"{S.PublicBaseUrl or PublicOrigin(request)}{Base}/gallery/{Share['slug']}",
+                "available": Share["product_type"] in Visible}          # the dialog's state, fresh as it opens
 
     # ── ♥ favorites: saved references to gallery masters, per account ──
     @App_.get("/api/favorites")
     async def FavoritesRoute(request: Request, x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Favorites(Tok(x_access_token), *Seen(request))}
+        return {"items": Svc.Gallery.Favorites(Tok(x_access_token), *Seen(request), Products.PausedProducts(Ctx, request))}
 
     @App_.put("/api/favorites/{DesignId}")
     async def FavoriteRoute(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Favorite(Tok(x_access_token), DesignId, *Seen(request))}
+        return {"items": Svc.Gallery.Favorite(Tok(x_access_token), DesignId, *Seen(request), Products.PausedProducts(Ctx, request))}
 
     @App_.delete("/api/favorites/{DesignId}")
     async def UnfavoriteRoute(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
-        return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId, *Seen(request))}
+        return {"items": Svc.Gallery.Unfavorite(Tok(x_access_token), DesignId, *Seen(request), Products.PausedProducts(Ctx, request))}
 
     @App_.get("/api/catalog")
     async def CatalogRoute(request: Request):
@@ -864,37 +917,55 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def RetryFailed(BatchId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
+        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Images._OwnedBatch(Who, BatchId)["design_id"]), request)
         return Svc.Images.RetryFailed(Who, BatchId)
 
     @App_.post("/api/candidates/{CandidateId}/retry")
     async def RetryCandidate(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
+        Svc.Images._OwnedCandidate(Who, CandidateId)
+        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request)   # another option: a production step
         return Svc.Images.RetryCandidate(Who, CandidateId)
 
+    # A production step — choosing an option, Customize, changing or bagging a customization — on a design of a product
+    # not on offer to this browser is refused (409 design_unavailable); the design itself stays viewable
+    def _Making(Who, DesignId: str, request: Request) -> None:
+        Products.RequireOnOffer(Ctx, Svc.Images.RequireDesign(Who, DesignId).get("product_type") or Products.Ring, request)
+
+    def _CustomizationOnOffer(Who, CustomizationId: str, request: Request) -> None:
+        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Customize._Owned(Who, CustomizationId)["design_id"]), request)
+
     @App_.put("/api/designs/{DesignId}/selection")
-    async def Select(DesignId: str, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Customize.Select(Tok(x_access_token), DesignId, Body_.get("candidate_id"))
+    async def Select(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        _Making(Who, DesignId, request)
+        return Svc.Customize.Select(Who, DesignId, Body_.get("candidate_id"))
 
     # ── customize & movie ────────────────────────────────────────────────
     @App_.post("/api/designs/{DesignId}/customize")
-    async def Proceed(DesignId: str, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Svc.Customize.Proceed(Tok(x_access_token), DesignId, Body_.get("candidate_id"))
+    async def Proceed(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        _Making(Who, DesignId, request)
+        return Svc.Customize.Proceed(Who, DesignId, Body_.get("candidate_id"))
 
     @App_.get("/api/customizations/{CustomizationId}")
     async def GetCustomization(CustomizationId: str, x_access_token: str | None = Header(None)):
         return Svc.Customize.Get(Tok(x_access_token), CustomizationId)
 
     @App_.patch("/api/customizations/{CustomizationId}")
-    async def UpdateCustomization(CustomizationId: str, Body_: dict = Body(...),
+    async def UpdateCustomization(CustomizationId: str, request: Request, Body_: dict = Body(...),
                             x_access_token: str | None = Header(None)):
-        return Svc.Customize.Update(Tok(x_access_token), CustomizationId, Body_)
+        Who = Tok(x_access_token)
+        _CustomizationOnOffer(Who, CustomizationId, request)
+        return Svc.Customize.Update(Who, CustomizationId, Body_)
 
     @App_.post("/api/candidates/{CandidateId}/movie")
     async def EnsureMovie(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Cand, _Batch = Svc.Images._OwnedCandidate(Who, CandidateId)
+        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request)   # a movie is a production step
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")
         if not Products.MovieAvailable(Ctx, Products.OfCandidate(Ctx.Db, CandidateId)):
@@ -904,24 +975,27 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # ── bag ──────────────────────────────────────────────────────────────
     @App_.get("/api/bag")
     async def GetBag(request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.Bag(Tok(x_access_token)), request)
+        return RingOnly(Svc.Customize.Bag(Tok(x_access_token), Products.VisibleProducts(Ctx, request)), request)
 
     @App_.post("/api/bag")
     async def AddToBag(request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.AddToBag(Tok(x_access_token), Body_.get("customization_id")), request)
+        Who = Tok(x_access_token)
+        _CustomizationOnOffer(Who, str(Body_.get("customization_id") or ""), request)
+        return RingOnly(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.VisibleProducts(Ctx, request)), request)
 
     @App_.delete("/api/bag/{LineId}")
     async def RemoveFromBag(LineId: str, request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId), request)
+        return RingOnly(Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId, Products.VisibleProducts(Ctx, request)), request)
 
     # ── checkout & orders (fixed-price materials); gold asks for a quote ──
     @App_.get("/api/checkout")
     async def CheckoutInfo(request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.CheckoutInfo(Tok(x_access_token)), request)
+        return RingOnly(Svc.Orders.CheckoutInfo(Tok(x_access_token), Products.VisibleProducts(Ctx, request)), request)
 
     @App_.post("/api/checkout/quote")
     async def CheckoutQuote(request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard")), request)
+        return RingOnly(Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"),
+                                         Products.VisibleProducts(Ctx, request)), request)
 
     @App_.post("/api/checkout/address")
     async def CheckoutAddress(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
@@ -930,7 +1004,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/orders")
     async def PlaceOrder(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task), request)
+        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request)), request)
 
     @App_.get("/api/orders")
     async def MyOrders(request: Request, x_access_token: str | None = Header(None)):
@@ -969,7 +1043,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/quote-requests")
     async def RequestQuote(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task), request)
+        return RingOnly(Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request)), request)
 
     # ── developer-only mesh tools ────────────────────────────────────────
     @App_.get("/api/dev/status")

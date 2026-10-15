@@ -40,7 +40,7 @@ async def test_lastmod_is_the_date_each_pages_own_content_last_changed(tmp_path)
         Map = await _Map(H)
         assert len(Map) == 12 and all(re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", V) for V in Map.values())
         Base = "https://atelier.example.com/JewelryB2C3"
-        Design1, Design2 = f"{Base}/design/{S1['slug']}", f"{Base}/design/{S2['slug']}"
+        Design1, Design2 = f"{Base}/gallery/{S1['slug']}", f"{Base}/gallery/{S2['slug']}"
         # a design starts at the date it was published here
         Pub = H.Ctx.Db.One("SELECT created_at FROM gallery_items WHERE design_id = ?", (D1,))["created_at"]
         assert Map[Design1] == Pub[:19] + "+00:00"
@@ -121,7 +121,7 @@ async def test_design_pages_have_their_own_title_description_and_links(tmp_path)
     try:
         _D1, S1 = await _Publish(H, "A slim band")
         _D2, S2 = await _Publish(H, "A twisted band")
-        Pages = {S["slug"]: (await H.Client.get(f"/design/{S['slug']}")).text for S in (S1, S2)}
+        Pages = {S["slug"]: (await H.Client.get(f"/gallery/{S['slug']}")).text for S in (S1, S2)}
         Descs = {re.search(r'<meta name="description" content="([^"]*)">', P).group(1) for P in Pages.values()}
         assert len(Descs) == 2                                         # one description per design, naming it
         for S in (S1, S2):
@@ -130,7 +130,8 @@ async def test_design_pages_have_their_own_title_description_and_links(tmp_path)
             assert f"<title>{T} · Custom Ring Design · XJet Atelier</title>" in P
             assert f'content="{T} — a ring designed with XJet Atelier, from the Inspiration Gallery.' in P
             Other = S2 if S is S1 else S1
-            assert f'/design/{Other["slug"]}">' in P                   # the crawler block links the other designs
+            assert f'<a href="/gallery/{Other["slug"]}">' in P         # the crawler block links the other designs ...
+            assert f'<a href="/gallery/{S["slug"]}">' not in P            # ... never the design itself
     finally:
         await H.Close()
 
@@ -156,8 +157,8 @@ def test_the_lightbox_picture_and_the_story_keep_their_room_from_the_first_paint
 def test_the_story_waits_while_the_lightbox_covers_it():
     """Design pages on a phone (LCP): the homepage story under the dialog does not play on to its larger pictures."""
     Js = (WebDir / "app.js").read_text(encoding="utf-8")
-    Open = Js[Js.index("    openGallery(g) {"):Js.index("    metalLabel(id)")]
-    Close = Js[Js.index("    closeGallery() {"):Js.index("    _pendingGallery()")]
+    Open = Js[Js.index("    openGallery(g, { address = 'push' } = {}) {"):Js.index("    metalLabel(id)")]
+    Close = Js[Js.index("    closeGallery(how = '') {"):Js.index("    _pendingGallery()")]
     assert "this._pauseStory();" in Open and "this._resumeStory();" in Close
     assert "if (sc && sc.state().playing) { sc.pause(); PAUSED_STORY = sc; }" in Js             # only a playing story
     assert "if (sc && sc === this._story()) sc.play();" in Js                                   # only the one it paused
@@ -171,7 +172,7 @@ async def test_a_design_page_preloads_its_lightbox_picture_and_its_crawler_pictu
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         _D, S1 = await _Publish(H, "A slim band")
-        Page = (await H.Client.get(f"/design/{S1['slug']}")).text
+        Page = (await H.Client.get(f"/gallery/{S1['slug']}")).text
         Item = next(T for T in (await H.Client.get("/api/gallery")).json()["items"] if T["title"] == S1["title"])
         Thumb = Item["image_url"].replace("/assets/", "/thumb/", 1)              # app.js thumb() / srcsetFor()
         Set = f"{Thumb}?w=320 320w, {Thumb}?w=800 800w, {Thumb}?w=1024 1024w"

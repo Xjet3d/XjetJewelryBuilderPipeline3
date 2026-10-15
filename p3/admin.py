@@ -1318,7 +1318,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         St = Ctx.Products.State()
         return {**St, "charm_configuration_ready": Ctx.Models.Supports(Products.Charm),
                 "products": [{"id": P, "label": Products.Labels[P], "plural": Products.Plurals[P],
-                              "available": St["availability"][P], "changed": St["availability_changed"][P],
+                              "available": St["availability"][P], "launched": St["launched"][P],
+                              "changed": St["availability_changed"][P],
                               "movie": St["movies"][P], "movie_changed": St["movies_changed"][P],
                               "configuration_ready": Ctx.Models.Supports(P)} for P in Products.All]}
 

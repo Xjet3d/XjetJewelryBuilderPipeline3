@@ -1,5 +1,6 @@
-"""Gallery sharing: a clean customer link by design name (/design/aurora-twist), stable through renames, with a social
-preview (ring image, design name, "Designed with XJet Atelier") — and no Ring ID anywhere a customer passes it on."""
+"""Gallery sharing: a clean customer link by design name — the design's page in the Gallery, /gallery/aurora-twist —
+stable through renames, with a social preview (ring image, design name, "Designed with XJet Atelier") — and no Ring ID
+anywhere a customer passes it on."""
 
 import html
 import re
@@ -26,7 +27,7 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     assert R.status_code == 200, R.text
     S = R.json()
     assert S["slug"] == Slug and S["title"] == Title and S["text"] == "Designed with XJet Atelier"
-    assert S["url"] == f"http://p3.test{H.Base}/design/{Slug}"
+    assert S["url"] == f"http://p3.test{H.Base}/gallery/{Slug}"
     assert "R-10" not in S["url"] and "dsg_" not in S["url"] and Item["id"] not in S["url"]   # no technical ids
     assert (await H.Client.get(f"/api/gallery/{Item['id']}/share", headers=Anon)).json()["slug"] == Slug   # stable
     # renaming the design does not break links already sent: the slug stays, the title follows
@@ -34,8 +35,8 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     assert R.status_code == 200, R.text
     S2 = (await H.Client.get(f"/api/gallery/{Item['id']}/share", headers=Anon)).json()
     assert S2["slug"] == Slug and S2["url"] == S["url"] and S2["title"] == "Aurora Lattice"
-    # the share page: the site, with the design's preview to open and the tags a messaging app reads
-    R = await H.Client.get(f"/design/{Slug}", headers=Anon)
+    # the share page: the Gallery, with the design's preview to open and the tags a messaging app reads
+    R = await H.Client.get(f"/gallery/{Slug}", headers=Anon)
     assert R.status_code == 200 and R.headers["content-type"].startswith("text/html")
     assert R.headers["cache-control"] == "no-cache"
     Html = R.text
@@ -48,13 +49,16 @@ async def test_share_link_is_by_design_name_stable_and_carries_a_social_preview(
     assert (await H.Client.get(Img.removeprefix("http://p3.test" + H.Base), headers=Anon)).headers["content-type"] == "image/jpeg"
     assert f'<meta property="og:url" content="{S["url"]}">' in Html and '<meta name="twitter:card" content="summary_large_image">' in Html
     Open = re.search(r"window\.__p3Open = (\{.*?\});", Html).group(1)
-    assert f'"gallery": "{Item["id"]}"' in Open and '"site_title": "XJet Atelier' in Open
+    assert f'"gallery": "{Item["id"]}"' in Open and f'"slug": "{Slug}"' in Open and '"site_title": "Inspiration Gallery' in Open
     Words = "\n".join(re.findall(r'<title>[^<]*|content="[^"]*"', Html.split("<body")[0]))
     assert "R-1" not in Words                                                        # no Ring ID in what a preview shows
     assert 'src="' + H.Base + '/static/app.js?v=' in Html                           # the normal, versioned app
-    # the link by the current name also resolves; an unknown name gives the site with a 404 and no design to open
-    R = await H.Client.get("/design/aurora-lattice", headers=Anon)
-    assert R.status_code == 200 and f'"gallery": "{Item["id"]}"' in R.text
+    # the link by the current name reaches the design's address in one hop; an unknown name gives the Gallery (the home
+    # page at the address before) with a 404 and no design to open
+    R = await H.Client.get("/gallery/aurora-lattice", headers=Anon)
+    assert R.status_code == 301 and R.headers["location"] == f"{H.Base}/gallery/{Slug}"
+    R = await H.Client.get("/gallery/no-such-ring", headers=Anon)
+    assert R.status_code == 404 and 'window.__p3Open = {"gallery": null};' in R.text and "<title>Inspiration Gallery" in R.text
     R = await H.Client.get("/design/no-such-ring", headers=Anon)
     assert R.status_code == 404 and 'window.__p3Open = {"gallery": null};' in R.text and "<title>XJet Atelier" in R.text
     assert (await H.Client.get("/api/gallery/gi_nope/share", headers=Anon)).status_code == 404
@@ -71,4 +75,4 @@ async def test_two_designs_with_the_same_name_get_distinct_links(HG):
     S1 = (await H.Client.get(f"/api/gallery/{I1['id']}/share")).json()
     S2 = (await H.Client.get(f"/api/gallery/{I2['id']}/share")).json()
     assert S1["slug"] != S2["slug"] and S2["slug"] == S1["slug"] + "-2"
-    assert f'"gallery": "{I2["id"]}"' in (await H.Client.get(f"/design/{S2['slug']}")).text
+    assert f'"gallery": "{I2["id"]}"' in (await H.Client.get(f"/gallery/{S2['slug']}")).text

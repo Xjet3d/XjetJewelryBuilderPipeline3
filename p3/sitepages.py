@@ -284,17 +284,34 @@ def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | No
     return Html[:S] + Live + Kept + Inner + "</template>" + Html[End:]
 
 
+GalleryHeading = '<h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>'     # the Gallery page's own (index.html)
+GalleryAnchor = '<div class="max-w-4xl mx-auto text-center mb-16">'                     # the top of the Gallery page
+
+
 def DesignHeading(Html: str) -> str:
-    """A gallery design's own page: the site's tagline becomes a second-level heading and the design's name in its dialog
-    the H1 (the same classes, so nothing looks different)."""
+    """A gallery design's own page (/gallery/<slug>, the Gallery with that design open): the page's own heading — the
+    Gallery's, or the site's tagline on the home page — becomes a second-level heading and the design's name in its
+    dialog the H1 (the same classes, so nothing looks different)."""
     Hero, Out, I = '<h1 class="hero-title ', [], 0
     while (J := Html.find(Hero, I)) != -1:
         K = Html.index("</h1>", J)
         Out.append(Html[I:J] + "<h2" + Html[J + 3:K] + "</h2>")
         I = K + len("</h1>")
     Html = "".join(Out) + Html[I:]
+    Html = Html.replace(GalleryHeading, GalleryHeading.replace("<h1", "<h2").replace("</h1>", "</h2>"))
     return Html.replace('<h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>',
                         '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>')
+
+
+# The Gallery's loading squares (index.html): the page carries as many as the visitor's gallery has designs, before the
+# app's own loading squares (the same number: app.js galleryPlaceholders); each removes itself as the app starts. The
+# grid holds its height from the first paint to the cards, so nothing below it moves (CLS).
+GalleryLoading = """<template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" """
+GallerySquare = '<div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"></div>'
+
+
+def GalleryPlaceholders(Count: int) -> str:
+    return GallerySquare * max(0, Count)
 
 
 # The Inspiration Gallery lightbox's picture (index.html, class gallery-shot): its sizes attribute, which a design page's
@@ -316,11 +333,13 @@ def CrawlerBlock(Inner: str) -> str:
     return f'<div data-ssr-fallback x-cloak x-init="$el.remove()">{Inner}</div>'
 
 
-def DesignLinks(Base: str, Items: list[dict]) -> str:
-    """The gallery as plain links to each design's own page (crawlers find every design from the page)."""
+def DesignLinks(Base: str, Items: list[dict], Exclude: str = "") -> str:
+    """The gallery as plain links to each design's own page, /gallery/<slug> (crawlers find every design from the
+    page); on a design's own page the list leaves that design out (no link to itself)."""
+    Items = [I for I in Items if I["slug"] != Exclude]
     if not Items:
         return ""
-    Li = "".join(f'<li><a href="{E(Base)}/design/{E(I["slug"])}">{E(I["title"])}</a> — '
+    Li = "".join(f'<li><a href="{E(Base)}/gallery/{E(I["slug"])}">{E(I["title"])}</a> — '
                  f'{E(Products.Labels.get(I.get("product_type") or Products.Ring, "Ring"))}</li>' for I in Items)
     return CrawlerBlock(f"<ul>{Li}</ul>")
 
@@ -362,6 +381,13 @@ def DesignWork(Title: str, Url: str, Image: str, Description: str, Product: str)
     return {"@context": "https://schema.org", "@type": "CreativeWork", "name": Title, "url": Url, "image": [Image],
             "description": Description, "genre": Products.Plurals.get(Product, "Rings"), "inLanguage": "en",
             "creator": {"@type": "Organization", "name": "XJet Ltd.", "url": "https://www.xjet3d.com/"}}
+
+
+def Breadcrumbs(*Steps: tuple[str, str]) -> dict:
+    """Where a page sits — Home → Inspiration Gallery → a design: the trail its own links show (name, address)."""
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList",
+            "itemListElement": [{"@type": "ListItem", "position": N, "name": Name, "item": Url}
+                                for N, (Name, Url) in enumerate(Steps, 1)]}
 
 
 # ── the sitemap's <lastmod>: a page's own content, fingerprinted ─────────────────────────────────────────────────────
@@ -417,8 +443,10 @@ def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:
 
 
 def DesignFingerprint(Link: dict) -> str:
-    """A gallery design's own page: its name, image, product and address (the rest is the home page around it)."""
+    """A gallery design's own page: its name, image, product and address (the rest is the Gallery around it)."""
     Own = {K: Link.get(K) for K in ("slug", "title", "image_url", "product_type")}
+    if Link.get("available") is False:                 # its product is paused: the page says it cannot be made now
+        Own["available"] = False
     return f"{FingerprintVersion}:" + hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
 
 

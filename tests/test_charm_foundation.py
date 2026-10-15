@@ -116,12 +116,13 @@ async def test_hidden_charms_never_reach_the_customer_site(HC):
     Customer = {"X-Access-Token": H.Ctx.Accounts.IssueToken("customer")[0]}
     # Charms hidden: the ring-only site of before — no charm tile, no product field on the tiles
     Tiles = (await H.Client.get("/api/gallery", headers=Customer)).json()["items"]
-    assert [T["id"] for T in Tiles] == [RingItem["id"]] and set(Tiles[0]) == {"id", "design_id", "title", "image_url"}
+    assert [T["id"] for T in Tiles] == [RingItem["id"]] and set(Tiles[0]) == {"id", "design_id", "title", "image_url", "slug"}
     assert (await H.Client.post(f"/api/gallery/{CharmItem['id']}/start", json={}, headers=Customer)).status_code == 404
     assert (await H.Client.put(f"/api/favorites/{Cid}", headers=Customer)).status_code == 404
     assert (await H.Client.get(f"/api/gallery/{CharmItem['id']}/share", headers=Customer)).status_code == 404
-    Slug = H.Ctx.Db.One("SELECT title FROM designs WHERE id = ?", (Cid,))["title"].lower().replace(" ", "-")
-    assert (await H.Client.get(f"/design/{Slug}", headers=Customer)).status_code == 404
+    Slug = H.Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (Cid,))["share_slug"]
+    for Path_ in (f"/gallery/{Slug}", f"/design/{Slug}"):                   # its page, and no hop from the address before
+        assert (await H.Client.get(Path_, headers=Customer)).status_code == 404, Path_
     assert Cid not in [D["id"] for D in (await H.Client.get("/api/designs")).json()["designs"]]      # the owner's own charm too
     assert (await H.Client.get(f"/api/designs/{Cid}")).status_code == 404
     # The Admin always sees both products
@@ -131,7 +132,7 @@ async def test_hidden_charms_never_reach_the_customer_site(HC):
     Tiles = (await H.Client.get("/api/gallery", headers=Customer)).json()["items"]
     assert [T["product_type"] for T in Tiles] == ["ring", "charm"]
     assert (await H.Client.get(f"/api/gallery/{CharmItem['id']}/share", headers=Customer)).status_code == 200
-    Page = (await H.Client.get(f"/design/{Slug}", headers=Customer)).text
+    Page = (await H.Client.get(f"/gallery/{Slug}", headers=Customer)).text
     assert "a charm designed with XJet Atelier, from the Inspiration Gallery" in Page
     assert Cid in [D["id"] for D in (await H.Client.get("/api/designs")).json()["designs"]]
     assert (await H.Design(Cid))["product_type"] == "charm"

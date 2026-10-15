@@ -30,10 +30,10 @@ async def test_the_home_page_carries_social_tags_and_a_canonical_link(tmp_path):
         assert R.status_code == 200, R.text
         Page = (await H.Client.get("/")).text
         assert 'property="og:image" content="https://atelier.example.com/thumb/' in Page and Page.count('property="og:title"') == 1
-        # The share page has the design's own tags, once
+        # The design's page has its own tags, once
         Slug = (await H.Client.get(f"/api/gallery/{R.json()['id']}/share")).json()["slug"]
-        Share = (await H.Client.get(f"/design/{Slug}")).text
-        assert Share.count('property="og:title"') == 1 and f'content="https://atelier.example.com/design/{Slug}"' in Share
+        Share = (await H.Client.get(f"/gallery/{Slug}")).text
+        assert Share.count('property="og:title"') == 1 and f'content="https://atelier.example.com/gallery/{Slug}"' in Share
         assert "{{OG}}" not in Share and "{{OG}}" not in Page
     finally:
         await H.Close()
@@ -47,7 +47,7 @@ async def test_mock_mode_text_reaches_only_a_mock_site(tmp_path):
         Page = (await H.Client.get("/")).text
         assert "data-mock-banner" in Page and "simulated placeholders" in Page and "<!--mock-->" not in Page
         H.App.state.Modes.Mode = "live"
-        for Path_ in ("/", "/design/no-such-design"):
+        for Path_ in ("/", "/gallery/no-such-design", "/design/no-such-design"):
             Page = (await H.Client.get(Path_)).text
             assert "data-mock-banner" not in Page and "simulated placeholders" not in Page and ">Mock Mode<" not in Page, Path_
             assert "<!--mock-->" not in Page and "<!--/mock-->" not in Page and "x-data=\"p3App()\"" in Page, Path_
@@ -126,7 +126,7 @@ async def test_crawlers_read_each_page_without_running_scripts(tmp_path):
             assert html.escape(Q, quote=True) in Live and html.escape(A, quote=True) in Live, Q
         assert "{{FAQ_ITEMS}}" not in Faq and 'x-for="(q, i) in [' not in Faq
         Gallery = _Live((await H.Client.get("/gallery")).text, "inspiration")
-        assert f'<a href="/design/{Share["slug"]}">{html.escape(Share["title"])}</a>' in Gallery and 'x-init="$el.remove()"' in Gallery
+        assert f'<a href="/gallery/{Share["slug"]}">{html.escape(Share["title"])}</a>' in Gallery and 'x-init="$el.remove()"' in Gallery
         assert "Bands, signets, statement and stackable rings — real XJet designs." in Gallery
         Materials = _Live((await H.Client.get("/materials")).text, "materials")
         assert ">Real metal, one fixed price per ring</h1>" in Materials and "Silver — available to order" in Materials
@@ -140,7 +140,7 @@ async def test_crawlers_read_each_page_without_running_scripts(tmp_path):
         Source = (WebDir / "index.html").read_text(encoding="utf-8")
         How = Source[Source.index('<section id="how-it-works"'):Source.index("</section>", Source.index('<section id="how-it-works"'))]
         assert Home.count(How) == 2                                                     # live copy and template, unchanged
-        assert f'<a href="/design/{Share["slug"]}">' in _Live(Home, "home")
+        assert f'<a href="/gallery/{Share["slug"]}">' in _Live(Home, "home")
         # A part shown by state waits for the script (never a wrong "empty gallery" flash)
         assert 'x-cloak x-show="galleryState === \'loaded\' && !gallery.length"' in _Live(Home, "home")
     finally:
@@ -158,7 +158,7 @@ async def test_the_admin_switch_lets_search_engines_index_the_public_pages(tmp_p
         assert (await H.Client.put("/api/admin/site-indexing", json={"on": "yes"}, headers=Admin)).status_code == 400
         St = (await H.Client.put("/api/admin/site-indexing", json={"on": True}, headers=Admin)).json()
         assert St["on"] and St["indexable"] and St["changed_by"]
-        for Path_ in ("/", "/faq", "/gallery", f"/design/{Share['slug']}"):
+        for Path_ in ("/", "/faq", "/gallery", f"/gallery/{Share['slug']}"):
             assert '<meta name="robots" content="index,follow">' in (await H.Client.get(Path_)).text, Path_
         Robots = (await H.Client.get("/robots.txt")).text.splitlines()
         assert Robots[0] == "User-agent: *" and "Allow: /JewelryB2C3/" in Robots
@@ -169,13 +169,15 @@ async def test_the_admin_switch_lets_search_engines_index_the_public_pages(tmp_p
         Map = (await H.Client.get("/sitemap.xml")).text
         Locs = re.findall(r"<loc>(.*?)</loc>", Map)
         assert Locs[:len(SitePages.Paths)] == [f"https://atelier.example.com/JewelryB2C3/{P}" for P in SitePages.Paths.values()]
-        assert f"https://atelier.example.com/JewelryB2C3/design/{Share['slug']}" in Locs and len(Locs) == len(SitePages.Paths) + 1
+        assert f"https://atelier.example.com/JewelryB2C3/gallery/{Share['slug']}" in Locs and len(Locs) == len(SitePages.Paths) + 1
+        assert not [L for L in Locs if "/design/" in L]                      # the address before is never listed
         assert not [L for L in Locs if re.search(r"/(admin|api|verify|quote|dev|showcase)\b|#", L)]
         # Never indexed, whatever the switch says: the Admin, the API, sign-in links, quote links, a missing design
         for P in ("/admin/", "/api/catalog", "/verify?token=x", "/quote?token=x"):
             assert "noindex" in (await H.Client.get(P)).headers.get("x-robots-tag", ""), P
-        Missing = await H.Client.get("/design/no-such-design")
-        assert Missing.status_code == 404 and '<meta name="robots" content="noindex">' in Missing.text
+        for Path_ in ("/gallery/no-such-design", "/design/no-such-design"):
+            Missing = await H.Client.get(Path_)
+            assert Missing.status_code == 404 and '<meta name="robots" content="noindex">' in Missing.text, Path_
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM product_settings_log WHERE key = 'site_indexing'")["n"] == 1   # logged
         St = (await H.Client.put("/api/admin/site-indexing", json={"on": False}, headers=Admin)).json()
         assert not St["indexable"] and '<meta name="robots" content="noindex">' in (await H.Client.get("/faq")).text
@@ -214,12 +216,15 @@ async def test_structured_data_says_only_what_is_true(tmp_path):
         Live = _Live(Faq, "faq")
         for Q in Data["mainEntity"]:                                    # exactly what the page shows
             assert html.escape(Q["name"], quote=True) in Live and html.escape(Q["acceptedAnswer"]["text"], quote=True) in Live
-        Design = (await H.Client.get(f"/design/{Share['slug']}")).text
-        [Work] = _JsonLd(Design)                                         # a creative work: no price is shown, so no Product
+        Design = (await H.Client.get(f"/gallery/{Share['slug']}")).text
+        [Work, Trail] = _JsonLd(Design)                                  # a creative work: no price is shown, so no Product
         assert Work["@type"] == "CreativeWork" and Work["name"] == Share["title"] and Work["genre"] == "Rings"
-        assert Work["url"] == f"https://atelier.example.com/design/{Share['slug']}" and Work["image"][0].endswith("?w=800&f=jpg")
+        assert Work["url"] == f"https://atelier.example.com/gallery/{Share['slug']}" and Work["image"][0].endswith("?w=800&f=jpg")
         assert Work["creator"]["name"] == "XJet Ltd." and '"@type": "Product"' not in Design
-        for Page in (json.dumps(Home), json.dumps(Data), json.dumps(Work)):
+        assert Trail["@type"] == "BreadcrumbList" and [(I["position"], I["name"], I["item"]) for I in Trail["itemListElement"]] == [
+            (1, "Home", "https://atelier.example.com/"), (2, "Inspiration Gallery", "https://atelier.example.com/gallery"),
+            (3, Share["title"], Work["url"])]                            # where the page sits: its own address under the Gallery
+        for Page in (json.dumps(Home), json.dumps(Data), json.dumps(Work), json.dumps(Trail)):
             for Invented in ("offers", "price", "availability", "review", "aggregateRating", "ratingValue"):
                 assert f'"{Invented}"' not in Page, Invented
         for P in ("/gallery", "/materials", "/terms"):
@@ -232,13 +237,18 @@ async def test_a_design_page_is_headed_by_the_design_name(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         Share = await _Publish(H)
-        Page = (await H.Client.get(f"/design/{Share['slug']}")).text
-        Live = _Live(Page, "home")
+        Page = (await H.Client.get(f"/gallery/{Share['slug']}")).text
+        assert '"view": "inspiration"' in Page                                       # the Gallery, with the design open
+        Live = _Live(Page, "inspiration")
         Title = html.escape(Share["title"])
         assert f"<h1>{Title}</h1>" in Live and "data-ssr-fallback" in Live          # for readers that run no scripts
-        assert '<h2 class="hero-title text-5xl' in Page and '<h1 class="hero-title' not in Page   # the tagline steps down
+        assert Live.count("<h1") == 1                                               # one H1 in the page's own markup
+        assert '<h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>' in Live   # the Gallery's heading steps down
+        assert '<h2 class="hero-title text-5xl' in Page and '<h1 class="hero-title' not in Page   # so does the tagline
         assert '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>' in Page        # the dialog's name is the H1
         assert f"<title>{Title} · Custom Ring Design · XJet Atelier</title>" in Page and Page.count('rel="canonical"') == 1
+        Gallery = (await H.Client.get("/gallery")).text
+        assert '<h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>' in _Live(Gallery, "inspiration")   # its own H1
         Home = (await H.Client.get("/")).text
         assert '<h1 class="hero-title text-5xl' in Home and "<h1>" not in Home        # the home page keeps its own H1
     finally:

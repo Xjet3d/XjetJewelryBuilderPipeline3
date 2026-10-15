@@ -42,8 +42,8 @@ async def test_a_shared_master_shows_its_images_and_name_only_and_the_link_name_
         assert H.Ctx.Db.One("SELECT share_slug FROM designs WHERE id = ?", (B["design_id"],))["share_slug"]
         Share = (await H.Client.get(f"/api/gallery/{Item['id']}/share", headers=Anon)).json()
         assert "prompt" not in Share and Share["slug"]
-        Html = (await H.Client.get(f"/design/{Share['slug']}", headers=Anon)).text
-        assert "Secret" not in Html
+        R = await H.Client.get(f"/gallery/{Share['slug']}", headers=Anon)
+        assert R.status_code == 200 and "Secret" not in R.text
         # Another customer opens it: the images and the name — never the prompt, the reference or the refinement words
         Other = {"X-Access-Token": H.Ctx.Accounts.IssueToken("other")[0]}
         R = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Other)
@@ -85,7 +85,7 @@ async def test_a_customers_design_is_published_only_with_a_consent_note(tmp_path
         _B2, Item2 = await _Publish(H, "Another band")
         assert Item2["owner_kind"] == "xjet" and not Item2["consent_note"]
         for Tile in (await H.Client.get("/api/gallery", headers=Anon)).json()["items"]:
-            assert set(Tile) <= {"id", "design_id", "title", "image_url", "product_type"}
+            assert set(Tile) <= {"id", "design_id", "title", "image_url", "product_type", "slug"}   # slug: its public page
     finally:
         await H.Close()
 

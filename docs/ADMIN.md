@@ -103,9 +103,9 @@ else stay on proto. See `deploy/README.md` → atelier.
 The gallery on the customer site (home page, first 8, and the Inspiration page) shows **real XJet designs**, chosen in the Admin. Code: `p3/gallery.py`; tables `gallery_items` (the tiles) and `gallery_uses` (customers on them).
 
 - **One shared master design per tile.** A customer who taps **Make it yours** is *linked* to the XJet design (`gallery_uses`); the design, its images, its 360° movies and its Hi3D raw model are never copied. The customer's own selection lives on the link, their Customize choices in `customizations` (one row per customer, design and option), their bag lines in `bag_lines`.
-- **Curate:** Sessions → open a session → **Show in gallery** (the design's selected image), or **Use in gallery** under any ready option. ↑ ↓ in the Gallery tab set the display order; **Copy link** gives the customer share link by design name (`…/JewelryB2C3/design/aurora-twist`) — the same link the customer's Share button gives — that opens the design's preview directly (older `#gallery=<id>` links still work); **Remove** takes the tile off the site (customers keep their links; the design stays listed as "removed from gallery" while it has journeys).
+- **Curate:** Sessions → open a session → **Show in gallery** (the design's selected image), or **Use in gallery** under any ready option. ↑ ↓ in the Gallery tab set the display order; **Copy link** gives the customer share link by design name (`…/JewelryB2C3/gallery/aurora-twist`, the design's own page in the Gallery) — the same link the customer's Share button gives — that opens the design's preview directly (links sent before 2026-10-15, `…/design/aurora-twist`, move there; older `#gallery=<id>` links still work); **Remove** takes the tile off the site (customers keep their links; the design stays listed as "removed from gallery" while it has journeys).
 - **Customer:** one tap opens a large preview — "Love this design? Make it yours." — with **Make it yours** / **Back to gallery**. Signed in: the Design screen opens on the shared design with the gallery image selected ("Your gallery pick and its three siblings"). Not signed in: the sign-in flow opens and the design opens right after. Starting the same design again moves it to the top of My Designs — never a second entry. The gallery is also reachable from the My Designs sidebar (**Inspiration Gallery**).
-- **Sharing:** the lightbox has **Share** on phones (the native share sheet; https only — on plain-http proto phones get Copy link) and **Copy link** on computers. The link is by **design name**, never a Ring ID: `design/<name>` is assigned the first time a design is shared (`designs.share_slug`) and never changes, so links already sent keep working after a rename (the current name resolves too; two designs with one name get `-2`). The page behind it carries the social preview (Open Graph / Twitter): the design name, "Designed with XJet Atelier", the ring image (800 px JPEG) and the canonical link. Messaging apps can only fetch that preview from a public address — proto is internal.
+- **Sharing:** the lightbox has **Share** on phones (the native share sheet; https only — on plain-http proto phones get Copy link) and **Copy link** on computers. The link is by **design name**, never a Ring ID: `gallery/<name>` is assigned when a design is published (`designs.share_slug`) and never changes, so links already sent keep working after a rename (the current name resolves too; two designs with one name get `-2`). The page behind it carries the social preview (Open Graph / Twitter): the design name, "Designed with XJet Atelier", the ring image (800 px JPEG) and the canonical link. Messaging apps can only fetch that preview from a public address — proto is internal.
 - **♥ Favorites:** a heart on every gallery tile and in the lightbox. A favorite is a saved reference to the master (`gallery_favorites`, per account — it follows the customer across sign-outs and devices); it never creates a My Design or a copy, and Make it yours still links the design to My Designs as usual (a design can be in both). The My Designs panel has two tabs, **My Designs | ♥ Favorites**, and every screen has a way straight to each tab: the header's utility row (My Designs when signed in, the ♥ with the count, the bag, the account), the phone menu, the account menu, and the Design screen's toolbar (**My Designs** and **♥ Favorites** while the panel is closed). On phones and tablets the panel is a drawer over the whole screen, above the header. A design taken out of the gallery disappears from Favorites and comes back with it. Signed out, the heart asks for sign-in and saves the favorite right after.
 - **Header:** two rows on the site's pages (from 768 px). The utility row: My Designs, the ♥ Favorites heart with its count, the bag with its count, and the account — a person icon, the name, the coin with the movie generations left, and ˅. The account opens the account menu (name, email, generations, sign-in code, the latest quotes and orders, My Designs, **Quotes & orders**, Favorites, and **Sign out** at the bottom); Sign out is no longer shown in the header itself. Signed out, the account's place shows Sign in. The main row: XJet Atelier, How It Works · Inspiration · Materials · About (a small menu: About XJet, Technology, FAQ, Support) and Start Designing. Below 1024 px the pages are in the menu; phones have one row (menu, XJet, the icons and the account); the Design screen keeps its own row (XJet Atelier, Design — Customize — Bag, the account, Exit).
 - **Metal preview (lightbox):** **Original** (always the default when the preview opens) and Silver / Stainless Steel / Vermeil swatches apply the 360° movie's metal filter to the preview image only — nothing is generated, saved, priced or selected for Customize.
@@ -570,10 +570,17 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   available to customers* (OFF by default). A future product joins the same list (`products.All`; its availability
   key is `<plural>_available`). The API takes `{"product": "ring" | "charm", "available": true | false}`; the older
   `{"charms_available": …}` body still works. The log records `rings_available` / `charms_available` changes.
-- **A product that is OFF** is not on the Design screen, not in the Inspiration Gallery or its filters, not in the
-  sitemap, and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a
-  design of it is refused as if the product did not exist. Switching every product off leaves customers nothing to
-  design — the site says so. The meta description names the products on offer.
+- **A product that is OFF** is not on the Design screen, not in the Inspiration Gallery's listing or its filters,
+  and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a design of it
+  is refused as if the product did not exist. Switching every product off leaves customers nothing to design — the site
+  says so. The meta description names the products on offer.
+- **OFF after its launch = paused, not hidden (the owner's policy of 2026-10-15).** Its gallery designs stay viewable:
+  their pages `/gallery/<name>`, old `/design/` links, Share, ♥ Favorites and the sitemap. They are read-only, marked
+  "Currently unavailable for customization or ordering". The server refuses every production action on a design of
+  it with 409 `design_unavailable`: Make it yours, choosing an option, Customize, a customization change, a movie,
+  another option, adding to the bag, a quote request. A bag line of it stays, marked, and cannot be ordered. A product
+  never yet on offer (charms before their launch) stays hidden: its designs are only in the Admin preview.
+  `GET /api/admin/products` says `launched` per product. docs/SEO.md has the table.
 - **360° movie per product: ON / OFF** (default ON for every product; `PUT /api/admin/products/movie
   {"product", "on"}`; log keys `rings_movie` / `charms_movie`). OFF: Customize makes no movie and shows the still image
   only; an explicit movie request answers 409 `movie_off`; the movies that already exist (a gallery master's included)
@@ -581,14 +588,15 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   plays only the story of an XJet design of a product on offer whose movie is ON; otherwise it shows a gallery
   design's still image.
 - **Charms available to customers: ON / OFF.** It is OFF by default.
-  - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
-    share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the
-    product did not exist.
+  - **OFF:** customers see the ring-only site of before: no product choice, no charm text and no charm tiles in the
+    Gallery, and the catalog and gallery listing answers are unchanged. A request to create a charm is refused as if
+    the product did not exist. Before charms are launched their designs stay hidden. Once launched and then switched
+    OFF, charm designs keep their pages, links, favorites and share links, read-only (above).
   - **Admin preview:** a browser signed in to the Admin sees and can test charms on the customer site while they are
     OFF.
   - **A simple switch.** Turning it on asks *Enable Charms for customers?* (Enable Charms | Cancel); turning it off asks
-    *Hide Charms from customers?* (Hide Charms | Cancel). No phrase is typed. Charm designs, orders and settings are
-    kept when charms are hidden.
+    *Switch Charms off for customers?* (Switch Charms off | Cancel). No phrase is typed. Charm designs, orders and
+    settings are kept when charms are off.
   - **What customers see while ON:**
     - "What would you like to design? Ring / Charm" on the Design screen (Ring is the default);
     - charm sizes with their prices in Customize;

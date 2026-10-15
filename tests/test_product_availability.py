@@ -78,17 +78,26 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
         assert sorted(T["product_type"] for T in Tiles) == ["charm", "ring"]
         Slugs = {N: (await H.Client.get(f"/api/gallery/{I}/share")).json()["slug"] for N, I in Items.items()}
         Sm = (await H.Client.get("/sitemap.xml")).text
-        assert f"/design/{Slugs['ring']}" in Sm and f"/design/{Slugs['charm']}" in Sm
-        # Rings off: the ring tile, its share link, its start and its sitemap entry are gone; the charm's stay
+        assert f"/gallery/{Slugs['ring']}<" in Sm and f"/gallery/{Slugs['charm']}<" in Sm and "/design/" not in Sm
+        # Rings off (after their launch): the ring tile leaves the Gallery's listing and its start is refused; its page,
+        # share link, sitemap entry and old address stay — viewable, read-only (the owner's policy of 2026-10-15)
         await _Set(H, "ring", False)
-        Tiles = (await H.Client.get("/api/gallery")).json()["items"]
+        Api = (await H.Client.get("/api/gallery")).json()
+        Tiles = Api["items"]
         assert len(Tiles) == 1 and "product_type" not in Tiles[0]                            # one product: no label needed
-        assert (await H.Client.get(f"/api/gallery/{Items['ring']}/share")).status_code == 404
-        assert (await H.Client.post(f"/api/gallery/{Items['ring']}/start", json={})).status_code in (400, 404)
+        assert [(T["id"], T["available"], T["product_type"]) for T in Api["paused"]] == [(Items["ring"], False, "ring")]
+        R = await H.Client.get(f"/api/gallery/{Items['ring']}/share")
+        assert R.status_code == 200 and R.json()["available"] is False
+        R = await H.Client.post(f"/api/gallery/{Items['ring']}/start", json={})
+        assert R.status_code == 409 and R.json()["error"]["code"] == "design_unavailable"
         assert (await H.Client.post(f"/api/gallery/{Items['charm']}/start", json={})).status_code == 200
         Sm = (await H.Client.get("/sitemap.xml")).text
-        assert f"/design/{Slugs['ring']}" not in Sm and f"/design/{Slugs['charm']}" in Sm
-        assert (await H.Client.get(f"/design/{Slugs['ring']}")).status_code == 404
+        assert f"/gallery/{Slugs['ring']}<" in Sm and f"/gallery/{Slugs['charm']}<" in Sm
+        R = await H.Client.get(f"/gallery/{Slugs['ring']}")
+        assert R.status_code == 200 and "Currently unavailable for customization or ordering." in R.text.split("<body")[0]
+        assert (await H.Client.get(f"/design/{Slugs['ring']}")).status_code == 301
+        assert (await H.Client.get(f"/gallery/{Slugs['charm']}")).status_code == 200
+        assert (await H.Client.get(f"/design/{Slugs['charm']}")).status_code == 301
         # A browser signed in to the Admin still sees rings on the site — as a preview, marked as such
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test") as Browser:
             assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
