@@ -374,6 +374,7 @@ function p3App() {
     navigateTo(v, { history = 'push' } = {}) {
       if (this.previewOpen) this.closePreview();
       this.menuOpen = false; this.aboutOpen = false;
+      if (v === 'ai-studio' && this.panelRoute === 'favorites') this.sidebarTab = 'designs';   // /design: the panel on My Designs
       this.view = v; this.panelRoute = '';
       this._route(history);                                                              // the screen's own address
       const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
@@ -409,8 +410,8 @@ function p3App() {
     // The app's own Back (Customize → Design, Checkout → Bag, the bag's Continue): one step back when the visitor came from
     // that screen in this page load — where the browser's Back goes too — else to it as a new step
     _goBackOr(v) {
-      const s = history.state;
-      if (s && s.p3Pushed === PAGE_LOAD && s.p3Prev === BASE + '/' + FLOW_PATHS[FLOW_OF[v]]) { history.back(); return; }
+      const s = history.state, from = s && s.p3Pushed === PAGE_LOAD ? flowOf(s.p3Prev) : '';
+      if (from && (from === FLOW_OF[v] || (v === 'ai-studio' && (from === 'my-designs' || from === 'favorites')))) { history.back(); return; }
       this.navigateTo(v);
     },
     // A page link: a plain click opens the page in place; Ctrl/⌘/Shift/middle click opens its URL as the browser does
@@ -664,27 +665,31 @@ function p3App() {
     // so a design they can no longer open gives a fresh Design screen and a step it cannot show gives the one before.
     async _openFlow(flow, { history = 'push', restore = false } = {}) {
       if (!this.userSession) { this._signInFor(flow); return; }
-      if (restore) {
-        const at = { customize: 'review', bag: 'checkout', checkout: 'checkout' }[flow] || 'ai-studio';
+      if (restore) {                                                         // one screen, no other in between
+        const at = { customize: 'review', bag: 'checkout', checkout: 'order' }[flow] || 'ai-studio';
         const id = loadStore().designId;
         if (id) { try { await this.openDesign(id, { restoreView: at, history: 'replace' }); } catch (_) { this.persist({ designId: null }); } }
-        if (!this.design && at !== 'checkout') this._doResetAIFlow({ history: 'replace' });
+        if (!this.design && at !== 'checkout' && at !== 'order') { this.navigateTo('ai-studio', { history: 'replace' }); this._refreshQuota(); }   // a fresh Design screen
       }
       if (flow === 'design') {
         if (window.innerWidth < 1024) this.sidebarOpen = false; else this.sidebarTab = 'designs';
-        if (!restore) this.navigateTo('ai-studio', { history });
+        if (restore) return;
+        if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); }      // from the panel: the same screen
+        else this.navigateTo('ai-studio', { history });
       } else if (flow === 'my-designs' || flow === 'favorites') {
         this.openPanel(flow === 'favorites' ? 'favorites' : 'designs', { history: restore ? 'replace' : history });
       } else if (flow === 'customize') {
         if (restore) return;                                                 // Customize, or the Design screen without one
-        if (this.cust && this.design) this.navigateTo('review', { history }); else this._openFlow('design', { history: 'replace' });
+        if (this.cust && this.design) { this.navigateTo('review', { history }); this.pollCustomization(); }   // its movie, if still being made
+        else this._openFlow('design', { history: 'replace' });
       } else if (flow === 'bag') {
         if (!restore || this.view !== 'checkout') this.navigateTo('checkout', { history: restore ? 'replace' : history });
       } else if (flow === 'checkout') {
         if (!restore && this.checkout && this.co.requestId) { this.navigateTo('order', { history }); return; }
-        await this.refreshBag();
-        if (this.bag?.checkout_available) await this.startCheckout({ history: 'replace' });
-        else this.navigateTo('checkout', { history: 'replace' });            // nothing to check out now: the bag says why
+        await this.refreshBag();                                             // checkout again while the bag can be checked out
+        if (this.bag?.checkout_available) await this.startCheckout({ history: restore ? 'replace' : history, resumed: true });
+        if (this.view === 'order') return;
+        if (this.view === 'checkout') this._route('replace'); else this.navigateTo('checkout', { history: 'replace' });   // else the bag says why
       }
     },
     // A step of the journey asked for while signed out (a link, F5 after the session ended): the home page behind the
@@ -1474,7 +1479,8 @@ function p3App() {
       this.actionError = ''; this.composeError = ''; this.closePreview();
       this.userInput = ''; this.clearUpload();
       this.persist({ designId: null, view: 'ai-studio' });
-      if (this.view !== 'ai-studio' && STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio', { history });
+      // The Design screen at its address; the caller shows it (navigateTo: its one page view, as before)
+      if (this.view !== 'ai-studio' && STUDIO_VIEWS.includes(this.view)) { this.view = 'ai-studio'; this.panelRoute = ''; this._route(history); }
     },
 
     // ── design state ──────────────────────────────────────────────────
@@ -1492,9 +1498,9 @@ function p3App() {
       this.persist({ designId });
       if (restoreView === 'review' && d.customization) {
         this.showCustomization(d.customization, { history });
-      } else if (['checkout', 'order', 'confirmation'].includes(restoreView)) {
-        this.navigateTo('checkout', { history });         // a reload lands on the bag, never mid-order
-      } else {
+      } else if (restoreView === 'checkout') {
+        this.navigateTo('checkout', { history });         // the bag
+      } else if (restoreView !== 'order') {               // 'order': checkout opens next (_openFlow), nothing in between
         this.navigateTo('ai-studio', { history });
       }
       if (window.innerWidth < 1024) this.sidebarOpen = false;
@@ -2041,14 +2047,15 @@ function p3App() {
     coProblem(field) { return this.co.problems[field] || ''; },
     _setProblems(list) { this.co.problems = Object.fromEntries((list || []).map(p => [p.field, p.message])); },
     _scrollTop() { window.scrollTo({ top: 0 }); document.querySelector('main')?.scrollTo?.({ top: 0 }); },
-    async startCheckout({ history = 'push' } = {}) {
+    // resumed: checkout reopened at its address (F5, a link, Forward) — not a new start, so nothing is counted again
+    async startCheckout({ history = 'push', resumed = false } = {}) {
       if (!this.bag?.checkout_available || this.co.busy) return;
-      this.track('checkout_clicked');
+      if (!resumed) this.track('checkout_clicked');
       this.co.busy = true; this.co.error = '';
       try {
         const info = await this.api('GET', '/api/checkout');
-        this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
-                                         items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
+        if (!resumed) this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
+                                                       items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
         this.checkout = info; this.coQuote = info.quote;
         const c = this.co.customer, p = info.customer || {};
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];

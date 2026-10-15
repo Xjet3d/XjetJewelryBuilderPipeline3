@@ -91,7 +91,14 @@ def test_the_app_walks_the_journey_with_the_browser():
     assert "history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);" in Route
     Flow = Js[Js.index("    async _openFlow(flow, {"):Js.index("    _signInFor(flow) {")]
     assert "await this.openDesign(id, { restoreView: at, history: 'replace' });" in Flow and "this.persist({ designId: null });" in Flow
-    assert "if (this.bag?.checkout_available) await this.startCheckout({ history: 'replace' });" in Flow
+    assert "checkout: 'order' }[flow]" in Flow and "resumed: true" in Flow                  # checkout again, straight (no bag first)
+    assert "_doResetAIFlow" not in Flow                                                    # a restore is no New design click
+    assert "if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); }" in Flow   # Back from the panel: no page view
+    # one page view per screen, as before: startNew leaves it to its caller; a resumed checkout counts no new start
+    New = Js[Js.index("    startNew({ history = 'push' } = {}) {"):Js.index("    async openDesign(designId, {")]
+    assert "navigateTo(" not in New and "this._route(history);" in New
+    Co = Js[Js.index("    async startCheckout({ history = 'push', resumed = false } = {}) {"):Js.index("    coGoTo(step) {")]
+    assert "if (!resumed) this.track('checkout_clicked');" in Co and "if (!resumed) this.measure('begin_checkout'" in Co
     assert "backToDesign() { this._goBackOr('ai-studio'); }," in Js
     assert "if (this.co.step === 'details') { this._goBackOr('checkout'); return; }" in Js
     assert "await this.openDesign(d.id, { history: fromDialog ? 'replace' : 'push' });" in Js   # Make it yours takes the dialog's step

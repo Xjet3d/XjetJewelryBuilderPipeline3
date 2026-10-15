@@ -593,8 +593,9 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
   - Design: the design, or a fresh Design screen;
   - Customize: its customization, else the Design screen;
   - Bag: the bag;
-  - Checkout: checkout again while the bag can be checked out, else the bag. The form's typed details are not kept
-    across a reload; the profile fills them.
+  - Checkout: checkout again while the bag can be checked out (straight, with no bag in between), else the bag. The
+    form's typed details are not kept across a reload; the profile fills them.
+  - A restore shows one screen, so it sends one page view, as the screen it restores always did.
   - The server answers only for the customer's own or gallery-linked designs. A design of a product switched OFF is not
     opened, and every production step stays refused server-side (`products.RequireOffered`).
 - **Signed out.** A journey address shows the home page behind the sign-in, and that step follows the sign-in. The step
@@ -603,9 +604,11 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
 - **Server.** `p3/app.py` `_FlowRoute` serves the app (`RenderPage(..., Flow=...)`) with `noindex` meta and header,
   `Cache-Control: no-cache`, and `window.__p3.route`. The page has no canonical link, social tags, structured data or
   server-side copy, and nothing of a customer.
-- **Analytics.** Unchanged: the same `page()` calls — the page's own address on load, `measureScreen` per screen. GA4's
-  "page changes based on browser history events" stays OFF (owner, 2026-10-15), so a new address sends nothing by
-  itself.
+- **Analytics.** Unchanged: the same `page()` calls — the page's own address on load, `measureScreen` per screen shown
+  (Back / Forward to another screen shows it, so it counts once). GA4's "page changes based on browser history events"
+  stays OFF (owner, 2026-10-15), so a new address sends nothing by itself. Opening or closing the panel, its tabs and
+  Back from it to `/design` change no screen and count nothing; checkout reopened at its address (F5, a link, Forward)
+  counts no new start (`startCheckout({ resumed })`: no second `begin_checkout`).
 
 ## 9. Verification evidence
 
