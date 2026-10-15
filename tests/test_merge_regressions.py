@@ -102,6 +102,16 @@ async def test_tron_keeps_today_s_sign_in_in_legacy_mode_behind_proto(tmp_path, 
         # A browser on proto's IP address (seen in tron's log, 4–8 Oct): refused by the Origin check of the integrated code
         R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip@atelier-customer.co.il"}, headers=Via("http://172.16.10.27"))
         assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
+        # With tron's nginx passing on the host proto received (the proposed one-line change, X-Forwarded-Host
+        # $http_x_forwarded_host): the IP address works again, and a page of another site is still refused
+        def Passed(Origin: str, Visited: str) -> dict:
+            return {"Host": "tron", "X-Forwarded-Host": Visited, "Origin": Origin, "X-Access-Token": ""}
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip2@atelier-customer.co.il"}, headers=Passed("http://172.16.10.27", "172.16.10.27"))
+        assert R.status_code == 200 and R.json()["status"] == "verification_sent", R.text
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.proto@atelier-customer.co.il"}, headers=Passed("http://proto", "proto"))
+        assert R.status_code == 200, R.text
+        R = await H.Client.post("/api/register", json={"Name": "X", "Email": "x@atelier-customer.co.il"}, headers=Passed("http://evil.example", "172.16.10.27"))
+        assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
         # The Admin's key and Fulfillment's service credential, as on tron
         assert (await H.Client.get("/api/admin/orders", headers={**Admin, "Host": "tron"})).status_code == 200
         assert (await H.Client.get(Prefix + "/identity", headers={**Service, "Host": "tron"})).status_code == 200
