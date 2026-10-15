@@ -85,6 +85,9 @@ class Settings:
     FulfillmentCustomerNotifications: bool = False   # P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS
     FulfillmentNotificationRecipient: str | None = None   # P3_FULFILLMENT_NOTIFICATION_RECIPIENT: every customer email goes here instead (testing / initial activation)
     FulfillmentNotificationWindowS: int = 120    # P3_FULFILLMENT_NOTIFICATION_WINDOW_S: parts of one order that reach a milestone together make one email
+    # The milestones e-mailed once sending is on (the owner's decision of 2026-10-15: shipped and delivered); the others are
+    # recorded as suppressed, never sent later. Known: review_approved, changes_required, cannot_produce, production_started, shipped, delivered
+    FulfillmentNotificationMilestones: tuple = ("shipped", "delivered")   # P3_FULFILLMENT_NOTIFICATION_MILESTONES (comma-separated)
     # The commercial rule Atelier owns and advertises to Fulfillment (identity.payment_gate; docs/order-to-production-review.md
     # §J, K8): True (the default, the deployed systems) — an unpaid order's lines are not released and the live checks say
     # PAYMENT_PENDING; False — payment is shown, never gating: the Admin decides what enters Production (switched at activation)
@@ -196,6 +199,7 @@ def LoadSettings(**Overrides) -> Settings:
         FulfillmentCustomerNotifications=_Bool("P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS"),
         FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
         FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
+        FulfillmentNotificationMilestones=tuple(X.strip() for X in (os.environ.get("P3_FULFILLMENT_NOTIFICATION_MILESTONES") or "shipped,delivered").split(",") if X.strip()),
         FulfillmentPaymentGate=_Bool("P3_FULFILLMENT_PAYMENT_GATE", True),
         FulfillmentUrl=os.environ.get("P3_FULFILLMENT_URL", "").strip().rstrip("/"),
         FulfillmentOrderAllowlist=tuple(X.strip() for X in os.environ.get("P3_FULFILLMENT_ORDER_ALLOWLIST", "").split(",") if X.strip()),
@@ -230,6 +234,10 @@ def LoadSettings(**Overrides) -> Settings:
     return S
 
 
+# The customer milestones Fulfillment's events can mark (p3/fulfillment_notifications.py, spec §24.2)
+NotificationMilestones = ("review_approved", "changes_required", "cannot_produce", "production_started", "shipped", "delivered")
+
+
 def ValidateFulfillment(S: Settings) -> list[str]:
     """With the integration on, the service credential must exist, be long enough and be its own secret."""
     if not S.FulfillmentIntegration:
@@ -249,6 +257,9 @@ def ValidateFulfillment(S: Settings) -> list[str]:
                  "for the test phase, or remove this check with the approved deployment change")
     if S.FulfillmentNotificationWindowS < 0 or S.FulfillmentNotificationWindowS > 3600:
         P.append("P3_FULFILLMENT_NOTIFICATION_WINDOW_S is between 0 and 3600 seconds")
+    Unknown = [M for M in S.FulfillmentNotificationMilestones if M not in NotificationMilestones]
+    if Unknown:
+        P.append(f"P3_FULFILLMENT_NOTIFICATION_MILESTONES names unknown milestones: {', '.join(Unknown)} (known: {', '.join(NotificationMilestones)})")
     return P
 
 

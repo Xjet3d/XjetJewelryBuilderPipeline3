@@ -10,6 +10,7 @@ import smtplib
 
 from p3 import mail as Mail
 from p3.mail import MailNotAccepted, MailOutcomeUnknown, SmtpMailer
+from p3.settings import NotificationMilestones as AllMilestones      # the tests of the mechanism use every milestone
 from tests.conftest import Harness
 from tests.test_fulfillment_bridge import Admin, AdminKey, Prefix, Service, ServiceKey, _Enrolled, _Event, _On, _Placed
 
@@ -90,7 +91,7 @@ async def test_off_by_default_the_customer_sees_the_stage_and_the_parcels_and_no
 
 
 async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_to_the_test_recipient(tmp_path):
-    H = _On(tmp_path / "a", FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0, PublicBaseUrl="https://atelier.example")
+    H = _On(tmp_path / "a", FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0, PublicBaseUrl="https://atelier.example")
     try:
         Did, O = await _Placed(H, Qty=2)
         await _Enrolled(H, Did, O)
@@ -139,7 +140,7 @@ async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_t
     finally:
         await H.Close()
     # The test recipient: every message goes there, the order's history says so; nothing reaches the customer
-    H2 = _On(tmp_path / "b", FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0, FulfillmentNotificationRecipient="qa@example.test")
+    H2 = _On(tmp_path / "b", FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0, FulfillmentNotificationRecipient="qa@example.test")
     try:
         Did, O = await _Placed(H2, Qty=1)
         await _Enrolled(H2, Did, O)
@@ -165,7 +166,7 @@ async def test_d12_what_arrived_while_sending_was_off_is_never_sent_after_it_is_
         assert (await _Intents(Off))["counts"] == {"suppressed": 2}
     finally:
         await Off.Close()
-    On = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0)        # the same data, sending switched on
+    On = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0)        # the same data, sending switched on
     try:
         assert (await On.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)).json()["sent"] == 0
         assert (await _Intents(On))["counts"] == {"suppressed": 2} and _Mails(On) == []
@@ -199,7 +200,7 @@ class ScriptedMailer:
 
 
 async def test_d13_a_known_failure_is_retried_an_unknown_outcome_is_flagged_and_never_retried_blindly(tmp_path):
-    H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0)
+    H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0)
     try:
         Did, O = await _Placed(H, Qty=1)
         await _Enrolled(H, Did, O)
@@ -288,3 +289,40 @@ def test_the_smtp_mailer_tells_a_failure_before_acceptance_from_an_unknown_outco
     assert M.Send("a@example.test", "s", "<p>x</p>").startswith("<")                                              # accepted: the Message-ID
     Deliveries = [X["delivery"] for X in M.List()]
     assert any("FAILED (connect)" in D for D in Deliveries) and any("FAILED (send)" in D for D in Deliveries) and any("accepted" in D for D in Deliveries)
+
+
+async def test_only_the_chosen_milestones_are_emailed_shipped_and_delivered_by_default(tmp_path):
+    """The owner's decision of 2026-10-15: once sending is on, the customer is e-mailed when the order ships (with the
+    carrier and the tracking link) and when it is delivered; the other milestones are recorded as suppressed — never sent
+    later — with the reason (P3_FULFILLMENT_NOTIFICATION_MILESTONES, default shipped,delivered)."""
+    H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationWindowS=0)
+    try:
+        assert H.Ctx.Settings.FulfillmentNotificationMilestones == ("shipped", "delivered")
+        Did, O = await _Placed(H, Qty=1)
+        await _Enrolled(H, Did, O)
+        Mailer = ScriptedMailer(["ok", "ok", "ok", "ok"])
+        H.Ctx.Mailer = Mailer
+        await _Post(H, _Event("m1", O["id"], 1, "fulfillment.review_approved", customer_status="Preparing for production", parts=_Parts("Preparing for production"),
+                              review={"part": "MP-10001-001", "decision": "approved", "revision_no": 1, "preliminary": False}),
+                    _Event("m2", O["id"], 2, "fulfillment.production_started", customer_status="In production", order_status="production", parts=_Parts("In production")),
+                    _Event("m3", O["id"], 3, "fulfillment.shipment_shipped", customer_status="Shipped", order_status="shipped", parts=_Parts("Shipped"),
+                           shipment=Shipment, shipments=[Shipment]))
+        R = (await H.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)).json()
+        assert R["sent"] == 1 and len(Mailer.Sent) == 1
+        States = {I["milestone"]: (I["state"], I["note"]) for I in (await _Intents(H))["intents"]}
+        assert States["shipped"][0] == "sent"
+        for M in ("review_approved", "production_started"):
+            assert States[M] == ("suppressed", "milestone not e-mailed (P3_FULFILLMENT_NOTIFICATION_MILESTONES)"), M
+        Text = json.dumps(Mailer.Sent[0], default=str)
+        assert "JD0146" in Text and "https://www.dhl.com/track?id=JD0146" in Text                      # the carrier's tracking link
+        await _Post(H, _Event("m4", O["id"], 4, "fulfillment.shipment_delivered", customer_status="Delivered", order_status="completed",
+                              shipment={**Shipment, "state": "DELIVERED", "delivered_at": "2026-10-14T10:00:00.000+00:00", "delivery_source": "carrier_confirmation"}))
+        assert (await H.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)).json()["sent"] == 1 and len(Mailer.Sent) == 2
+        # Nothing suppressed is ever sent later, and an unknown milestone name is a configuration error
+        assert (await H.Client.post("/api/admin/fulfillment/notifications/dispatch", headers=Admin)).json()["sent"] == 0
+        from dataclasses import replace
+        from p3.settings import ValidateFulfillment
+        Bad = replace(H.Ctx.Settings, FulfillmentNotificationMilestones=("shipped", "posted"))
+        assert any("unknown milestones: posted" in P for P in ValidateFulfillment(Bad))
+    finally:
+        await H.Close()

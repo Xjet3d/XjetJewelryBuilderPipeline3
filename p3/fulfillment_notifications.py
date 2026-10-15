@@ -95,13 +95,14 @@ class NotificationService:
         O = Conn.execute("SELECT customer_json FROM orders WHERE id = ?", (OrderId,)).fetchone()
         Email = (json.loads(O["customer_json"]).get("email") or "").strip() if O else ""
         Test = ReservedEmail(Email)                          # a synthetic order (p3/testrecords.py): recorded, never sent
+        Chosen = Milestone in tuple(self.Ctx.Settings.FulfillmentNotificationMilestones or ())    # the milestones the owner chose to e-mail
         Id = NewId("nti")
         Payload = {K: Public.get(K) for K in ("customer_status", "order_status", "review", "shipment") if Public.get(K) is not None}
         Payload["parts"] = [{"display_no": P.get("display_no"), "stage": P.get("customer_stage")} for P in (Public.get("parts") or []) if isinstance(P, dict)]
         Conn.execute("INSERT INTO fulfillment_notification_intents (id, order_id, milestone, scope_key, event_id, event_type, recipient, state, payload_json, "
                      "note, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                     (Id, OrderId, Milestone, Key, Event["event_id"], Event["event_type"], Email or None, "pending" if self.Enabled and not Test else "suppressed",
-                      Dumps(Payload), "test order: never emailed" if Test else None, T, T))
+                     (Id, OrderId, Milestone, Key, Event["event_id"], Event["event_type"], Email or None, "pending" if self.Enabled and not Test and Chosen else "suppressed",
+                      Dumps(Payload), "test order: never emailed" if Test else (None if Chosen else "milestone not e-mailed (P3_FULFILLMENT_NOTIFICATION_MILESTONES)"), T, T))
         return Id
 
     # ── reading ──────────────────────────────────────────────────────────
