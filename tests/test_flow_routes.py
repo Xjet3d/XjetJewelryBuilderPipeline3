@@ -89,6 +89,9 @@ def test_the_app_walks_the_journey_with_the_browser():
     Route = Js[Js.index("    routePath() {"):Js.index("    _goBackOr(v) {")]
     assert "design.id" not in Route and "designId" not in Route                          # no design in an address
     assert "history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);" in Route
+    assert "p3Col: !!colLeft" in Route                                                     # the step left keeps its panel's state
+    assert "if (v === 'ai-studio') this.sidebarTab = 'designs';" in Js                     # /design: the panel on My Designs
+    assert "if (this.sidebarTab === tab) return;" in Js                                    # the tab already shown adds no step
     Flow = Js[Js.index("    async _openFlow(flow, {"):Js.index("    _signInFor(flow) {")]
     assert "await this.openDesign(id, { restoreView: at, history: 'replace' });" in Flow and "this.persist({ designId: null });" in Flow
     assert "checkout: 'order' }[flow]" in Flow and "resumed: true" in Flow                  # checkout again, straight (no bag first)

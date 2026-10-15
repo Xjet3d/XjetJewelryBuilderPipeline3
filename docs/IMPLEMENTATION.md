@@ -585,6 +585,9 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
   - `popstate` → `_onHistory`: the screen the address names, or the gallery design, comes to the front.
   - The app's own Back buttons (`_goBackOr`: Customize → Design, Checkout → Bag, the bag's Continue, the panel's ×)
     step back when the visitor came from that screen, so they agree with the browser's Back.
+  - The side panel: `/design` shows it on My Designs (desktop: the column, open unless closed; phone: closed). A tab
+    already shown adds no step. Each step left keeps its panel's state in its history entry (`p3Col`), so Back to the
+    Design screen brings the column back open or closed as it was (a phone's drawer closes).
   - The Gallery dialog keeps its own step (docs/SEO.md). Make it yours replaces the dialog's step with `/design`, so
     Back returns to the Gallery, the home page or Favorites.
 - **No design in an address.** A design id is its customer's own, and an address reaches GA4's first page view and

@@ -374,7 +374,7 @@ function p3App() {
     navigateTo(v, { history = 'push' } = {}) {
       if (this.previewOpen) this.closePreview();
       this.menuOpen = false; this.aboutOpen = false;
-      if (v === 'ai-studio' && this.panelRoute === 'favorites') this.sidebarTab = 'designs';   // /design: the panel on My Designs
+      if (v === 'ai-studio') this.sidebarTab = 'designs';                                // /design: the panel on My Designs
       this.view = v; this.panelRoute = '';
       this._route(history);                                                              // the screen's own address
       const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
@@ -398,13 +398,16 @@ function p3App() {
       return FLOW_OF[v] ? BASE + '/' + FLOW_PATHS[FLOW_OF[v]] : null;
     },
     // The screen in front into the address bar. A new step remembers the address it left (p3Prev), so the app's own Back
-    // buttons can step back rather than add a step; the same address never adds one.
-    _route(how = 'push') {
+    // buttons can step back rather than add a step; the same address never adds one. The step left keeps its side panel's
+    // state (p3Col: open or closed), so Back brings the Design screen back as it was.
+    _route(how = 'push', colLeft = this.sidebarOpen) {
       const to = this.routePath(), here = location.pathname + location.hash;
       if (!to || how === 'none' || to === here) return;
       try {
-        if (how === 'push') history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);
-        else history.replaceState(history.state, '', to);
+        if (how === 'push') {
+          history.replaceState({ ...(history.state || {}), p3Col: !!colLeft }, '');
+          history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);
+        } else history.replaceState(history.state, '', to);
       } catch (_) {}
     },
     // The app's own Back (Customize → Design, Checkout → Bag, the bag's Continue): one step back when the visitor came from
@@ -672,7 +675,9 @@ function p3App() {
         if (!this.design && at !== 'checkout' && at !== 'order') { this.navigateTo('ai-studio', { history: 'replace' }); this._refreshQuota(); }   // a fresh Design screen
       }
       if (flow === 'design') {
-        if (window.innerWidth < 1024) this.sidebarOpen = false; else this.sidebarTab = 'designs';
+        const col = window.history.state && window.history.state.p3Col;              // the panel as this step was left
+        this.sidebarTab = 'designs';
+        if (window.innerWidth < 1024) this.sidebarOpen = false; else if (!restore && typeof col === 'boolean') this.sidebarOpen = col;
         if (restore) return;
         if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); }      // from the panel: the same screen
         else this.navigateTo('ai-studio', { history });
@@ -1179,16 +1184,17 @@ function p3App() {
     openPanel(tab = 'designs', { history = 'push' } = {}) {
       this.menuOpen = false; this.closeAccountPanel();
       if (!this.userSession) { this._pendingPanel = tab; this.openRegModal(); return; }
+      const wasOpen = this.sidebarOpen;
       if (this.view !== 'ai-studio') { if (this.design) this.navigateTo('ai-studio', { history: 'none' }); else this._doResetAIFlow({ history: 'none' }); }
       this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';
       this.sidebarOpen = true;
       this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';      // its own address
-      this._route(history);
+      this._route(history, wasOpen);
       if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
     },
     // The panel's tabs are its two screens, each at its own address
     panelTab(tab) {
-      if (this.sidebarTab === tab && this.panelRoute) return;
+      if (this.sidebarTab === tab) return;                                   // already shown (/design shows My Designs)
       this.sidebarTab = tab === 'favorites' ? 'favorites' : 'designs';
       this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';
       if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
@@ -1196,7 +1202,7 @@ function p3App() {
     },
     // Closing the panel (×, the backdrop): the Design screen's address — one step back when the visitor came from there
     closePanel() {
-      this.sidebarOpen = false;
+      this.sidebarOpen = false; this.sidebarTab = 'designs';
       if (!this.panelRoute) return;
       this.panelRoute = '';
       const s = history.state;
@@ -1723,7 +1729,8 @@ function p3App() {
           this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
           this.actionError = ''; this.composeError = ''; this.closePreview();
           this.persist({ designId: null });
-          if (STUDIO_VIEWS.includes(this.view)) this.navigateTo('ai-studio', { history: 'replace' });
+          // the Design screen, empty; inside the panel opened at its address the panel stays (and its address)
+          if (STUDIO_VIEWS.includes(this.view) && !(this.view === 'ai-studio' && this.panelRoute)) this.navigateTo('ai-studio', { history: 'replace' });
         }
       } catch (e) { this.designsError = e.message; }
     },
