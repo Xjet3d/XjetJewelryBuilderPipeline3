@@ -6,6 +6,7 @@ figures and counted apart, and its Fulfillment notifications are recorded suppre
 untouched. A sent line says whether Fulfillment has confirmed it, then names its part and links to it; the line's
 timeline keeps the synchronisation's technical entries apart (shown under "Detailed history")."""
 
+from p3.settings import NotificationMilestones as AllMilestones
 from p3.testrecords import IsTestCustomer, ReservedEmail
 from tests.test_fulfillment_bridge import Admin, Prefix, Service, _Event, _On, _Prepared, _Send
 from tests.test_orders import Customer, _InBag, _Order
@@ -30,7 +31,8 @@ def test_the_reserved_domains_are_the_test_customers():
 
 
 async def test_a_test_order_is_marked_never_emails_its_customer_and_stays_out_of_the_figures(tmp_path):
-    H = _On(tmp_path, StaffNotifyEmails=("ops@xjet3d.com",), FulfillmentCustomerNotifications=True, FulfillmentUrl="https://tron/atelier-fulfillment")
+    H = _On(tmp_path, StaffNotifyEmails=("ops@xjet3d.com",), FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones,
+            FulfillmentUrl="https://tron/atelier-fulfillment")                  # every milestone: this test is about the test customer, not the selection
     try:
         DidT, T = await _PlacedAs(H, Synthetic, "click-t")
         DidR, R = await _PlacedAs(H, Real, "click-r", "Plain band")
