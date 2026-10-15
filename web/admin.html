@@ -1292,7 +1292,7 @@
                     <thead><tr class="text-[11px] uppercase tracking-widest text-zinc-500"><th class="text-left font-normal py-1"></th><th class="text-right font-normal">Before — this result</th><th class="text-right font-normal">After — corrected</th></tr></thead>
                     <tbody>
                       <template x-for="row in boreFixRows(t.bore_fix)" :key="row.label">
-                        <tr class="border-t border-black/5"><td class="py-1 pr-3" x-text="row.label"></td><td class="text-right" x-text="row.before"></td><td class="text-right font-medium" x-text="row.after"></td></tr>
+                        <tr class="border-t border-zinc-200"><td class="py-1 pr-3" x-text="row.label"></td><td class="text-right" x-text="row.before"></td><td class="text-right font-medium" x-text="row.after"></td></tr>
                       </template>
                     </tbody>
                   </table>
@@ -1323,7 +1323,7 @@
                     <p x-show="t.bore_fix.activated" class="text-[13px] font-medium" x-text="'Active STL: ' + (t.bore_fix.active_three_d_id === t.bore_fix.revision_id ? 'the bore-corrected revision …' + (t.bore_fix.revision_id || '').slice(-8) : 'this original result (restored)')"></p>
                     <p x-show="t.bore_fix.pending" class="text-[12px] text-sky-800" x-text="t.bore_fix.pending + ' line(s) wait for Fulfillment’s answer.'"></p>
                     <template x-for="act in (t.bore_fix.activations || [])" :key="act.id">
-                      <div class="text-[12px] border-t border-black/5 pt-1">
+                      <div class="text-[12px] border-t border-zinc-200 pt-1">
                         <p class="font-medium" x-text="(act.kind === 'restore' ? 'Restored' : 'Accepted and activated') + ' · ' + dateTime(act.created_at) + ' · ' + act.by + (act.note ? ' · ' + act.note : '')"></p>
                         <p x-show="!act.lines.length" class="text-zinc-500">No order line used it.</p>
                         <template x-for="x in act.lines" :key="x.id">
