@@ -32,6 +32,9 @@ Paths = {"home": "", "inspiration": "gallery", "faq": "faq", "materials": "mater
          "contact": "contact"}
 Views = {P: V for V, P in Paths.items() if P}
 Legal = ("terms", "privacy", "shipping-returns", "contact")
+# The customer's journey (web/app.js FLOW_PATHS): the app at its own addresses — never indexed, never in the sitemap, no
+# server-side content (nothing about a customer is in the page; the app restores the step for the signed-in customer)
+FlowPaths = ("design", "my-designs", "favorites", "customize", "bag", "checkout")
 _LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
 _OpenTag = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*/?>""")

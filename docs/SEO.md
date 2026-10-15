@@ -2,9 +2,9 @@
 
 **Code:** `p3/sitepages.py` (pages, titles, descriptions, the FAQ, structured data, the server copy of a page),
 `p3/app.py` (`RenderPage`, the page routes, `robots.txt`, `sitemap.xml`), `p3/admin.py` (`/api/admin/site-indexing`),
-`web/app.js` (`PAGE_PATHS`, `pageLink`, `navigateTo`; the gallery dialog's address: `galleryHref`, `galleryClick`,
-`openGallery`, `closeGallery`, `_onGalleryHistory`). **Tests:** `tests/test_seo.py`, `tests/test_seo_sitemap.py`,
-`tests/test_gallery_routes.py`, `tests/test_sharing.py`.
+`web/app.js` (`PAGE_PATHS`, `FLOW_PATHS`, `pageLink`, `navigateTo`, `routePath`, `_onHistory`, `_openFlow`; the gallery
+dialog's address: `galleryHref`, `galleryClick`, `openGallery`, `closeGallery`). **Tests:** `tests/test_seo.py`,
+`tests/test_seo_sitemap.py`, `tests/test_gallery_routes.py`, `tests/test_sharing.py`, `tests/test_flow_routes.py`.
 
 ## Indexing is a switch, off by default
 
@@ -41,8 +41,10 @@ and the home page list every gallery design as a plain link to its page, the mat
 readers that run no scripts, removed as the page starts). How It Works is served exactly as written.
 
 **Never pages:** the Admin, the API, `/verify` (sign-in links), `/quote` (quote links), `/dev`, `/showcase`, the API
-docs, My Account (`#account`), the Design screens and checkout. They carry `X-Robots-Tag: noindex` (and a `noindex`
-meta tag where they are documents) and are never in the sitemap. Only the API is disallowed in `robots.txt`: a crawler
+docs, My Account (`#account`) and the customer's journey — `/design`, `/my-designs`, `/favorites`, `/customize`, `/bag`,
+`/checkout` (`SitePages.FlowPaths`: the app alone, with no canonical link, social tags, structured data, server-side copy
+or anything of a customer). They carry `X-Robots-Tag: noindex` (and a `noindex` meta tag where they are documents) and
+are never in the sitemap. Only the API is disallowed in `robots.txt`: a crawler
 can read a page's `noindex` only if it may fetch the page, and a disallowed URL can still be listed bare from links.
 
 **The API docs** (`/docs`, `/redoc`, `/openapi.json`) are a developer aid, not part of the public site: wherever the site

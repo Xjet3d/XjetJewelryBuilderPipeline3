@@ -98,4 +98,4 @@ async def test_the_account_menu_is_a_dropdown_with_sign_out_last(HG):
     assert "this._pendingPanel = 'bag'; this.openRegModal(); return;" in Bag[:Bag.index("\n    },")]
     After = App[App.index("async _afterSignIn(fromVerification) {"):]
     assert "if (panel === 'bag') { this.signInNotice = null; this.goToCheckout(); }" in After[:After.index("\n    },")]
-    assert "this.menuOpen = false; this.aboutOpen = false;" in App[App.index("navigateTo(v) {"):][:200]
+    assert "this.menuOpen = false; this.aboutOpen = false;" in App[App.index("navigateTo(v, { history = 'push' } = {}) {"):][:200]
