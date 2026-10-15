@@ -552,10 +552,17 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   available to customers* (OFF by default). A future product joins the same list (`products.All`; its availability
   key is `<plural>_available`). The API takes `{"product": "ring" | "charm", "available": true | false}`; the older
   `{"charms_available": …}` body still works. The log records `rings_available` / `charms_available` changes.
-- **A product that is OFF** is not on the Design screen, not in the Inspiration Gallery or its filters, not in the
-  sitemap, and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a
-  design of it is refused as if the product did not exist. Switching every product off leaves customers nothing to
-  design — the site says so. The meta description names the products on offer.
+- **A product that is OFF** is not on the Design screen, not in the Inspiration Gallery's listing or its filters,
+  and the site's wording (hero, FAQ, Materials, Terms, checkout) does not mention it; a request to start a design of it
+  is refused as if the product did not exist. Switching every product off leaves customers nothing to design — the site
+  says so. The meta description names the products on offer.
+- **OFF after its launch = paused, not hidden (the owner's policy of 2026-10-15).** Its gallery designs stay viewable:
+  their pages `/gallery/<name>`, old `/design/` links, Share, ♥ Favorites and the sitemap. They are read-only, marked
+  "Currently unavailable for customization or ordering". The server refuses every production action on a design of
+  it with 409 `design_unavailable`: Make it yours, choosing an option, Customize, a customization change, a movie,
+  another option, adding to the bag, a quote request. A bag line of it stays, marked, and cannot be ordered. A product
+  never yet on offer (charms before their launch) stays hidden: its designs are only in the Admin preview.
+  `GET /api/admin/products` says `launched` per product. docs/SEO.md has the table.
 - **360° movie per product: ON / OFF** (default ON for every product; `PUT /api/admin/products/movie
   {"product", "on"}`; log keys `rings_movie` / `charms_movie`). OFF: Customize makes no movie and shows the still image
   only; an explicit movie request answers 409 `movie_off`; the movies that already exist (a gallery master's included)
@@ -563,14 +570,15 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   plays only the story of an XJet design of a product on offer whose movie is ON; otherwise it shows a gallery
   design's still image.
 - **Charms available to customers: ON / OFF.** It is OFF by default.
-  - **OFF:** customers see the ring-only site of before: no product choice, no charm text, no charm tiles, favorites or
-    share pages, and the catalog and gallery answers are unchanged. A request to create a charm is refused as if the
-    product did not exist.
+  - **OFF:** customers see the ring-only site of before: no product choice, no charm text and no charm tiles in the
+    Gallery, and the catalog and gallery listing answers are unchanged. A request to create a charm is refused as if
+    the product did not exist. Before charms are launched their designs stay hidden. Once launched and then switched
+    OFF, charm designs keep their pages, links, favorites and share links, read-only (above).
   - **Admin preview:** a browser signed in to the Admin sees and can test charms on the customer site while they are
     OFF.
   - **A simple switch.** Turning it on asks *Enable Charms for customers?* (Enable Charms | Cancel); turning it off asks
-    *Hide Charms from customers?* (Hide Charms | Cancel). No phrase is typed. Charm designs, orders and settings are
-    kept when charms are hidden.
+    *Switch Charms off for customers?* (Switch Charms off | Cancel). No phrase is typed. Charm designs, orders and
+    settings are kept when charms are off.
   - **What customers see while ON:**
     - "What would you like to design? Ring / Charm" on the Design screen (Ring is the default);
     - charm sizes with their prices in Customize;

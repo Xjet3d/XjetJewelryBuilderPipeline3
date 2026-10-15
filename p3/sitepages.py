@@ -445,6 +445,8 @@ def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:
 def DesignFingerprint(Link: dict) -> str:
     """A gallery design's own page: its name, image, product and address (the rest is the Gallery around it)."""
     Own = {K: Link.get(K) for K in ("slug", "title", "image_url", "product_type")}
+    if Link.get("available") is False:                 # its product is paused: the page says it cannot be made now
+        Own["available"] = False
     return f"{FingerprintVersion}:" + hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
 
 

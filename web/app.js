@@ -168,7 +168,7 @@ function p3App() {
 
     // ── preview overlay (P2 fullscreen zoom) ─────────────────────────
     previewOpen: false, previewMedia: 'image', previewSrc: null, previewCandidate: null,
-    gallery: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
+    gallery: [], galleryPaused: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     galleryMetal: '', shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: metal preview (visual only) and Share
     cardMetal: {},                                                             // Gallery cards: the metal each card is previewed in (visual only)
     favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
@@ -421,9 +421,14 @@ function p3App() {
 
     // ── Inspiration Gallery: a real XJet design as the starting point ─────
     // Three distinct states: loading (skeleton tiles) · loaded (tiles, or a real empty message) · failed (retry).
+    // gallery: the listing (the products on offer); galleryPaused: the designs of a product switched OFF after launch —
+    // never listed, opened read-only by their link, from ♥ Favorites or history
     async loadGallery() {
       this.galleryState = 'loading';
-      try { this.gallery = (await this.api('GET', '/api/gallery', null, { noAuth: true })).items || []; this.galleryState = 'loaded'; }
+      try {
+        const r = await this.api('GET', '/api/gallery', null, { noAuth: true });
+        this.gallery = r.items || []; this.galleryPaused = r.paused || []; this.galleryState = 'loaded';
+      }
       catch (_) { this.galleryState = 'failed'; }
       this.homeGallery = this._pickHome(this.gallery);
     },
@@ -482,6 +487,10 @@ function p3App() {
     galleryHref(g) { return g && g.slug ? BASE + '/gallery/' + encodeURIComponent(g.slug) : BASE + '/gallery'; },
     _isGalleryPath(p) { return (p || '').startsWith(BASE + '/gallery/'); },
     _galleryTitle(g) { return `${g.title} · Custom ${g.product_type === 'charm' ? 'Charm' : 'Ring'} Design · XJet Atelier`; },
+    // A design of a product switched OFF (the owner's policy, 2026-10-15): viewable, read-only — no Make it yours,
+    // refining, Customize or ordering, whichever way it was opened; the server refuses them too (design_unavailable)
+    isOff(g) { return !!g && g.available === false; },
+    galleryFind(match) { return this.gallery.find(match) || this.galleryPaused.find(match); },
     // A card is a real link: a plain click opens the dialog in place; Ctrl/⌘/Shift/middle click, or "Open link in new
     // tab", opens the design's page as the browser does
     galleryClick(e, g) {
@@ -508,7 +517,11 @@ function p3App() {
       // only allow the share sheet and copying during the click itself)
       this.shareInfo = null;
       this.api('GET', `/api/gallery/${encodeURIComponent(g.id)}/share`, null, { noAuth: true })
-        .then(s => { if (this.galleryItem === g) this.shareInfo = s; }).catch(() => {});
+        .then(s => {
+          if (this.galleryItem !== g) return;
+          this.shareInfo = s;
+          if (typeof s.available === 'boolean') g.available = s.available;      // its product's switch now, not when listed
+        }).catch(() => {});
     },
     // The lightbox can show the ring in another metal — the same visual filter the 360° movie uses, applied to the
     // preview image only: nothing is generated, saved, priced or selected; the master design is untouched.
@@ -594,7 +607,7 @@ function p3App() {
       if (this._isGalleryPath(p)) {
         let slug = '';
         try { slug = decodeURIComponent(p.slice((BASE + '/gallery/').length).replace(/\/+$/, '')); } catch (_) {}
-        const g = this.gallery.find(x => x.slug === slug);
+        const g = this.galleryFind(x => x.slug === slug);
         if (g) { if (this.galleryItem !== g) this.openGallery(g, { address: 'none' }); return; }
         this.closeGallery('popstate');                                      // no longer in this visitor's gallery
         try { history.replaceState(null, '', BASE + '/gallery'); } catch (_) {}
@@ -620,7 +633,7 @@ function p3App() {
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
     _setPendingGallery(id) { try { id ? localStorage.setItem(GALLERY_KEY, id) : localStorage.removeItem(GALLERY_KEY); } catch {} },
     async makeItYours() {
-      const g = this.galleryItem; if (!g) return;
+      const g = this.galleryItem; if (!g || this.isOff(g)) return;          // switched OFF: read-only
       if (!this.userSession) {               // sign in first; the chosen design is remembered and opened right after
         this._setPendingGallery(g.id);
         this.closeGallery();
@@ -649,7 +662,7 @@ function p3App() {
         id = P.get('gallery') || id;
         if (P.get('gallery')) { P.delete('gallery'); const F = P.toString(); history.replaceState(history.state, '', location.pathname + location.search + (F ? '#' + F : '')); }
       } catch (_) {}
-      const g = id && this.gallery.find(x => x.id === id);
+      const g = id && this.galleryFind(x => x.id === id);
       if (g) this.openGallery(g, { address: 'replace' });
     },
     // The customer is linked to the shared XJet design (nothing is copied, generated or charged), with
@@ -665,6 +678,14 @@ function p3App() {
         this.loadDesigns(); this.loadFavorites(); this._refreshQuota();
       } catch (e) {
         this.galleryBusy = false;
+        if (e.code === 'design_unavailable') {   // its product is switched OFF: the design stays viewable, read-only
+          this._setPendingGallery('');
+          const g = this.galleryItem || this.galleryFind(x => x.id === id);
+          if (!g) { this.showToast(e.message); return; }
+          g.available = false;
+          if (!this.galleryItem) { this.showRegModal = false; this.signInNotice = null; this.openGallery(g); }
+          return;
+        }
         if (this.galleryItem) { this.galleryError = e.message; return; }
         this._setPendingGallery('');           // resumed after sign-in and the design is gone: plain Design screen
         this._enterDesignAfterSignIn(false);
@@ -680,7 +701,7 @@ function p3App() {
         this._setPendingFav('');
         this.showRegModal = false;
         await this.loadFavorites();
-        const g = this.gallery.find(x => x.id === fav);
+        const g = this.galleryFind(x => x.id === fav);
         if (g) { if (!this.isFav(g)) await this.toggleFav(g); this.openGallery(g); return; }
       }
       const panel = this._pendingPanel;       // they asked for My Designs, ♥ Favorites or the bag before signing in

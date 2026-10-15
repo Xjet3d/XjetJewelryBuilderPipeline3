@@ -177,7 +177,7 @@ class CustomizeService:
                                "purchasable": Cat.IsPurchasableGroup(M.Group)} for M in CharmPrices.Offered(Cat)]}
 
     # ── bag ──────────────────────────────────────────────────────────────
-    def AddToBag(self, Who: Principal, CustomizationId: str) -> dict:
+    def AddToBag(self, Who: Principal, CustomizationId: str, Visible: tuple | None = None) -> dict:
         Row = self._Owned(Who, CustomizationId)
         Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
@@ -191,7 +191,7 @@ class CustomizeService:
                                    Row["ring_size"] if Product == Products.Ring else None,
                                    Row.get("charm_size") if Product == Products.Charm else None, Row["quantity"]))
         if Already:
-            return self.Bag(Who)
+            return self.Bag(Who, Visible)
         if not CanAdd:
             Messages = {"luxury_preview_only": "Luxury materials are preview-only for now.",
                         "price_unavailable": "Price unavailable — this item cannot be added to the bag.",
@@ -212,18 +212,21 @@ class CustomizeService:
         Sessions.Record(self.Ctx, Who.AccountId, "bag_added", Row["design_id"], line_id=LineId,
                         material_id=Row["material_id"], **Size, quantity=Row["quantity"],
                         unit_price=Quote.unit_price, currency=Quote.currency, pricing_version=Quote.pricing_version)
-        return self.Bag(Who)
+        return self.Bag(Who, Visible)
 
-    def RemoveFromBag(self, Who: Principal, LineId: str) -> dict:
+    def RemoveFromBag(self, Who: Principal, LineId: str, Visible: tuple | None = None) -> dict:
         Line = self.Ctx.Db.One("SELECT design_id FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId))
         if Line:
             Sessions.Record(self.Ctx, Who.AccountId, "bag_removed", Line["design_id"], line_id=LineId)
         if self.Ctx.Db.Execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId)) == 0:
             raise HttpError(404, "bag_line_not_found", "Bag line not found.")
-        return self.Bag(Who)
+        return self.Bag(Who, Visible)
 
-    def Bag(self, Who: Principal) -> dict:
+    def Bag(self, Who: Principal, Visible: tuple | None = None) -> dict:
+        """The bag at today's prices. Visible: the products on offer to this browser — a line of a product switched OFF
+        stays in the bag, marked unavailable, and is not orderable (None: every product, for internal callers)."""
         Lines = []
+        Paused = False
         Totals: dict[str, float] = {}
         Current: dict[tuple, object] = {}           # (product, material, charm size) → today's quote (version, availability)
         Rows = self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b "
@@ -239,7 +242,11 @@ class CustomizeService:
                 Current[Key] = CharmPrices.QuoteFor(self.Ctx, Product, L["material_id"], L.get("charm_size"))
             Q = Current[Key]
             # Orderable: a purchasable material with a price today and a standard size (checked again at checkout)
-            if Product == Products.Charm:
+            Off = Visible is not None and Product not in Visible        # its product is switched OFF: kept, not orderable
+            Paused = Paused or Off
+            if Off:
+                LineOk = False
+            elif Product == Products.Charm:
                 LineOk = Mat is not None and self.Ctx.Catalog.IsPurchasableGroup(Mat.Group) and Q.IsAvailable \
                     and L["charm_size"] is not None and self.Ctx.Products.IsValidCharmSize(L["charm_size"])
             else:
@@ -259,6 +266,9 @@ class CustomizeService:
                           "currency": L["currency"], "line_total": Total, "pricing_version": L["pricing_version"],
                           "price_is_stale": L["pricing_version"] != Q.pricing_version,
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
+                          **({"unavailable": True} if Off else {}),
                           "quote": json.loads(L["quote_json"])})
         return {"lines": Lines, "totals": Totals, "checkout_available": bool(Lines) and Orderable,
-                "checkout_note": None if Orderable else "One of the lines cannot be ordered yet — see the line for the reason."}
+                "checkout_note": None if Orderable else (
+                    "One of the lines is currently unavailable for customization or ordering — remove it to continue." if Paused
+                    else "One of the lines cannot be ordered yet — see the line for the reason.")}

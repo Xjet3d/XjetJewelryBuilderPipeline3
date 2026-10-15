@@ -14,6 +14,7 @@ opened to see every customer who used it, and all masters can be compared.
 import re
 import unicodedata
 
+from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import Principal
@@ -102,23 +103,32 @@ class GalleryService:
                 "title": Hit["title"], "image_url": self.Ctx.AssetUrl(Hit["asset_path"]), "product_type": Hit["product_type"] or "ring"}
 
     # ── ♥ favorites: a saved reference to a master design, never a copy ──
-    def Favorites(self, Who: Principal, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
-        """The customer's favorites that are in the gallery now, newest first (public tile data only)."""
+    def PausedTiles(self, Paused: tuple = ()) -> list[dict]:
+        """Public tiles of the products paused after launch (p3/products.py PausedProducts): not listed in the Gallery,
+        but viewable read-only by their link, from Favorites or history — each says its product and "available": false."""
+        return [{**T, "available": False} for T in self.List(Paused, WithProduct=True)] if Paused else []
+
+    def Favorites(self, Who: Principal, Visible: tuple = ("ring",), WithProduct: bool = False, Paused: tuple = ()) -> list[dict]:
+        """The customer's favorites that are in the gallery now, newest first (public tile data only) — those of a paused
+        product too, marked unavailable: a favorite never bypasses the product's switch."""
         Saved = self.Ctx.Db.All("SELECT design_id, created_at FROM gallery_favorites WHERE owner_account_id = ? "
                                 "ORDER BY created_at DESC, rowid DESC", (Who.AccountId,))
         Order = {F["design_id"]: I for I, F in enumerate(Saved)}
-        return sorted([T for T in self.List(Visible, WithProduct) if T["design_id"] in Order], key=lambda T: Order[T["design_id"]])
+        Tiles = self.List(Visible, WithProduct) + self.PausedTiles(Paused)
+        return sorted([T for T in Tiles if T["design_id"] in Order], key=lambda T: Order[T["design_id"]])
 
-    def Favorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
-        if not any(T["design_id"] == DesignId for T in self.List(Visible)):
+    def Favorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False,
+                 Paused: tuple = ()) -> list[dict]:
+        if not any(T["design_id"] == DesignId for T in self.List(Visible) + self.List(Paused)):
             raise HttpError(404, "not_in_gallery", "This design is not in the Inspiration Gallery.")
         self.Ctx.Db.Execute("INSERT OR IGNORE INTO gallery_favorites (owner_account_id, design_id, created_at) VALUES (?,?,?)",
                             (Who.AccountId, DesignId, Now()))
-        return self.Favorites(Who, Visible, WithProduct)
+        return self.Favorites(Who, Visible, WithProduct, Paused)
 
-    def Unfavorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False) -> list[dict]:
+    def Unfavorite(self, Who: Principal, DesignId: str, Visible: tuple = ("ring",), WithProduct: bool = False,
+                   Paused: tuple = ()) -> list[dict]:
         self.Ctx.Db.Execute("DELETE FROM gallery_favorites WHERE owner_account_id = ? AND design_id = ?", (Who.AccountId, DesignId))
-        return self.Favorites(Who, Visible, WithProduct)
+        return self.Favorites(Who, Visible, WithProduct, Paused)
 
     def Stats(self, DesignIds: list[str]) -> dict[str, dict]:
         """Usage of master designs: who selected them and how far they went (every journey counts — a
@@ -277,12 +287,16 @@ class GalleryService:
                 Conn.execute("UPDATE gallery_items SET position = ? WHERE id = ?", (N, Id))
 
     # ── "Make it yours" (customer) ───────────────────────────────────────
-    def Start(self, Who: Principal, ItemId: str, ClientRequestId: str | None = None, Visible: tuple = ("ring", "charm")) -> str:
+    def Start(self, Who: Principal, ItemId: str, ClientRequestId: str | None = None, Visible: tuple = ("ring", "charm"),
+              Paused: tuple = ()) -> str:
         """Link the customer to the shared master design (or bring their existing link back to the
-        top of My Designs). Nothing is copied, generated or charged. Returns the master design id."""
+        top of My Designs). Nothing is copied, generated or charged. Returns the master design id. A design of a
+        product paused after launch stays viewable but is not made: 409 design_unavailable."""
         Db = self.Ctx.Db
         R = Db.One("SELECT g.*, d.owner_account_id, d.product_type, c.status AS candidate_status FROM gallery_items g "
                    "JOIN designs d ON d.id = g.design_id JOIN candidates c ON c.id = g.candidate_id WHERE g.id = ?", (ItemId,))
+        if R is not None and R["candidate_status"] == "ready" and (R["product_type"] or "ring") in Paused:
+            Products.RequireOffered(R["product_type"] or "ring", Visible)
         if R is None or R["candidate_status"] != "ready" or (R["product_type"] or "ring") not in Visible:
             raise HttpError(404, "gallery_item_not_found", "This gallery design is no longer available.")
         T = Now()

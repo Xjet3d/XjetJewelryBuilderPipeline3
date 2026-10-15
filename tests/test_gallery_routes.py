@@ -112,25 +112,33 @@ async def test_a_design_outside_the_public_gallery_is_never_reachable_by_name(tm
         await H.Close()
 
 
-async def test_each_product_mode_shows_the_pages_of_the_products_on_offer_only(tmp_path):
-    """Both products, rings only, charms only, neither: a design's page, its hop from the address before and its
-    sitemap entry exist exactly while its product is on offer (what happens to a page whose product is switched off
-    for a while is the owner's decision — docs/SEO.md)."""
+async def test_each_product_mode_keeps_the_pages_and_lists_the_products_on_offer(tmp_path):
+    """Both products, rings only, charms only, neither — both launched: a design's page, its hop from the address before
+    and its sitemap entry stay whatever the switch says (the owner's policy of 2026-10-15); a design of a product
+    switched OFF leaves the Gallery's listing and says it cannot be made now; Make it yours follows the switch."""
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         await _Set(H, "charm", True)
-        _R, _RI, Ring = await _Publish(H, "A slim band", product="ring")
-        _C, _CI, Charm = await _Publish(H, "A heart charm", product="charm")
+        _R, RingItem, Ring = await _Publish(H, "A slim band", product="ring")
+        _C, CharmItem, Charm = await _Publish(H, "A heart charm", product="charm")
+        Cust = {"X-Access-Token": H.Ctx.Accounts.IssueToken("customer")[0]}
         for Rings, Charms in ((True, True), (True, False), (False, True), (False, False)):
             await _Set(H, "ring", Rings)
             await _Set(H, "charm", Charms)
             P3App.SitemapCache.clear()
             Map = (await H.Client.get("/sitemap.xml")).text
-            for S, On in ((Ring, Rings), (Charm, Charms)):
+            Api = (await H.Client.get("/api/gallery")).json()
+            for S, Item, On in ((Ring, RingItem, Rings), (Charm, CharmItem, Charms)):
                 Mode = (Rings, Charms, S["slug"])
-                assert (await H.Client.get(f"/gallery/{S['slug']}")).status_code == (200 if On else 404), Mode
-                assert (await H.Client.get(f"/design/{S['slug']}")).status_code == (301 if On else 404), Mode
-                assert (f"/gallery/{S['slug']}</loc>" in Map) is On, Mode
+                Page = await H.Client.get(f"/gallery/{S['slug']}")
+                assert Page.status_code == 200, Mode
+                assert ("Currently unavailable for customization or ordering." in Page.text.split("<body")[0]) is not On, Mode
+                assert (await H.Client.get(f"/design/{S['slug']}")).status_code == 301, Mode
+                assert f"/gallery/{S['slug']}</loc>" in Map, Mode
+                assert (Item["id"] in [T["id"] for T in Api["items"]]) is On, Mode
+                assert (Item["id"] in [T["id"] for T in Api["paused"]]) is not On, Mode
+                R = await H.Client.post(f"/api/gallery/{Item['id']}/start", json={}, headers=Cust)
+                assert R.status_code == (200 if On else 409), (Mode, R.text)
             assert (await H.Client.get("/gallery")).status_code == 200
     finally:
         await H.Close()

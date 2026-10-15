@@ -70,7 +70,7 @@ publication, never changed by a rename). The page is the Gallery with that desig
   reload, the page's own address takes the step's place. A reload or a copied address opens the same design again.
 - **Share / Copy link** (customer and Admin) give `/gallery/<name>`.
 - **Another spelling** (capitals, the design's current name after a rename): **301** to the canonical address, one hop.
-- **Not found** (never published, taken out of the gallery, or of a product not on offer): **404**, `noindex` — the
+- **Not found** (never published, taken out of the gallery, or of a product never yet on offer): **404**, `noindex` — the
   Gallery, saying "This design is no longer in the Inspiration Gallery". A design that is not in the public gallery (a
   customer's own, a fork, a hidden product's) is never reachable by name.
 - **The address before, `/design/<name>`** (links already shared, bookmarks, the sitemap until 2026-10-15): **301** to
@@ -85,20 +85,32 @@ publication, never changed by a rename). The page is the Gallery with that desig
   (`send_page_view: false`): GA4's *Enhanced measurement → Page changes based on browser history events* should be off,
   or GA4 may also count the address changes.
 
-### When a product is switched off — a proposal for the owner (2026-10-15, not implemented)
+### When a product is switched OFF — the owner's policy (2026-10-15)
 
-Today a design's page, its 301 and its sitemap entry exist only while its product is on offer (Admin → Settings →
-Products): switching a product off makes its design pages 404 `noindex` and drops them from the sitemap, so search
-engines drop them within days to weeks, and switching it back on brings them back only as they are crawled again.
+The product switch (Admin → Settings → Products) controls making, not existence. Switching a launched product OFF
+pauses it: its gallery designs stay viewable and in search, read-only.
 
-| Situation | Design page | Sitemap |
-|---|---|---|
-| A product never launched, or seen only in the Admin preview | 404 `noindex` (as today) | not listed |
-| Paused after launch (temporarily not on offer) | 200, indexable, "Not available to order right now", no Make it yours | listed |
-| Withdrawn for good | 410 Gone, or 301 to the Gallery | removed |
+| State of the design's product | `/gallery/<name>` | `/design/<name>` | Sitemap | Gallery listing | ♥ Favorites | Production actions |
+|---|---|---|---|---|---|---|
+| ON (on offer) | 200, indexable | 301 | listed | listed | listed | all |
+| OFF after its launch (paused) | 200, indexable, read-only: "Currently unavailable for customization or ordering" (its description says so too) | 301 | listed (its date moves when the switch does) | not listed | kept, marked | refused: 409 `design_unavailable` |
+| Never on offer yet (pre-launch, Admin preview only) | 404 `noindex` | 404 | not listed | not listed | not listed | refused |
+| Removed from the gallery (permanent removal) | 404 `noindex` | 404 | removed | not listed | dropped | — |
 
-It needs a per-product Admin choice ("paused" or "withdrawn") and the owner's approval. Nothing deletes or redirects
-indexed URLs automatically.
+- **Production actions:** Make it yours, choosing an option, Customize, a customization change, a 360° movie,
+  another option or a retry, the bag (a paused line stays, marked "Currently unavailable for customization or
+  ordering", and cannot be ordered), checkout, an order, a quote request. The server refuses them
+  (`products.RequireOffered`, 409 `design_unavailable`). The dialog shows the notice in place of its Make it yours
+  call (`isOff`).
+- **Every way in gets the same state:** the Gallery, ♥ Favorites, a link, history, an old shared link. The dialog
+  rereads the state as it opens (the share answer's `available`), so a page opened before the switch catches up.
+- **Launched:** a product has been on offer if it is ON now, ON by default (rings), or was switched ON at some time in
+  the settings log (`ProductSettings.Launched`). Before that, its designs stay private, so an Admin can prepare a
+  product's gallery in the preview without customers or search engines seeing it.
+- **Admin preview:** a browser signed in to the Admin sees every product as ON.
+- **Not listed while OFF:** the Gallery's listing, filters, badges and wording describe the products on offer, so a
+  paused design is not listed there (the policy allows it to stay visible or not). It keeps its page, its links from
+  outside, Favorites and the sitemap.
 
 ## The sitemap's `<lastmod>`
 

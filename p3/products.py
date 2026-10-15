@@ -9,11 +9,15 @@ they come from.
 Customer availability is a separate, independent switch per product (Admin → Settings → Products:
 "Rings available to customers", "Charms available to customers" — rings ON and charms OFF by default;
 a future product joins the same list). A product that is OFF is not offered on the Design screen, not
-in the gallery or its filters, not in the showcase or the sitemap, the site's wording does not mention
-it, and the server refuses to start a design of it. While rings are the only product on, the customer
-site is the ring-only site of before. The Admin configures every product regardless, and a browser
-signed in to the Admin sees the hidden products on the customer site (a preview), so a product can be
-built and tested internally before customers see it.
+in the Gallery's listing or its filters, not in the showcase, the site's wording does not mention it,
+and the server refuses every production action on a design of it — starting, Make it yours, refining,
+another option, Customize, a movie, the bag, a quote, an order ("Currently unavailable for customization
+or ordering"). Once a product has been on offer (launched), OFF only pauses it: its gallery designs stay
+viewable — their pages and old links, Favorites, Share and the sitemap — read-only (the owner's policy of
+2026-10-15). A product never yet on offer stays hidden from customers. While rings are the only product
+on, the customer site is the ring-only site of before. The Admin configures every product regardless,
+and a browser signed in to the Admin sees the hidden products on the customer site (a preview), so a
+product can be built and tested internally before customers see it.
 
 The charm size definition lives here, in one place (CharmSizeDefinition, Charm3DHeight): for now the
 selected size is the charm's TOTAL height in millimetres, the attachment loop included — a 20 mm charm is
@@ -34,6 +38,9 @@ Plurals = {Ring: "Rings", Charm: "Charms"}
 Prefixes = {Ring: "R", Charm: "C"}          # customer-facing IDs: R-1001 … and C-1001 … (separate sequences)
 AvailabilityKeys = {P: f"{Plurals[P].lower()}_available" for P in All}   # rings_available, charms_available (product_settings)
 MovieKeys = {P: f"{Plurals[P].lower()}_movie" for P in All}               # rings_movie, charms_movie: the 360° movie switch per product
+# What a customer reads where a design of a product switched OFF can be seen but not made (RequireOffered)
+UnavailableText = "Currently unavailable for customization or ordering."
+UnavailableError = "This design is currently unavailable for customization or ordering."
 
 
 def DefaultProduct(Visible) -> str:
@@ -248,6 +255,16 @@ class ProductSettings:
         """The products customers may design and order, in the canonical order (rings, then charms)."""
         return tuple(P for P in All if self.Available(P))
 
+    def Launched(self, Product: str) -> bool:
+        """The product has been on offer to customers: ON now, ON by default (rings), or switched ON at some time (the
+        settings log). OFF after that, it is paused — its gallery designs stay viewable, read-only; a product never yet
+        on offer stays hidden from customers."""
+        Key = AvailabilityKeys[Product]
+        if self.Available(Product) or Defaults[Key] is True:
+            return True
+        return self.Db.One("SELECT 1 AS x FROM product_settings_log WHERE key = ? AND value_json = ? LIMIT 1",
+                           (Key, Dumps(True))) is not None
+
     def SetAvailable(self, Product: str, On: bool, By: str, Note: str = "") -> None:
         self.Set(AvailabilityKeys[Product], bool(On), By, Note)
 
@@ -294,7 +311,7 @@ class ProductSettings:
 
     def State(self) -> dict:
         Log = self.Db.All("SELECT key, value_json, note, at, by FROM product_settings_log ORDER BY id DESC LIMIT 30")
-        return {"availability": {P: self.Available(P) for P in All},
+        return {"availability": {P: self.Available(P) for P in All}, "launched": {P: self.Launched(P) for P in All},
                 "availability_changed": {P: self.ChangedAt(AvailabilityKeys[P]) for P in All},
                 "movies": {P: self.MovieOn(P) for P in All},
                 "movies_changed": {P: self.ChangedAt(MovieKeys[P]) for P in All},
@@ -337,6 +354,28 @@ def PreviewedProducts(Ctx: Context, Request=None) -> tuple:
     """The products this browser sees only because it is signed in to the Admin (hidden from customers)."""
     Available = _Available(Ctx)
     return tuple(P for P in VisibleProducts(Ctx, Request) if P not in Available)
+
+
+def PausedProducts(Ctx: Context, Request=None) -> tuple:
+    """The products switched OFF after their launch that this browser does not otherwise see: their gallery designs stay
+    viewable — pages, old links, Favorites, Share, the sitemap — read-only."""
+    Settings = getattr(Ctx, "Products", None)
+    if Settings is None:
+        return ()
+    Visible = VisibleProducts(Ctx, Request)
+    return tuple(P for P in All if P not in Visible and Settings.Launched(P))
+
+
+def RequireOffered(Product: str, Visible: tuple) -> str:
+    """A production action on a design of a product not on offer is refused; the design itself stays viewable."""
+    if (Product or Ring) not in Visible:
+        raise HttpError(409, "design_unavailable", UnavailableError)
+    return Product
+
+
+def RequireOnOffer(Ctx: Context, Product: str, Request=None) -> str:
+    """RequireOffered for this browser: the products on offer to it (an Admin's browser previews the hidden ones)."""
+    return RequireOffered(Product, VisibleProducts(Ctx, Request))
 
 
 def CharmsVisible(Ctx: Context, Request=None) -> bool:

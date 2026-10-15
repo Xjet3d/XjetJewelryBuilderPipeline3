@@ -477,12 +477,12 @@ function adminApp() {
       const others = (this.products.products || []).filter(x => x.id !== p.id && x.available).map(x => x.plural.toLowerCase());
       const ok = await this.ask(on
         ? { title: 'Enable ' + plural + ' for customers?', text: 'Customers will be able to design and order ' + lower + (others.length ? ' alongside ' + others.join(' and ') : '') + '; ' + lower + ' will appear in the Inspiration Gallery and in the site’s wording.', confirmLabel: 'Enable ' + plural, cancelLabel: 'Cancel' }
-        : { title: 'Hide ' + plural + ' from customers?', text: 'Customers will no longer be able to start a ' + p.label.toLowerCase() + ' design; ' + lower + ' leave the Design screen, the Inspiration Gallery and the site’s wording. Existing designs, orders and settings are kept, and a browser signed in to the Admin still previews them.' + (others.length ? '' : ' No other product is on: customers will have nothing to design.'), confirmLabel: 'Hide ' + plural, cancelLabel: 'Cancel' });
+        : { title: 'Switch ' + plural + ' off for customers?', text: 'Customers will no longer be able to start, customize or order ' + lower + ' — Make it yours, refining, Customize, the bag and checkout are refused; ' + lower + ' leave the Design screen, the Inspiration Gallery’s listing and the site’s wording. ' + (p.launched ? 'Their gallery designs stay viewable — pages, links, Favorites and the sitemap — marked “Currently unavailable for customization or ordering”. ' : '') + 'Existing designs, orders and settings are kept, and a browser signed in to the Admin still previews them.' + (others.length ? '' : ' No other product is on: customers will have nothing to design.'), confirmLabel: 'Switch ' + plural + ' off', cancelLabel: 'Cancel' });
       if (!ok) return;
       this.productsBusy = true; this.productsMsg = ''; this.productsErr = false;
       try {
         this.products = await this.api('PUT', '/api/admin/products/availability', { product: p.id, available: on });
-        this.productsMsg = on ? plural + ' are now available to customers.' : plural + ' are hidden from customers.';
+        this.productsMsg = on ? plural + ' are now available to customers.' : plural + ' are off for customers: their gallery designs stay viewable, read-only.';
         this.notify(this.productsMsg);
       } catch (e) { this.productsErr = true; this.productsMsg = e.message; } finally { this.productsBusy = false; }
     },
