@@ -152,6 +152,7 @@ class Production3D:
         self.Queue = Queue
         self.OnPreview = []         # callbacks(mesh_id) once a model's light preview exists (p3/versions.py: an external design's picture)
         self.OnMeasureFailed = []   # callbacks(mesh_id) when a model's file cannot be measured (p3/versions.py: never the current version)
+        self.Activations = None     # StlActivations (p3/stl_activation.py): an accepted correction activated for the order lines
         Meshes.OnReady.append(self._MeshFinished)
         Queue.Handlers.update({"measure": self._Measured, "preview": self._Previewed, "integrity": self._Integrity,
                                "fix_bore": self._BoreFixed, "fix_bore_proposal": self._BoreFixComputed})
@@ -845,13 +846,19 @@ class Production3D:
 
     def AcceptBoreFix(self, Pid: str, By: str, Note: str = "") -> dict:
         """Admin: the reviewed correction becomes a new revision — a result of its own made from the same model, size and
-        material, its production STL the very file reviewed (its hash checked again) and stored. The result it corrects
-        stays exactly as it was; order lines are switched to the revision only explicitly (never one in Production); a
-        manufacturing approval is still Fulfillment's own decision."""
+        material, its production STL the very file reviewed (its hash checked again) and stored — and the active STL at
+        once (the owner's decisions of 2026-10-15): every order line of that design, material and size that may change
+        takes it, in one step with the record of what happened to each (p3/stl_activation.py). The result it corrects
+        stays exactly as it was, and can be made active again (Restore). A manufacturing approval is still Fulfillment's
+        own decision. An acceptance whose activation did not complete is completed by accepting again."""
         Db = self.Ctx.Db
         F = Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))
         if F is None:
             raise HttpError(404, "bore_fix_not_found", "Bore correction not found.")
+        if F["status"] == "accepted" and F["revision_id"] and self.Activations is not None and not self.Activations.Pair(F["revision_id"])["activated"]:
+            Act = self.Activations.Activate(Pid, "accept", F["decided_by"] or By, F["decision_note"] or Note)
+            return {"bore_fix": self.BoreFixJson(Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))), "revision": self.Get(F["revision_id"]),
+                    "original": self.Get(F["session_3d_id"]), "activation": Act}
         if F["status"] != "proposed":
             raise HttpError(409, "not_proposed", f"Only a proposed correction is accepted; this one is {F['status']}.")
         File = assets.Resolve(self.Ctx.Settings.DevDir, F["file_path"])
@@ -896,7 +903,20 @@ class Production3D:
         Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_accepted", Orig["design_id"], session_3d_id=Orig["id"], revision_id=Sid,
                         bore_fix_id=Pid, status=Status, roundness_after=A.get("roundness"), volume_mm3=A.get("volume_mm3"), weight_g=Weight,
                         file_sha256=F["file_sha256"], note=Note, by=By)
-        return {"bore_fix": self.BoreFixJson(Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))), "revision": self.Get(Sid), "original": self.Get(Orig["id"])}
+        # The corrected STL is active at once: the order lines take it now (or Fulfillment is asked), each outcome recorded
+        Act = self.Activations.Activate(Pid, "accept", By, Note or "") if self.Activations is not None else None
+        return {"bore_fix": self.BoreFixJson(Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))), "revision": self.Get(Sid), "original": self.Get(Orig["id"]),
+                "activation": Act}
+
+    def RestoreBoreFix(self, Pid: str, By: str, Note: str) -> dict:
+        """Admin: the other file of the pair becomes active again — the original result after an accepted correction, or
+        the correction again after a restore — explicitly, with a reason, under the same rules as an acceptance. Nothing
+        is deleted: both files stay, either can be made active again."""
+        if self.Activations is None:
+            raise HttpError(409, "not_available", "Restoring is not available here.")
+        Act = self.Activations.Restore(Pid, By, Note)
+        F = self.Ctx.Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))
+        return {"bore_fix": self.BoreFixJson(F), "activation": Act, "original": self.Get(F["session_3d_id"]), "revision": self.Get(F["revision_id"])}
 
     def RejectBoreFix(self, Pid: str, By: str, Note: str = "") -> dict:
         """Admin: the proposed correction is not wanted — recorded with the reason, its file deleted; nothing else changes."""
@@ -1231,10 +1251,17 @@ class Production3D:
             "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }
-        # The manual FixBore (2026-10-15): this result's proposals, newest first; a revision names the result it corrects
-        Fixes = [self.BoreFixJson(F) for F in Db.All("SELECT * FROM bore_fixes WHERE session_3d_id = ? ORDER BY created_at DESC", (Sid,))]
+        # The manual FixBore (2026-10-15): this result's proposals, newest first; a revision names the result it corrects.
+        # The newest says which order lines it changes (proposed), or which file is active and what each activation did
+        Rows = Db.All("SELECT * FROM bore_fixes WHERE session_3d_id = ? ORDER BY created_at DESC", (Sid,))
+        Fixes = [self.BoreFixJson(F) for F in Rows]
+        if Fixes and self.Activations is not None:
+            Fixes[0].update(self.Activations.ForFix(Rows[0]))
         Of = self.BoreFixOf(Sid)
+        Pair = self.Activations.Pair(Sid) if self.Activations is not None else None
         Out.update({"bore_fix": Fixes[0] if Fixes else None, "bore_fixes": Fixes,
+                    # the pair this result belongs to (an original and its bore-corrected revision) and which one is active
+                    "stl_pair": {**Pair, "this_active": Pair["active"] == Sid} if Pair else None,
                     "derived_from": {"session_3d_id": Of["session_3d_id"], "bore_fix_id": Of["id"], "accepted_by": Of["decided_by"],
                                      "accepted_at": Of["decided_at"], "note": Of["decision_note"], "file_sha256": Of["file_sha256"],
                                      "file_bytes": Of["file_bytes"]} if Of else None})

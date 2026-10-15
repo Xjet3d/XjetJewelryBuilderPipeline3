@@ -92,7 +92,8 @@ ProductionStageLabels = {
     "delivered": "Delivered", "cancelled": "Cancelled",
 }
 LineEventLabels = {"production_reset": "Production hand-over reset (a trial cleared)", "production_sent": "Sent to Production", "production_file": "Production file recorded", "production_revision_submitted": "Revised file submitted to Production",
-                   "3d_prepared": "STL prepared", "3d_pinned": "3D version pinned", "3d_version_changed": "3D version changed", "3d_version_uploaded": "Revised STL uploaded"}
+                   "3d_prepared": "STL prepared", "3d_pinned": "3D version pinned", "3d_version_changed": "3D version changed", "3d_version_uploaded": "Revised STL uploaded",
+                   "stl_activated": "STL activated (bore correction)", "production_file_replaced": "Production file replaced — Fulfillment confirmed"}
 FulfillmentEventLabels = {
     "fulfillment.request_enrolled": "Received by Fulfillment", "fulfillment.request_updated": "Updated", "fulfillment.review_started": "Manufacturing review started",
     "fulfillment.review_approved": "Approved for production", "fulfillment.review_changes_required": "Changes required", "fulfillment.review_cannot_produce": "Cannot produce",
@@ -127,8 +128,18 @@ def _LineEventText(Kind: str, D: dict) -> str:
         return f"v{D.get('from_version_no') or '?'} → {D.get('label') or 'v' + str(D.get('version_no') or '?')}" + (f": {D['note']}" if D.get("note") else "")
     if Kind == "3d_version_uploaded":
         return f"v{D.get('version_no')} · {D.get('filename') or ''}"
+    if Kind == "stl_activated":
+        Did = {"switched": "switched", "linked": "linked", "pending": "asked of Fulfillment"}.get(D.get("outcome"), D.get("outcome") or "")
+        return f"{'restore' if D.get('kind') == 'restore' else 'bore correction accepted'} · {Did} → …{str(D.get('session_3d_id') or '')[-8:]}" + \
+            (f" · {D['reason']}" if D.get("reason") else "")
+    if Kind == "production_file_replaced":
+        return " · ".join(X for X in (f"hand-over {D.get('handoff_no')}", f"revision {D.get('revision_no')} in Fulfillment" if D.get("revision_no") else None,
+                                      f"file {Sha}…" if Sha else None, D.get("reason")) if X)
     return "v" + str(D.get("version_no") or "?")
-CommandActions = {"cancel_line": "decide_cancellation"}            # an Admin command and the Fulfillment permission it delegates
+# A command and the Fulfillment permission it delegates. The Admin sends cancel_line; replace_file is sent only by the
+# activation of a bore-corrected STL (p3/stl_activation.py, I-38) for a line whose part is in review
+CommandActions = {"cancel_line": "decide_cancellation", "replace_file": "review_part"}
+AdminCommandActions = ("cancel_line",)
 CommandOutcomeEvents = ("fulfillment.command_applied", "fulfillment.command_rejected")
 ReviewSeverity = ("cannot_produce", "changes_required", "in_review", "not_started", "approved")   # the worst review state of an order's parts first
 Filters = {"enrolled": "With Fulfillment", "review": "Awaiting review", "changes": "Changes required / cannot produce", "blocked": "Blocked",
@@ -413,15 +424,12 @@ class FulfillmentBridge:
             if self.Orders.MasterPresent(T["mesh_id"] if T else None) is False:
                 return V("file_missing")
             State = L.get("three_d_state")
-            # An accepted bore correction of the linked result is offered here, applied only by the Admin (FixBore, 2026-10-15)
-            Bc = {"bore_correction": L["bore_correction"]} if L.get("bore_correction") else {}
+            # What the activation of a bore-corrected STL did with this line, when it concerned it (FixBore update, 2026-10-15)
+            Act = {"stl_activation": L["stl_activation"]} if L.get("stl_activation") else {}
             if State == "complete" and L.get("three_d_match"):
-                return V("ready", **Bc)
+                return V("ready", **Act)
             if State == "review_required":
-                R = V("review_required", **Bc)
-                if Bc:
-                    R["action"] = "use the bore-corrected revision on this line (Use the bore-corrected STL…), or accept the original on the session page"
-                return R
+                return V("review_required", **Act)
             if State in ("failed", "cancelled"):
                 return V("failed")
             return V("preparing")
@@ -690,9 +698,91 @@ class FulfillmentBridge:
             return {"sent": False}
         return {"sent": True, "sent_at": Prod["sent_at"], "sent_by": Prod["sent_by"], "note": Prod["note"], "handoff_no": Prod["handoff_no"], "state": Prod["state"],
                 "received_at": Prod["received_at"], "part_id": Prod["part_id"], "part_display_no": Prod["part_display_no"],
-                "pinned": {K: Prod[K] for K in ("mesh_id", "version_no", "version_label", "source", "scaling", "master_sha256", "three_d_id", "method_version",
-                                                "file_sha256", "file_bytes", "file_job_id")},
+                "pinned": {**{K: Prod[K] for K in ("mesh_id", "version_no", "version_label", "source", "scaling", "master_sha256", "three_d_id", "method_version",
+                                                   "file_sha256", "file_bytes", "file_job_id")},
+                           "geometry_sha256": self.GeometrySha(Prod["three_d_id"], Prod["master_sha256"])},
                 "revision_reason": Prod["revision_reason"], "answers_request_id": Prod["answers_request_id"]}
+
+    def GeometrySha(self, Sid: str | None, MasterSha: str | None) -> str | None:
+        """The geometry's identity for Fulfillment (I-38): a bore-corrected revision's own stored file; any other result
+        is its master scaled — the master's checksum, as Fulfillment always identified it."""
+        F = self.Ctx.Db.One("SELECT file_sha256 FROM bore_fixes WHERE revision_id = ?", (Sid,)) if Sid else None
+        return (F or {}).get("file_sha256") or MasterSha
+
+    # ── the active STL of a design, material and size: a line in Fulfillment's review (I-38) ──
+    def FileReplacement(self, L: dict, ToSid: str, File: dict | None) -> dict:
+        """What a replace_file command names for a line (AdminGet's line): the model and the pin exactly as the snapshot
+        will carry them once the line uses that result — so Fulfillment's revision is the one the snapshot then names."""
+        Pin = self._PinInfo({**L, "three_d_id": ToSid})
+        F = File or {}
+        return {"three_d_id": ToSid, "model": self._Model({**L, "pinned_three_d_id": ToSid}),
+                "pinned": {**Pin, "geometry_sha256": self.GeometrySha(ToSid, Pin["master_sha256"]), "file_sha256": F.get("sha256"),
+                           "file_bytes": F.get("bytes"), "file_job_id": F.get("job_id")}}
+
+    def RequestFileReplacement(self, Conn, OrderId: str, LineId: str, Rep: dict, Reason: str, By: str, ActivationLineId: str, T: str) -> str:
+        """replace_file, inside the activation's transaction: the command stored with who asked, delivered through the
+        feed, the line's next hand-over number named. Nothing changes here until Fulfillment answers: applied — the line
+        takes the file (_FileReplaced); rejected — it keeps its own."""
+        Prod = Conn.execute("SELECT * FROM fulfillment_line_production WHERE line_id = ? AND order_id = ?", (LineId, OrderId)).fetchone()
+        Line = Conn.execute("SELECT ring_id FROM order_lines WHERE id = ?", (LineId,)).fetchone()
+        Id = "cmd_" + secrets.token_hex(8)
+        Payload = {"command_id": Id, "action": "replace_file", "line_id": LineId, "item_ref": Line["ring_id"], "quantity": None, "reason": Reason,
+                   "expected_version": None, "actor": By, "delegated_permission": CommandActions["replace_file"], "created_at": T,
+                   "three_d_id": Rep["three_d_id"], "from_three_d_id": Prod["three_d_id"], "handoff_no": Prod["handoff_no"] + 1, "model": Rep["model"],
+                   "pinned": Rep["pinned"], "activation_line_id": ActivationLineId}
+        E = Conn.execute("SELECT source_version FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (OrderId,)).fetchone()
+        Conn.execute("INSERT INTO fulfillment_commands (id, entity_type, entity_id, action, payload_json, expected_version, actor, delegated_permission, state, "
+                     "created_at, updated_at) VALUES (?,?,?,?,?,NULL,?,?,'pending',?,?)", (Id, "order", OrderId, "replace_file", Dumps(Payload), By, "review_part", T, T))
+        Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, payload_json, created_at) VALUES ('command', 'order', ?, ?, ?, ?, ?)",
+                     (OrderId, E["source_version"] if E else 1, "replace_file", Dumps(Payload), T))
+        return Id
+
+    def _FileReplaced(self, Conn, R: dict, State: str, Cmd: dict, T: str) -> None:
+        """Fulfillment's answer to replace_file, in the transaction that stores it (a failure answers 5xx and Fulfillment
+        sends it again): applied — the line and its hand-over take the file, the hand-over number advances, the order's
+        history says so and the snapshot follows; rejected — the line keeps its file, the reason kept with the activation."""
+        P = json.loads(R["payload_json"])
+        Acl = Conn.execute("SELECT * FROM stl_activation_lines WHERE command_id = ?", (R["id"],)).fetchone()
+        Outcome, Why, Rev = "refused", Cmd.get("reason") or Cmd.get("code") or "refused by Fulfillment", None
+        if State == "applied":
+            Prod = Conn.execute("SELECT * FROM fulfillment_line_production WHERE line_id = ? AND order_id = ?", (P["line_id"], R["entity_id"])).fetchone()
+            if Prod is None or Prod["three_d_id"] != P.get("from_three_d_id") or Prod["handoff_no"] + 1 != P.get("handoff_no"):
+                # Cannot happen while the guards hold (a revised file waits for this answer): said, never applied blindly
+                Why = "the line's production file changed in Atelier meanwhile — compare it with Fulfillment's revision " + str(Cmd.get("revision_no") or "")
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (R["entity_id"], "production_file_conflict", Dumps({"line_id": P["line_id"], "command_id": R["id"], "revision_no": Cmd.get("revision_no"),
+                                                                                 "reason": Why}), "fulfillment", T))
+            else:
+                Pin, Rev = P["pinned"], Cmd.get("revision_no")
+                Conn.execute("UPDATE order_lines SET three_d_id = ?, mesh_id = ? WHERE id = ? AND order_id = ?", (P["three_d_id"], Pin["mesh_id"], P["line_id"], R["entity_id"]))
+                # received: the answer is Fulfillment's confirmation that it holds this hand-over's revision
+                Conn.execute("UPDATE fulfillment_line_production SET handoff_no = ?, mesh_id = ?, version_no = ?, version_label = ?, source = ?, scaling = ?, "
+                             "master_sha256 = ?, three_d_id = ?, method_version = ?, file_sha256 = ?, file_bytes = ?, file_job_id = ?, revision_reason = ?, "
+                             "answers_request_id = NULL, state = 'received', part_display_no = COALESCE(part_display_no, ?), updated_at = ? WHERE id = ?",
+                             (P["handoff_no"], Pin["mesh_id"], Pin["version_no"], Pin["version_label"], Pin["source"], Pin["scaling"], Pin["master_sha256"],
+                              P["three_d_id"], Pin["method_version"], Pin.get("file_sha256"), Pin.get("file_bytes"), Pin.get("file_job_id"), P["reason"][:300],
+                              Cmd.get("part"), T, Prod["id"]))
+                E = Conn.execute("SELECT * FROM fulfillment_enrollments WHERE entity_type = 'order' AND entity_id = ?", (R["entity_id"],)).fetchone()
+                if E:
+                    Conn.execute("UPDATE fulfillment_enrollments SET source_version = source_version + 1, updated_at = ? WHERE id = ?", (T, E["id"]))
+                    Conn.execute("INSERT INTO fulfillment_outbox (kind, entity_type, entity_id, source_version, reason, created_at) VALUES "
+                                 "('updated', 'order', ?, ?, 'production_file_replaced', ?)", (R["entity_id"], E["source_version"] + 1, T))
+                Item = Conn.execute("SELECT ring_id FROM order_lines WHERE id = ?", (P["line_id"],)).fetchone()
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (R["entity_id"], "production_file_replaced", Dumps({"line_id": P["line_id"], "item_ref": Item["ring_id"] if Item else None,
+                                                                                 "handoff_no": P["handoff_no"], "from_three_d_id": P.get("from_three_d_id"),
+                                                                                 "session_3d_id": P["three_d_id"], "file_sha256": Pin.get("file_sha256"),
+                                                                                 "revision_no": Rev, "part": Cmd.get("part"), "reason": P["reason"],
+                                                                                 "feasibility_needs_review": Cmd.get("feasibility_needs_review"),
+                                                                                 "command_id": R["id"], "activation_line_id": P.get("activation_line_id")}), "fulfillment", T))
+                Outcome, Why = "applied", ("Fulfillment already had this file" if Cmd.get("unchanged") else
+                                           "the previous feasibility assessment is to be made again" if Cmd.get("feasibility_needs_review") else None)
+        if Acl:
+            Conn.execute("UPDATE stl_activation_lines SET outcome = ?, reason = ?, revision_no = ?, part_display_no = COALESCE(?, part_display_no), updated_at = ? WHERE id = ?",
+                         (Outcome, Why, Rev, Cmd.get("part"), T, Acl["id"]))
+
+    def PendingFileReplacement(self, LineId: str) -> dict | None:
+        return self.Ctx.Db.One("SELECT * FROM stl_activation_lines WHERE line_id = ? AND outcome = 'pending' ORDER BY created_at DESC LIMIT 1", (LineId,))
 
     # ── a revised file after the hand-over (docs/order-to-production-review.md §B.6, §G.4) ──
     def GuardLineVersionChange(self, Order: dict, Line: dict) -> None:
@@ -712,6 +802,8 @@ class FulfillmentBridge:
         Prod = self.LineProduction(LineId)
         if Prod is None or Prod["order_id"] != OrderId:
             raise HttpError(404, "production_not_found", "This order line was not sent to Production.")
+        if self.PendingFileReplacement(LineId):
+            raise HttpError(409, "stl_change_pending", "A bore-corrected STL for this line waits for Fulfillment's answer: submit a revised file once it has answered.")
         Reason = " ".join(str(Body.get("reason") or "").split())[:300]
         if not Reason:
             raise HttpError(400, "reason_required", "Say why the production file changes (kept with the order and sent to Fulfillment).")
@@ -863,8 +955,8 @@ class FulfillmentBridge:
         self._Require()
         if EntityType != "order":
             raise HttpError(400, "invalid_entity", "Commands are sent for orders.")
-        if Action not in CommandActions:
-            raise HttpError(400, "invalid_action", "Unknown command.", {"actions": list(CommandActions)})
+        if Action not in AdminCommandActions:
+            raise HttpError(400, "invalid_action", "Unknown command.", {"actions": list(AdminCommandActions)})
         O = self._Order(EntityId)
         E = self.Enrollment("order", O["id"])
         if not (E and E["state"] == "enrolled"):
@@ -923,8 +1015,10 @@ class FulfillmentBridge:
             return
         State = "applied" if E["event_type"] == "fulfillment.command_applied" else "rejected"
         Conn.execute("UPDATE fulfillment_commands SET state = ?, result_json = ?, decided_at = ?, updated_at = ? WHERE id = ?", (State, Dumps(Cmd), E["occurred_at"], T, Id))
+        if R["action"] == "replace_file":
+            self._FileReplaced(Conn, dict(R), State, Cmd, T)
         Data = {"action": "command_outcome", "command_id": Id, "command": R["action"], "state": State, "result": Cmd.get("result"), "reason": Cmd.get("reason"),
-                "part": Cmd.get("part")}
+                "part": Cmd.get("part"), "line_id": json.loads(R["payload_json"]).get("line_id")}
         if R["entity_type"] == "order":
             Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)", (R["entity_id"], "fulfillment", Dumps(Data), "fulfillment", T))
 
@@ -1393,7 +1487,7 @@ class FulfillmentBridge:
                 "reinstate": self.Reinstate(Record) if Record["status"] == "cancelled" and E and E["state"] == "enrolled" else None,
                 "lines": Lines, "lines_sent": len(Rows), "lines_total": len(Lines),
                 "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
-                "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions),
+                "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(AdminCommandActions),
                 "notifications": self.Notifications.List(OrderId=Id, Limit=20)}
 
     def Summary(self, EntityType: str, EntityId: str) -> dict | None:
@@ -1572,7 +1666,8 @@ class FulfillmentBridge:
                         Items.append({"at": Ev["created_at"], "source": "atelier", "kind": "command", "label": "Cancellation requested",
                                       "text": (f"{D.get('quantity')} unit(s)" if D.get("quantity") else "the whole line") + " · " + str(D.get("reason") or ""), "by": Ev["by"]})
                     else:
-                        Items.append({"at": Ev["created_at"], "source": "fulfillment", "kind": "command_outcome", "label": "Request " + str(D.get("state") or ""),
+                        What = "STL replacement" if D.get("command") == "replace_file" else "Request"
+                        Items.append({"at": Ev["created_at"], "source": "fulfillment", "kind": "command_outcome", "label": f"{What} {D.get('state') or ''}",
                                       "text": str(D.get("result") or "") + (": " + D["reason"] if D.get("reason") else ""), "by": "Fulfillment"})
             elif K == "fulfillment" and D.get("event_type"):
                 About, Lines = D.get("about_parts"), D.get("line_ids")

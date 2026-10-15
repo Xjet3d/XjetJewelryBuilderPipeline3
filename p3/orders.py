@@ -100,6 +100,7 @@ class OrderService:
         self.StatusApplied = None             # … and what follows a change (an undone cancellation catches up with Fulfillment, G1)
         self.LineGuard = None                 # the Fulfillment bridge: a line in Production changes its 3D version only through the revision workflow
         self.FulfillmentView = None           # the Fulfillment bridge: what the customer sees of an enrolled order (stage, parcels, timeline)
+        self.Activations = None               # StlActivations (p3/stl_activation.py): the active file of a result and its bore-corrected revision
 
     # ── checkout: what the customer sees before ordering ─────────────────
     def CheckoutInfo(self, Who: Principal) -> dict:
@@ -635,6 +636,7 @@ class OrderService:
                       "WHERE s.design_id = ? AND s.mesh_id = ? AND s.material_id = ? AND s.production_size = ? ORDER BY s.created_at DESC",
                       (L["design_id"], Version["id"], L["material_id"], float(Size)))
         Keys = set()
+        from p3.stl_activation import Inactive
         for R in Rows:
             State = ProductionState(R["status"], R["integrity"], bool(R["accepted_at"]))
             Brief = {"id": R["id"], "state": State, "created_at": R["created_at"], "measured_at": R["updated_at"], "accepted": bool(R["accepted_at"]),
@@ -659,41 +661,15 @@ class OrderService:
                     continue
             if not Out["master_present"]:
                 continue
+            # Of a result and its bore-corrected revision, only the active one is offered as the line's file (FixBore update,
+            # 2026-10-15); the other stays a valid file the Admin may still link explicitly
+            if self.Activations is not None and Inactive(self.Activations.Pair(R["id"]), R["id"]):
+                Out.setdefault("inactive", []).append({**Brief, "bore_corrected": Corrected, "own_file": bool(Own)})
+                continue
             Keys.add((G.get("method_version"), Corrected, Own or ""))
             Out["candidates"].append({**Brief, "bore_corrected": Corrected, "own_file": bool(Own)})
         Out["same_file"] = bool(Out["candidates"]) and len(Keys) == 1
         return Out
-
-    def _BoreCorrectionFor(self, L: dict) -> dict | None:
-        """A bore-corrected revision accepted for the result this line is linked to (the manual FixBore, the owner's
-        decision of 2026-10-15): offered to the Admin on the line, never applied by itself."""
-        Sid = L.get("three_d_id") if L.get("three_d_pinned") else None
-        if not Sid:
-            return None
-        F = self.Ctx.Db.One("SELECT id, revision_id, decided_by, decided_at, after_json FROM bore_fixes WHERE session_3d_id = ? AND status = 'accepted' "
-                            "AND revision_id IS NOT NULL ORDER BY decided_at DESC LIMIT 1", (Sid,))
-        if F is None:
-            return None
-        A = json.loads(F["after_json"] or "{}")
-        return {"revision_id": F["revision_id"], "bore_fix_id": F["id"], "accepted_by": F["decided_by"], "accepted_at": F["decided_at"],
-                "gauge_mm": A.get("gauge_mm"), "bore_max_mm": A.get("bore_max_mm"), "roundness": A.get("roundness"), "weight_g": A.get("weight_g")}
-
-    def UseBoreCorrection(self, OrderId: str, LineId: str, RevisionId: str, By: str) -> dict:
-        """Admin (the manual FixBore, 2026-10-15): a line linked to a result whose bore-corrected revision was accepted
-        is switched to that revision — explicitly, recorded in the order history. Never by itself, and never for a line
-        in Production: there the print file changes only through a revised file, with a reason."""
-        O = self.AdminGet(OrderId)
-        L = next((X for X in O["lines"] if X["id"] == LineId), None)
-        if L is None:
-            raise HttpError(404, "order_line_not_found", "Order line not found.")
-        if self.LineGuard:
-            self.LineGuard(O, L)
-        C = L.get("bore_correction")
-        if not C or C["revision_id"] != RevisionId:
-            raise HttpError(409, "not_this_line_s_correction", f"{L['ring_id']} is not linked to the result that revision corrects.")
-        self._Pin(O["id"], L, RevisionId, By, linked="bore_corrected", replaces=L["three_d_id"], bore_fix_id=C["bore_fix_id"],
-                  size_label=L.get("size_label"), material_id=L["material_id"])
-        return {"line": next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId), "three_d_id": RevisionId}
 
     def LinkLine3D(self, OrderId: str, LineId: str, ThreeDId: str, By: str) -> dict:
         """Link one finished result to a line as its print file — the Admin's explicit choice when several different
@@ -709,7 +685,7 @@ class OrderService:
             raise HttpError(409, "already_linked", f"{L['ring_id']} is already linked to its STL ({(L.get('three_d_version') or {}).get('label') or 'its version'}); "
                                                    "a different file is a revised version — Use another version or Upload revised STL.")
         C = self.StlCandidates(L)
-        if ThreeDId not in [X["id"] for X in C["candidates"]]:
+        if ThreeDId not in [X["id"] for X in C["candidates"] + C.get("inactive", [])]:       # the inactive file of a pair: an explicit choice
             raise HttpError(409, "not_a_candidate", f"That result is not a finished STL of {L['ring_id']}'s 3D version at {L.get('size_label')} · {L.get('material_label')}.")
         self._Pin(O["id"], L, ThreeDId, By, linked="chosen", size_label=L.get("size_label"), material_id=L["material_id"])
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
@@ -901,7 +877,8 @@ class OrderService:
         J = self.ToJson(O, Lines, ForCustomer=False)
         for L in J["lines"]:
             L.update(self._ThreeDForLine(L))
-            L["bore_correction"] = self._BoreCorrectionFor(L)
+            # what the activation of a bore-corrected STL did with this line, if it concerned it (FixBore update, 2026-10-15)
+            L["stl_activation"] = self.Activations.LineNote(L["id"]) if self.Activations is not None else None
             Use = self.Ctx.Db.One("SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (L["design_id"], O["owner_account_id"]))
             L["session_id"] = Use["id"] if Use else L["design_id"]       # the customer's journey in Sessions
         J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])

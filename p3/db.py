@@ -298,6 +298,42 @@ CREATE TABLE IF NOT EXISTS bore_fixes (
 CREATE INDEX IF NOT EXISTS bore_fixes_result ON bore_fixes(session_3d_id, created_at);
 CREATE INDEX IF NOT EXISTS bore_fixes_revision ON bore_fixes(revision_id);
 
+-- The active STL of a design, material and size (the FixBore update of 2026-10-15, p3/stl_activation.py): accepting a
+-- correction activates its revision, a restore the other file of the pair — who, when, why, and what happened to each
+-- order line of that design, material and size. Nothing is deleted: every file of the pair stays.
+CREATE TABLE IF NOT EXISTS stl_activations (
+    id               TEXT PRIMARY KEY,                    -- act_…
+    bore_fix_id      TEXT NOT NULL REFERENCES bore_fixes(id),
+    kind             TEXT NOT NULL CHECK (kind IN ('accept', 'restore')),
+    from_three_d_id  TEXT NOT NULL,                       -- the result that was active
+    to_three_d_id    TEXT NOT NULL,                       -- the result active from now on
+    by               TEXT NOT NULL,
+    note             TEXT,
+    created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS stl_activations_fix ON stl_activations(bore_fix_id, created_at);
+CREATE TABLE IF NOT EXISTS stl_activation_lines (
+    id               TEXT PRIMARY KEY,                    -- acl_…
+    activation_id    TEXT NOT NULL REFERENCES stl_activations(id),
+    order_id         TEXT NOT NULL,
+    line_id          TEXT NOT NULL,
+    item_ref         TEXT,
+    from_three_d_id  TEXT,                                -- the line's STL when the activation was made
+    to_three_d_id    TEXT NOT NULL,
+    -- switched / linked here at once · pending: asked of Fulfillment, then applied (switched here) or refused · skipped (why)
+    outcome          TEXT NOT NULL CHECK (outcome IN ('switched', 'linked', 'pending', 'applied', 'refused', 'skipped')),
+    reason           TEXT,
+    stage            TEXT,                                -- where the line was: its order's status, or its part's stage in Fulfillment
+    part_display_no  TEXT,
+    command_id       TEXT,                                -- the replace_file command (a line in Fulfillment's review)
+    revision_no      INTEGER,                             -- Fulfillment's production revision, once applied
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS stl_activation_lines_activation ON stl_activation_lines(activation_id);
+CREATE INDEX IF NOT EXISTS stl_activation_lines_line ON stl_activation_lines(line_id, created_at);
+CREATE INDEX IF NOT EXISTS stl_activation_lines_command ON stl_activation_lines(command_id);
+
 -- Weight / cost / price from a production geometry. Kept separate from the fixed customer price,
 -- which is never changed by these numbers.
 CREATE TABLE IF NOT EXISTS price_calculations (

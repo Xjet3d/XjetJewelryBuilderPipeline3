@@ -161,16 +161,45 @@ production geometry the corrected model's numbers (`checks.bore_corrected`, `der
 Production hand-over. The revision says what it came from (`derived_from`); it is never re-measured in place
 (`409 revision_fixed`) nor corrected again (`409 already_a_revision`); the original is not proposed again once a
 revision was accepted (`409 already_corrected`). **Reject** (`…/reject {note}`) records the decision and deletes the
-file. **Order lines** are never switched by it: a line linked to the original carries `bore_correction` (the revision
-offered) and is switched only by the Admin — *Use the bore-corrected STL…*, `POST
-/api/admin/orders/{id}/lines/{line}/use-bore-correction {revision_id}` → `Orders.UseBoreCorrection` (a `3d_pinned`
-event with `linked: bore_corrected` and `replaces`); a line in Production is refused (`409 line_in_production`: a
-revised file goes through the Production page with a reason); a line not yet linked chooses between the original and
-the revision explicitly (two different files: `ambiguous`, *Link STL…*). Accepting a correction approves nothing for
-manufacturing — that stays Fulfillment's own decision — and wall thickness or strength are not checked (a later
-phase). `tests/test_admin_ops.py` (propose, compare, accept, reject, not an ellipse, rounder but not round),
-`tests/test_bore_fix_workflow.py` (the order side, the hand-over's hash). Results corrected in place before this
-change keep working as they are (exported with `round: True`; *Undo* re-measures them).
+file; the original stays the active STL. Accepting a correction approves nothing for manufacturing — that stays
+Fulfillment's own decision — and wall thickness or strength are not checked (a later phase).
+`tests/test_admin_ops.py` (propose, compare, accept, reject, not an ellipse, rounder but not round). Results corrected
+in place before this change keep working as they are (exported with `round: True`; *Undo* re-measures them).
+
+**The active STL — accepting activates the correction (2026-10-15, the owner's FixBore workflow update; supersedes the
+explicit per-line switch of the first step).** `p3/stl_activation.py` (`StlActivations`, wired as
+`Svc.Activations`, `Orders.Activations`, `Production3D.Activations`, its `Bridge` set once the Fulfillment bridge
+exists). A result and its accepted revision are a **pair**; the newest `stl_activations` row (`accept` or `restore`,
+from → to, who, when, note) says which of the two is active. **Before accepting**, the proposal's JSON carries
+`affected` (`Plan`): every order line of the result's design, material and size, with its order's status or its
+part's Fulfillment stage, and what accepting does to it — `switch` (linked to the original, not with Fulfillment, the
+order New / Payment confirmed / 3D ready), `link` (not linked yet, produced from the same 3D version), `request` (with
+Fulfillment, its part still in review), or `skip` with the reason (approved for manufacturing, in a build, in
+production, QC, packing or shipped, cancelled, in the existing production flow, a cancelled or completed order, linked
+to another STL or produced from another 3D version — chosen independently). **Accept** makes the revision, then
+`Activate(…, "accept")` in **one transaction**: each line as planned (guarded updates of `order_lines.three_d_id`, an
+order event `stl_activated`), one `stl_activation_lines` row per line with its outcome (`switched`, `linked`,
+`pending`, `skipped` + reason). A line with Fulfillment gets the **`replace_file` command** (`Bridge.RequestFileReplacement`:
+`fulfillment_commands` + the outbox; the payload names `three_d_id`, the next `handoff_no`, and `model` / `pinned`
+exactly as the snapshot will carry them — `FileReplacement`), and stays on its STL until Fulfillment answers:
+`_ApplyCommandOutcome` → `_FileReplaced`, in the transaction that stores the event — applied: the line and its
+`fulfillment_line_production` row take the file (hand-over +1, the file's hash, `state = received`), the enrollment
+version advances (`production_file_replaced` in the feed), an order event `production_file_replaced` names
+Fulfillment's revision; rejected: the line keeps its file, the activation line says `refused` with Fulfillment's
+reason. A failure there rolls the whole answer back (5xx: Fulfillment sends it again; a repeat is a `duplicate`). An
+acceptance whose activation failed is completed by *Accept* again (`activated: false` on the page). **Restore**
+(`POST /api/admin/bore-fixes/{id}/restore {note}`, the reason required) activates the other file of the pair under the
+same rules — refused while a line of the previous activation waits for Fulfillment (`409 activation_pending`); a revised
+file for such a line waits too (`409 stl_change_pending`). The snapshot's pin carries `geometry_sha256` (`GeometrySha`:
+a revision's own stored file, else the master's checksum — so Fulfillment's revision of an existing part is unchanged).
+A line not yet linked is offered only the active file of a pair (`StlCandidates` leaves the inactive one out:
+`inactive`). The order page says on each line what the newest activation did with it (`lines[].stl_activation`); the
+session page lists the lines before *Accept and activate…*, then the active file, every activation with each line's
+outcome and *Restore the original STL…* / *Use the bore-corrected STL again…*. The step-1 route
+`…/use-bore-correction` and `Orders.UseBoreCorrection` are gone. `tests/test_bore_fix_workflow.py` (the activation of
+every eligible line, the list before accepting, Fulfillment's confirmation and refusal, the protected stages, restore,
+the failure of the activation and of the commit, the original never overwritten); Fulfillment's side is its decision
+I-38 and `tests/test_replace_file_command.py`.
 
 **Making a bore round (2026-10-06).** A ring whose bore is not round (review item `bore_not_round`: the bore wall's radius deviates more than `MaxRoundness` 4% from its median) can be corrected for a result: *Make the bore round* → `POST /api/admin/3d/{id}/fix-bore` → `Production3D.FixBore` queues a `fix_bore` geometry job (priority 15, `geometry_worker`): `geometry.ExportCorrectedStl` scales the model in the ring frame along the bore ellipse's major and minor axes separately (`CorrectionFor`: `scale_major = R_target / a`, `scale_minor = R_target / b`, and their geometric mean along the ring axis), so the bore is a circle of the size's inner diameter — the outer shape stretches by the same few percent — writes it to a temporary file and measures it (`MeasureRaw` on the corrected model: the production numbers, roundness now ≈ 0; the file is deleted again). The ellipse comes from `MeasureRaw`'s `bore_ellipse` (a least-squares conic through the bore wall points; an older measurement without it is redone in the job). The correction counts if the corrected bore is found within 1% of the size's diameter and comes out rounder — round (≤ `MaxRoundness`, 4%: the result is complete) or at least 10% rounder than before (kept, but the result stays for review with the item `bore_still_not_round`, the remaining deviation and the bore across its centre; Accept or Undo): the result's production geometry becomes the corrected model's numbers (`checks.bore_corrected` with `roundness_before`, `bore_correction` on the result with `roundness_after` and the bore diameters; `ReviewItems(…, Corrected=True, CorrectedRoundness, CorrectedDiameters)`) and the scaled STL is made on demand from the same correction like the uniform one (`StartExport` passes `round: True` to the export job, which repeats `ExportCorrectedStl` — nothing is stored). Otherwise (no rounder: an inner wall that is not an ellipse, e.g. a lobed or stepped wall) the result stays as measured — uniform scaling, its review reason — and the attempt is kept on the production row (`checks.bore_correction_failed`, `bore_correction_failed` on the result): the review item's next step says why, and the button is not offered again until a re-measure. Measurement v3.4 (`ring-measure-once-v3.4`) adds the bore's narrowest and widest diameter through its centre (`bore_min_diameter` / `bore_max_diameter`; on the production geometry `bore_min_diameter_mm` / `bore_max_diameter_mm` — what a caliper reads across the hole, as opposed to the fitted circle that sizes the ring) and the ellipse fit's `residual` — what the correction would leave, said in the review item and the fix dialog (`bore_expected_after`); an older measurement is redone in the fix job and stored. **v3.5 (2026-10-07): the size is the gauge.** `inner_diameter` is the largest circle that passes the bore (`_InscribedCircle`: the centre near the fitted one whose nearest wall over all directions is farthest, a coarse-then-fine grid within ±15% of the fitted radius) — a ring gauge's reading, so `Scaled` makes that circle the size's diameter and a US 10 ring passes a Ø 19.76 mm gauge exactly (the fitted circle, the earlier definition, overstated an oval or stepped bore: a 2% oval ring read half a size small on a gauge). `fitted_diameter` keeps the circle fit, `bore_min_diameter` = the gauge, `bore_max_diameter` = the widest through the gauge centre; `bore_origin` is the gauge centre (`bore_origin_uv` for the corrected transform); `CorrectionFor` scales by the ellipse preview's `min` so the corrected bore's gauge circle is the target. `Retry` also re-measures a complete result whose measurement is older than the current method, in place (`can_retry`; Admin: "Re-measure with the current method"). The 3D view still shows the model as generated; a re-measure (retry) resets the correction. Events `admin_3d_fix_requested`, `admin_3d_bore_fixed` (`kept` true/false).
 

@@ -60,6 +60,7 @@ from p3.gallery import GalleryService
 from p3.fulfillment_bridge import FulfillmentBridge, RegisterBridge
 from p3.mail import BuildMailer
 from p3.orders import OrderService
+from p3.stl_activation import StlActivations
 from p3.promos import PromoService
 from p3.payments import BuildPaymentProvider
 from p3.addressing import BuildValidator
@@ -96,6 +97,10 @@ class Services:
         self.Orders = OrderService(Ctx, self.Customize, self.Promos, BuildPaymentProvider(), BuildValidator(), Mailer, self.Production3D)
         self.Quotes = QuoteDesk(Ctx, self.Orders, Mailer)                 # the Admin's quote and the customer's decision
         self.Orders.Versions = self.Versions                              # a revised STL uploaded for an order line
+        # The active STL of a design, material and size: an accepted FixBore correction activated for the order lines it
+        # may change, a restore (p3/stl_activation.py, the owner's decisions of 2026-10-15)
+        self.Activations = StlActivations(Ctx, self.Orders, self.Production3D)
+        self.Orders.Activations = self.Production3D.Activations = self.Activations
 
     def Reconcile(self) -> dict:
         return {"candidates": self.Images.Reconcile(), "movies": self.Movies.Reconcile(),
@@ -602,6 +607,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Svc.Orders.StatusApplied = Bridge.AfterStatusChange
     Svc.Orders.LineGuard = Bridge.GuardLineVersionChange
     Svc.Orders.FulfillmentView = Bridge.CustomerView
+    Svc.Activations.Bridge = Bridge                       # a line with Fulfillment takes a corrected STL only once Fulfillment confirms (I-38)
     App_.state.Bridge = Bridge
     RegisterBridge(App_, Ctx, Bridge)
 

@@ -689,19 +689,24 @@ function adminApp() {
       return d.map(o => o.order_ref + ' (' + o.status_label + (o.sent ? ', in Production' + (o.part ? ' · ' + o.part : '') : '') + ', placed ' + this.dateTime(o.placed_at) + ')').join('; ')
         + ' — the same customer, ' + (d.some(o => o.same_design) ? 'the same saved design' : 'the same item') + ' · ' + d[0].size_label + ' · ' + d[0].material_label;
     },
-    // The manual FixBore: a line linked to a result whose bore-corrected revision was accepted is switched only by this click
-    async useBoreCorrection(l) {
-      const c = l.bore_correction; if (!c || !this.od || this.odBusy) return;
-      const r = await this.ask({ title: `Use the bore-corrected STL for ${l.ring_id}?`,
-        text: `The line is switched from its current STL to the bore-corrected revision accepted by ${c.accepted_by || 'admin'}` +
-              (c.gauge_mm ? ` (bore ${Number(c.gauge_mm).toFixed(2)} mm, ${(c.roundness * 100).toFixed(2)} % deviation${c.weight_g ? ', ' + Number(c.weight_g).toFixed(2) + ' g' : ''})` : '') +
-              '. The switch is recorded in the order history, and the earlier STL is kept.',
-        confirmLabel: 'Use the corrected STL', cancelLabel: 'Not now' });
-      if (!r) return;
-      this.odBusy = true; this.odError = '';
-      try { await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(l.id)}/use-bore-correction`, { revision_id: c.revision_id });
-            this.notify(l.ring_id + ' now uses the bore-corrected STL'); await this.loadOrder(); }
-      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    // What the activation of a bore-corrected STL did with an order line (FixBore update, 2026-10-15) — said on the line
+    actNote(a) {
+      if (!a) return '';
+      const what = a.kind === 'restore' ? 'Restore of the STL' : 'Bore correction accepted';
+      return { switched: what + ' — this line now uses that STL', linked: what + ' — this line was linked to that STL',
+               pending: what + ' — asked of Fulfillment: the line switches once Fulfillment confirms (its part is in review)',
+               applied: what + ' — Fulfillment confirmed; this line now uses that STL' + (a.revision_no ? ' (revision ' + a.revision_no + ' there)' : ''),
+               refused: what + ' — Fulfillment kept the former STL: ' + (a.reason || 'refused'),
+               skipped: what + ' — not changed: ' + (a.reason || '') }[a.outcome] + ' · ' + this.dateTime(a.updated_at || a.created_at) + ' · ' + (a.by || 'admin');
+    },
+    actClass(o) { return { switched: 'text-emerald-800', linked: 'text-emerald-800', applied: 'text-emerald-800', pending: 'text-sky-800', refused: 'text-amber-800', skipped: 'text-zinc-500' }[o] || 'text-zinc-600'; },
+    // A request to Fulfillment, as one line: a cancellation, or the replacement of a line's STL (FixBore)
+    cmdText(c, withItem) {
+      const p = c.payload || {};
+      const what = c.action === 'replace_file' ? 'replace STL · → …' + String(p.three_d_id || '').slice(-8) + ' · hand-over ' + (p.handoff_no || '?')
+                 : c.action.replace('_', ' ') + ' · ' + (p.quantity ? p.quantity + ' unit(s)' : 'the whole line');
+      return ' ' + (withItem && p.item_ref ? p.item_ref + ' · ' : '') + what + ' · ' + (p.reason || '') + ' · ' + this.dateTime(c.created_at)
+        + (withItem ? ' · ' + (c.actor === 'developer-key' ? 'Admin shared-key access' : c.actor) : '');
     },
     async reopenForProduction() {
       const R = this.of?.reopen; if (!this.od || !R?.possible || this.odBusy) return;
@@ -1613,7 +1618,10 @@ function adminApp() {
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
                '3d_pinned': (d.linked_at_handover ? 'STL linked at the hand-over · ' : d.linked === 'chosen' ? 'STL linked (chosen) · ' : d.linked === 'bore_corrected' ? 'Bore-corrected STL used · ' : '3D pinned · ') + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
-               '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s version in use' : ' · this order only') }[e.kind] || e.kind;
+               '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s version in use' : ' · this order only'),
+               stl_activated: (d.kind === 'restore' ? 'STL restored · ' : 'Bore-corrected STL activated · ') + who + ({ switched: 'switched', linked: 'linked', pending: 'asked of Fulfillment' }[d.outcome] || d.outcome) + (d.reason ? ' · ' + d.reason : ''),
+               production_file_replaced: 'Production file replaced · ' + who + 'hand-over ' + d.handoff_no + (d.revision_no ? ' · revision ' + d.revision_no + ' in Fulfillment' : '') + (d.feasibility_needs_review ? ' · feasibility to be assessed again' : ''),
+               production_file_conflict: 'Production file NOT replaced · ' + who + (d.reason || '') }[e.kind] || e.kind;
     },
     // An order line: produce it from another version of its option (explicit; recorded in the order history)
     async useLineVersion(l) {
@@ -2126,15 +2134,37 @@ function adminApp() {
       return 'Against the uniform scaling of the same model: ' + p(s.scale_major) + ' along the oval’s long axis, ' + p(s.scale_minor) + ' along its short axis, '
         + p(s.scale_axis) + ' along the finger.';
     },
-    async acceptBoreFix(t) {
+    // The lines an activation changes, counted by what happens to each (the list itself is on the page)
+    actCounts(list) {
+      const n = k => (list || []).filter(x => x.action === k).length, s = (k, w) => n(k) ? n(k) + ' ' + w : '';
+      return [s('switch', 'switched now'), s('link', 'linked now'), s('request', 'asked of Fulfillment (in its review)'), s('skip', 'not changed')].filter(Boolean).join(' · ') || 'no order line uses it yet';
+    },
+    actionLabel(x) { return { switch: 'Switched now', link: 'Linked now', request: 'Asked of Fulfillment', skip: 'Not changed' }[x.action] || x.action; },
+    async acceptBoreFix(t, resume) {
       const f = t.bore_fix, a = f.after || {};
-      const r = await this.ask({ title: `Accept the bore correction of ${t.ring_id || 'this result'} as a new revision?`,
+      const r = resume ? { value: '' } : await this.ask({ title: `Accept the bore correction of ${t.ring_id || 'this result'}?`,
         text: 'The corrected STL becomes a new revision — a result of its own, with the reviewed file stored' + (a.gauge_mm ? ` (bore ${Number(a.gauge_mm).toFixed(2)} mm, ${(a.roundness * 100).toFixed(2)} % deviation)` : '') +
-              '. This result stays as it is. Order lines keep their STL until you switch them on the order page — never a line already in Production. Accepting approves nothing for manufacturing: that stays Fulfillment’s decision.',
-        confirmLabel: 'Accept as a new revision', cancelLabel: 'Not now',
+              ' — and the active STL of this design, material and size at once: ' + this.actCounts(f.affected) + ' (the list is on the page). '
+              + 'A line already approved, in a build, in production or further is never changed by itself. This result stays as it is and can be restored. Accepting approves nothing for manufacturing: that stays Fulfillment’s decision.',
+        confirmLabel: 'Accept and activate', cancelLabel: 'Not now',
         input: { label: 'Note (optional)', value: '', placeholder: 'For example: oval bore of the AI model — made round for US 7', max: 300 } });
       if (!r) return;
-      try { await this.api('POST', `/api/admin/bore-fixes/${encodeURIComponent(f.id)}/accept`, { note: (r.value || '').trim() }); await this.loadSession(); this.notify('Saved as a new revision — the original result is unchanged'); }
+      try { const R = await this.api('POST', `/api/admin/bore-fixes/${encodeURIComponent(f.id)}/accept`, { note: (r.value || '').trim() }); await this.loadSession();
+            const c = R.activation?.counts || {};
+            this.notify('Corrected STL active — ' + ([c.switched && c.switched + ' line(s) switched', c.linked && c.linked + ' linked', c.pending && c.pending + ' asked of Fulfillment', c.skipped && c.skipped + ' not changed'].filter(Boolean).join(', ') || 'no order line uses it yet')); }
+      catch (e) { this.fail(e); }
+    },
+    async restoreBoreFix(t) {
+      const f = t.bore_fix, toOriginal = f.restore_to === f.session_3d_id;
+      const r = await this.ask({ title: toOriginal ? 'Restore the original STL?' : 'Use the bore-corrected STL again?',
+        text: (toOriginal ? 'The original result becomes the active STL again' : 'The bore-corrected revision becomes the active STL again') + ' for this design, material and size: '
+              + this.actCounts(f.restore_affected) + '. Lines with Fulfillment are switched only while their part is in review; nothing is deleted — both files stay. The reason is kept with every order it changes.',
+        confirmLabel: toOriginal ? 'Restore the original' : 'Use the corrected STL', cancelLabel: 'Not now',
+        input: { label: 'Reason (required)', value: '', placeholder: 'For example: the customer prefers the ring as generated', max: 300 } });
+      if (!r) return;
+      if ((r.value || '').trim().length < 3) { this.notify('Say why — the reason is kept with every order it changes.', 'error'); return; }
+      try { await this.api('POST', `/api/admin/bore-fixes/${encodeURIComponent(f.id)}/restore`, { note: r.value.trim() }); await this.loadSession();
+            this.notify(toOriginal ? 'The original STL is active again' : 'The bore-corrected STL is active again'); }
       catch (e) { this.fail(e); }
     },
     async rejectBoreFix(t) {

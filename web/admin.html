@@ -1301,11 +1301,42 @@
                 <template x-for="(w, i) in (t.bore_fix.status === 'proposed' ? (t.bore_fix.after?.warnings || []) : [])" :key="i"><p class="text-[12px] text-amber-800" x-text="'Note: ' + w"></p></template>
                 <template x-if="t.bore_fix.status === 'proposed'">
                   <div class="space-y-2">
-                    <p class="text-[12px] text-zinc-600" x-text="'Accepting saves this corrected STL as a new revision — a result of its own, the reviewed file stored (sha256 ' + (t.bore_fix.file_sha256 || '').slice(0, 12) + '…). This result stays exactly as it is. Order lines keep their STL until you switch them on the order page, and Fulfillment’s manufacturing approval stays a separate decision. Wall thickness and strength are not checked here.'"></p>
-                    <div class="flex flex-wrap gap-2"><button class="btn !py-1.5" @click="acceptBoreFix(t)">Accept as a new revision…</button><button class="btn2 !py-1.5" @click="rejectBoreFix(t)">Reject…</button></div>
+                    <p class="text-[12px] text-zinc-600" x-text="'Accepting saves this corrected STL as a new revision — a result of its own, the reviewed file stored (sha256 ' + (t.bore_fix.file_sha256 || '').slice(0, 12) + '…) — and makes it the active STL of this design, material and size at once: the order lines below take it as listed. This result stays exactly as it is and can be restored. Fulfillment’s manufacturing approval stays a separate decision; wall thickness and strength are not checked here.'"></p>
+                    <div class="space-y-1">
+                      <p class="lbl" x-text="'Order lines of ' + (t.size_label || 'US ' + t.production_size) + ' · ' + t.material_label + ' — what accepting does (' + ((t.bore_fix.affected || []).length) + ')'"></p>
+                      <p x-show="!(t.bore_fix.affected || []).length" class="text-[12px] text-zinc-500">No order line uses this design at this size and material yet.</p>
+                      <template x-for="x in (t.bore_fix.affected || [])" :key="x.line_id">
+                        <p class="text-[12px]"><a class="underline" :href="'#/orders/' + encodeURIComponent(x.order_id)" x-text="x.order_ref"></a>
+                          <span x-text="' · ' + x.item_ref + ' · ' + (x.transferred ? 'Fulfillment: ' + (x.stage_label || 'sent') + (x.part_display_no ? ' (' + x.part_display_no + ')' : '') : x.order_status_label) + ' — '"></span>
+                          <span class="font-medium" :class="x.action === 'skip' ? 'text-zinc-500' : x.action === 'request' ? 'text-sky-800' : 'text-emerald-800'" x-text="actionLabel(x)"></span>
+                          <span class="text-zinc-500" x-show="x.reason" x-text="' · ' + x.reason"></span></p>
+                      </template>
+                    </div>
+                    <div class="flex flex-wrap gap-2"><button class="btn !py-1.5" @click="acceptBoreFix(t)">Accept and activate…</button><button class="btn2 !py-1.5" @click="rejectBoreFix(t)">Reject…</button></div>
                   </div>
                 </template>
-                <p x-show="t.bore_fix.status === 'accepted'" class="text-[12px] text-emerald-900" x-text="'Accepted by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + ' — saved as a new revision, listed with this design’s 3D results. This result is unchanged; order lines are switched to the revision on the order page, one by one.' + (t.bore_fix.decision_note ? ' Note: ' + t.bore_fix.decision_note : '')"></p>
+                <p x-show="t.bore_fix.status === 'accepted'" class="text-[12px] text-emerald-900" x-text="'Accepted by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + ' — saved as a new revision, listed with this design’s 3D results. This result is unchanged.' + (t.bore_fix.decision_note ? ' Note: ' + t.bore_fix.decision_note : '')"></p>
+                <!-- The active STL of the pair, each activation with what it did to every line, and Restore -->
+                <template x-if="t.bore_fix.status === 'accepted'">
+                  <div class="space-y-2">
+                    <p x-show="!t.bore_fix.activated" class="text-[13px] text-amber-800">The activation for the order lines did not complete. <button class="underline" @click="acceptBoreFix(t, true)">Complete it now</button></p>
+                    <p x-show="t.bore_fix.activated" class="text-[13px] font-medium" x-text="'Active STL: ' + (t.bore_fix.active_three_d_id === t.bore_fix.revision_id ? 'the bore-corrected revision …' + (t.bore_fix.revision_id || '').slice(-8) : 'this original result (restored)')"></p>
+                    <p x-show="t.bore_fix.pending" class="text-[12px] text-sky-800" x-text="t.bore_fix.pending + ' line(s) wait for Fulfillment’s answer.'"></p>
+                    <template x-for="act in (t.bore_fix.activations || [])" :key="act.id">
+                      <div class="text-[12px] border-t border-black/5 pt-1">
+                        <p class="font-medium" x-text="(act.kind === 'restore' ? 'Restored' : 'Accepted and activated') + ' · ' + dateTime(act.created_at) + ' · ' + act.by + (act.note ? ' · ' + act.note : '')"></p>
+                        <p x-show="!act.lines.length" class="text-zinc-500">No order line used it.</p>
+                        <template x-for="x in act.lines" :key="x.id">
+                          <p><a class="underline" :href="'#/orders/' + encodeURIComponent(x.order_id)" x-text="x.order_ref || x.order_id"></a>
+                            <span x-text="' · ' + (x.item_ref || '') + ' — '"></span><span class="font-medium" :class="actClass(x.outcome)" x-text="x.outcome_label"></span>
+                            <span class="text-zinc-500" x-show="x.reason" x-text="' · ' + x.reason"></span><span class="text-zinc-500" x-show="x.revision_no" x-text="' · revision ' + x.revision_no + ' in Fulfillment'"></span></p>
+                        </template>
+                      </div>
+                    </template>
+                    <button x-show="t.bore_fix.activated && t.bore_fix.restore_to" class="btn2 !py-1.5" :disabled="t.bore_fix.pending > 0" :title="t.bore_fix.pending ? 'Wait for Fulfillment’s answer first' : ''"
+                            @click="restoreBoreFix(t)" x-text="t.bore_fix.restore_to === t.bore_fix.session_3d_id ? 'Restore the original STL…' : 'Use the bore-corrected STL again…'"></button>
+                  </div>
+                </template>
                 <p x-show="t.bore_fix.status === 'rejected'" class="text-[12px] text-zinc-600" x-text="'Rejected by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + (t.bore_fix.decision_note ? ' — ' + t.bore_fix.decision_note : '') + '. This result is unchanged; a new correction can be proposed.'"></p>
               </div>
             </template>
@@ -1315,6 +1346,7 @@
                 <p class="text-sm font-semibold text-emerald-900" x-text="'Bore-corrected revision (FixBore) of result …' + t.derived_from.session_3d_id.slice(-8)"></p>
                 <p class="text-[13px] text-emerald-900" x-text="'Accepted by ' + (t.derived_from.accepted_by || 'admin') + ', ' + dateTime(t.derived_from.accepted_at) + '. Its STL is the reviewed file, stored: sha256 ' + (t.derived_from.file_sha256 || '').slice(0, 16) + '…, ' + Math.round((t.derived_from.file_bytes || 0) / 1e6) + ' MB.' + (t.derived_from.note ? ' Note: ' + t.derived_from.note : '')"></p>
                 <p class="text-[12px] text-emerald-900/80">The result it was made from is unchanged. A manufacturing approval is still Fulfillment’s own decision.</p>
+                <p x-show="t.stl_pair" class="text-[12px] font-medium" :class="t.stl_pair?.this_active ? 'text-emerald-900' : 'text-zinc-600'" x-text="t.stl_pair?.this_active ? 'Active: order lines of this design, material and size use this revision.' : 'Not active: the original was restored — its page can make this revision active again.'"></p>
               </div>
             </template>
             <template x-if="t.bore_correction && !t.derived_from">
@@ -1927,7 +1959,7 @@
           <p class="lbl">Requests to Fulfillment</p>
           <template x-for="c in (pd.commands || [])" :key="c.id">
             <p><span class="badge" :class="cmdStateClass(c.state)" x-text="c.state"></span>
-              <span x-text="' ' + c.action.replace('_', ' ') + ' · ' + (c.payload.quantity ? c.payload.quantity + ' unit(s)' : 'the whole line') + ' · ' + c.payload.reason + ' · ' + dateTime(c.created_at)"></span>
+              <span x-text="cmdText(c, false)"></span>
               <span x-show="c.state !== 'pending'" class="text-zinc-500" x-text="' → ' + (c.result.result || c.state) + (c.result.reason ? ': ' + c.result.reason : '')"></span></p>
           </template>
         </div>
@@ -2087,7 +2119,7 @@
               <p class="lbl">Requests to Fulfillment</p>
               <template x-for="c in (of.commands || [])" :key="c.id">
                 <p><span class="badge" :class="cmdStateClass(c.state)" x-text="c.state"></span>
-                  <span x-text="' ' + c.action.replace('_', ' ') + ' · ' + (c.payload.item_ref || '') + ' · ' + (c.payload.quantity ? c.payload.quantity + ' unit(s)' : 'the whole line') + ' · ' + c.payload.reason + ' · ' + dateTime(c.created_at) + ' · ' + (c.actor === 'developer-key' ? 'Admin shared-key access' : c.actor)"></span>
+                  <span x-text="cmdText(c, true)"></span>
                   <span x-show="c.state !== 'pending'" class="text-zinc-500" x-text="' → ' + (c.result.result || c.state) + (c.result.reason ? ': ' + c.result.reason : '')"></span></p>
               </template>
             </div>
@@ -2150,6 +2182,7 @@
                             <a x-show="prodLine(l).fulfillment_url" class="underline text-zinc-700 hover:text-black" :href="prodLine(l).fulfillment_url" target="_blank" rel="noopener" title="Open this part in the Fulfillment application">Open in Fulfillment ↗</a></p>
                           <p class="text-zinc-500 mt-0.5" x-text="'Sent ' + dateTime(prodLine(l).production.sent_at) + ' · Atelier 3D ' + (prodLine(l).production.pinned?.version_label || '') + (prodLine(l).production.handoff_no > 1 ? ' · hand-over ' + prodLine(l).production.handoff_no : '') + (prodLine(l).production.pinned?.file_sha256 ? '' : ' · preparing the production file…')"></p>
                           <p x-show="prodHandoff(prodLine(l))?.tone !== 'green' || prodLine(l).stage_detail" class="text-zinc-500" x-text="prodHandoff(prodLine(l))?.hint"></p>
+                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
                         </div>
                       </template>
                       <template x-if="!prodLine(l).production?.sent">
@@ -2160,7 +2193,7 @@
                             <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span></p>
                           <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
                           <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
-                          <p x-show="l.bore_correction" class="text-sky-800">A bore-corrected revision of this line’s STL was accepted. <button class="underline" :disabled="odBusy" @click="useBoreCorrection(l)">Use the bore-corrected STL…</button></p>
+                          <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
                           <p x-show="(prodLine(l).duplicates || []).length" class="text-amber-800" x-text="'Possible duplicate: ' + dupText(prodLine(l)) + '. Send to Production asks you to confirm; nothing is cancelled.'"></p>
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
                             <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
