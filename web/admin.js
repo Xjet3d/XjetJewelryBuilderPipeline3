@@ -538,7 +538,7 @@ function adminApp() {
       this.pdBusy = true; this.pdError = '';
       try {
         await this.api('POST', `/api/admin/orders/${encodeURIComponent(pd.order.id)}/lines/${encodeURIComponent(pd.line.id)}/production-revision`, body);
-        this.notify('Revised file submitted to Production as revision ' + (pd.handoff_no + 1) + '.');
+        this.notify('Revised file submitted to Production (hand-over ' + (pd.handoff_no + 1) + ') — Fulfillment makes its own new revision of it.');
         await this.loadProductionDetail();
       } catch (e) { this.pdError = e.message; } finally { this.pdBusy = false; }
     },
