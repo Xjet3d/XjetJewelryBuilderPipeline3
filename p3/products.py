@@ -158,7 +158,7 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "prompt_check": {"ring": False, "charm": False},                          # p3/promptcheck.py: off
             "site_indexing": False,                                                  # p3/sitepages.py: search engines kept out
             "google_site_verification": "",                                          # Search Console's meta tag (public, not a secret)
-            "analytics": {"enabled": False, "host": "", "ga4": "", "clarity": ""},  # p3/analytics.py: off, nothing loads
+            "analytics": {"enabled": False, "host": "", "providers": {}},  # p3/analytics.py: off, no tool, nothing loads
             "ai_spend_warning": {"threshold_usd": None, "to": ""},                  # p3/spendwarning.py: off
             "ai_daily_spend_cap": {"cap_usd": None},                               # p3/credits.py: the server's cap
             "ai_spend_warning_sent": {}}
@@ -314,8 +314,7 @@ def AdminPreview(Ctx: Context, Request) -> bool:
         return False
     from p3 import adminauth
     try:
-        return bool(hasattr(Request, "headers") and Ctx.Settings.AdminKey
-                    and any(adminauth.Validate(Ctx, T) for T in adminauth.Tokens(Request)))
+        return bool(hasattr(Request, "headers") and any(adminauth.Validate(Ctx, T) for T in adminauth.Tokens(Request)))
     except Exception:  # noqa: BLE001 — never let a preview check break the customer site
         return False
 

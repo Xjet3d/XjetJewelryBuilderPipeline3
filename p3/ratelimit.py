@@ -21,6 +21,12 @@ Limits = {                      # name: (requests, window in seconds)
     "register:ip": (10, 900),
     "register:email": (5, 3600),
     "quote:ip": (30, 900),          # a customer's answer to a quote (the emailed link)
+    "login:ip": (30, 900),          # password sign-in attempts, per address of the visitor …
+    "login:email": (8, 900),        # … and per account address (a script guessing one account is stopped long before)
+    "mail:ip": (12, 3600),          # security emails (confirm, reset, link): per visitor …
+    "mail:email": (4, 3600),        # … and per recipient, so the form cannot be used to flood an inbox
+    "claim:ip": (12, 900),          # tries of a legacy six-letter code
+    "token:ip": (40, 900),          # consuming an emailed link
 }
 MaxWindows = 50_000             # before pruning expired windows
 
@@ -139,3 +145,18 @@ class RateLimiter:
     def Register(self, Request, Email: str | None) -> None:
         self.Hit("register:ip", ClientIp(Request))
         self.Hit("register:email", (Email or "").strip().lower() or None)
+
+    def Login(self, Request, Email: str | None) -> None:
+        self.Hit("login:ip", ClientIp(Request))
+        self.Hit("login:email", (Email or "").strip().lower() or None)
+
+    def Mail(self, Request, Email: str | None) -> None:
+        """A request that sends a security email to an address."""
+        self.Hit("mail:ip", ClientIp(Request))
+        self.Hit("mail:email", (Email or "").strip().lower() or None)
+
+    def Claim(self, Request) -> None:
+        self.Hit("claim:ip", ClientIp(Request))
+
+    def Token(self, Request) -> None:
+        self.Hit("token:ip", ClientIp(Request))

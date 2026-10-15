@@ -96,7 +96,8 @@ def test_only_the_accounts_package_touches_identity_storage():
         if (RepoP3 / "accounts") in Py.parents or Py in Allowed:
             continue
         Text = Py.read_text(encoding="utf-8")
-        for Needle in ("access_tokens", "usage_events", "token_hash", "FROM accounts"):
+        for Needle in ("access_tokens", "usage_events", "token_hash", "FROM accounts", "login_identities", "customer_sessions",
+                       "auth_tokens", "password_credentials", "oauth_states"):
             if Needle in Text:
                 Offenders.append(f"{Py.name}: {Needle}")
     assert Offenders == []

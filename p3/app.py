@@ -44,6 +44,8 @@ from p3.designs import DesignService
 from p3.images import ImageService
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
+from p3.oidc import BuildProviders as BuildOidcProviders
+from p3 import authapi
 from p3.admin import RegisterAdmin
 from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
@@ -61,7 +63,7 @@ from p3.orders import OrderService
 from p3.promos import PromoService
 from p3.payments import BuildPaymentProvider
 from p3.addressing import BuildValidator
-from p3.registration import PublicOrigin, RegistrationService
+from p3.registration import PublicOrigin, RegistrationService, RenderVerifyPage
 from p3 import sessions as Sessions
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
@@ -146,8 +148,8 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
 
 
 class _RedactQuery(logging.Filter):
-    """Access-log lines never carry secrets from query strings (/verify?token=…, signed download links ?sig=…)."""
-    Pattern = re.compile(r"((?:token|sig|key)=)[^&\s\"']+")
+    """Access-log lines never carry secrets from query strings (/verify?token=…, signed download links ?sig=…, the provider's ?code=…&state=… on a sign-in callback)."""
+    Pattern = re.compile(r"((?:token|sig|key|code|state|ticket)=)[^&\s\"']+")
 
     def filter(self, Record: logging.LogRecord) -> bool:
         if isinstance(Record.msg, str):
@@ -195,6 +197,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
     Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
     Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
+    Ctx.Oidc = BuildOidcProviders(S)
     Mailer = BuildMailer(S.DataDir)
     Ctx.Mailer = Mailer
     Svc = Services(Ctx, Mailer)
@@ -328,6 +331,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.exception_handler(InsufficientCredits)
     async def _NoCredits(_Req: Request, E: InsufficientCredits):
         return JSONResponse(status_code=402, content={"error": {"code": "quota_exhausted", "message": E.Message}})
+
+    authapi.Install(App_, Ctx, Mailer)               # sessions, CSRF, email/password, Google, Apple, linking, legacy claim (AJW-39)
 
     def Tok(XAccessToken: str | None):
         """Resolve the caller to a Principal (the only way routes learn who is calling)."""
@@ -649,13 +654,19 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return {**Ctx.Accounts.Profile(Tok(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
+    LegacyGone = HttpError(410, "sign_in_changed", "Sign-in has changed: create an account or sign in with Google, Apple or your email.")
+
     @App_.post("/api/register")
     async def Register(Req: Request, Background: BackgroundTasks, Body_: dict = Body(...)):
+        if S.AuthMode != "legacy":                       # the old flow e-mails a sign-in code, which no email may carry any more
+            raise LegacyGone
         Ctx.RateLimiter.Register(Req, str(Body_.get("Email") or ""))
         return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""), Background.add_task)
 
     @App_.post("/api/register-token")
     async def RegisterToken(Req: Request, Body_: dict = Body(...)):
+        if S.AuthMode == "modern":                       # the six-letter code is only exchanged for a real login (/api/auth/claim)
+            raise LegacyGone
         Ctx.RateLimiter.Auth(Req)
         return Registration.SignInWithToken(Body_.get("Token", ""), Body_.get("Via", "token"))
 
@@ -665,6 +676,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/verify", include_in_schema=False)
     async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
+        if S.AuthMode != "legacy":                       # an old link would reveal a six-letter code: it opens nothing now
+            return HTMLResponse(RenderVerifyPage("invalid", None, "", Registration._StudioUrl(Req), Base, S.SupportEmail))
         return HTMLResponse(Registration.VerifyPage(Req, token, Background.add_task))
 
     @App_.post("/api/events")

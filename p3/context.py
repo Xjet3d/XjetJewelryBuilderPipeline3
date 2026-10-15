@@ -1,6 +1,7 @@
 """Wiring of the shared services used by every module (no globals)."""
 
 import asyncio
+import secrets
 from dataclasses import dataclass, field
 
 from p3.accounts import AccountProvider
@@ -39,6 +40,8 @@ class Context:
     AiPrices: "PriceBook" = None                  # fal.ai list prices: the estimated cost recorded with every submission
     RateLimiter: "RateLimiter" = None             # per-IP / per-account request limits (p3/ratelimit.py)
     SpendInFlight: float = 0.0                    # estimated cost of the paid submissions between cap check and record
+    AdminInternal: str = field(default_factory=lambda: secrets.token_urlsafe(32))   # in-process only: the credential of an identity-signed admin request
+    Oidc: dict = field(default_factory=dict)      # Google / Apple providers that have credentials (p3/oidc.py)
     Mailer: object = None                         # the site's mailer (p3/mail.py): the AI spend warning sends with it
     Runner: TaskRunner = field(default_factory=TaskRunner)
     ImageSemaphore: asyncio.Semaphore | None = None

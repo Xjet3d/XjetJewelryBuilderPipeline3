@@ -11,3 +11,6 @@ trimesh>=4.4
 numpy>=1.26
 # Poster frame for each 360° movie (p3/media.py); bundles an ffmpeg binary, so servers need no system ffmpeg
 imageio-ffmpeg>=0.5
+# Sign-in (AJW-39): argon2id password hashes; PyJWT verifies Google / Apple ID tokens and signs Apple's client secret (needs cryptography)
+argon2-cffi>=23.1
+PyJWT[crypto]>=2.8

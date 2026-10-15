@@ -12,6 +12,7 @@ This repository is independent of the commercial Pipeline 2 (`XjetJewelryBuilder
 - What was built, the decisions made, and the open items: [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
 - Pricing rules and what still needs approval: [docs/PRICING.md](docs/PRICING.md)
 - Accounts, tokens and credits, and the future shared-auth integration point: [docs/ACCOUNTS.md](docs/ACCOUNTS.md)
+- Sign-in with Google, Apple and email, sessions, administrator identity, rollout and rollback (AJW-39): [docs/AUTH-OPERATIONS-AJW-39.md](docs/AUTH-OPERATIONS-AJW-39.md)
 - Admin area (user / token management, per-user activity and usage): [docs/ADMIN.md](docs/ADMIN.md) — `/JewelryB2C3/admin/`
 - The XJet Atelier Fulfillment integration (ownership, the integration API, the flag, the rules): [docs/FULFILLMENT.md](docs/FULFILLMENT.md)
 

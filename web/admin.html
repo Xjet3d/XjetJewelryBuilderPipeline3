@@ -186,6 +186,14 @@
   <main x-show="!ok" x-cloak class="max-w-md mx-auto p-8 mt-16">
     <div class="card p-8 space-y-4">
       <h1 class="cinzel text-xl">Admin sign-in</h1>
+      <!-- Administrators: their own Google / Apple account, enrolled by the operator. Nothing else opens the Admin once this is enforced. -->
+      <div x-show="authCfg.identity_enforced || authCfg.providers.google || authCfg.providers.apple" x-cloak class="space-y-3">
+        <p class="text-sm text-zinc-500">Sign in with your administrator account. This browser stays signed in for 12 hours.</p>
+        <div x-show="authCfg.providers.google"><a :href="BASE + '/api/admin/auth/google/start'" class="btn w-full" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">Continue with Google</a></div>
+        <div x-show="authCfg.providers.apple"><a :href="BASE + '/api/admin/auth/apple/start'" class="btn w-full" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">Continue with Apple</a></div>
+        <p x-show="authCfg.identity_enforced && !authCfg.providers.google && !authCfg.providers.apple" class="text-sm text-red-600" role="alert">No administrator sign-in method is configured on this server.</p>
+      </div>
+      <div x-show="authCfg.key_login" x-cloak class="space-y-4" style="margin-top:1rem">
       <p class="text-sm text-zinc-500">Enter the P3 admin key once. This browser stays signed in — across closed tabs, a closed browser and restarts — until you sign out. The key itself is never stored in the browser.</p>
       <label class="lbl block" for="admin-key">Admin key</label>
       <div x-data="{ show: false }" style="position:relative">
@@ -196,8 +204,9 @@
           <svg x-show="show" x-cloak width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0112 6c6.4 0 10 6 10 6a17 17 0 01-3.2 3.9M6.5 6.9C3.7 8.7 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8M9.9 9.9a3 3 0 004.2 4.2"/></svg>
         </button>
       </div>
+      </div>
       <p x-show="error" class="text-sm text-red-600" role="alert" x-text="error"></p>
-      <button class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
+      <button x-show="authCfg.key_login" class="btn w-full" @click="connect()" :disabled="busy || !keyInput.trim()">Sign in</button>
     </div>
   </main>
 
@@ -206,7 +215,7 @@
 
     <!-- Create -->
     <section class="card p-6">
-      <p class="lbl mb-4">Create a customer (sign-in code)</p>
+      <p class="lbl mb-4">Create a customer (one-time code)</p>
       <form class="grid grid-cols-1 md:grid-cols-[1fr_1fr_150px_auto] gap-4 items-end" @submit.prevent="create()">
         <div><label class="lbl block mb-1.5">Name <span class="text-red-500">*</span></label>
           <input class="inp" x-model="form.Name" required placeholder="Full name"></div>
@@ -2396,34 +2405,61 @@
         </form>
         <p x-show="siteIndexingMsg" class="text-sm" role="status" :class="siteIndexingErr ? 'text-red-600' : 'text-emerald-700'" x-text="siteIndexingMsg"></p>
       </section>
-      <section class="card p-5 space-y-3" x-show="analytics" aria-label="Analytics and cookies">
+      <section class="card p-5 space-y-4" x-show="analytics" aria-label="Analytics and cookies">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <p class="lbl">Analytics &amp; cookies</p>
-          <span class="badge" :class="analytics?.active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'"
-                x-text="!analytics?.active ? 'OFF' : (analytics?.placeholder?.ga4 || analytics?.placeholder?.clarity) ? 'TEST · NOTHING SENT' : 'ON · AFTER CONSENT'"></span>
+          <span class="badge" :class="anBadge().cls" x-text="anBadge().text"></span>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-          <span id="analytics-switch-label" class="text-sm">Offer Analytics to visitors (Google Analytics 4, Microsoft Clarity):</span>
-          <button type="button" role="switch" aria-labelledby="analytics-switch-label" :aria-checked="analytics?.enabled ? 'true' : 'false'"
-                  @click="toggleAnalytics()" :disabled="anBusy"
-                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
-                  :class="analytics?.enabled ? 'bg-emerald-600' : 'bg-zinc-300'">
-            <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="analytics?.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
-          </button>
-          <span class="badge" :class="analytics?.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-700'" x-text="analytics?.enabled ? 'ON' : 'OFF'"></span>
-        </div>
-        <form class="grid gap-2 sm:grid-cols-3" @submit.prevent="saveAnalytics()">
-          <label class="text-[12px] text-zinc-600">Site host the tools may run on
-            <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.host" :placeholder="analytics?.site_host || 'xjetatelier.xjet3d.com'" autocomplete="off"></label>
-          <label class="text-[12px] text-zinc-600">GA4 measurement ID
-            <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.ga4" placeholder="G-XXXXXXXXXX" autocomplete="off"></label>
-          <label class="text-[12px] text-zinc-600">Clarity project ID
-            <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.clarity" placeholder="e.g. abcd1234ef" autocomplete="off"></label>
-          <div class="sm:col-span-3"><button type="submit" class="btn2 !py-1.5" :disabled="anBusy || !anDirty">Save</button></div>
+        <form class="space-y-4" @submit.prevent="saveAnalytics()" novalidate>
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3">
+            <div>
+              <p id="an-offer" class="text-sm font-semibold text-zinc-900">Offer Analytics to visitors</p>
+              <p class="text-[12px] text-zinc-500">Visitors are asked first; the tools below run only for those who accept Analytics.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[12px] font-semibold text-zinc-600" x-text="anForm.enabled ? 'ON' : 'OFF'"></span>
+              <button type="button" role="switch" aria-labelledby="an-offer" :aria-checked="anForm.enabled ? 'true' : 'false'"
+                      @click="anForm.enabled = !anForm.enabled; if (anForm.enabled && !anForm.host.trim()) anForm.host = analytics?.site_host || ''"
+                      class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition" :class="anForm.enabled ? 'bg-emerald-600' : 'bg-zinc-300'">
+                <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="anForm.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'"></span>
+              </button>
+            </div>
+          </div>
+          <label class="block text-[12px] text-zinc-600">Allowed site host
+            <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.host" :placeholder="analytics?.site_host || 'xjetatelier.xjet3d.com'" autocomplete="off" spellcheck="false">
+            <span class="block mt-1 text-zinc-500">The tools start only on this host. This server answers as
+              <button type="button" class="underline font-mono" @click="anForm.host = analytics?.site_host || ''" x-text="analytics?.site_host"></button>.</span>
+          </label>
+          <div class="grid gap-3 md:grid-cols-2">
+            <template x-for="p in analytics?.providers || []" :key="p.key">
+              <div class="rounded-lg border border-zinc-200 px-4 py-3 space-y-2" :data-provider="p.key">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-sm font-semibold text-zinc-900" x-text="p.name"></p>
+                  <span class="badge" :class="anToolState(p).cls" x-text="anToolState(p).text"></span>
+                </div>
+                <label class="block text-[12px] text-zinc-600"><span x-text="p.id_label"></span>
+                  <input class="inp !py-1.5 font-mono !text-[12px] mt-1" x-model="anForm.providers[p.key].id" :placeholder="'e.g. ' + p.example" autocomplete="off" spellcheck="false"></label>
+                <label class="flex items-center gap-2 text-[12px] text-zinc-700">
+                  <input type="checkbox" x-model="anForm.providers[p.key].enabled"><span x-text="'Use ' + p.name + ' after consent'"></span></label>
+              </div>
+            </template>
+          </div>
+          <p class="text-[12px] text-zinc-500">Marketing &amp; Advertising: no tool is set up, so visitors see it as “Not currently used”.</p>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn2 !py-1.5" :disabled="anBusy || !anDirty">Save changes</button>
+            <span x-show="anDirty" class="text-[12px] text-amber-700">Unsaved changes</span>
+          </div>
+          <p x-show="anMsg" class="text-sm" role="status" :class="anErr ? 'text-red-600' : 'text-emerald-700'" x-text="anMsg"></p>
         </form>
-        <p class="text-[12px] text-zinc-500">Nothing loads before a visitor chooses: the cookie banner offers Accept all, Reject non-essential and Customize, and Cookie Settings at the foot of every page changes the choice. Google Analytics runs in consent mode (basic: no Google tag before consent; advertising signals always denied); Clarity masks customer details and never runs on the quote page, the Admin or the developer tools. The tools run only on the host above — <strong>use this environment's own IDs</strong> (Proto has its own GA4 property and Clarity project; Atelier's are set only on Atelier). For a functional test that loads and sends nothing (Proto), use the placeholder IDs <span class="font-mono">G-TEST0000</span> and <span class="font-mono">test0000</span>: the banner, the choice and the events run in the page only. Consent version <span x-text="analytics?.consent_version"></span>.
-          <span x-show="analytics?.changed_at" x-text="'Last changed ' + dateTime(analytics?.changed_at) + ' by ' + (analytics?.changed_by || '—') + '.'"></span></p>
-        <p x-show="anMsg" class="text-sm" role="status" :class="anErr ? 'text-red-600' : 'text-emerald-700'" x-text="anMsg"></p>
+        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-[12px] text-zinc-700 space-y-1" data-an-saved>
+          <p class="font-semibold text-zinc-900">Saved on this server</p>
+          <p>Analytics offered: <strong x-text="analytics?.enabled ? 'On' : 'Off'"></strong> · Allowed host: <span class="font-mono" x-text="analytics?.host || '—'"></span></p>
+          <template x-for="p in analytics?.providers || []" :key="'held-' + p.key">
+            <p><span x-text="p.name + ':'"></span> <span class="font-mono" x-text="p.id || 'no ID'"></span><span x-show="p.id" x-text="p.enabled ? ' · on' : ' · off'"></span></p>
+          </template>
+          <p class="text-zinc-500" x-show="analytics?.changed_at" x-text="'Last changed ' + dateTime(analytics?.changed_at) + ' by ' + (analytics?.changed_by || '—') + '.'"></p>
+        </div>
+        <p class="text-[12px] text-zinc-500">Nothing optional loads before a visitor chooses. A tool runs only for visitors who accept Analytics, only on the allowed host, and only with its own ID entered here: IDs are never written into the code. Enter this environment's own IDs (Atelier's only on Atelier); for a functional test that loads and sends nothing, use <span class="font-mono">G-TEST0000</span> and <span class="font-mono">test0000</span>. The Admin and the developer tools are never measured, the quote page never runs Clarity, and Clarity masks customer details. Consent version <span x-text="analytics?.consent_version"></span>.</p>
       </section>
       <section class="card p-6" x-show="storage">
         <p class="lbl mb-4">3D storage · this server</p>

@@ -173,6 +173,7 @@ function adminApp() {
   return {
     BASE,
     key: '', keyInput: '', ok: false, busy: false, error: '', mode: '',
+    authCfg: { identity_enforced: false, key_login: true, providers: {} },   // how this server lets administrators in
     users: [], search: '', showRemoved: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
     credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
@@ -227,7 +228,7 @@ function adminApp() {
     aiMode: null, aiModeBusy: false, aiModeMsg: '', aiModeErr: false,
     siteIndexing: null, siteIndexingBusy: false, siteIndexingMsg: '', siteIndexingErr: false,   // Settings → System → Search engines
     gscCode: '',                                 // Search Console's verification code (the meta tag's content)
-    analytics: null, anForm: { host: '', ga4: '', clarity: '' }, anBusy: false, anMsg: '', anErr: false,   // Settings → System → Analytics & cookies
+    analytics: null, anForm: { enabled: false, host: '', providers: {} }, anBusy: false, anMsg: '', anErr: false,   // Settings → System → Analytics & cookies
     spendWarning: null, swThreshold: '', swTo: '', swBusy: false, swMsg: '', swErr: false,   // Settings → System → AI spend warning
     scCap: '', scBusy: false, scMsg: '', scErr: false,                                     // … and the hard cap beside it
     clientIp: null,                              // the caller's address as the rate limits see it
@@ -254,8 +255,18 @@ function adminApp() {
         if (f) Object.assign(this, { sq: f.sq || '', sStage: f.sStage || '', sBag: f.sBag || '', s3d: f.s3d || '', sGallery: f.sGallery || '', sMock: !!f.sMock, sAttention: !!f.sAttention, sSort: f.sSort || 'started',
                                      sProduct: ['ring', 'charm'].includes(f.sProduct) ? f.sProduct : '' });
       } catch (_) {}
+      // How administrators sign in here, and what a provider round trip just answered (#auth=denied …)
+      try { this.authCfg = await (await fetch(BASE + '/api/admin/auth/config')).json(); } catch (_) {}
+      const AUTH_TEXT = { denied: 'That account is not an administrator of this site.', failed: 'The sign-in did not complete. Please try again.',
+                          cancelled: 'Sign-in was cancelled.', unavailable: 'That sign-in method is not available.' };
+      let authErr = '';
+      try {
+        const P = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        const a = P.get('auth');
+        if (a) { history.replaceState(null, '', location.pathname + location.search); if (a !== 'ok') authErr = AUTH_TEXT[a] || 'The sign-in did not complete.'; }
+      } catch (_) {}
       // A remembered browser: the session cookie signs in without asking for the key again.
-      try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = ''; }
+      try { await this._enter(await this.api('GET', '/api/admin/session')); } catch (_) { this.ok = false; this.error = authErr; }
     },
 
     // ── dialogs & toasts (no native alert/confirm/prompt) ───────────────
@@ -1694,28 +1705,59 @@ function adminApp() {
         this.siteIndexingMsg = this.gscCode ? 'Saved: the home page carries the verification tag.' : 'Removed: no verification tag on the home page.';
       } catch (e) { this.siteIndexingErr = true; this.siteIndexingMsg = e.message; } finally { this.siteIndexingBusy = false; }
     },
-    // Analytics & cookies (p3/analytics.py): the IDs and the one host the tools may run on; nothing runs before consent
+    // Analytics & cookies (p3/analytics.py): the switch, the one host the tools may run on, and each tool's own ID and
+    // on / off, saved together. After Save the card reads the server back and says Saved only when it holds the form.
     _anFill() {
+      const a = this.analytics || {}, providers = {};
+      for (const p of a.providers || []) providers[p.key] = { enabled: !!p.enabled, id: p.id || '' };
+      this.anForm = { enabled: !!a.enabled, host: a.host || '', providers };
+    },
+    // A form as the server stores it: a bare lowercase host, each ID in its tool's case
+    _anNorm(f) {
+      const host = String(f.host || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0], providers = {};
+      for (const p of this.analytics?.providers || []) {
+        const v = (f.providers || {})[p.key] || {}, id = String(v.id || '').trim();
+        providers[p.key] = { enabled: !!v.enabled, id: p.case === 'upper' ? id.toUpperCase() : id.toLowerCase() };
+      }
+      return { enabled: !!f.enabled, host, providers };
+    },
+    _anHeld() {
       const a = this.analytics || {};
-      this.anForm = { host: a.host || '', ga4: a.ga4 || '', clarity: a.clarity || '' };
+      return this._anNorm({ enabled: a.enabled, host: a.host, providers: Object.fromEntries((a.providers || []).map(p => [p.key, p])) });
     },
-    get anDirty() {
-      const a = this.analytics || {}, f = this.anForm;
-      return f.host.trim() !== (a.host || '') || f.ga4.trim() !== (a.ga4 || '') || f.clarity.trim() !== (a.clarity || '');
+    get anDirty() { return JSON.stringify(this._anNorm(this.anForm)) !== JSON.stringify(this._anHeld()); },
+    anBadge() {
+      const a = this.analytics;
+      if (!a?.enabled) return { text: 'OFF', cls: 'bg-zinc-200 text-zinc-700' };
+      if (!a.active) return { text: 'ON · NO TOOL CONFIGURED', cls: 'bg-amber-100 text-amber-800' };
+      if ((a.providers || []).some(p => p.active && p.placeholder)) return { text: 'TEST · NOTHING SENT', cls: 'bg-amber-100 text-amber-800' };
+      return { text: 'ON · AFTER CONSENT', cls: 'bg-emerald-100 text-emerald-800' };
     },
-    async saveAnalytics(patch) {
+    // One tool's saved state, as this server holds it
+    anToolState(p) {
+      if (!p.id) return { text: 'Not configured', cls: 'bg-zinc-200 text-zinc-700' };
+      if (!p.configured) return { text: 'Invalid ID', cls: 'bg-red-100 text-red-700' };
+      if (!p.enabled) return { text: 'Configured · off', cls: 'bg-zinc-200 text-zinc-700' };
+      if (p.placeholder) return { text: 'Test ID · nothing sent', cls: 'bg-amber-100 text-amber-800' };
+      if (!p.active) return { text: 'Configured · analytics off', cls: 'bg-zinc-200 text-zinc-700' };
+      return { text: 'Configured · on after consent', cls: 'bg-emerald-100 text-emerald-800' };
+    },
+    anSummary() {
+      const a = this.analytics || {};
+      return 'analytics ' + (a.enabled ? 'on' : 'off') + ' · host ' + (a.host || '—') +
+        (a.providers || []).map(p => ' · ' + p.name + ' ' + (p.id ? p.id + (p.enabled ? ' (on)' : ' (off)') : 'not configured')).join('');
+    },
+    async saveAnalytics() {
       this.anBusy = true; this.anMsg = ''; this.anErr = false;
+      const sent = this._anNorm(this.anForm);
       try {
-        this.analytics = await this.api('PUT', '/api/admin/analytics', patch || { host: this.anForm.host.trim(), ga4: this.anForm.ga4.trim(), clarity: this.anForm.clarity.trim() });
+        await this.api('PUT', '/api/admin/analytics', sent);
+        this.analytics = await this.api('GET', '/api/admin/analytics');          // read back what the server now holds
+        const held = this._anHeld();
         this._anFill();
-        this.anMsg = this.analytics.active ? 'Saved — the tools run on ' + this.analytics.host + ' for visitors who accept Analytics.'
-                                           : 'Saved — no analytics tool runs on this site.';
-      } catch (e) { this.anErr = true; this.anMsg = e.message; } finally { this.anBusy = false; }
-    },
-    async toggleAnalytics() {
-      const on = !this.analytics?.enabled;
-      if (on && !this.anForm.host.trim()) this.anForm.host = this.analytics?.site_host || '';
-      await this.saveAnalytics({ enabled: on, host: this.anForm.host.trim(), ga4: this.anForm.ga4.trim(), clarity: this.anForm.clarity.trim() });
+        this.anErr = JSON.stringify(held) !== JSON.stringify(sent);
+        this.anMsg = (this.anErr ? 'Not saved as entered. The server holds: ' : 'Saved. Read back from the server: ') + this.anSummary() + '.';
+      } catch (e) { this.anErr = true; this.anMsg = 'Not saved: ' + e.message; } finally { this.anBusy = false; }
     },
 
     // ── Admin key (Settings → Keys) ────────────────────────────────────

@@ -12,8 +12,10 @@
 #      logged and the same broken commit is not retried until the branch moves again);
 #   5. run the read-only checks of scripts/verify-production.sh (their result is logged, never a reason to roll back).
 # Gallery content is not part of this automatic update. After an approved update, when proto's approved Inspiration
-# Gallery changed and the owner approved it, push it explicitly (only gallery content moves; deploy/README.md, atelier):
-#   bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
+# Gallery changed and the owner approved it, push it explicitly, over SSH from a machine with ssh to tron and to this
+# server: the Admin here is not public, so the bundle is imported by this checkout's own `gallery-sync.sh import` (only
+# gallery content moves; deploy/README.md, atelier):
+#   P3_TARGET_SSH=atelier bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
 # Manual run: bash scripts/auto-deploy-atelier.sh   ·   Pause: systemctl --user stop xjet-jewelry-b2c3-autodeploy.timer
 # Environment: P3_DEPLOY_BRANCH (atelier-production), P3_CHECKOUT (default ~/git/XjetJewelryBuilderPipeline3),
 # P3_SERVICE (xjet-jewelry-b2c3), P3_LOCAL_URL (http://127.0.0.1:8340/JewelryB2C3), P3_BACKUP_DIR (~/p3-backups).

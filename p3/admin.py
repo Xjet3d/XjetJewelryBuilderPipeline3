@@ -21,8 +21,8 @@ import re
 import time
 from statistics import mean
 
-from fastapi import BackgroundTasks, Body, FastAPI, Header, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import BackgroundTasks, Body, FastAPI, Form, Header, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
 from p3 import adminauth as AdminAuth
 from p3 import analytics as Analytics
@@ -52,6 +52,7 @@ from p3 import credits as Credits
 from p3 import adminkey as AdminKeys
 from p3 import falkey as FalKeys
 from p3.registration import PublicOrigin
+from p3.oidc import OidcError, ParseUserHint
 from p3.modelconfig import ConfigError, ExportText, Models as ModelSpecs, RuntimeInputs, Validate as ValidateConfig
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 
@@ -60,13 +61,18 @@ Logger = logging.getLogger("p3.admin")
 
 @dataclass(frozen=True)
 class AdminPrincipal:
-    Id: str            # who is acting (today always "developer-key")
+    Id: str            # who is acting: the administrator's name, or "developer-key" for the shared key
     Method: str        # how they authenticated
 
 
 def RequireAdmin(Ctx: Context, Authorization: str | None) -> AdminPrincipal:
     """The only admin authorization check. Swap this for an admin role / company auth later."""
-    RequireDeveloper(Ctx, Authorization)
+    IdentityId = RequireDeveloper(Ctx, Authorization)
+    if IdentityId:
+        Row = Ctx.Db.One("SELECT name FROM admin_identities WHERE id = ? AND enabled = 1", (IdentityId,))
+        if Row is None:
+            raise HttpError(403, "developer_auth_required", "Developer authorization required.")
+        return AdminPrincipal(Id=Row["name"], Method="identity")
     return AdminPrincipal(Id="developer-key", Method="P3_ADMIN_KEY")
 
 
@@ -523,8 +529,84 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return HealthDetails() if HealthDetails else {"ok": True}
 
     # ── persistent sign-in: the key once per browser, then a server-side session cookie ──
+    # ── administrator identity: Google / Apple, allowlisted by the provider's subject (p3/adminauth.py) ──
+    AdminOAuthCookie = "atelier_admin_oauth"
+    Base = Ctx.Settings.BasePath
+
+    def _AdminOrigin(Req: Request) -> str:
+        if Ctx.Settings.AdminBaseUrl:                       # the Admin is reached by an SSH tunnel, not the public host
+            return Ctx.Settings.AdminBaseUrl
+        return f"https://{Ctx.Settings.AdminHost}" if Ctx.Settings.AdminHost else PublicOrigin(Req)
+
+    def _AdminRedirect(Req: Request, Provider: str) -> str:
+        return f"{_AdminOrigin(Req)}{Base}/api/admin/auth/{Provider}/callback"
+
+    def _AdminBack(Req: Request, Status: str) -> RedirectResponse:
+        Resp = RedirectResponse(f"{Base}/admin/#auth={Status}", status_code=303)
+        Resp.delete_cookie(AdminOAuthCookie, path=Base + "/api/admin/auth/", httponly=True,
+                           samesite="none" if AdminAuth.Secure(Req) else "lax", secure=AdminAuth.Secure(Req))
+        return Resp
+
+    @App_.get("/api/admin/auth/config")
+    async def AdminAuthConfig():
+        return {"identity_enforced": Ctx.Settings.AdminIdentityEnforced, "key_login": not Ctx.Settings.AdminIdentityEnforced,
+                "providers": {P: P in Ctx.Oidc for P in AdminAuth.IdentityProviders}}
+
+    @App_.get("/api/admin/auth-stats")
+    async def AdminAuthStats(authorization: str | None = Header(None)):
+        """Monitoring: sign-ins by method, live sessions, emailed links, and where the six-letter-code migration stands."""
+        Admin(authorization)
+        return {**Ctx.Accounts.Identity.Stats(), "auth_mode": Ctx.Settings.AuthMode, "admin_identity_enforced": Ctx.Settings.AdminIdentityEnforced,
+                "administrators": AdminAuth.Administrators(Ctx.Db), "providers": sorted(Ctx.Oidc)}
+
+    @App_.get("/api/admin/auth/{Provider}/start")
+    async def AdminOAuthStart(Req: Request, Provider: str):
+        Prov = Ctx.Oidc.get(Provider)
+        if Provider not in AdminAuth.IdentityProviders or Prov is None:
+            return RedirectResponse(f"{Base}/admin/#auth=unavailable", status_code=303)
+        Ctx.RateLimiter.Auth(Req)
+        St = Ctx.Accounts.Identity.NewOAuthState(Provider, "admin")
+        Resp = RedirectResponse(Prov.AuthorizeUrl(_AdminRedirect(Req, Provider), St["state"], St["nonce"], St["verifier"]), status_code=303)
+        Resp.set_cookie(AdminOAuthCookie, St["state"], max_age=600, path=Base + "/api/admin/auth/", httponly=True,
+                        secure=AdminAuth.Secure(Req), samesite="none" if AdminAuth.Secure(Req) else "lax")
+        return Resp
+
+    async def _AdminFinish(Req: Request, Provider: str, Code: str, State: str, Error: str, UserRaw: str) -> RedirectResponse:
+        Prov = Ctx.Oidc.get(Provider)
+        if Prov is None or Provider not in AdminAuth.IdentityProviders:
+            return _AdminBack(Req, "unavailable")
+        if Error:
+            return _AdminBack(Req, "cancelled")
+        if not State or not Code or Req.cookies.get(AdminOAuthCookie) != State:
+            return _AdminBack(Req, "failed")
+        Row = Ctx.Accounts.Identity.UseOAuthState(Provider, State)
+        if Row is None or Row["purpose"] != "admin":
+            return _AdminBack(Req, "failed")
+        try:
+            C = await Prov.Complete(Code, _AdminRedirect(Req, Provider), Row["verifier"], Row["nonce"], ParseUserHint(UserRaw))
+        except OidcError as E:
+            Logger.warning("Admin %s sign-in refused: %s", Provider, E)
+            return _AdminBack(Req, "failed")
+        Why, Identity = AdminAuth.SignInOutcome(Ctx, Provider, C)
+        if Identity is None:
+            Logger.warning("Admin sign-in refused (%s): provider=%s", Why, Provider)     # no subject, no email in the log
+            return _AdminBack(Req, "denied")
+        Resp = _AdminBack(Req, "ok")
+        AdminAuth.SetCookie(Resp, Req, Base, AdminAuth.NewIdentitySession(Ctx, Identity["id"], Req.headers.get("user-agent")))
+        return Resp
+
+    @App_.get("/api/admin/auth/{Provider}/callback")
+    async def AdminOAuthCallback(Req: Request, Provider: str, code: str = "", state: str = "", error: str = ""):
+        return await _AdminFinish(Req, Provider, code, state, error, "")
+
+    @App_.post("/api/admin/auth/apple/callback")
+    async def AdminAppleCallback(Req: Request, code: str = Form(""), state: str = Form(""), error: str = Form(""), user: str = Form("")):
+        return await _AdminFinish(Req, "apple", code, state, error, user)
+
     @App_.post("/api/admin/login")
     async def AdminLogin(Req: Request, Body_: dict = Body(...)):
+        if Ctx.Settings.AdminIdentityEnforced:
+            raise HttpError(403, "admin_identity_required", "Sign in with your administrator account.")
         if not Ctx.Settings.AdminKey:
             raise HttpError(503, "developer_tools_disabled", "Admin is disabled (P3_ADMIN_KEY is not set).")
         Token = AdminAuth.Login(Ctx, str(Body_.get("key") or ""), Req.headers.get("user-agent"))
@@ -1183,11 +1265,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     # ── Analytics & cookies: GA4 and Microsoft Clarity, only after a visitor's consent (p3/analytics.py) ──
     def _AnalyticsState(request: Request) -> dict:
+        """What this server holds, read from its database: the switch, the host, each tool (name, ID format, saved
+        ID, on or off, configured, active) — and, as before, the IDs flat ("ga4", "clarity") for scripts."""
         R = Ctx.Db.One("SELECT updated_at, updated_by FROM product_settings WHERE key = ?", (Analytics.Key,))
         Public = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
         C = Analytics.Stored(Ctx.Products)
-        return {**C, "active": Analytics.Public(Ctx.Products) is not None,
-                "placeholder": {T: Analytics.Placeholder(T, C[T]) for T in ("ga4", "clarity")},
+        return {"enabled": C["enabled"], "host": C["host"], **{T: P["id"] for T, P in C["providers"].items()},
+                "providers": Analytics.AdminProviders(C), "marketing_providers": [],     # none exists (docs/ANALYTICS.md)
+                "active": Analytics.Public(Ctx.Products) is not None,
+                "placeholder": {T: Analytics.Placeholder(T, P["id"]) for T, P in C["providers"].items()},
                 "consent_version": Analytics.ConsentVersion, "production": bool(Ctx.Settings.Production),
                 "site_host": re.sub(r"^https?://", "", Public).split("/", 1)[0].split(":", 1)[0].lower(),
                 "changed_at": R["updated_at"] if R else None, "changed_by": R["updated_by"] if R else None}
@@ -1199,12 +1285,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.put("/api/admin/analytics")
     async def SetAnalytics(request: Request, Body_: dict = Body(...), authorization: str | None = Header(None)):
-        """{"enabled", "host", "ga4", "clarity"} — any of them; logged with the product settings. The IDs are public
-        (they are in the page once a visitor consents); each environment has its own (Proto never uses Atelier's)."""
+        """{"enabled", "host", "providers": {"ga4" | "clarity": {"enabled", "id"}}} — any of them (the flat "ga4" /
+        "clarity" IDs of before still work); logged with the product settings. Answers what the database then holds.
+        The IDs are public (they are in the page once a visitor consents); each environment has its own."""
         Who = Admin(authorization)
         New = Analytics.Validate(Body_, Analytics.Stored(Ctx.Products))
-        Ctx.Products.Set(Analytics.Key, New, Who.Id, "analytics " + ("on" if New["enabled"] else "off") + f" · host {New['host'] or '—'}"
-                         + f" · GA4 {New['ga4'] or '—'} · Clarity {New['clarity'] or '—'}")
+        Ctx.Products.Set(Analytics.Key, New, Who.Id, Analytics.Note(New))
         return _AnalyticsState(request)
 
     # ── Products: rings and charms (customer availability per product, charm sizes) ──

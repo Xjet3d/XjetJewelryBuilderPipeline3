@@ -8,7 +8,7 @@ before the owner approves the tested commit.
 ## Principles
 
 - **Nothing optional before consent.** No Google tag, no Clarity script, no analytics cookie and no request to either
-  until the visitor accepts Analytics. Rejecting leaves the site fully working.
+  until the visitor allows Analytics & Performance. Reject optional leaves the site fully working.
 - **Basic Consent Mode.** The Google tag is not loaded at all before consent (no cookieless pings). Once Analytics is
   accepted: `ad_storage`, `ad_user_data`, `ad_personalization` and `analytics_storage` start `denied`, then only
   `analytics_storage` is updated to `granted`. Atelier runs no advertising; Google signals and ad personalization are off.
@@ -23,43 +23,113 @@ before the owner approves the tested commit.
 
 | Part | Where |
 |---|---|
-| Settings (on/off, host, GA4 ID, Clarity ID) and the Content-Security-Policy additions | `p3/analytics.py` |
+| Settings (on/off, host, each tool's ID and on/off), the tools (`Providers`) and the Content-Security-Policy additions | `p3/analytics.py` |
 | Admin card: *Settings → System → Analytics & cookies* (changes logged) | `p3/admin.py`, `web/admin.html`, `web/admin.js` |
-| Banner, Cookie Settings, the GA4 and Clarity loaders, the event allowlist, clean addresses | `web/consent.js` |
+| The banner, Privacy preferences (Cookie Settings in the footers), the GA4 and Clarity loaders, the event allowlist, clean addresses | `web/consent.js` |
 | The site's screens and funnel events | `web/app.js` (`measure`, `measureScreen`) |
 | The quote page: consent, its events (viewed, approved + order, declined), never Clarity | `p3/quotes.py`, `web/quote.html` |
 
-- A customer page gets `window.__p3.analytics = {version, host, ga4, clarity}` only while analytics is on, a host is set
-  and at least one ID exists; otherwise `null`, no banner, and the policy stays `script-src 'self'`, `connect-src 'self'`.
-- With a tool on, customer pages (never `/admin`, `/dev`, `/api/…`, `/static/…`) add that tool's hosts to the
-  Content-Security-Policy — Google's list for Analytics without Ads features, Microsoft's for Clarity.
+- A tool may load only when **all** of these hold: analytics is offered on this environment, the visitor accepted
+  Analytics, the page is on the configured host, the tool is switched on, and its ID is valid. There is no fallback ID.
+- A customer page gets `window.__p3.analytics = {version, host, ga4, clarity}` only while at least one tool may load;
+  a tool that may not load is `null` there, never its ID. Otherwise the whole value is `null`, there is no banner, and
+  the policy stays `script-src 'self'`, `connect-src 'self'`.
+- Customer pages (never `/admin`, `/dev`, `/api/…`, `/static/…`) add the hosts of the tools that may load, and only
+  theirs, to the Content-Security-Policy — Google's list for Analytics without Ads features, Microsoft's for Clarity. So
+  with GA4 configured and Clarity empty, no Clarity script or request can even be attempted.
 - The browser starts a tool only when `location.hostname` equals the configured host, so an ID cannot run elsewhere.
+
+### Settings: entered in the Admin, never in the code
+
+The IDs belong to each environment and live only in its database (`product_settings`, key `analytics`, every change in
+`product_settings_log`):
+
+```json
+{"enabled": true, "host": "xjetatelier.xjet3d.com",
+ "providers": {"ga4": {"enabled": true, "id": "G-…"}, "clarity": {"enabled": true, "id": "…"}}}
+```
+
+Nothing copies one environment's IDs to another, and no ID is written in the application
+(`tests/test_analytics.py` checks the code). A configuration saved before 2026-10-14 in the flat shape
+(`{"ga4": …, "clarity": …}`, a tool on whenever its ID was set) is read as exactly that until the Admin saves again.
+
+**The Admin card** (*Settings → System → Analytics & cookies*) has these parts:
+
+- **Offer Analytics to visitors** (the switch) and the **Allowed site host** (one click fills in this server's own host).
+- One block per tool, listed from `Providers`. Each has its ID field (with its format, e.g. `G-XXXXXXXXXX`), *Use … after
+  consent*, and its saved state: *Not configured*, *Configured · off*, *Test ID · nothing sent*, *Configured ·
+  analytics off* or *Configured · on after consent*.
+- **Save changes** sends the whole form, then reads the server back. It says *Saved* only when the server holds what was
+  entered; otherwise it says *Not saved as entered* and shows what the server holds. A tool cannot be switched on without
+  its ID, and analytics cannot be offered without the host.
+- **Saved on this server** always shows what the database holds: the switch, the host, each tool's ID and on/off, and
+  who changed it and when.
+
+**A marketing tool later** (Google Ads, Meta Pixel …) needs no change to this model. It takes:
+
+- one more entry in `Providers` with `category: "marketing"`, its ID format and its policy hosts (the Admin card lists it
+  and its ID is entered there like the others);
+- its loader in `web/consent.js`, behind a real *Marketing & Advertising* switch, with its own Consent Mode signals;
+- a new `ConsentVersion`, so every visitor is asked again.
+
+Until then there is no marketing tool: the Admin says so, and visitors see *Not currently used* with no switch.
 
 ### The consent record
 
 `localStorage["atelier_consent"] = {"v": 1, "analytics": true|false, "marketing": false, "vendors": ["ga4", "clarity"],
 "at": "<ISO time>"}` — nothing about the person. The banner comes back when the consent version changes or when a tool
-is switched on that the decision did not cover. Withdrawing consent (Cookie Settings → Reject non-essential, or Analytics
-off → Save) tells GA4 (`ga-disable-<ID>`, consent update denied) and Clarity (`clarity('consent', false)`), deletes their
-first-party cookies (`_ga`, `_ga_<id>`, `_clck`, `_clsk`) and reloads the page.
+is switched on that the decision did not cover. Withdrawing consent (Cookie Settings → Reject optional, or Analytics &
+Performance off → Save preferences) tells GA4 (`ga-disable-<ID>`, consent update denied) and Clarity
+(`clarity('consent', false)`), deletes their first-party cookies (`_ga`, `_ga_<id>`, `_clck`, `_clsk`) and reloads the
+page. Changing the wording or the look of the banner keeps the version: visitors are asked again only for a new version
+or a new tool.
 
-### Categories shown to the visitor
+### What the visitor sees (the owner's wording, 2026-10-14)
 
-- **Necessary** — always on: sign-in, the current design, the bag and checkout, security (the browser storage below,
-  and the Admin's own session cookie for staff).
-- **Analytics** — off until accepted: GA4 and Clarity.
-- **Marketing** — shown, not used (no marketing tracker exists).
+Two layers, in Atelier's own look (warm ivory surface, beige hairline, Cinzel title, Inter text, spaced capitals on
+buttons, 6 px corners). The primary action wears Atelier's gold, the site's `btn-gold`: a warm gold gradient with dark
+text. The styles live in `consent.js` itself, so the quote page shows the same.
 
-### Necessary storage (no consent needed)
+- **The banner** (a card in the bottom-left corner; a sheet along the bottom on phones): *Your privacy matters* — what
+  the site uses and why, in one paragraph, and a Privacy Policy link. It names no tool, cookie or retention period.
+  **Accept all** (primary), **Reject optional** (beside it, the same size, outlined), **Manage preferences** (a quiet
+  text action).
+- **Privacy preferences** (Manage preferences, or Cookie Settings at the foot of every page; a dialog, a bottom sheet on
+  phones):
+  - **Essential** — *Always active*: sign-in, designs, bag, checkout, security and the privacy choice itself.
+  - **Analytics & Performance** — the one switch (On / Off). *Learn more* names only the tools that may load (Google
+    Analytics 4, Microsoft Clarity). It says they start only after consent, are not used for advertising and receive
+    no customer details or design prompts, and that Clarity is configured to mask sensitive information.
+  - **Marketing & Advertising** — *Not currently used*: no tool and no switch. Adding Google Ads, Meta Pixel or another
+    marketing platform later means a real switch here, a new consent version and its own Consent Mode signals.
+  - Actions: **Reject optional**, **Save preferences**, **Accept all** (primary). Accept all allows Analytics &
+    Performance only; `marketing` stays `false`.
+
+The Privacy page (`web/index.html`, view `privacy`) is written for customers:
+
+- the three categories, the tools by name, what Clarity masks, and how to withdraw consent;
+- a summary of each technology with its purpose and how long it lasts, only with verified figures:
+  - Google's default cookie lifetime, up to 2 years, and this property's 14-month data retention;
+  - Microsoft's documented Clarity retention: recordings 30 days, or 9 months when kept; heatmaps and page statistics
+    9 months;
+  - the sign-in cookie's 30 days after the last visit, 180 days at most;
+- the exact names, only behind *View technical cookie names*.
+
+The page names no staff cookie and none of Microsoft's own cookies, whose use with this configuration is not verified.
+
+### Essential storage (no consent needed)
 
 | Name | Kind | Purpose |
 |---|---|---|
+| `atelier_session` | Cookie (HttpOnly, SameSite=Lax, Secure) | Customer sign-in (AJW-39; 30 days idle, 180 days at most) |
+| `atelier_oauth` | Cookie (HttpOnly, 10 minutes) | A Google or Apple sign-in on its way back |
 | `p3_session:<base>` | localStorage | The customer's sign-in (access code) and credit count |
 | `p3_profile:<base>` | localStorage | The signed-in customer's name and email, shown in the page; removed at sign-out |
 | `p3_state:<base>` | localStorage | The current design journey |
 | `p3_gallery_pending:<base>`, `p3_fav_pending:<base>` | localStorage | A gallery design chosen or ♥-ed before sign-in |
+| `p3_pending_panel` | sessionStorage | What the visitor was doing before a Google or Apple sign-in |
 | `atelier_consent` | localStorage | The cookie choice itself |
-| `atelier_admin_session` | Cookie (HttpOnly, SameSite=Strict, Secure, API path only) | Admin sign-in (staff only) |
+| `atelier_admin_session`, `atelier_admin_oauth` | Cookies (HttpOnly) | Admin sign-in (staff only) |
 | `p3_dev_key`, `p3_admin_filters` | sessionStorage | Developer tools and Admin filters (staff only) |
 
 ## Environments
@@ -74,8 +144,9 @@ GA4 and Clarity measure **Atelier production only** (the owner's decision of 202
 project of its own. Proto tests the consent and analytics code with the placeholder IDs `G-TEST0000` and `test0000`:
 the banner, the choice and every event run in the page, but neither tool is loaded, nothing is sent, and the page's
 policy stays closed to both (`window.dataLayer` and `window.clarity.q` show what would have been sent). Atelier's IDs
-are entered in Atelier's Admin only, after the owner approved the release. Production reports can also filter on
-hostname = `xjetatelier.xjet3d.com` as a second guard.
+are entered in Atelier's Admin only (Admin through the SSH tunnel: `docs/AUTH-OPERATIONS-AJW-39.md` §3a), after the
+owner approved the release. Production reports can also filter on hostname = `xjetatelier.xjet3d.com` as a second
+guard.
 
 ### GA4 property settings
 
@@ -117,14 +188,15 @@ in the reporting layer).
 
 ## Testing (Proto)
 
-1. The site works before any choice; Reject non-essential breaks nothing.
+1. The site works before any choice; Reject optional breaks nothing.
 2. Rejected: no request to Google or Clarity, no `_ga`/`_cl*` cookie (browser network and cookies).
 3. Accepted: `gtag/js`, then `g/collect` with `gcs=G101`; Clarity's tag; GA4 DebugView shows the events.
-4. Changed later: Cookie Settings → Reject reloads without either tool and deletes their cookies.
+4. Changed later: Cookie Settings → Reject optional reloads without either tool and deletes their cookies.
 5. Sign-in, generation, Customize, quotes, orders and the Admin work as before.
 6. No personal data in any hit (checked per event; the quote page's events carry no name, email, address or token).
 7. Admin and developer tools load neither tool; the quote page never loads Clarity.
-8. Proto sends only to the Proto property and project.
+8. Proto uses the placeholder IDs: nothing is loaded or sent anywhere (Atelier production is the only property and
+   project).
 
 ## Reporting (Looker Studio, once data flows)
 

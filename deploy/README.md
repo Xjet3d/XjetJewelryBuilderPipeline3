@@ -61,8 +61,19 @@ It backs up all three files to `/var/backups/p3-proto-<timestamp>/` and refuses 
 
 ## atelier
 
-atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from outside) runs Pipeline 3 under
-`/JewelryB2C3/` as a user systemd service in `~/git/XjetJewelryBuilderPipeline3`, next to Pipeline 2's live shop.
+atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: the public site is HTTPS only) runs Pipeline 3 under
+`/JewelryB2C3/` as the user systemd service `xjet-jewelry-b2c3` in `~/git/XjetJewelryBuilderPipeline3` (127.0.0.1:8340,
+data in `var/`), next to Pipeline 2's live shop. Staff reach the server itself with `ssh atelier` (a host alias in
+`~/.ssh/config` whose HostName is the server's own address: `xjetatelier.xjet3d.com` is Cloudflare, which carries no
+SSH, so an alias pointing there times out).
+
+**The Admin on atelier is private (since 2026-10-14).** On the public domain nginx answers 404 for
+`/JewelryB2C3/admin`, `/JewelryB2C3/api/admin/…` and the developer tools, by design. Keep it that way: never expose the
+Admin publicly again and never work around it. Administrators open the Admin through an SSH tunnel, as
+`docs/AUTH-OPERATIONS-AJW-39.md` §3a describes. Everything else that changes the site goes through the server's own
+shell (`ssh atelier`), never the public URL: the gallery push below, and the operator commands of `python -m p3.cli`
+(§6 there). The Admin key stays on the server as the break-glass secret: typed at the CLI's prompt, never on a command
+line, in shell history or over the web.
 
 ### Update procedure
 
@@ -81,19 +92,28 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
    nothing there. Backups (`scripts/backup.sh`) hard-link every unchanged asset file to the previous backup, so a backup
    at every deploy costs only what changed.
 2. **Gallery content: an explicit step, only with the owner's approval, whenever proto's approved Inspiration Gallery
-   changed.** From a machine with ssh to tron and HTTPS to atelier:
+   changed.** From a machine with ssh to tron and to atelier:
 
    ```bash
-   bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
+   P3_TARGET_SSH=atelier bash scripts/gallery-sync.sh push https://xjetatelier.xjet3d.com/JewelryB2C3
    ```
 
-   It exports proto's approved gallery on tron, checks it, and sends it to atelier's own Admin API with atelier's Admin
-   key, which it asks for (or reads from the file `P3_TARGET_ADMIN_KEY_FILE` names). The files go in 8 MB pieces, smaller
-   if a proxy refuses that size, and only the files atelier does not have yet are sent. atelier plans the import, stops on
-   any row it made itself, keeps a snapshot of its database (`<data dir>/gallery-sync/backups`, the newest five), imports,
-   and the script then checks the site. Pushing unchanged content sends nothing and changes nothing. In Git Bash on
-   Windows the key prompt may not work: put the key in a file and set `P3_TARGET_ADMIN_KEY_FILE`, or run it on tron
-   (`ssh -t tron`, then `P3_GALLERY_SOURCE_HOST=local bash scripts/gallery-sync.sh push …` in the checkout).
+   It exports proto's approved gallery on tron, checks it, copies it over SSH into a temporary directory on atelier's
+   server and runs `scripts/gallery-sync.sh import` there, in atelier's checkout (`P3_TARGET_CHECKOUT`, default
+   `~/git/XjetJewelryBuilderPipeline3`): the plan, which stops on any row atelier made itself; a backup into
+   `~/p3-backups`, next to the auto-deploy's; the import; a check of the site on its own address. Then it checks the
+   public pages at the address given and removes the temporary directory. No Admin key and no Admin API are involved, so
+   it works whether or not administrator sign-in is enforced. The running service shows the new gallery at once (it
+   reads the gallery from the database on every request; the sitemap follows within a minute): nothing is restarted.
+   The whole bundle is copied each time, and only what changed is written: pushing unchanged content changes nothing.
+   Without a working `ssh atelier` it stops before anything is exported. It connects to atelier twice (the check,
+   then the copy with the import), so an SSH password is asked for twice; an SSH key needs none.
+
+   A site whose Admin API does answer (not atelier) can take the bundle over HTTPS instead:
+   `bash scripts/gallery-sync.sh push BASE_URL` sends it to that Admin API with the site's Admin key (asked for, or read
+   from the file `P3_TARGET_ADMIN_KEY_FILE` names; the prompt may not work in Git Bash on Windows), in 8 MB pieces,
+   smaller if a proxy refuses that size, and only the files the site does not have yet; the site keeps a snapshot of its
+   database (`<data dir>/gallery-sync/backups`, the newest five) before it imports.
 
    The bundle never goes through GitHub: the repository is public, and a bundle holds what the site keeps private
    (prompts, refinement words, reference images).
@@ -104,8 +124,9 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
    ```
 
    `/api/gallery` has the tiles, `/api/showcase` tells the homepage story, and every image, the movie, its poster and its
-   clip answer. The latest import is in `/api/health` outside production and in `/api/admin/health` (`gallery_sync`:
-   source, status, time, bundle, items, or the error).
+   clip answer. The latest import is in `/api/health` outside production, in the Admin's `/api/admin/health`
+   (`gallery_sync`: source, status, time, bundle, items, or the error), and on the server in
+   `.venv/bin/python -m p3.gallerysync status` (in the checkout).
 
 ### What the Gallery sync moves (`p3/gallerysync.py`)
 
@@ -127,10 +148,13 @@ atelier (`xjetatelier.xjet3d.com`, behind Cloudflare: HTTPS only, no SSH from ou
   SHA-256 of every file and of the rows. Files are written atomically with proto's modification time, so a thumbnail or
   poster made on proto counts as current; the rows in one transaction. An import needs twice its size plus 1 GB free. A
   failed import is recorded (`gallery_sync`) and changes nothing. The upload API (`/api/admin/gallery-sync/uploads`)
-  needs the site's Admin key and can change gallery content only.
+  needs the site's Admin key (refused over the web once administrator sign-in is enforced) and can change gallery
+  content only. The server's own `import` (the SSH push) runs next to the running service: SQLite serializes their
+  writes (each waits up to 30 s for the other), and the service reads the imported rows at its next request; only the
+  sitemap is kept in memory, for at most a minute.
 - **By hand, with a shell on the target:** `bash scripts/gallery-sync.sh export DIR` on the source,
-  `bash scripts/gallery-sync.sh import DIR` on the target (plan, backup, import, check). `python -m p3.gallerysync import
-  DIR` alone is a dry run.
+  `bash scripts/gallery-sync.sh import DIR` on the target (plan, backup, import, check; what the SSH push runs on
+  atelier). `python -m p3.gallerysync import DIR` alone is a dry run.
 
 ## Rollback
 

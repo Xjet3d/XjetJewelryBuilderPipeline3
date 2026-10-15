@@ -148,6 +148,8 @@ class LocalAccountProvider:
                     Conn.execute(Sql)
             Conn.execute("CREATE INDEX IF NOT EXISTS accounts_self_email ON accounts(source, email)")
             Conn.execute("CREATE INDEX IF NOT EXISTS usage_events_account ON usage_events(account_id, created_at)")
+        from p3.accounts.identity import IdentityStore
+        self.Identity = IdentityStore(self)       # logins, passwords, single-use tokens and sessions (AJW-39)
 
     # ── tokens ───────────────────────────────────────────────────────────
     def GenerateToken(self) -> str:
@@ -487,8 +489,13 @@ class LocalAccountProvider:
     def AdminSetActive(self, AccountId: str, Active: bool) -> dict:
         """B2C2 Deactivate / Activate. Activating re-enables the account's current token."""
         A = self._Account(AccountId)
+        self.Db.Execute("UPDATE accounts SET status = ? WHERE account_id = ?", ("active" if Active else "disabled", AccountId))
         if Active:
-            Current = A["delivery_token"]
+            Current = A["delivery_token"] if not A["claimed_at"] else None
+            if A["claimed_at"]:                          # a retired six-letter code stays retired
+                self.Db.Execute("UPDATE accounts SET status = 'active' WHERE account_id = ?", (AccountId,))
+                self._Event(AccountId, "activated")
+                return self.AdminGet(AccountId)
             if Current:
                 self.Db.Execute("UPDATE access_tokens SET active = 1 WHERE token_hash = ?", (HashToken(Current),))
             else:
@@ -527,6 +534,7 @@ class LocalAccountProvider:
     _AdminSelect = (
         "SELECT a.*, "
         "(SELECT COUNT(*) FROM access_tokens t WHERE t.account_id = a.account_id AND t.active = 1) AS active_tokens, "
+        "(SELECT COUNT(*) FROM login_identities l WHERE l.account_id = a.account_id) AS login_count, "
         "(SELECT MAX(t.last_used_at) FROM access_tokens t WHERE t.account_id = a.account_id) AS last_activity_at, "
         "(SELECT t.token_hint FROM access_tokens t WHERE t.account_id = a.account_id "
         " ORDER BY t.active DESC, t.created_at DESC LIMIT 1) AS token_hint "
@@ -538,9 +546,9 @@ class LocalAccountProvider:
         Reserved = (dict(R).get("tokens_reserved") or 0) if hasattr(R, "keys") else 0
         if R["removed_at"]:
             Status = "removed"
-        elif R["source"] == "self" and not R["verified_at"]:
+        elif (R["source"] == "self" and not R["verified_at"]) or (R["source"] == "auth" and not R["verified_at"] and not R["login_count"]):
             Status = "pending_verification"
-        elif not R["active_tokens"] or R["status"] != "active":
+        elif not (R["active_tokens"] or R["login_count"]) or R["status"] != "active":
             Status = "inactive"
         elif Used >= Max:
             Status = "exhausted"
