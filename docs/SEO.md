@@ -268,6 +268,23 @@ lightbox; since then `/gallery/<name>` opens the Gallery under it (to be measure
 The look is unchanged (same sizes and positions). Proto paints about a second later than Atelier (no CDN), so Atelier's
 figures are lower.
 
+**The Gallery, and every design page over it (2026-10-15).** Before the scripts ran, the Gallery's grid was empty: the
+cards pushed "Start your design" about 750 px down when they arrived, and the All / Rings / Charms filter appeared later
+still, once the catalog said which products are on offer. Now the page carries the grid's loading squares — as many as
+the visitor's gallery has designs (`p3/sitepages.py` `GalleryPlaceholders`; the app's own loading squares are as many,
+`galleryPlaceholders`) — and its config names the products on offer, which the app starts from until the catalog arrives
+(`SERVER_PRODUCTS` in `web/app.js`). The finished page is pixel-identical to before.
+
+| Phone, lab (local copies, same data; the mock banner hidden, as on a live site) | LCP | CLS |
+|---|---|---|
+| `/gallery` before | 5.5 s | 0.87 |
+| `/gallery` after | 5.7 s | 0.08 |
+| a design page before (`/design/<name>`: the homepage under the dialog) | 6.8 s | 0.04 |
+| a design page after (`/gallery/<name>`: the Gallery under the dialog) | 5.3 s | 0.08 |
+
+Medians of three runs; LCP varies about ±0.5 s from run to run. What is left (0.08) is the header's Design-screen steps
+before the scripts start (below); the dialog's fade-in keeps its picture out of LCP, which is a card behind it.
+
 ## Future recommendations — recorded, not implemented (2026-10-12)
 
 Decided later, each with its own approval:
