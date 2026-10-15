@@ -115,7 +115,8 @@ TechnicalTimelineKinds = frozenset({"fulfillment.request_updated", "production_f
 def _LineEventText(Kind: str, D: dict) -> str:
     Sha = (D.get("file_sha256") or "")[:12]
     if Kind == "production_sent":
-        return " · ".join(X for X in (D.get("version_label"), f"file {Sha}…" if Sha else None, D.get("note")) if X)
+        Dup = f"sent although {', '.join(D['duplicates_acknowledged'])} hold the same piece (confirmed)" if D.get("duplicates_acknowledged") else None
+        return " · ".join(X for X in (D.get("version_label"), f"file {Sha}…" if Sha else None, D.get("note"), Dup) if X)
     if Kind == "production_file":
         return f"file {Sha}… ({D.get('file_bytes')} bytes)"
     if Kind == "production_revision_submitted":
@@ -511,7 +512,7 @@ class FulfillmentBridge:
                      (O["id"], "fulfillment", Dumps({"action": "enrolled", "by": By, "note": Note or None, "inherited_from": None}), By, T))
         return 1
 
-    def SendToProduction(self, OrderId: str, LineIds, By: str, Note: str = "", Links=None) -> dict:
+    def SendToProduction(self, OrderId: str, LineIds, By: str, Note: str = "", Links=None, Duplicates=None) -> dict:
         """The explicit hand-over of order lines to Production: every line checked again on the server, the order
         enrolled on its first line, one production row per line with the pinned version and the file's hash, one
         outbox row, one history line per line — all in one transaction. A line already sent is refused, never
@@ -520,7 +521,11 @@ class FulfillmentBridge:
         A line whose print file is ready but not yet linked (one validated file, I-35) is linked here — only when the
         Admin confirmed that exact result (Links: {line_id: result id}, from the confirmation that named it); the link
         is recorded in the order's history, in the same transaction. A linked line keeps its link; an ambiguous one is
-        refused (the Admin chooses with Link STL first)."""
+        refused (the Admin chooses with Link STL first).
+
+        A line whose piece another order of the same customer also holds (G9, 2026-10-15: ORD-10005 re-ordered ORD-10003's
+        ring and ORD-10004's charm) goes only when the Admin confirmed exactly those orders (Duplicates: {line_id: [order
+        ids]}, from the confirmation that named them); the confirmation is kept in the history. Nothing is cancelled."""
         self._Require()
         O = self._Order(OrderId)
         Ids = list(dict.fromkeys(X for X in (LineIds or []) if isinstance(X, str) and X)) if isinstance(LineIds, list) else []
@@ -535,7 +540,8 @@ class FulfillmentBridge:
         if not Ok:
             raise HttpError(409, "not_eligible", f"{O['ref']} cannot be sent to Production: {Why}.")
         Links = Links if isinstance(Links, dict) else {}
-        Blocked, Pins, ToLink = [], {}, {}
+        Duplicates = Duplicates if isinstance(Duplicates, dict) else {}
+        Blocked, Pins, ToLink, Acked = [], {}, {}, {}
         for Id in Ids:
             El = self.LineEligibility(O, Lines[Id])
             if not El["eligible"]:
@@ -550,6 +556,16 @@ class FulfillmentBridge:
                                     "message": f"STL ready — not yet linked: confirm linking {Want['version_label']} · {Want['size_label']} · {Want['material_label']} to this line"})
                     continue
                 ToLink[Id], Sid = Want, Want["id"]
+            Dups = Lines[Id].get("duplicates") or []
+            Seen = {X for X in (Duplicates.get(Id) or []) if isinstance(X, str)}
+            if any(D["order_id"] not in Seen for D in Dups):
+                Refs = ", ".join(f"{D['order_ref']} ({D['status_label']})" for D in Dups)
+                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "duplicate_confirmation_required", "duplicates": Dups,
+                                "message": f"possible duplicate — {Refs} also hold{'s' if len(Dups) == 1 else ''} {Lines[Id]['ring_id']} for this customer; "
+                                           "confirm to send it anyway"})
+                continue
+            if Dups:
+                Acked[Id] = [D["order_ref"] for D in Dups]
             try:                                              # the export is started (or found) before the transaction: never a paid call
                 Pins[Id] = {**self._PinInfo({**Lines[Id], "three_d_id": Sid}), "file": self._ProductionFile(Sid)}
             except HttpError as E:
@@ -557,6 +573,7 @@ class FulfillmentBridge:
         if Blocked:
             Reasons = {B["reason"] for B in Blocked}
             Code = ("already_sent" if Reasons == {"already_sent"} else "link_confirmation_required" if Reasons == {"link_confirmation_required"}
+                    else "duplicate_confirmation_required" if Reasons == {"duplicate_confirmation_required"}
                     else "export_failed" if Reasons == {"export_failed"} else "stl_not_ready")
             Text = "; ".join(f"{B['item_ref']}: {B['message']}" for B in Blocked)
             raise HttpError(409, Code, f"Not sent to Production — {Text}.", {"blocked": Blocked})
@@ -593,7 +610,8 @@ class FulfillmentBridge:
                 Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                              (O["id"], "production_sent", Dumps({"line_id": Id, "item_ref": L["ring_id"], "title": L["title"], "mesh_id": P["mesh_id"],
                                                                  "version_no": P["version_no"], "version_label": P["version_label"], "session_3d_id": P["three_d_id"],
-                                                                 "file_sha256": F.get("sha256"), "handoff_no": 1, "note": Note or None, "source_version": Version}), By, T))
+                                                                 "file_sha256": F.get("sha256"), "handoff_no": 1, "note": Note or None, "source_version": Version,
+                                                                 **({"duplicates_acknowledged": Acked[Id]} if Acked.get(Id) else {})}), By, T))
         return self.AdminState("order", O["id"])
 
     def ReopenTarget(self, O: dict) -> str:
@@ -753,12 +771,85 @@ class FulfillmentBridge:
         S = Conn.execute("SELECT COUNT(*) FROM fulfillment_line_production WHERE order_id = ?", (OrderId,)).fetchone()[0]
         return N > 0 and S >= N
 
-    def GuardStatusChange(self, Order: dict, Status: str) -> None:
+    def GuardStatusChange(self, Order: dict, Status: str, Note: str = "") -> None:
         """The legacy production / QC / shipping statuses are Fulfillment's once a line of the order was sent to
-        Production (spec §7.5)."""
-        if Status in OrdersModule.ProductionStatuses and self.IsEnrolled("order", Order["id"]):
+        Production (spec §7.5). A cancellation after the hand-over is Fulfillment's decision too (G1, 2026-10-15): it
+        needs a reason (Operations decide on it), and it is undone here only once Operations rejected it in Fulfillment
+        for every line sent — otherwise Atelier would say New while Fulfillment cancels the part, and the order could
+        never be sent again."""
+        Enrolled = self.IsEnrolled("order", Order["id"])
+        if Status in OrdersModule.ProductionStatuses and Enrolled:
             raise HttpError(409, "owned_by_fulfillment", f"{Order['ref']} has lines in Production: production, QC, shipping and completion are recorded "
                                                         "in Fulfillment and reach this page as its progress. Cancellation and payment stay here.")
+        if not Enrolled:
+            return
+        if Status == "cancelled" and Order["status"] != "cancelled" and not (Note or "").strip():
+            raise HttpError(400, "reason_required", f"{Order['ref']} has lines in Production: say why it is cancelled — Operations decide on the "
+                                                    "cancellation in Fulfillment with your reason.")
+        if Order["status"] == "cancelled" and Status != "cancelled":
+            R = self.Reinstate(Order)
+            if not R["possible"]:
+                raise HttpError(409, "cancellation_with_fulfillment", f"{Order['ref']} stays cancelled: {R['why_not']}.", {"lines": R["lines"]})
+
+    def Reinstate(self, O: dict) -> dict:
+        """Whether a cancelled, handed-over order may be set back (G1): for every line sent, Fulfillment's decision on
+        the latest cancellation — received after it — must be *rejected* (Operations keep producing). Accepted, not yet
+        decided, or not yet received by Fulfillment: it stays cancelled, and each line says why."""
+        Since = (self.Ctx.Db.One("SELECT MAX(created_at) AS t FROM order_events WHERE order_id = ? AND kind = 'status' "
+                                 "AND json_extract(data_json, '$.to') = 'cancelled'", (O["id"],)) or {}).get("t") or ""
+        Decisions: dict = {}
+        for E in self.Ctx.Db.All("SELECT event_type, payload_json, received_at FROM fulfillment_inbox WHERE entity_type = 'order' AND entity_id = ? "
+                                 "AND event_type IN ('fulfillment.cancellation_accepted', 'fulfillment.cancellation_rejected') AND received_at > ? "
+                                 "ORDER BY received_at", (O["id"], Since)):
+            C = ((json.loads(E["payload_json"] or "{}").get("public_payload") or {}).get("cancellation") or {})
+            if isinstance(C.get("part"), str):
+                Decisions[C["part"]] = {"decision": "rejected" if E["event_type"].endswith("_rejected") else "accepted", "at": E["received_at"],
+                                        "reason": C.get("reason")}
+        Lines = []
+        for R in self.ProductionRows(O["id"]):
+            Ref = next((L["ring_id"] for L in O.get("lines") or [] if L["id"] == R["line_id"]), None)
+            D = Decisions.get(R["part_display_no"]) if R["part_display_no"] else None
+            State = D["decision"] if D else ("pending" if R["part_display_no"] else "not_received")
+            Text = {"rejected": f"{R['part_display_no']}: Operations rejected the cancellation — production goes on",
+                    "accepted": f"{R['part_display_no']}: Fulfillment accepted the cancellation",
+                    "pending": f"{R['part_display_no']}: the cancellation waits for Operations' decision in Fulfillment",
+                    "not_received": f"{Ref or R['line_id']}: Fulfillment has not received the line yet"}[State]
+            Lines.append({"line_id": R["line_id"], "item_ref": Ref, "part": R["part_display_no"], "decision": State, "at": (D or {}).get("at"), "text": Text})
+        Open = [L for L in Lines if L["decision"] != "rejected"]
+        Why = None
+        if not Lines:
+            Why = "no line was handed over"                               # cannot happen for an enrolled order; said plainly anyway
+        elif Open:
+            Why = "; ".join(L["text"] for L in Open) + (". If the customer still wants it, a new order is placed" if any(L["decision"] == "accepted" for L in Open)
+                                                        else ". Operations decide in Fulfillment first: once they reject it (production goes on), it can be undone here")
+        return {"applies": True, "possible": bool(Lines) and not Open, "why_not": Why, "lines": Lines}
+
+    def StatusOptions(self, O: dict) -> list[str]:
+        """The status moves the Admin's page offers (G1): only what the server accepts. A completed order: none. An order
+        with lines in Production: its commercial statuses and the cancellation (progress is Fulfillment's); cancelled,
+        only back to a commercial status once Fulfillment rejected the cancellation for every line sent."""
+        Every = OrdersModule.StatusOrder + ["cancelled"]
+        if O["status"] == "completed":
+            return ["completed"]
+        if not self.IsEnrolled("order", O["id"]):
+            return Every
+        Commercial = list(EligibleOrderStatuses)
+        if O["status"] == "cancelled":
+            Keep = set(Commercial + ["cancelled"]) if self.Reinstate({**O, "lines": self.Orders._Lines(O["id"])})["possible"] else {"cancelled"}
+        else:
+            Keep = set(Commercial + ["cancelled", O["status"]]) if O["status"] in Commercial else {O["status"], "cancelled"}
+        return [S for S in Every if S in Keep]
+
+    def AfterStatusChange(self, O: dict, Status: str) -> None:
+        """An undone cancellation catches up with Fulfillment at once (G1): the order takes the progress Fulfillment last
+        reported (production, QC …), forward only, as the projection would — not New while the part is being made."""
+        if O["status"] != "cancelled" or Status == "cancelled" or not self.IsEnrolled("order", O["id"]):
+            return
+        Target = (self.Projection("order", O["id"]) or {}).get("order_status")
+        if Target in ProjectionStatuses:
+            with self.Ctx.Db.Transaction() as Conn:
+                if self._AllLinesSent(Conn, O["id"]):
+                    self._ProjectStatus(Conn, O["id"], Target, Now())
 
     # ── commands from the Admin (spec §7.4) ──────────────────────────────
     def Command(self, EntityType: str, EntityId: str, Action: str, Body: dict, By: str) -> dict:
@@ -1278,7 +1369,10 @@ class FulfillmentBridge:
                           # Fulfillment's stage of the line's part once it reports one (the staff view: approved, planned, in production …)
                           "stage": Stage, "stage_label": ProductionStageLabels.get(Stage, Stage) if Stage else None, "stage_detail": (Part or {}).get("stage_detail"),
                           # Where the part is, once Fulfillment confirmed it (I-32): the hand-over pending or confirmed, the MP number, the link
-                          "fulfillment_url": self._FulfillmentPartUrl(Prod["part_id"]) if Prod and Prod["part_id"] else None})
+                          "fulfillment_url": self._FulfillmentPartUrl(Prod["part_id"]) if Prod and Prod["part_id"] else None,
+                          # G9: the customer's other orders that hold the same piece, and whether that line is already in Production
+                          "duplicates": [{**D, "sent": bool(Other), "part": (Other or {}).get("part_display_no")} for D in L.get("duplicates") or []
+                                         for Other in [self.Ctx.Db.One("SELECT part_display_no FROM fulfillment_line_production WHERE line_id = ?", (D["line_id"],))]]})
         Pull = self.LastPull()
         AnyEligible = any(X["eligible"] for X in Lines)
         Reopen = None
@@ -1290,6 +1384,8 @@ class FulfillmentBridge:
                                                                                    "no line is ready to send yet — each line says why")),
                 # The controlled phase, said as such (I-35): the allowlist and whether this order is on it
                 "pilot": {"active": bool(Allow), "orders": list(Allow), "allowed": self.OrderAllowed(Record)}, "reopen": Reopen,
+                # G1: a cancelled order that was handed over — whether it can be set back, and each line's decision in Fulfillment
+                "reinstate": self.Reinstate(Record) if Record["status"] == "cancelled" and E and E["state"] == "enrolled" else None,
                 "lines": Lines, "lines_sent": len(Rows), "lines_total": len(Lines),
                 "enrollment": E, "awaiting_sync": self._Awaiting("order", Id, E, Pull), "last_pull_at": Pull["at"] if Pull else None,
                 "projection": self.Projection("order", Id), "commands": self.CommandList("order", Id), "command_actions": list(CommandActions),
@@ -1600,7 +1696,8 @@ def RegisterBridge(App_: FastAPI, Ctx: Context, Bridge: FulfillmentBridge) -> No
     @App_.post("/api/admin/orders/{OrderId}/production")
     async def SendToProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)
-        return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""), Links=Body_.get("links"))
+        return Bridge.SendToProduction(OrderId, Body_.get("line_ids"), Who.Id, str(Body_.get("note") or ""), Links=Body_.get("links"),
+                                       Duplicates=Body_.get("acknowledged_duplicates"))
 
     @App_.post("/api/admin/orders/{OrderId}/reopen-for-production")
     async def ReopenForProduction(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):

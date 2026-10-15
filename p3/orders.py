@@ -96,6 +96,8 @@ class OrderService:
         self.Production = Production          # Production3D: the STL for an ordered line at its size/material
         self.Versions = None                  # VersionService (p3/versions.py): a revised STL uploaded for a line
         self.StatusGuard = None               # the Fulfillment bridge: an enrolled order's production statuses are not set here
+        self.StatusOptions = None             # … the status moves offered for such an order (only what the server accepts, G1)
+        self.StatusApplied = None             # … and what follows a change (an undone cancellation catches up with Fulfillment, G1)
         self.LineGuard = None                 # the Fulfillment bridge: a line in Production changes its 3D version only through the revision workflow
         self.FulfillmentView = None           # the Fulfillment bridge: what the customer sees of an enrolled order (stage, parcels, timeline)
 
@@ -873,7 +875,11 @@ class OrderService:
         J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])
         J["events"] = [{**E, "data": json.loads(E.pop("data_json") or "{}")} for E in
                        self.Ctx.Db.All("SELECT * FROM order_events WHERE order_id = ? ORDER BY id", (O["id"],))]
-        J["allowed_statuses"] = StatusOrder + ["cancelled"]
+        J["allowed_statuses"] = (self.StatusOptions(O) if self.StatusOptions is not None
+                                 else ["completed"] if O["status"] == "completed" else StatusOrder + ["cancelled"])
+        Dups = self.DuplicateLines(O)
+        for L in J["lines"]:
+            L["duplicates"] = Dups.get(L["id"], [])
         J["notes_list"] = self._NotesList(O, J["events"])
         Quote = self.Ctx.Db.One("SELECT id, request_no FROM quote_requests WHERE order_id = ?", (O["id"],))
         J["quote"] = {"id": Quote["id"], "ref": QuoteRef(Quote["request_no"])} if Quote else None   # the quote it came from
@@ -893,6 +899,33 @@ class OrderService:
         Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                    (OrderId, "status", Dumps({"from": Old, "to": Status, "note": Note[:300]}), By, T))
 
+    def DuplicateLines(self, O: dict) -> dict:
+        """G9 (2026-10-15): for each line of the order, the same customer's other orders — not cancelled — that hold the
+        same item at the same size and material (on tron, ORD-10005 re-ordered ORD-10003's ring and ORD-10004's charm).
+        The customer is the account or the e-mail address. A warning for the Admin, never a block by itself and never a
+        cancellation: a second piece can be intended. The same saved design (customization) is said as such."""
+        Email = (json.loads(O.get("customer_json") or "{}").get("email") or "").strip().lower()
+        Others = self.Ctx.Db.All("SELECT id, order_no, status, created_at FROM orders WHERE id <> ? AND status <> 'cancelled' AND "
+                                 "((owner_account_id IS NOT NULL AND owner_account_id = ?) OR (? <> '' AND lower(trim(json_extract(customer_json, '$.email'))) = ?)) "
+                                 "ORDER BY order_no", (O["id"], O.get("owner_account_id"), Email, Email))
+        if not Others:
+            return {}
+        Mine = self.Ctx.Db.All("SELECT id, ring_id, product_type, material_id, material_label, ring_size, charm_size, customization_id "
+                               "FROM order_lines WHERE order_id = ?", (O["id"],))
+        Out: dict = {}
+        for X in Others:
+            for L2 in self.Ctx.Db.All("SELECT id, ring_id, product_type, material_id, ring_size, charm_size, customization_id FROM order_lines "
+                                      "WHERE order_id = ? ORDER BY position", (X["id"],)):
+                for L in Mine:
+                    if (L["ring_id"], L["material_id"], L["ring_size"], L["charm_size"]) != (L2["ring_id"], L2["material_id"], L2["ring_size"], L2["charm_size"]):
+                        continue
+                    Out.setdefault(L["id"], []).append({
+                        "order_id": X["id"], "order_ref": OrderRef(X["order_no"]), "status": X["status"], "status_label": StatusLabels.get(X["status"], X["status"]),
+                        "placed_at": X["created_at"], "line_id": L2["id"], "item_ref": L2["ring_id"],
+                        "size_label": Products.SizeLabel(L["product_type"] or Products.Ring, L["ring_size"], L["charm_size"]), "material_label": L["material_label"],
+                        "same_design": bool(L["customization_id"]) and L["customization_id"] == L2["customization_id"]})
+        return Out
+
     def SetStatus(self, OrderId: str, Status: str, By: str, Note: str = "", Force: bool = False) -> dict:
         """Production and every later status need each line's 3D result for the ordered size and material to be
         complete (measured and not flagged, or a flagged one accepted by the Admin). Force with a note records an
@@ -903,7 +936,11 @@ class OrderService:
         if O["status"] == "completed" and Status != "completed":
             raise HttpError(409, "order_completed", "A completed order cannot change status.")
         if self.StatusGuard is not None:
-            self.StatusGuard(O, Status)           # with Fulfillment: production / QC / shipping are recorded there (docs/FULFILLMENT.md)
+            self.StatusGuard(O, Status, Note)     # with Fulfillment: production / QC / shipping are recorded there (docs/FULFILLMENT.md)
+        # Undoing a cancellation is an exception the history keeps with its reason (G1, 2026-10-15: ORD-10003 was set back
+        # to New with none)
+        if O["status"] == "cancelled" and Status != "cancelled" and not (Note or "").strip():
+            raise HttpError(400, "reason_required", "Say why the cancellation is undone (kept in the order's history).")
         if Status in ProductionStatuses:
             Unresolved = [L for L in O["lines"] if not (L.get("three_d_match") and L.get("three_d_state") == "complete")]
             if Unresolved and not Force:
@@ -919,6 +956,8 @@ class OrderService:
         if Status == "three_d_ready" or Status in ProductionStatuses:
             self._PinDerived(O, By)
         self._SetStatus(O["id"], Status, By, Note)
+        if self.StatusApplied is not None:
+            self.StatusApplied(O, Status)
         return self.AdminGet(O["id"])
 
     def SetPayment(self, OrderId: str, Status: str, By: str, Note: str = "", Ref: str | None = None) -> dict:

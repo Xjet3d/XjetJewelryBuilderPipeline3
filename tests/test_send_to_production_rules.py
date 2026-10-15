@@ -105,7 +105,7 @@ async def _Tron(H) -> dict:
     await _Model(H, B, 8.5, "silver")
     await _Model(H, B, 10, "silver")
     await _Status(H, O3["id"], "cancelled", "cancelled by the Admin")
-    await _Status(H, O3["id"], "new")
+    await _Status(H, O3["id"], "new", "set back to New by the Admin")          # undoing a cancellation needs a reason (G1, 2026-10-15)
     # ORD-10004 / ORD-10005: the charm's result at the ordered size, made from the design page — linked to no line;
     # ORD-10004 set to Payment confirmed by hand (no payment recorded)
     await _Model(H, C, 20, "silver")
@@ -182,7 +182,14 @@ async def test_with_the_owner_s_go_the_blocked_orders_reach_production_the_right
         assert R["prepared"] and _Meshes(H) == Before
         L3 = _Line(await _State(H, O["ORD-10003"]["id"]), Lines["ORD-10003"][0]["ring_id"])
         assert (L3["stl"]["state"], L3["eligible"], L3["pinned"]) == ("ready", True, True)
-        assert (await _Send(H, O["ORD-10003"]["id"]))["lines"][0]["production"]["sent"]
+        # G9 (2026-10-15): ORD-10005 holds the same ring (the same customer ordered it again) — named, and sent only once confirmed
+        L3Id = Lines["ORD-10003"][0]["id"]
+        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10003']['id']}/production", json={"line_ids": [L3Id]}, headers=Admin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "duplicate_confirmation_required"
+        assert [D["order_ref"] for D in R.json()["error"]["blocked"][0]["duplicates"]] == ["ORD-10005"]
+        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10003']['id']}/production", json={"line_ids": [L3Id], "acknowledged_duplicates": {L3Id: [O["ORD-10005"]["id"]]}},
+                                headers=Admin)
+        assert R.status_code == 200 and R.json()["lines"][0]["production"]["sent"], R.text
         # ORD-10004: the ready STL is named and must be confirmed; the hand-over links exactly that one, in the history
         S4 = await _State(H, O["ORD-10004"]["id"])
         L4 = S4["lines"][0]
@@ -194,7 +201,9 @@ async def test_with_the_owner_s_go_the_blocked_orders_reach_production_the_right
         assert H.Ctx.Db.One("SELECT three_d_id FROM order_lines WHERE id = ?", (L4["line_id"],))["three_d_id"] is None           # nothing linked by a refusal
         R = await H.Client.post(f"/api/admin/orders/{O['ORD-10004']['id']}/production", json={"line_ids": [L4["line_id"]], "links": {L4["line_id"]: "s3d_other"}}, headers=Admin)
         assert R.status_code == 409 and R.json()["error"]["code"] == "link_confirmation_required"                                # a stale or wrong confirmation
-        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10004']['id']}/production", json={"line_ids": [L4["line_id"]], "links": {L4["line_id"]: Link["id"]}}, headers=Admin)
+        assert [D["order_ref"] for D in L4["duplicates"]] == ["ORD-10005"]                                              # the same charm (G9)
+        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10004']['id']}/production", json={"line_ids": [L4["line_id"]], "links": {L4["line_id"]: Link["id"]},
+                                                                                         "acknowledged_duplicates": {L4["line_id"]: [O["ORD-10005"]["id"]]}}, headers=Admin)
         assert R.status_code == 200, R.text
         S4 = R.json()
         assert S4["lines"][0]["production"]["sent"] and S4["lines"][0]["pinned"] and S4["lines"][0]["production"]["pinned"]["three_d_id"] == Link["id"]
@@ -207,7 +216,11 @@ async def test_with_the_owner_s_go_the_blocked_orders_reach_production_the_right
         assert Charm["stl"]["state"] == "ready_unlinked" and Ring["stl"]["state"] == "ready_unlinked" and Charm["eligible"] and Ring["eligible"]
         assert Ring["stl"]["link"]["id"] == H.Ctx.Db.One("SELECT three_d_id FROM order_lines WHERE id = ?", (Lines["ORD-10003"][0]["id"],))["three_d_id"]
         Links = {Charm["line_id"]: Charm["stl"]["link"]["id"], Ring["line_id"]: Ring["stl"]["link"]["id"]}
-        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10005']['id']}/production", json={"line_ids": [Charm["line_id"], Ring["line_id"]], "links": Links}, headers=Admin)
+        # Both pieces are already in Production for the same customer (ORD-10004's charm, ORD-10003's ring): named, confirmed (G9)
+        assert [(D["order_ref"], D["sent"]) for D in Charm["duplicates"]] == [("ORD-10004", True)] and [(D["order_ref"], D["sent"]) for D in Ring["duplicates"]] == [("ORD-10003", True)]
+        Seen = {Charm["line_id"]: [O["ORD-10004"]["id"]], Ring["line_id"]: [O["ORD-10003"]["id"]]}
+        R = await H.Client.post(f"/api/admin/orders/{O['ORD-10005']['id']}/production", json={"line_ids": [Charm["line_id"], Ring["line_id"]], "links": Links,
+                                                                                         "acknowledged_duplicates": Seen}, headers=Admin)
         assert R.status_code == 200, R.text
         assert [X["production"]["sent"] for X in R.json()["lines"]] == [True, True] and _Meshes(H) == Before
         # One hand-over per line, ever: ORD-10002 cannot be reopened again, nor sent twice

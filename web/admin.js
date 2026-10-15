@@ -683,6 +683,12 @@ function adminApp() {
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     // A completed order that never went to Production, reopened for it — Admin only, with a reason (I-35)
+    // G9: the customer's other orders that hold the same piece (same item, size and material), as one line
+    dupText(x) {
+      const d = x?.duplicates || []; if (!d.length) return '';
+      return d.map(o => o.order_ref + ' (' + o.status_label + (o.sent ? ', in Production' + (o.part ? ' · ' + o.part : '') : '') + ', placed ' + this.dateTime(o.placed_at) + ')').join('; ')
+        + ' — the same customer, ' + (d.some(o => o.same_design) ? 'the same saved design' : 'the same item') + ' · ' + d[0].size_label + ' · ' + d[0].material_label;
+    },
     async reopenForProduction() {
       const R = this.of?.reopen; if (!this.od || !R?.possible || this.odBusy) return;
       const r = await this.ask({ title: 'Reopen ' + this.od.ref + ' for Production?',
@@ -716,33 +722,58 @@ function adminApp() {
       const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — ' + (x.stl?.state === 'ready_unlinked'
         ? 'links STL: ' + this.stlLinkLine(x.stl.link) : 'STL: ' + (x.print_version?.label || '—') + (x.pinned ? ' · linked' : ''))).join('\n');
       const links = Object.fromEntries(lines.filter(x => x.stl?.state === 'ready_unlinked').map(x => [x.line_id, x.stl.link.id]));
+      // G9: a piece another order of the same customer also holds is named, and sending confirms exactly those orders (nothing is cancelled)
+      const dups = lines.filter(x => (x.duplicates || []).length);
+      const acknowledged_duplicates = Object.fromEntries(dups.map(x => [x.line_id, x.duplicates.map(o => o.order_id)]));
+      const dupWarn = dups.length ? '\n\nPossible duplicate order' + (dups.length > 1 ? 's' : '') + ':\n' + dups.map(x => '• ' + x.item_ref + ' — ' + this.dupText(x)).join('\n')
+        + '\nSending confirms that this piece is wanted as well; nothing is cancelled, and the confirmation is kept in the order history.' : '';
       const r = await this.ask({ title: 'Send ' + (lines.length === 1 ? lines[0].item_ref : lines.length + ' lines of ' + this.od.ref) + ' to Production?',
-        text: what + (Object.keys(links).length ? '\n\n“Links STL”: that exact file becomes the line’s print file now; the link is recorded in the order history.' : '') + '\n\nFulfillment takes over the manufacturing of these lines: the exact print file is pinned now, and a later version of the design never changes it. Production, QC and shipping are recorded there and shown here as progress; payment, notes and cancellation stay here. A wrong file is replaced through an explicit revision; a line leaves Production only through a cancellation request.',
+        text: what + (Object.keys(links).length ? '\n\n“Links STL”: that exact file becomes the line’s print file now; the link is recorded in the order history.' : '') + dupWarn + '\n\nFulfillment takes over the manufacturing of these lines: the exact print file is pinned now, and a later version of the design never changes it. Production, QC and shipping are recorded there and shown here as progress; payment, notes and cancellation stay here. A wrong file is replaced through an explicit revision; a line leaves Production only through a cancellation request.',
         confirmLabel: 'Send to Production', cancelLabel: 'Not now',
         input: { label: 'Note for the operations team (optional — not a signature)', value: this.prodNote || '', placeholder: 'For example: complimentary sample — approved for production', max: 500 } });
       if (!r) return;
       this.odBusy = true; this.odError = '';
       try {
-        this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/production`, { line_ids: lineIds, note: (r.value || '').trim(), links });
+        this.of = await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/production`, { line_ids: lineIds, note: (r.value || '').trim(), links, acknowledged_duplicates });
         this.prodSel = {}; this.prodNote = '';
         this.notify((lines.length === 1 ? lines[0].item_ref : lines.length + ' lines') + ' sent to Production.');
         await this.loadOrder();
       } catch (e) { this.odError = e.message; await this.loadOrder(); }      // a line that was already sent, or lost its file meanwhile: the page shows the truth
       finally { this.odBusy = false; }
     },
+    // G1 (2026-10-15): undoing a cancellation always, and cancelling an order with lines in Production, need a reason
+    statusNoteRequired() {
+      const to = this.oStatusForm.status, from = this.od?.status;
+      return (from === 'cancelled' && to !== 'cancelled') || (to === 'cancelled' && from !== 'cancelled' && !!this.of?.enrolled);
+    },
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;
       // Cancelled and Completed (final) are never one click. A cancellation asks for its reason (kept in the notes and history).
       const to = this.oStatusForm.status;
-      if (to === 'cancelled' || to === 'completed') {
-        const cancel = to === 'cancelled';
+      if (this.od.status === 'cancelled') {
+        // G1: undone only with a reason; a handed-over order only once Operations rejected the cancellation in Fulfillment
+        const R = this.of?.reinstate;
+        if (R && !R.possible) { this.notify(this.od.ref + ' stays cancelled: ' + R.why_not + '.', 'error'); return; }
+        const r = await this.ask({ title: 'Undo the cancellation of ' + this.od.ref + '?',
+          text: (R ? 'Operations rejected the cancellation in Fulfillment for every line sent: production goes on, and the order takes Fulfillment’s progress again. ' : '')
+                + 'The order is set to ' + this.orderStatusLabel(to) + '; the reason is kept in its history.',
+          confirmLabel: 'Undo the cancellation', cancelLabel: 'Keep it cancelled',
+          input: { label: 'Why is the cancellation undone? (required)', value: this.oStatusForm.note || '', placeholder: 'For example: the customer confirmed they still want it', max: 300 } });
+        if (!r) return;
+        if ((r.value || '').trim().length < 3) { this.notify('Say why the cancellation is undone — the reason is kept in the order’s history.', 'error'); return; }
+        this.oStatusForm.note = r.value.trim();
+      } else if (to === 'cancelled' || to === 'completed') {
+        const cancel = to === 'cancelled', inProd = cancel && !!this.of?.enrolled;
         const r = await this.ask({
           title: cancel ? 'Cancel order ' + this.od.ref + '?' : 'Mark order ' + this.od.ref + ' as completed?',
           text: cancel ? 'The order (' + this.money(this.od.total) + ') is marked as cancelled. This sends the customer no email and refunds nothing — a refund is recorded under Payment. The reason is kept in the order’s notes and history.'
+                         + (inProd ? ' It has lines in Production: Operations decide in Fulfillment whether the work stops (accepted) or goes on (rejected); undoing the cancellation here is possible only after they rejected it.' : '')
                        : 'Completed is final: the order cannot change status afterwards.',
           confirmLabel: cancel ? 'Cancel the order' : 'Mark as completed', cancelLabel: 'Keep it as it is', danger: true,
-          input: cancel ? { label: 'Reason for the cancellation (optional)', value: this.oStatusForm.note || '', placeholder: 'For example: the customer changed their mind', max: 300 } : null });
+          input: cancel ? { label: inProd ? 'Reason for the cancellation (required — Operations decide on it in Fulfillment)' : 'Reason for the cancellation (optional)',
+                            value: this.oStatusForm.note || '', placeholder: 'For example: the customer changed their mind', max: 300 } : null });
         if (!r) return;
+        if (inProd && !(r.value || '').trim()) { this.notify('Say why the order is cancelled — Operations decide on it in Fulfillment with your reason.', 'error'); return; }
         if (cancel) this.oStatusForm.note = (r.value || '').trim();
       }
       this.odBusy = true; this.odError = '';

@@ -598,6 +598,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # action works only with P3_FULFILLMENT_INTEGRATION on; an enrolled order's production statuses belong to Fulfillment
     Bridge = FulfillmentBridge(Ctx, Svc.Orders, Svc.Production3D)
     Svc.Orders.StatusGuard = Bridge.GuardStatusChange
+    Svc.Orders.StatusOptions = Bridge.StatusOptions
+    Svc.Orders.StatusApplied = Bridge.AfterStatusChange
     Svc.Orders.LineGuard = Bridge.GuardLineVersionChange
     Svc.Orders.FulfillmentView = Bridge.CustomerView
     App_.state.Bridge = Bridge

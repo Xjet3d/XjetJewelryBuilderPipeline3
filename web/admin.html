@@ -1946,7 +1946,9 @@
               <select class="inp !py-1.5" x-model="oStatusForm.status" aria-label="New order status"><template x-for="s in od.allowed_statuses" :key="s"><option :value="s" x-text="orderStatusLabel(s)"></option></template></select>
               <button class="btn !py-1.5 whitespace-nowrap" :disabled="odBusy || oStatusForm.status === od.status" @click="setOrderStatus()">Update</button>
             </div>
-            <input class="inp !py-1.5 !text-[12px]" x-model="oStatusForm.note" placeholder="Note for the log (optional)">
+            <input class="inp !py-1.5 !text-[12px]" x-model="oStatusForm.note" :placeholder="statusNoteRequired() ? 'Reason (required — kept in the history)' : 'Note for the log (optional)'">
+            <p x-show="od.status === 'cancelled' && of?.reinstate" class="text-[12px]" :class="of?.reinstate?.possible ? 'text-zinc-600' : 'text-amber-800'"
+               x-text="of?.reinstate?.possible ? 'Operations rejected the cancellation in Fulfillment for every line sent: it can be undone, with a reason — the order then takes Fulfillment’s progress again.' : 'Handed over to Production — it stays cancelled: ' + (of?.reinstate?.why_not || '') + '.'"></p>
             <label class="flex items-start gap-2 text-[12px] text-zinc-600 mt-1.5 cursor-pointer"><input type="checkbox" class="mt-0.5" x-model="oStatusForm.force">
               <span>Set the status although a line's 3D result is missing, processing or flagged (an exception — say why in the note). Production and later statuses otherwise need every line's 3D result complete.</span></label>
             <p class="text-[12px] text-zinc-500">New → Payment confirmed → 3D ready → Production → QC → Shipped → Completed. Completed is final.</p>
@@ -1985,7 +1987,8 @@
           <div class="flex items-center gap-3"><p class="lbl">Production</p>
             <span x-show="of?.enrolled" class="badge bg-emerald-100 text-emerald-800" x-text="of?.lines_sent + ' of ' + of?.lines_total + ' line(s) in Production'"></span>
             <span x-show="of?.enrolled && of?.awaiting_sync" class="badge bg-amber-100 text-amber-800" title="Fulfillment has not read the latest change yet">Awaiting synchronization</span>
-            <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not in Production</span></div>
+            <span x-show="!of?.enrolled" class="badge bg-zinc-100 text-zinc-600">Not in Production</span>
+            <span x-show="(of?.lines || []).some(x => (x.duplicates || []).length && !x.production?.sent)" class="badge bg-amber-100 text-amber-800" title="The same customer has another order with the same piece (same item, size and material) — see the line below">Possible duplicate order</span></div>
           <p x-show="!of?.eligible && of?.ineligible_reason && !of?.not_enabled" class="text-[12px] text-zinc-500" x-text="'Cannot be sent to Production: ' + of.ineligible_reason + '.'"></p>
           <p x-show="of?.not_enabled" class="text-[12px] text-amber-800" title="P3_FULFILLMENT_ORDER_ALLOWLIST" x-text="'Production hand-over restricted by the pilot allowlist: during the controlled phase only ' + (of?.pilot?.orders || []).join(', ') + ' are handed over. Each line’s STL is still checked below.'"></p>
           <p x-show="of?.reopen" class="text-[12px] text-zinc-600 w-full flex flex-wrap items-center gap-2">
@@ -2121,6 +2124,7 @@
                             <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span></p>
                           <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
                           <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
+                          <p x-show="(prodLine(l).duplicates || []).length" class="text-amber-800" x-text="'Possible duplicate: ' + dupText(prodLine(l)) + '. Send to Production asks you to confirm; nothing is cancelled.'"></p>
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
                             <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
                             <button x-show="prodLine(l).stl?.state === 'ambiguous'" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="linkStl(l)">Link STL…</button>
