@@ -4,7 +4,7 @@ Multi-million-face models need a lot of memory. Running each job in a child proc
 address-space cap (P3_GEOMETRY_MEMORY_MB, Linux) means a model that does not fit only fails this job —
 it can never take the web server down.
 
-args.json: {"kind": "measure" | "preview" | "integrity" | "export" | "fix_bore" | "render", "source": <raw STL>, "result": <json out>,
+args.json: {"kind": "measure" | "preview" | "integrity" | "export" | "fix_bore" | "fix_bore_proposal" | "render", "source": <raw STL>, "result": <json out>,
             render only: "source" = the light preview (P3PV), "output" = a PNG, "product" (p3/render3d.py),
             "product": "charm" for a charm's measure / export (p3/charmgeometry.py; rings: absent),
             "raw": {measurement}, "target_mm": <float>, "output": <file out>,
@@ -93,6 +93,14 @@ def Run(A: dict) -> dict:
                 os.remove(A["output"])
             except OSError:
                 pass
+    elif Kind == "fix_bore_proposal":
+        # The manual FixBore (the owner's decision of 2026-10-15): the same correction, but the file is KEPT for the
+        # Admin's review and named by its hash — never written over the result it is proposed for
+        Again = not A["raw"].get("bore_ellipse")
+        Raw = g.MeasureRaw(A["source"]) if Again else A["raw"]
+        Corr = g.ExportCorrectedStl(A["source"], Raw, float(A["target_mm"]), A["output"])
+        Out = {"correction": Corr, "measured": g.MeasureRaw(A["output"]), "sha256": _Sha256(A["output"]), "bytes": os.path.getsize(A["output"]),
+               **({"raw_measured": Raw} if Again else {})}
     else:
         raise ValueError(f"unknown job kind {Kind}")
     return {"ok": True, **Out, "seconds": round(time.perf_counter() - T, 3)}

@@ -413,10 +413,15 @@ class FulfillmentBridge:
             if self.Orders.MasterPresent(T["mesh_id"] if T else None) is False:
                 return V("file_missing")
             State = L.get("three_d_state")
+            # An accepted bore correction of the linked result is offered here, applied only by the Admin (FixBore, 2026-10-15)
+            Bc = {"bore_correction": L["bore_correction"]} if L.get("bore_correction") else {}
             if State == "complete" and L.get("three_d_match"):
-                return V("ready")
+                return V("ready", **Bc)
             if State == "review_required":
-                return V("review_required")
+                R = V("review_required", **Bc)
+                if Bc:
+                    R["action"] = "use the bore-corrected revision on this line (Use the bore-corrected STL…), or accept the original on the session page"
+                return R
             if State in ("failed", "cancelled"):
                 return V("failed")
             return V("preparing")

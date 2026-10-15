@@ -1273,15 +1273,51 @@
                 <p class="text-[12px] text-amber-900/70">Viewing or downloading the model does not approve it for production.</p>
                 <div class="flex flex-wrap gap-2">
                   <!-- A bore that is not round: scale the model along the bore's two axes so it is a circle of the target size (local work) -->
-                  <button x-show="(t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.exact && !t.bore_correction && !t.bore_correction_failed" class="btn !py-1.5" @click="fixBore(t)">Make the bore round</button>
+                  <button x-show="canProposeFix(t)" class="btn !py-1.5" @click="fixBore(t)">Propose a bore correction (FixBore)…</button>
                   <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
                   <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
                   <!-- A correction that made the bore rounder but not round: back to the model as generated -->
-                  <button x-show="(t.review || []).some(r => r.code === 'bore_still_not_round')" class="btn2 !py-1.5" @click="undoBore(t)">Undo — back to the model as generated</button>
+                  <button x-show="(t.review || []).some(r => r.code === 'bore_still_not_round') && !t.derived_from" class="btn2 !py-1.5" @click="undoBore(t)">Undo — back to the model as generated</button>
                 </div>
               </div>
             </template>
-            <template x-if="t.bore_correction">
+            <!-- The manual FixBore (2026-10-15): a corrected STL proposed for review; this result itself never changes -->
+            <template x-if="t.bore_fix && !t.derived_from">
+              <div class="border p-4 space-y-2" :class="['computing', 'proposed'].includes(t.bore_fix.status) ? 'border-sky-200 bg-sky-50' : t.bore_fix.status === 'accepted' ? 'border-emerald-200 bg-emerald-50' : 'border-zinc-200 bg-zinc-50'">
+                <p class="text-sm font-semibold" x-text="boreFixTitle(t)"></p>
+                <p x-show="t.bore_fix.status === 'computing'" class="text-[13px]">The corrected STL is being made and measured — local work on the existing model, no AI call. This result is not changed.</p>
+                <p x-show="t.bore_fix.status === 'failed'" class="text-[13px]" x-text="(t.bore_fix.error || 'The correction could not be made.') + ' This result is unchanged.'"></p>
+                <template x-if="t.bore_fix.after && ['proposed', 'accepted', 'rejected'].includes(t.bore_fix.status)">
+                  <table class="text-[13px] tabular-nums w-full max-w-2xl">
+                    <thead><tr class="text-[11px] uppercase tracking-widest text-zinc-500"><th class="text-left font-normal py-1"></th><th class="text-right font-normal">Before — this result</th><th class="text-right font-normal">After — corrected</th></tr></thead>
+                    <tbody>
+                      <template x-for="row in boreFixRows(t.bore_fix)" :key="row.label">
+                        <tr class="border-t border-black/5"><td class="py-1 pr-3" x-text="row.label"></td><td class="text-right" x-text="row.before"></td><td class="text-right font-medium" x-text="row.after"></td></tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </template>
+                <p x-show="t.bore_fix.scales && t.bore_fix.status !== 'failed'" class="text-[12px] text-zinc-600" x-text="boreFixScales(t.bore_fix)"></p>
+                <template x-for="(w, i) in (t.bore_fix.status === 'proposed' ? (t.bore_fix.after?.warnings || []) : [])" :key="i"><p class="text-[12px] text-amber-800" x-text="'Note: ' + w"></p></template>
+                <template x-if="t.bore_fix.status === 'proposed'">
+                  <div class="space-y-2">
+                    <p class="text-[12px] text-zinc-600" x-text="'Accepting saves this corrected STL as a new revision — a result of its own, the reviewed file stored (sha256 ' + (t.bore_fix.file_sha256 || '').slice(0, 12) + '…). This result stays exactly as it is. Order lines keep their STL until you switch them on the order page, and Fulfillment’s manufacturing approval stays a separate decision. Wall thickness and strength are not checked here.'"></p>
+                    <div class="flex flex-wrap gap-2"><button class="btn !py-1.5" @click="acceptBoreFix(t)">Accept as a new revision…</button><button class="btn2 !py-1.5" @click="rejectBoreFix(t)">Reject…</button></div>
+                  </div>
+                </template>
+                <p x-show="t.bore_fix.status === 'accepted'" class="text-[12px] text-emerald-900" x-text="'Accepted by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + ' — saved as a new revision, listed with this design’s 3D results. This result is unchanged; order lines are switched to the revision on the order page, one by one.' + (t.bore_fix.decision_note ? ' Note: ' + t.bore_fix.decision_note : '')"></p>
+                <p x-show="t.bore_fix.status === 'rejected'" class="text-[12px] text-zinc-600" x-text="'Rejected by ' + (t.bore_fix.decided_by || 'admin') + ', ' + dateTime(t.bore_fix.decided_at) + (t.bore_fix.decision_note ? ' — ' + t.bore_fix.decision_note : '') + '. This result is unchanged; a new correction can be proposed.'"></p>
+              </div>
+            </template>
+            <!-- A bore-corrected revision: what it was made from, and its stored file -->
+            <template x-if="t.derived_from">
+              <div class="border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+                <p class="text-sm font-semibold text-emerald-900" x-text="'Bore-corrected revision (FixBore) of result …' + t.derived_from.session_3d_id.slice(-8)"></p>
+                <p class="text-[13px] text-emerald-900" x-text="'Accepted by ' + (t.derived_from.accepted_by || 'admin') + ', ' + dateTime(t.derived_from.accepted_at) + '. Its STL is the reviewed file, stored: sha256 ' + (t.derived_from.file_sha256 || '').slice(0, 16) + '…, ' + Math.round((t.derived_from.file_bytes || 0) / 1e6) + ' MB.' + (t.derived_from.note ? ' Note: ' + t.derived_from.note : '')"></p>
+                <p class="text-[12px] text-emerald-900/80">The result it was made from is unchanged. A manufacturing approval is still Fulfillment’s own decision.</p>
+              </div>
+            </template>
+            <template x-if="t.bore_correction && !t.derived_from">
               <div class="border border-emerald-200 bg-emerald-50 p-4 space-y-1">
                 <p class="text-sm font-semibold text-emerald-900" x-text="((t.bore_correction.roundness_after || 0) > 0.04 ? 'Bore corrected for ' : 'Bore made round for ') + (t.size_label || 'US ' + t.production_size)"></p>
                 <p class="text-[13px] text-emerald-900" x-text="'The bore was ' + ((t.bore_correction.ellipticity - 1) * 100).toFixed(1) + '% longer one way. The model was scaled ×' + t.bore_correction.scale_major.toFixed(3) + ' along the bore’s long axis, ×' + t.bore_correction.scale_minor.toFixed(3) + ' along its short axis and ×' + t.bore_correction.scale_axis.toFixed(3) + ' in height; the bore now deviates ' + ((t.bore_correction.roundness_after || 0) * 100).toFixed(1) + '% from a circle' + (t.bore_correction.roundness_before != null ? ' (was ' + (t.bore_correction.roundness_before * 100).toFixed(1) + '%)' : '') + (t.bore_correction.bore_min_diameter_mm != null ? ' and measures ' + t.bore_correction.bore_min_diameter_mm.toFixed(1) + '–' + t.bore_correction.bore_max_diameter_mm.toFixed(1) + ' mm through the centre.' : '.')"></p>
@@ -2124,6 +2160,7 @@
                             <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span></p>
                           <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
                           <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
+                          <p x-show="l.bore_correction" class="text-sky-800">A bore-corrected revision of this line’s STL was accepted. <button class="underline" :disabled="odBusy" @click="useBoreCorrection(l)">Use the bore-corrected STL…</button></p>
                           <p x-show="(prodLine(l).duplicates || []).length" class="text-amber-800" x-text="'Possible duplicate: ' + dupText(prodLine(l)) + '. Send to Production asks you to confirm; nothing is cancelled.'"></p>
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
                             <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>

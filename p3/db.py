@@ -269,6 +269,35 @@ CREATE TABLE IF NOT EXISTS geometry_results (
     created_at         TEXT NOT NULL
 );
 
+-- The manual FixBore (the owner's decision of 2026-10-15): a corrected STL proposed for one result, reviewed by the
+-- Admin (its numbers beside the result's), then accepted — a new result of its own, the revision, with the file stored —
+-- or rejected. The result it was proposed for is never changed; the file's hash names what was reviewed and accepted.
+CREATE TABLE IF NOT EXISTS bore_fixes (
+    id               TEXT PRIMARY KEY,                    -- bfx_…
+    session_3d_id    TEXT NOT NULL REFERENCES session_3d(id),   -- the result it corrects (unchanged)
+    mesh_id          TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('computing', 'proposed', 'failed', 'accepted', 'rejected')),
+    target_mm        REAL NOT NULL,
+    raw_sha256       TEXT,                                -- the master it was computed from, and how it was measured
+    method_version   TEXT,
+    before_json      TEXT NOT NULL DEFAULT '{}',          -- the result's own numbers when proposed (mm)
+    after_json       TEXT,                                -- the corrected model, measured (mm)
+    correction_json  TEXT,                                -- the bore's ellipse and the scale factors
+    file_path        TEXT,                                -- the corrected STL (relative to the dev dir): kept while proposed, then the revision's
+    file_sha256      TEXT,
+    file_bytes       INTEGER,
+    revision_id      TEXT,                                -- the new result made on acceptance
+    error            TEXT,
+    proposed_by      TEXT NOT NULL,
+    decided_by       TEXT,
+    decided_at       TEXT,
+    decision_note    TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bore_fixes_result ON bore_fixes(session_3d_id, created_at);
+CREATE INDEX IF NOT EXISTS bore_fixes_revision ON bore_fixes(revision_id);
+
 -- Weight / cost / price from a production geometry. Kept separate from the fixed customer price,
 -- which is never changed by these numbers.
 CREATE TABLE IF NOT EXISTS price_calculations (

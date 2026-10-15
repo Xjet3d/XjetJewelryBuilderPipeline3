@@ -314,155 +314,156 @@ async def test_the_admin_can_make_a_new_movie_for_an_image(HX):
     assert len(H.Provider.SubmissionsFor(endpoints.Movie)) == 2
 
 
-async def test_a_bore_that_is_not_round_can_be_made_round_for_a_result(HX, monkeypatch):
-    """"Make the bore round": the model is scaled along the bore's two axes so the bore is a circle of the size's
-    inner diameter, written as this result's production STL and measured again — local work, no Hi3D call. The
-    result is complete, and every download path serves the corrected model."""
-    import trimesh
-    from p3.geometry import UsSizeToInnerDiameterMm
+async def _OvalResult(H, monkeypatch, Shape):
+    """A design whose model's bore is the given shape (mock Hi3D), measured at US 7: its one result."""
     from p3.providers import mock
-
-    def Oval(Format):
-        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
-        M.apply_scale([1.15, 1.0, 1.0])
-        return M.export(file_type=Format)
-    monkeypatch.setattr(mock, "_MeshBytes", Oval)
-    H = HX
-    Did = (await H.NewDesign("A band with an oval bore"))["design_id"]
+    monkeypatch.setattr(mock, "_MeshBytes", Shape)
+    Did = (await H.NewDesign("A band with a bore that is not round"))["design_id"]
     await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
     await H.Idle()
-    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    return Did, (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+
+
+async def _Result(H, Did: str, Sid: str) -> dict:
+    return next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == Sid)
+
+
+def _Torus(Lobes: float = 0.0, Oval: float = 1.0):
+    import numpy as np
+    import trimesh
+
+    def Shape(Format):
+        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
+        if Lobes:
+            V = M.vertices.copy()
+            V[:, :2] *= (1 + Lobes * np.cos(3 * np.arctan2(V[:, 1], V[:, 0])))[:, None]
+            M.vertices = V
+        if Oval != 1.0:
+            M.apply_scale([Oval, 1.0, 1.0])
+        return M.export(file_type=Format)
+    return Shape
+
+
+async def test_fixbore_proposes_a_corrected_stl_and_an_accepted_one_is_a_new_revision(HX, monkeypatch):
+    """The manual FixBore (the owner's decision of 2026-10-15): a corrected STL is proposed for review — the model
+    scaled along the bore's two axes so the bore is a circle of the size's inner diameter — and the result it is
+    proposed for never changes. The Admin sees the result's numbers beside the corrected ones; accepting saves the very
+    file reviewed (its hash) as a new revision: a result of its own, complete, its STL stored. Local work, no Hi3D call."""
+    import hashlib
+    H = HX
+    Did, R3 = await _OvalResult(H, monkeypatch, _Torus(Oval=1.15))
     assert R3["production_state"] == "review_required" and [r["code"] for r in R3["review"]] == ["bore_not_round"]
-    assert R3["bore_correction"] is None and R3["scaled_stl"] == "on_demand"
-    # The review says what the bore measures across its centre and what the correction will leave (an ellipse: nothing)
-    assert "gauge passes" in R3["review"][0]["text"] and "expected: round within" in R3["review"][0]["action"]
-    assert R3["bore_expected_after"] < 0.01
-    P0, Tg = R3["geometry"]["production"], R3["target_inner_diameter_mm"]
-    # The size is the largest circle that passes (a ring gauge): the oval's narrow way is the target, the wide way 15% more
-    assert P0["inner_diameter_mm"] == pytest.approx(Tg, rel=0.005) and P0["bore_min_diameter_mm"] == pytest.approx(Tg, rel=0.005)
-    assert P0["bore_max_diameter_mm"] == pytest.approx(Tg * 17.25 / 15.0, rel=0.02)
+    assert R3["bore_fix"] is None and R3["derived_from"] is None and R3["bore_expected_after"] < 0.01
+    Tg, P0 = R3["target_inner_diameter_mm"], R3["geometry"]["production"]
     Subs = len(H.Provider.SubmissionsFor(endpoints.Mesh))
     R = await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)
+    assert R.status_code == 200 and R.json()["bore_fix"]["status"] == "computing" and R.json()["status"] == "needs_review", R.text
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).json()["error"]["code"] in ("proposal_open", "busy")
+    await H.Idle()
+    F = await _Result(H, Did, R3["id"])
+    # The result is exactly as it was: its status, its reason, its numbers, its uniform STL made on demand
+    assert (F["status"], F["production_state"], [r["code"] for r in F["review"]]) == ("needs_review", "review_required", ["bore_not_round"])
+    assert F["geometry"]["production"]["volume_mm3"] == pytest.approx(P0["volume_mm3"]) and F["bore_correction"] is None and F["scaled_stl"] == "on_demand"
+    X = F["bore_fix"]
+    assert (X["status"], X["error"], X["revision_id"]) == ("proposed", None, None)
+    B, A = X["before"], X["after"]
+    # Before: the gauge is the size, the oval 15 % wider the other way; after: round at the size, less metal
+    assert B["gauge_mm"] == pytest.approx(Tg, rel=0.005) and B["bore_max_mm"] == pytest.approx(Tg * 17.25 / 15.0, rel=0.02) and B["roundness"] > 0.04
+    assert A["gauge_mm"] == pytest.approx(Tg, rel=0.01) and A["roundness"] < 0.01 and A["bore_max_mm"] < B["bore_max_mm"] and A["warnings"] == []
+    assert 0 < A["volume_mm3"] < B["volume_mm3"] and 0 < A["weight_g"] < B["weight_g"]
+    assert X["scales"]["scale_major"] < 1 < X["scales"]["scale_minor"]                 # against the uniform scaling: the long way shrinks
+    Stl = H.Ctx.Settings.DevDir / "bore_fixes" / f"{X['id']}.stl"
+    assert Stl.is_file() and hashlib.sha256(Stl.read_bytes()).hexdigest() == X["file_sha256"] and Stl.stat().st_size == X["file_bytes"]
+    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs                        # no Hi3D call
+    # Accepted: a new revision — complete, its STL the reviewed file, stored; the original unchanged
+    R = await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/accept", json={"note": "oval bore of the AI model, made round"}, headers=Admin)
     assert R.status_code == 200, R.text
-    assert R.json()["status"] in ("queued", "measuring")
-    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 409     # one at a time
-    await H.Idle()
-    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
-    assert F["status"] == "measured" and F["production_state"] == "complete" and F["review"] == [], F["error"]
-    Target = UsSizeToInnerDiameterMm(7)
-    C = F["bore_correction"]
-    assert C["scale_major"] < C["scale_minor"] and C["roundness_after"] < 0.01 and C["target_inner_diameter_mm"] == pytest.approx(Target)
-    P = F["geometry"]["production"]
-    assert P["inner_diameter_mm"] == pytest.approx(Target, rel=0.005) and P["stl_path"] is None     # exported on demand
-    assert F["scaled_stl"] == "on_demand" and F["price"]["weight_g"] > 0 and F["live"]["can_retry"]  # (the undo)
-    assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == Subs                     # no Hi3D call
-    assert not list((H.Ctx.Settings.DevDir / "exports").glob(f"round_{R3['id']}_*"))   # the measured file is temporary
-    # The scaled STL is the corrected model, exported on demand like the uniform one (and reused while it lasts)
-    E = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
-    assert E["job_id"] != "stored"
-    await H.Idle()
-    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E['job_id']}", headers=Admin)).json()
-    assert E["status"] == "done", E
+    Rev, Orig = R.json()["revision"], R.json()["original"]
+    assert Rev["id"] != R3["id"] and (Rev["status"], Rev["production_state"], Rev["review"]) == ("measured", "complete", [])
+    assert Rev["scaled_stl"] == "stored" and Rev["derived_from"]["session_3d_id"] == R3["id"] and Rev["derived_from"]["file_sha256"] == X["file_sha256"]
+    assert (Rev["production_size"], Rev["material_id"], Rev["mesh_id"]) == (R3["production_size"], R3["material_id"], R3["mesh_id"])
+    assert Rev["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(A["gauge_mm"]) and Rev["price"]["weight_g"] == pytest.approx(A["weight_g"], rel=0.01)
+    assert (Orig["status"], Orig["bore_fix"]["status"], Orig["bore_fix"]["revision_id"]) == ("needs_review", "accepted", Rev["id"])
+    assert Orig["geometry"]["production"]["volume_mm3"] == pytest.approx(P0["volume_mm3"]) and Orig["bore_fix"]["decision_note"] == "oval bore of the AI model, made round"
+    assert (await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/accept", headers=Admin)).json()["error"]["code"] == "not_proposed"       # once
+    # A revision stays as accepted: no re-measure in place, no correction of a correction; the original is not proposed again
+    assert not Rev["live"]["can_retry"] and (await H.Client.post(f"/api/admin/3d/{Rev['id']}/retry", headers=Admin)).json()["error"]["code"] == "revision_fixed"
+    assert (await H.Client.post(f"/api/admin/3d/{Rev['id']}/fix-bore", headers=Admin)).json()["error"]["code"] == "already_a_revision"
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).json()["error"]["code"] == "already_corrected"
+    # The revision's STL is the stored file itself, byte for byte; the original still exports its uniform scaling
+    assert (await H.Client.post(f"/api/admin/3d/{Rev['id']}/export", headers=Admin)).json()["job_id"] == "stored"
+    E = (await H.Client.get(f"/api/admin/3d/{Rev['id']}/export/stored", headers=Admin)).json()
     File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring, bore made round"
-    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()["job_id"] == E["job_id"]
-    Kinds = [X["kind"] for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"]]
-    assert "admin_3d_fix_requested" in Kinds and "admin_3d_bore_fixed" in Kinds
-    Lst = (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]
-    assert next(X for X in Lst if X["design_id"] == Did)["three_d_state"] == "complete"
-    # Undo: back to the model as generated — the uniform scaling, flagged again; a fresh export is the uniform one
-    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 200
-    await H.Idle()
-    U = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
-    assert U["bore_correction"] is None and [r["code"] for r in U["review"]] == ["bore_not_round"] and not U["live"]["can_retry"]
-    assert U["geometry"]["production"]["volume_mm3"] == pytest.approx(R3["geometry"]["production"]["volume_mm3"])
+    assert File.status_code == 200 and hashlib.sha256(File.content).hexdigest() == X["file_sha256"]
+    assert File.content[:80].rstrip() == b"XJet P3 scaled ring, bore made round"
     E2 = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()
-    assert E2["job_id"] != E["job_id"]
     await H.Idle()
     E2 = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E2['job_id']}", headers=Admin)).json()
-    File = await H.Client.get(E2["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring"
+    File2 = await H.Client.get(E2["url"].removeprefix(H.Ctx.Settings.BasePath))
+    assert File2.status_code == 200 and File2.content[:80].rstrip() == b"XJet P3 scaled ring"
+    Kinds = [Y["kind"] for Y in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"]]
+    assert {"admin_3d_bore_fix_proposed", "admin_3d_bore_fix_computed", "admin_3d_bore_fix_accepted"} <= set(Kinds)
 
 
-async def test_making_the_bore_round_is_not_kept_when_the_bore_is_not_an_ellipse(HX, monkeypatch):
-    """A bore that is not an ellipse (here three-lobed) cannot be made round by scaling: the attempt leaves the result
-    as measured — the uniform scaling, its review reason, nothing on disk — and is recorded on it with the next step;
-    the button is not offered again."""
-    import numpy as np
-    import trimesh
-    from p3.providers import mock
-
-    def Lobed(Format):
-        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
-        V = M.vertices.copy()
-        V[:, :2] *= (1 + 0.08 * np.cos(3 * np.arctan2(V[:, 1], V[:, 0])))[:, None]
-        M.vertices = V
-        return M.export(file_type=Format)
-    monkeypatch.setattr(mock, "_MeshBytes", Lobed)
+async def test_a_rejected_correction_is_deleted_and_the_result_stays_as_it_was(HX, monkeypatch):
     H = HX
-    Did = (await H.NewDesign("A band with a three-lobed bore"))["design_id"]
-    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
-    await H.Idle()
-    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
-    assert [r["code"] for r in R3["review"]] == ["bore_not_round"] and R3["bore_correction_failed"] is None
+    Did, R3 = await _OvalResult(H, monkeypatch, _Torus(Oval=1.15))
     assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200
     await H.Idle()
-    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
-    assert F["status"] == "needs_review" and F["production_state"] == "review_required" and F["bore_correction"] is None
-    assert F["bore_correction_failed"]["roundness_after"] > 0.04 and "did not work" in F["error"]
-    assert [r["code"] for r in F["review"]] == ["bore_not_round"] and "not an ellipse" in F["review"][0]["action"]
+    X = (await _Result(H, Did, R3["id"]))["bore_fix"]
+    assert X["status"] == "proposed"
+    R = await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/reject", json={"note": "the design stays as generated"}, headers=Admin)
+    assert R.status_code == 200 and R.json()["bore_fix"]["status"] == "rejected", R.text
+    assert not (H.Ctx.Settings.DevDir / "bore_fixes" / f"{X['id']}.stl").exists()
+    F = await _Result(H, Did, R3["id"])
+    assert (F["status"], [r["code"] for r in F["review"]], F["bore_fix"]["decision_note"]) == ("needs_review", ["bore_not_round"], "the design stays as generated")
     assert F["geometry"]["production"]["volume_mm3"] == pytest.approx(R3["geometry"]["production"]["volume_mm3"])
-    assert F["scaled_stl"] == "on_demand" and not F["live"]["can_retry"]
-    assert not list((H.Ctx.Settings.DevDir / "exports").glob(f"round_{R3['id']}_*"))
-    Ev = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"] if X["kind"] == "admin_3d_bore_fixed")
-    assert Ev["data"]["kept"] is False
-    E = (await H.Client.post(f"/api/admin/3d/{R3['id']}/export", headers=Admin)).json()     # still the uniform scaling
-    await H.Idle()
-    E = (await H.Client.get(f"/api/admin/3d/{R3['id']}/export/{E['job_id']}", headers=Admin)).json()
-    File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled ring"
+    assert len((await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"]) == 1      # no revision
+    assert (await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/accept", headers=Admin)).json()["error"]["code"] == "not_proposed"
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200            # proposed again later
 
 
-async def test_a_correction_that_makes_the_bore_rounder_but_not_round_is_kept_for_review(HX, monkeypatch):
-    """A bore that is oval AND lobed: scaling along its axes removes the oval part but not the lobes — rounder, not
-    round. The correction is kept (its numbers, the on-demand STL) and the result stays for review with the remaining
-    deviation and the bore across its centre; Undo goes back to the model as generated."""
-    import numpy as np
-    import trimesh
-    from p3.geometry import UsSizeToInnerDiameterMm
-    from p3.providers import mock
-
-    def OvalLobed(Format):
-        M = trimesh.creation.torus(major_radius=9.0, minor_radius=1.5, major_sections=192, minor_sections=64)
-        V = M.vertices.copy()
-        V[:, :2] *= (1 + 0.08 * np.cos(3 * np.arctan2(V[:, 1], V[:, 0])))[:, None]
-        M.vertices = V
-        M.apply_scale([1.15, 1.0, 1.0])
-        return M.export(file_type=Format)
-    monkeypatch.setattr(mock, "_MeshBytes", OvalLobed)
+async def test_a_fixbore_that_cannot_make_the_bore_round_is_not_proposed_and_changes_nothing(HX, monkeypatch):
+    """A bore that is not an ellipse (three-lobed) cannot be made round by scaling: the attempt is recorded as failed
+    with the reason, its file deleted, and the result stays exactly as measured."""
     H = HX
-    Did = (await H.NewDesign("A band with an oval, lobed bore"))["design_id"]
-    await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={"production_size": 7}, headers=Admin)
+    Did, R3 = await _OvalResult(H, monkeypatch, _Torus(Lobes=0.08))
+    assert [r["code"] for r in R3["review"]] == ["bore_not_round"]
+    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200
     await H.Idle()
-    R3 = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"][0]
+    F = await _Result(H, Did, R3["id"])
+    assert (F["status"], [r["code"] for r in F["review"]], F["bore_correction"]) == ("needs_review", ["bore_not_round"], None)
+    X = F["bore_fix"]
+    assert X["status"] == "failed" and "not an ellipse" in X["error"] and X["after"]["roundness"] > 0.04 and X["file_sha256"] is None
+    assert not (H.Ctx.Settings.DevDir / "bore_fixes" / f"{X['id']}.stl").exists()
+    assert F["geometry"]["production"]["volume_mm3"] == pytest.approx(R3["geometry"]["production"]["volume_mm3"]) and F["scaled_stl"] == "on_demand"
+    assert (await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/accept", headers=Admin)).json()["error"]["code"] == "not_proposed"
+    Ev = next(Y for Y in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["timeline"] if Y["kind"] == "admin_3d_bore_fix_computed")
+    assert Ev["data"]["status"] == "failed"
+
+
+async def test_a_correction_that_is_rounder_but_not_round_is_proposed_with_a_note_and_its_revision_stays_for_review(HX, monkeypatch):
+    """An oval AND lobed bore: scaling along its axes removes the oval part but not the lobes — rounder, not round. It
+    is proposed with that note; accepted, the revision is flagged for review like any other result (the Admin then
+    accepts it as measured, or not). The original is unchanged."""
+    from p3.geometry import UsSizeToInnerDiameterMm
+    H = HX
+    Did, R3 = await _OvalResult(H, monkeypatch, _Torus(Lobes=0.08, Oval=1.15))
     assert [r["code"] for r in R3["review"]] == ["bore_not_round"] and R3["bore_expected_after"] > 0.04
-    assert "would remain" in R3["review"][0]["action"]                                # said before the click
     Before = R3["geometry"]["raw"]["checks"]["roundness"]
     assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/fix-bore", headers=Admin)).status_code == 200
     await H.Idle()
-    F = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
-    assert F["status"] == "needs_review" and F["production_state"] == "review_required"
-    C = F["bore_correction"]
-    assert C is not None and 0.04 < C["roundness_after"] < 0.9 * Before and C["roundness_before"] == pytest.approx(Before)
-    assert C["bore_min_diameter_mm"] < C["bore_max_diameter_mm"]
-    assert [r["code"] for r in F["review"]] == ["bore_still_not_round"] and "gauge passes" in F["review"][0]["text"]
-    assert "still not round" in F["error"] and F["live"]["can_retry"] and F["scaled_stl"] == "on_demand"
-    assert F["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(7), rel=0.01)
-    # Undo: the model as generated, flagged as before
-    assert (await H.Client.post(f"/api/admin/3d/{R3['id']}/retry", headers=Admin)).status_code == 200
-    await H.Idle()
-    U = next(X for X in (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["three_d"] if X["id"] == R3["id"])
-    assert U["bore_correction"] is None and [r["code"] for r in U["review"]] == ["bore_not_round"]
+    X = (await _Result(H, Did, R3["id"]))["bore_fix"]
+    assert X["status"] == "proposed" and 0.04 < X["after"]["roundness"] < 0.9 * Before and X["after"]["roundness_before"] == pytest.approx(Before)
+    assert any("still not round" in W for W in X["after"]["warnings"])
+    R = await H.Client.post(f"/api/admin/bore-fixes/{X['id']}/accept", json={}, headers=Admin)
+    assert R.status_code == 200, R.text
+    Rev = R.json()["revision"]
+    assert (Rev["status"], Rev["production_state"]) == ("needs_review", "review_required") and "still not round" in Rev["error"]
+    assert [r["code"] for r in Rev["review"]] == ["bore_still_not_round"] and not Rev["live"]["can_retry"]
+    assert Rev["geometry"]["production"]["inner_diameter_mm"] == pytest.approx(UsSizeToInnerDiameterMm(7), rel=0.01)
+    assert (await H.Client.post(f"/api/admin/3d/{Rev['id']}/accept", json={"note": "lobes of the twist"}, headers=Admin)).json()["production_state"] == "complete"
+    assert R.json()["original"]["status"] == "needs_review"
 
 
 async def test_a_result_measured_by_an_older_method_can_be_measured_again_in_place(HX):

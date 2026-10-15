@@ -689,6 +689,20 @@ function adminApp() {
       return d.map(o => o.order_ref + ' (' + o.status_label + (o.sent ? ', in Production' + (o.part ? ' · ' + o.part : '') : '') + ', placed ' + this.dateTime(o.placed_at) + ')').join('; ')
         + ' — the same customer, ' + (d.some(o => o.same_design) ? 'the same saved design' : 'the same item') + ' · ' + d[0].size_label + ' · ' + d[0].material_label;
     },
+    // The manual FixBore: a line linked to a result whose bore-corrected revision was accepted is switched only by this click
+    async useBoreCorrection(l) {
+      const c = l.bore_correction; if (!c || !this.od || this.odBusy) return;
+      const r = await this.ask({ title: `Use the bore-corrected STL for ${l.ring_id}?`,
+        text: `The line is switched from its current STL to the bore-corrected revision accepted by ${c.accepted_by || 'admin'}` +
+              (c.gauge_mm ? ` (bore ${Number(c.gauge_mm).toFixed(2)} mm, ${(c.roundness * 100).toFixed(2)} % deviation${c.weight_g ? ', ' + Number(c.weight_g).toFixed(2) + ' g' : ''})` : '') +
+              '. The switch is recorded in the order history, and the earlier STL is kept.',
+        confirmLabel: 'Use the corrected STL', cancelLabel: 'Not now' });
+      if (!r) return;
+      this.odBusy = true; this.odError = '';
+      try { await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(l.id)}/use-bore-correction`, { revision_id: c.revision_id });
+            this.notify(l.ring_id + ' now uses the bore-corrected STL'); await this.loadOrder(); }
+      catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
     async reopenForProduction() {
       const R = this.of?.reopen; if (!this.od || !R?.possible || this.odBusy) return;
       const r = await this.ask({ title: 'Reopen ' + this.od.ref + ' for Production?',
@@ -1326,10 +1340,11 @@ function adminApp() {
       if (!this._tick) this._tick = setInterval(() => { this.clock = Date.now(); }, 1000);
       const sid = this.sd?.session.session_id;
       const ids = (this.sd?.three_d || []).filter(t => this.busy3d(this.live3d[t.id])).map(t => t.id);
-      if (!ids.length) return;
+      const fixing = (this.sd?.three_d || []).some(t => t.bore_fix?.status === 'computing');      // a bore correction being computed (FixBore)
+      if (!ids.length && !fixing) return;
       this._poll3d = setTimeout(async () => {
         if (this.sessionId !== sid || this.tab !== 'sessions') return;
-        let reload = false;
+        let reload = fixing;
         for (const id of ids) {
           const was = this.live3d[id];
           try {
@@ -1596,7 +1611,7 @@ function adminApp() {
                note: 'Note', email: 'Confirmation emailed', email_failed: 'Email failed', email_skipped: 'Confirmation email not sent — test order',
                production_reset: 'Production hand-over reset · ' + (d.item_ref || 'the order') + ' — a trial cleared; the line can be sent again',
                '3d_prepared': '3D prepared · ' + who + v(d.version_no),
-               '3d_pinned': (d.linked_at_handover ? 'STL linked at the hand-over · ' : d.linked === 'chosen' ? 'STL linked (chosen) · ' : '3D pinned · ') + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
+               '3d_pinned': (d.linked_at_handover ? 'STL linked at the hand-over · ' : d.linked === 'chosen' ? 'STL linked (chosen) · ' : d.linked === 'bore_corrected' ? 'Bore-corrected STL used · ' : '3D pinned · ') + who + v(d.version_no) + (d.status_change ? ' (released)' : ''),
                '3d_version_changed': '3D version · ' + who + v(d.from_version_no) + ' → ' + (d.label || v(d.version_no)),
                '3d_version_uploaded': 'Revised STL · ' + who + v(d.version_no) + (d.filename ? ' · ' + d.filename : '') + (d.active ? ' · now the design’s version in use' : ' · this order only') }[e.kind] || e.kind;
     },
@@ -2075,12 +2090,59 @@ function adminApp() {
       const outlook = exp == null ? '' : (exp > 0.04
         ? ` This inner wall is not an ellipse: about ${(exp * 100).toFixed(1)}% deviation would remain, so the corrected result stays for review (with undo).`
         : ` Expected: round within about ${(exp * 100).toFixed(1)}%.`);
-      const ok = await this.ask({ title: `Make the bore of ${t.ring_id || 'this model'} round at ${t.size_label || 'US ' + t.production_size}?`,
-        text: `${r ? r.text + ' ' : ''}The model will be scaled along the bore’s two axes so the bore becomes a circle of the size’s inner diameter; ` +
-              'the outer shape stretches by the same few percent. This is local work on the existing model — no Hi3D call — and it replaces this result’s numbers and STL.' + outlook,
-        confirmLabel: 'Make it round' });
+      const ok = await this.ask({ title: `Propose a bore correction for ${t.ring_id || 'this model'} at ${t.size_label || 'US ' + t.production_size}?`,
+        text: `${r ? r.text + ' ' : ''}A corrected STL is computed for your review: the model scaled along the bore’s two axes so the bore becomes a circle of the size’s inner diameter ` +
+              '(the outer shape follows by the same few percent) — local work on the existing model, no AI call. Nothing changes on this result: you then see its numbers beside the corrected ones and accept the correction as a new revision, or reject it.' + outlook,
+        confirmLabel: 'Propose the correction' });
       if (!ok) return;
-      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Making the bore round — the numbers follow in a moment'); }
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Computing the bore correction — the comparison follows in a moment'); }
+      catch (e) { this.fail(e); }
+    },
+    // The manual FixBore (2026-10-15): proposed only for a ring result whose bore is flagged, with no correction open or accepted — never for a revision
+    canProposeFix(t) {
+      const f = t.bore_fix;
+      return (t.review || []).some(r => r.code === 'bore_not_round') && t.hi3d?.status === 'ready' && !t.exact && !t.bore_correction && !t.bore_correction_failed
+        && !t.derived_from && !(f && ['computing', 'proposed', 'accepted'].includes(f.status));
+    },
+    boreFixTitle(t) {
+      const at = t.size_label || 'US ' + t.production_size;
+      return { computing: 'Computing a bore correction for ' + at + '…', proposed: 'Bore correction proposed for ' + at + ' — review before and after',
+               failed: 'Bore correction not possible for ' + at, accepted: 'Bore correction accepted for ' + at, rejected: 'Bore correction rejected for ' + at }[t.bore_fix?.status] || 'Bore correction';
+    },
+    boreFixRows(f) {
+      const b = f.before || {}, a = f.after || {};
+      const mm = v => v == null ? '—' : Number(v).toFixed(2) + ' mm', pct = v => v == null ? '—' : (v * 100).toFixed(2) + ' %';
+      const vol = v => v == null ? '—' : Number(v).toFixed(1) + ' mm³', g = v => v == null ? '—' : Number(v).toFixed(2) + ' g';
+      const ext = e => (e || []).some(x => x != null) ? e.map(x => x == null ? '?' : Number(x).toFixed(2)).join(' × ') + ' mm' : '—';
+      return [{ label: 'Bore — the gauge that passes (the size)', before: mm(b.gauge_mm), after: mm(a.gauge_mm) },
+              { label: 'Bore — narrowest / widest across the centre', before: mm(b.bore_min_mm) + ' / ' + mm(b.bore_max_mm), after: mm(a.bore_min_mm) + ' / ' + mm(a.bore_max_mm) },
+              { label: 'Roundness deviation (limit 4 %)', before: pct(b.roundness), after: pct(a.roundness) },
+              { label: 'Volume — estimated material', before: vol(b.volume_mm3), after: vol(a.volume_mm3) },
+              { label: 'Weight — estimated', before: g(b.weight_g), after: g(a.weight_g) },
+              { label: 'Outer size', before: ext(b.extents_mm), after: ext(a.extents_mm) }];
+    },
+    boreFixScales(f) {
+      const s = f.scales || {}, p = v => v == null ? '?' : ((v - 1) * 100 >= 0 ? '+' : '') + ((v - 1) * 100).toFixed(1) + ' %';
+      return 'Against the uniform scaling of the same model: ' + p(s.scale_major) + ' along the oval’s long axis, ' + p(s.scale_minor) + ' along its short axis, '
+        + p(s.scale_axis) + ' along the finger.';
+    },
+    async acceptBoreFix(t) {
+      const f = t.bore_fix, a = f.after || {};
+      const r = await this.ask({ title: `Accept the bore correction of ${t.ring_id || 'this result'} as a new revision?`,
+        text: 'The corrected STL becomes a new revision — a result of its own, with the reviewed file stored' + (a.gauge_mm ? ` (bore ${Number(a.gauge_mm).toFixed(2)} mm, ${(a.roundness * 100).toFixed(2)} % deviation)` : '') +
+              '. This result stays as it is. Order lines keep their STL until you switch them on the order page — never a line already in Production. Accepting approves nothing for manufacturing: that stays Fulfillment’s decision.',
+        confirmLabel: 'Accept as a new revision', cancelLabel: 'Not now',
+        input: { label: 'Note (optional)', value: '', placeholder: 'For example: oval bore of the AI model — made round for US 7', max: 300 } });
+      if (!r) return;
+      try { await this.api('POST', `/api/admin/bore-fixes/${encodeURIComponent(f.id)}/accept`, { note: (r.value || '').trim() }); await this.loadSession(); this.notify('Saved as a new revision — the original result is unchanged'); }
+      catch (e) { this.fail(e); }
+    },
+    async rejectBoreFix(t) {
+      const r = await this.ask({ title: `Reject the bore correction of ${t.ring_id || 'this result'}?`,
+        text: 'The corrected STL is deleted and the decision is recorded; this result stays as it is. A new correction can be proposed later.',
+        confirmLabel: 'Reject', cancelLabel: 'Keep it for now', input: { label: 'Reason (optional)', value: '', placeholder: 'For example: the design should stay as generated', max: 300 } });
+      if (!r) return;
+      try { await this.api('POST', `/api/admin/bore-fixes/${encodeURIComponent(t.bore_fix.id)}/reject`, { note: (r.value || '').trim() }); await this.loadSession(); this.notify('Bore correction rejected — the result is unchanged'); }
       catch (e) { this.fail(e); }
     },
     // Undo a bore made round: the result goes back to the uniform scaling of the model as generated (local; the bore is flagged again)
@@ -2442,6 +2504,10 @@ function adminApp() {
       if (e.kind === 'admin_3d_fix_requested') return 'Making the bore round for ' + (d.production_size ? this.size3dLabel(d.production_size) : 'this result') + (d.roundness != null ? ' (it deviated ' + (d.roundness * 100).toFixed(1) + '%)' : '') + ' — ' + (d.by || 'admin');
       if (e.kind === 'admin_3d_bore_fixed' && d.kept === false) return (d.reason || 'Making the bore round did not work.') + ' The model stays as measured.';
       if (e.kind === 'admin_3d_bore_fixed') return 'Bore made round: ×' + (d.scale_major || 0).toFixed(3) + ' / ×' + (d.scale_minor || 0).toFixed(3) + (d.inner_diameter_mm ? ' · inner Ø ' + d.inner_diameter_mm.toFixed(2) + ' mm' : '') + (d.roundness != null ? ' · deviation ' + (d.roundness * 100).toFixed(1) + '%' : '') + (d.weight_g != null ? ' · ' + d.weight_g + ' g' : '') + (d.status === 'needs_review' ? ' · still needs review' : '');
+      if (e.kind === 'admin_3d_bore_fix_proposed') return 'Bore correction proposed for ' + (d.production_size ? this.size3dLabel(d.production_size) : 'this result') + (d.roundness != null ? ' (' + (d.roundness * 100).toFixed(1) + '% deviation)' : '') + ' by ' + (d.by || 'admin');
+      if (e.kind === 'admin_3d_bore_fix_computed') return d.status === 'proposed' ? 'Bore correction ready for review: ' + ((d.roundness_before || 0) * 100).toFixed(1) + '% → ' + ((d.roundness_after || 0) * 100).toFixed(1) + '% deviation' : 'Bore correction not possible: ' + (d.reason || 'it failed');
+      if (e.kind === 'admin_3d_bore_fix_accepted') return 'Bore correction accepted as a new revision by ' + (d.by || 'admin') + (d.note ? ' · ' + d.note : '');
+      if (e.kind === 'admin_3d_bore_fix_rejected') return 'Bore correction rejected by ' + (d.by || 'admin') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_accepted') return 'Accepted for production as measured by ' + (d.by || 'admin') + (d.reasons ? ' — ' + d.reasons : '') + (d.note ? ' · ' + d.note : '');
       if (e.kind === 'admin_3d_new_model_override') return `A model of ${d.existing_ring_id} already existed — a new paid Hi3D model was requested for ${d.candidate_ring_id} (${d.by || 'admin'} typed the confirmation)`;
       if (e.kind === 'external_part') return e.text || 'Uploaded STL';

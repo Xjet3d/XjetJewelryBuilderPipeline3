@@ -664,6 +664,37 @@ class OrderService:
         Out["same_file"] = bool(Out["candidates"]) and len(Keys) == 1
         return Out
 
+    def _BoreCorrectionFor(self, L: dict) -> dict | None:
+        """A bore-corrected revision accepted for the result this line is linked to (the manual FixBore, the owner's
+        decision of 2026-10-15): offered to the Admin on the line, never applied by itself."""
+        Sid = L.get("three_d_id") if L.get("three_d_pinned") else None
+        if not Sid:
+            return None
+        F = self.Ctx.Db.One("SELECT id, revision_id, decided_by, decided_at, after_json FROM bore_fixes WHERE session_3d_id = ? AND status = 'accepted' "
+                            "AND revision_id IS NOT NULL ORDER BY decided_at DESC LIMIT 1", (Sid,))
+        if F is None:
+            return None
+        A = json.loads(F["after_json"] or "{}")
+        return {"revision_id": F["revision_id"], "bore_fix_id": F["id"], "accepted_by": F["decided_by"], "accepted_at": F["decided_at"],
+                "gauge_mm": A.get("gauge_mm"), "bore_max_mm": A.get("bore_max_mm"), "roundness": A.get("roundness"), "weight_g": A.get("weight_g")}
+
+    def UseBoreCorrection(self, OrderId: str, LineId: str, RevisionId: str, By: str) -> dict:
+        """Admin (the manual FixBore, 2026-10-15): a line linked to a result whose bore-corrected revision was accepted
+        is switched to that revision — explicitly, recorded in the order history. Never by itself, and never for a line
+        in Production: there the print file changes only through a revised file, with a reason."""
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if self.LineGuard:
+            self.LineGuard(O, L)
+        C = L.get("bore_correction")
+        if not C or C["revision_id"] != RevisionId:
+            raise HttpError(409, "not_this_line_s_correction", f"{L['ring_id']} is not linked to the result that revision corrects.")
+        self._Pin(O["id"], L, RevisionId, By, linked="bore_corrected", replaces=L["three_d_id"], bore_fix_id=C["bore_fix_id"],
+                  size_label=L.get("size_label"), material_id=L["material_id"])
+        return {"line": next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId), "three_d_id": RevisionId}
+
     def LinkLine3D(self, OrderId: str, LineId: str, ThreeDId: str, By: str) -> dict:
         """Link one finished result to a line as its print file — the Admin's explicit choice when several different
         results exist (I-35). Never replaces a line's existing link: a different file for a linked line is a revised
@@ -870,6 +901,7 @@ class OrderService:
         J = self.ToJson(O, Lines, ForCustomer=False)
         for L in J["lines"]:
             L.update(self._ThreeDForLine(L))
+            L["bore_correction"] = self._BoreCorrectionFor(L)
             Use = self.Ctx.Db.One("SELECT id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?", (L["design_id"], O["owner_account_id"]))
             L["session_id"] = Use["id"] if Use else L["design_id"]       # the customer's journey in Sessions
         J["three_d_state"] = _WorstState([L["three_d_state"] for L in J["lines"]])

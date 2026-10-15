@@ -811,6 +811,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Who = Admin(authorization)
         return Orders.LinkLine3D(OrderId, LineId, str(Body_.get("three_d_id") or ""), Who.Id)
 
+    @App_.post("/api/admin/orders/{OrderId}/lines/{LineId}/use-bore-correction")
+    async def AdminOrderLineUseBoreCorrection(OrderId: str, LineId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The manual FixBore: a line switched to the accepted bore-corrected revision of its result — explicitly."""
+        Who = Admin(authorization)
+        return Orders.UseBoreCorrection(OrderId, LineId, str(Body_.get("revision_id") or ""), Who.Id)
+
     @App_.get("/api/admin/promo-codes")
     async def AdminPromos(authorization: str | None = Header(None)):
         Admin(authorization)
@@ -949,9 +955,22 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
 
     @App_.post("/api/admin/3d/{Sid}/fix-bore")
     async def FixBore3D(Sid: str, authorization: str | None = Header(None)):
-        """A ring's bore that is not round is made round for this result (local geometry work, no Hi3D call)."""
+        """The manual FixBore: a corrected STL of this ring is proposed for review (local geometry work, no Hi3D call);
+        the result itself is never changed by it."""
         Who = Admin(authorization)
         return Production.FixBore(Sid, Who.Id)
+
+    @App_.post("/api/admin/bore-fixes/{Pid}/accept")
+    async def AcceptBoreFix(Pid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """The reviewed correction becomes a new revision (a result of its own, its STL stored); the original stays."""
+        Who = Admin(authorization)
+        return Production.AcceptBoreFix(Pid, Who.Id, str(Body_.get("note") or ""))
+
+    @App_.post("/api/admin/bore-fixes/{Pid}/reject")
+    async def RejectBoreFix(Pid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """The proposed correction is not wanted: recorded with the reason, its file deleted."""
+        Who = Admin(authorization)
+        return Production.RejectBoreFix(Pid, Who.Id, str(Body_.get("note") or ""))
 
     @App_.post("/api/admin/3d/{Sid}/accept")
     async def Accept3D(Sid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):

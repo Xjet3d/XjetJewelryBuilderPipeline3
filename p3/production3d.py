@@ -48,6 +48,16 @@ Waiting = ("requested", "generating", "queued", "measuring")
 MaxRoundness = 0.04            # bore deviation from a circle above this → needs review
 ExactRingToleranceMm = 0.15    # an exact part: its inner diameter may differ this much from the size's before review
 ExactCharmToleranceMm = 0.5    # … a charm's total height this much
+BoreFixDir = "bore_fixes"      # the manual FixBore's corrected STLs (relative to the dev dir): proposed, then a revision's own
+
+
+def _Sha256(PathObj: Path) -> str:
+    import hashlib
+    H = hashlib.sha256()
+    with open(PathObj, "rb") as F:
+        for Block in iter(lambda: F.read(1 << 20), b""):
+            H.update(Block)
+    return H.hexdigest()
 
 
 def _Seconds(A: str | None, B: str | None) -> float | None:
@@ -144,7 +154,7 @@ class Production3D:
         self.OnMeasureFailed = []   # callbacks(mesh_id) when a model's file cannot be measured (p3/versions.py: never the current version)
         Meshes.OnReady.append(self._MeshFinished)
         Queue.Handlers.update({"measure": self._Measured, "preview": self._Previewed, "integrity": self._Integrity,
-                               "fix_bore": self._BoreFixed})
+                               "fix_bore": self._BoreFixed, "fix_bore_proposal": self._BoreFixComputed})
 
     # ── admin request ────────────────────────────────────────────────────
     def Request(self, DesignId: str, ProductionSize=None, MaterialId: str | None = None,
@@ -692,6 +702,8 @@ class Production3D:
         """Retry from the last successful stage. With the raw STL on disk this is local only (no Hi3D charge). A result
         whose bore was made round goes back to the model as generated (its uniform scaling) this way — the undo."""
         Row = self._Row(Sid)
+        if self.BoreFixOf(Sid):
+            raise HttpError(409, "revision_fixed", "A bore-corrected revision stays as it was accepted; the result it was made from is unchanged.")
         # A complete result can be measured again when its bore was corrected (the undo) or when its measurement is
         # older than the current method (the numbers follow the current definition, in place)
         Again = Row["status"] == "measured" and (self._Corrected(Sid) or not self._CurrentMeasurement(Row["mesh_id"])
@@ -712,12 +724,15 @@ class Production3D:
         return {**self.Get(Sid), "retried": "hi3d"}
 
     def FixBore(self, Sid: str, By: str) -> dict:
-        """Admin: a ring whose bore is not round is scaled along the bore's two axes so the bore becomes a circle of
-        the target diameter and measured again — local work on the existing Hi3D model, no Hi3D call
-        (geometry.ExportCorrectedStl in the geometry queue; _BoreFixed keeps the correction only if the bore came out
-        round and the right size). The outer shape stretches by the same few percent; the scaled STL is made on demand
-        from the same correction, and the 3D view keeps showing the model as generated."""
+        """Admin, the manual FixBore (the owner's decision of 2026-10-15): a corrected STL of this ring — scaled along
+        the bore's two axes so the bore is a circle of the size's inner diameter — is made, measured and kept for the
+        Admin's review (local work on the existing model, no Hi3D call). This result is never changed by it: the Admin
+        sees its numbers beside the corrected ones and accepts the correction as a new revision (a result of its own,
+        the file stored) or rejects it. Order lines keep their STL until switched explicitly; a manufacturing approval
+        stays Fulfillment's own decision."""
         Db, Row = self.Ctx.Db, self._Row(Sid)
+        if self.BoreFixOf(Sid):
+            raise HttpError(409, "already_a_revision", "This result is a bore-corrected revision: the result it was made from stays as it was.")
         if self._IsCharmMesh(Row["mesh_id"]):
             raise HttpError(409, "not_a_ring", "Only a ring's bore can be made round.")
         if self._Exact(Row["mesh_id"]):
@@ -729,19 +744,190 @@ class Production3D:
         M = json.loads(Raw["measurement_json"])
         if not M.get("bore_ok"):
             raise HttpError(409, "no_bore", "No ring bore was found, so there is nothing to make round.")
-        if self._MeasureJob(Row["mesh_id"]) or Db.One("SELECT 1 AS x FROM geometry_jobs WHERE kind = 'fix_bore' AND session_3d_id = ? "
-                                                      "AND status IN ('queued', 'running')", (Sid,)):
+        if self._MeasureJob(Row["mesh_id"]) or Db.One("SELECT 1 AS x FROM geometry_jobs WHERE kind IN ('fix_bore', 'fix_bore_proposal') AND "
+                                                      "session_3d_id = ? AND status IN ('queued', 'running')", (Sid,)):
             raise HttpError(409, "busy", "This model is being processed — try again in a moment.")
-        Target = UsSizeToInnerDiameterMm(Row["production_size"])
-        Db.Update("session_3d", Sid, status="queued", error=None, accepted_at=None, accepted_by=None, accepted_note=None)
-        Stages.Begin(Db, Sid, "queued")
-        self.Queue.Enqueue("fix_bore", Row["mesh_id"], Sid, Params={           # output: measured, then deleted
-            "source": Raw["stl_path"], "raw": M, "target_mm": Target, "output": f"exports/round_{Sid}_{NewId('x')}.stl",
-            "previous_error": Row["error"]}, Dedupe=False)
+        Open = Db.One("SELECT status FROM bore_fixes WHERE session_3d_id = ? AND status IN ('computing', 'proposed')", (Sid,))
+        if Open:
+            raise HttpError(409, "proposal_open", "A bore correction of this result is " + ("being computed" if Open["status"] == "computing"
+                                                                                           else "waiting for your decision (accept or reject it)") + ".")
+        Done = Db.One("SELECT revision_id FROM bore_fixes WHERE session_3d_id = ? AND status = 'accepted' ORDER BY decided_at DESC LIMIT 1", (Sid,))
+        if Done:
+            raise HttpError(409, "already_corrected", "A bore-corrected revision of this result was accepted already.", {"revision_id": Done["revision_id"]})
+        Target, Pid, T = UsSizeToInnerDiameterMm(Row["production_size"]), NewId("bfx"), Now()
+        Rel = f"{BoreFixDir}/{Pid}.stl"
+        Db.Execute("INSERT INTO bore_fixes (id, session_3d_id, mesh_id, status, target_mm, raw_sha256, method_version, before_json, file_path, "
+                   "proposed_by, created_at, updated_at) VALUES (?,?,?,'computing',?,?,?,?,?,?,?,?)",
+                   (Pid, Sid, Row["mesh_id"], Target, Raw["sha256"], M.get("method_version"), Dumps(self._BoreFixBefore(Sid)), Rel, By, T, T))
+        self.Queue.Enqueue("fix_bore_proposal", Row["mesh_id"], Sid, Dedupe=False, Params={
+            "source": Raw["stl_path"], "raw": M, "target_mm": Target, "output": Rel, "bore_fix_id": Pid})
         Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
-        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_fix_requested", Row["design_id"], session_3d_id=Sid,
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_proposed", Row["design_id"], session_3d_id=Sid, bore_fix_id=Pid,
                         production_size=Row["production_size"], material_id=Row["material_id"], roundness=M.get("roundness"), by=By)
         return self.Get(Sid)
+
+    # ── the manual FixBore: the proposal, the decision, the revision ─────
+    def BoreFixOf(self, Sid: str) -> dict | None:
+        """The accepted correction this result is the revision of (None for every other result)."""
+        return self.Ctx.Db.One("SELECT * FROM bore_fixes WHERE revision_id = ?", (Sid,))
+
+    def AcceptedBoreFix(self, Sid: str) -> dict | None:
+        """The accepted correction of this result, if any — the revision an order line may be switched to, explicitly."""
+        return self.Ctx.Db.One("SELECT * FROM bore_fixes WHERE session_3d_id = ? AND status = 'accepted' AND revision_id IS NOT NULL "
+                               "ORDER BY decided_at DESC LIMIT 1", (Sid,))
+
+    def _BoreFixBefore(self, Sid: str) -> dict:
+        """The result's own numbers when a correction is proposed: what the Admin compares the corrected model with."""
+        Db = self.Ctx.Db
+        G = Db.One("SELECT * FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (Sid,)) or {}
+        C = json.loads(G.get("checks_json") or "{}")
+        Calc = Db.One("SELECT weight_g FROM price_calculations WHERE session_3d_id = ? ORDER BY created_at DESC LIMIT 1", (Sid,)) or {}
+        return {"gauge_mm": G.get("inner_diameter_mm"), "bore_min_mm": C.get("bore_min_diameter_mm"), "bore_max_mm": C.get("bore_max_diameter_mm"),
+                "roundness": C.get("roundness"), "volume_mm3": G.get("volume_mm3"), "surface_mm2": G.get("surface_area_mm2"),
+                "extents_mm": [G.get("size_x_mm"), G.get("size_y_mm"), G.get("size_z_mm")], "weight_g": Calc.get("weight_g")}
+
+    def _BoreFixComputed(self, Job: dict, Result, Error, Started: bool = False) -> None:
+        """The proposal job: the corrected STL is on disk and measured. It is proposed when the same rules as before
+        hold (a bore of the size's diameter, and rounder); otherwise the attempt is recorded as failed, the file deleted.
+        The result it was proposed for is not touched either way."""
+        if Started:
+            return
+        Db, P = self.Ctx.Db, json.loads(Job["params_json"] or "{}")
+        F = Db.One("SELECT * FROM bore_fixes WHERE id = ?", (P.get("bore_fix_id") or "",))
+        File = self.Ctx.Settings.DevDir / P["output"]
+        if F is None or F["status"] != "computing":
+            File.unlink(missing_ok=True)
+            return
+        Row, T = self._Row(F["session_3d_id"]), Now()
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        if Error:
+            File.unlink(missing_ok=True)
+            Db.Execute("UPDATE bore_fixes SET status = 'failed', error = ?, updated_at = ? WHERE id = ?", (f"The correction could not be computed: {Error}", T, F["id"]))
+            Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_computed", Row["design_id"], session_3d_id=Row["id"], bore_fix_id=F["id"],
+                            status="failed", reason=Error)
+            return
+        Mz, Corr = Result["measured"], Result["correction"]
+        if Result.get("raw_measured"):                # an older measurement redone in the job: keep the fuller one (as before)
+            Db.Execute("UPDATE raw_geometry SET measurement_json = ?, method_version = ? WHERE mesh_id = ?",
+                       (Dumps(Result["raw_measured"]), Result["raw_measured"]["method_version"], Row["mesh_id"]))
+        Before = (Result.get("raw_measured") or P.get("raw") or {}).get("roundness")
+        After, Target = Mz.get("roundness"), F["target_mm"]
+        Why = None
+        if not Mz.get("bore_ok"):
+            Why = "no ring bore was found after the correction"
+        elif abs(Mz["inner_diameter"] - Target) > 0.01 * Target:
+            Why = f"the corrected bore measures {Mz['inner_diameter']:.2f} mm, not the {Target:.2f} mm of the size"
+        elif After > MaxRoundness and (Before is None or After > 0.9 * Before):
+            Why = (f"the bore is no rounder after the correction ({After * 100:.1f}% deviation) — its inner wall is not an ellipse, "
+                   "so scaling cannot make it round")
+        Mat = self.Ctx.Catalog.Get(Row["material_id"])
+        Warn = []
+        if not Why and After > MaxRoundness:
+            Warn.append(f"rounder, but still not round ({After * 100:.1f}% deviation): the revision would be flagged for review")
+        if not Mz["closed_heuristic"]:
+            Warn.append("the volume reference check suggests the mesh may not be closed — check the volume")
+        AfterDoc = {"gauge_mm": Mz.get("inner_diameter"), "bore_min_mm": Mz.get("bore_min_diameter"), "bore_max_mm": Mz.get("bore_max_diameter"),
+                    "roundness": After, "roundness_before": Before, "volume_mm3": Mz["volume"], "surface_mm2": Mz["area"],
+                    "extents_mm": [Mz["extent_x"], Mz["extent_y"], Mz["extent_z"]], "closed": bool(Mz["closed_heuristic"]), "faces": Mz["faces"],
+                    "weight_g": round(Mz["volume"] / 1000.0 * Mat.DensityGCm3, 3) if Mat and Mz.get("volume") else None,
+                    "method_version": Mz.get("method_version"), "bore_slices": Mz.get("bore_slices"), "volume_alt_reference": Mz.get("volume_alt_reference"),
+                    "warnings": Warn}
+        if Why:
+            File.unlink(missing_ok=True)
+            Db.Execute("UPDATE bore_fixes SET status = 'failed', error = ?, after_json = ?, correction_json = ?, updated_at = ? WHERE id = ?",
+                       (f"Making the bore round did not work: {Why}.", Dumps(AfterDoc), Dumps(Corr), T, F["id"]))
+        else:
+            Db.Execute("UPDATE bore_fixes SET status = 'proposed', after_json = ?, correction_json = ?, file_sha256 = ?, file_bytes = ?, updated_at = ? "
+                       "WHERE id = ?", (Dumps(AfterDoc), Dumps(Corr), Result.get("sha256"), Result.get("bytes"), T, F["id"]))
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_computed", Row["design_id"], session_3d_id=Row["id"], bore_fix_id=F["id"],
+                        status="failed" if Why else "proposed", reason=Why, roundness_before=Before, roundness_after=After,
+                        inner_diameter_mm=Mz.get("inner_diameter"), volume_mm3=Mz.get("volume"))
+
+    def AcceptBoreFix(self, Pid: str, By: str, Note: str = "") -> dict:
+        """Admin: the reviewed correction becomes a new revision — a result of its own made from the same model, size and
+        material, its production STL the very file reviewed (its hash checked again) and stored. The result it corrects
+        stays exactly as it was; order lines are switched to the revision only explicitly (never one in Production); a
+        manufacturing approval is still Fulfillment's own decision."""
+        Db = self.Ctx.Db
+        F = Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))
+        if F is None:
+            raise HttpError(404, "bore_fix_not_found", "Bore correction not found.")
+        if F["status"] != "proposed":
+            raise HttpError(409, "not_proposed", f"Only a proposed correction is accepted; this one is {F['status']}.")
+        File = assets.Resolve(self.Ctx.Settings.DevDir, F["file_path"])
+        if not File.is_file() or File.stat().st_size != F["file_bytes"] or _Sha256(File) != F["file_sha256"]:
+            raise HttpError(409, "proposal_file_changed", "The corrected STL is not the file that was reviewed (missing or changed): reject it and propose again.")
+        T, Note = Now(), (Note or "").strip()[:300] or None
+        if Db.Execute("UPDATE bore_fixes SET status = 'accepted', decided_by = ?, decided_at = ?, decision_note = ?, updated_at = ? WHERE id = ? AND status = 'proposed'",
+                      (By, T, Note, T, Pid)) != 1:
+            raise HttpError(409, "not_proposed", "This correction was decided meanwhile.")
+        try:
+            Orig = self._Row(F["session_3d_id"])
+            A, Corr = json.loads(F["after_json"] or "{}"), json.loads(F["correction_json"] or "{}")
+            Problems = []
+            if A.get("roundness") is not None and A["roundness"] > MaxRoundness:
+                Across = (f": a Ø {A['bore_min_mm']:.2f} mm gauge passes, and the hole is up to {A['bore_max_mm']:.1f} mm wide"
+                          if A.get("bore_min_mm") and A.get("bore_max_mm") else "")
+                Problems.append(f"The bore is still not round after the correction ({A['roundness'] * 100:.1f}% deviation{Across}).")
+            if not A.get("closed", True):
+                Problems.append("The volume reference check suggests the mesh may not be closed — check the volume.")
+            Sid, Status = NewId("s3d"), "needs_review" if Problems else "measured"
+            Db.Execute("INSERT INTO session_3d (id, design_id, candidate_id, mesh_id, customer_size, production_size, size_source, customer_material, material_id, "
+                       "material_source, status, requested_by, error, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Sid, Orig["design_id"], Orig["candidate_id"], Orig["mesh_id"], Orig["customer_size"], Orig["production_size"], Orig["size_source"],
+                        Orig["customer_material"], Orig["material_id"], Orig["material_source"], Status, By, " ".join(Problems) or None, T, T))
+            Checks = {"bore_corrected": {**Corr, "roundness_before": A.get("roundness_before")}, "roundness": A.get("roundness"), "closed_heuristic": A.get("closed"),
+                      "volume": A.get("volume_mm3"), "volume_alt_reference": A.get("volume_alt_reference"), "faces": A.get("faces"), "bore_slices": A.get("bore_slices"),
+                      "bore_min_diameter_mm": A.get("bore_min_mm"), "bore_max_diameter_mm": A.get("bore_max_mm"),
+                      "derived_from": F["session_3d_id"], "bore_fix_id": Pid, "file_sha256": F["file_sha256"]}
+            Gid, (X, Y, Z) = NewId("geo"), A.get("extents_mm") or [None, None, None]
+            Db.Execute("INSERT INTO geometry_results (id, session_3d_id, stage, size_x_mm, size_y_mm, size_z_mm, inner_diameter_mm, volume_mm3, surface_area_mm2, "
+                       "watertight, scale_factor, stl_path, method_version, checks_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (Gid, Sid, "production", X, Y, Z, A.get("gauge_mm"), A.get("volume_mm3"), A.get("surface_mm2"), int(bool(A.get("closed"))),
+                        Corr.get("scale_axis"), F["file_path"], A.get("method_version") or F["method_version"], Dumps(Checks), T))
+            New = self._Row(Sid)
+            Weight = self._Price(New, Gid, A.get("volume_mm3") if A.get("closed") else None)
+            Stages.Begin(Db, Sid, "review_required" if Problems else "ready", **({"problems": Problems} if Problems else {}))
+            Db.Execute("UPDATE bore_fixes SET revision_id = ?, updated_at = ? WHERE id = ?", (Sid, Now(), Pid))
+        except Exception:
+            Db.Execute("UPDATE bore_fixes SET status = 'proposed', decided_by = NULL, decided_at = NULL, decision_note = NULL WHERE id = ? AND revision_id IS NULL", (Pid,))
+            raise
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Orig["design_id"],))
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_accepted", Orig["design_id"], session_3d_id=Orig["id"], revision_id=Sid,
+                        bore_fix_id=Pid, status=Status, roundness_after=A.get("roundness"), volume_mm3=A.get("volume_mm3"), weight_g=Weight,
+                        file_sha256=F["file_sha256"], note=Note, by=By)
+        return {"bore_fix": self.BoreFixJson(Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))), "revision": self.Get(Sid), "original": self.Get(Orig["id"])}
+
+    def RejectBoreFix(self, Pid: str, By: str, Note: str = "") -> dict:
+        """Admin: the proposed correction is not wanted — recorded with the reason, its file deleted; nothing else changes."""
+        Db = self.Ctx.Db
+        F = Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))
+        if F is None:
+            raise HttpError(404, "bore_fix_not_found", "Bore correction not found.")
+        if F["status"] != "proposed":
+            raise HttpError(409, "not_proposed", f"Only a proposed correction is rejected; this one is {F['status']}.")
+        T, Note = Now(), (Note or "").strip()[:300] or None
+        if Db.Execute("UPDATE bore_fixes SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ?, updated_at = ? WHERE id = ? AND status = 'proposed'",
+                      (By, T, Note, T, Pid)) != 1:
+            raise HttpError(409, "not_proposed", "This correction was decided meanwhile.")
+        if F["file_path"]:
+            assets.Resolve(self.Ctx.Settings.DevDir, F["file_path"]).unlink(missing_ok=True)
+        Row = self._Row(F["session_3d_id"])
+        Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Row["design_id"],))
+        Sessions.Record(self.Ctx, Owner["owner_account_id"], "admin_3d_bore_fix_rejected", Row["design_id"], session_3d_id=Row["id"], bore_fix_id=Pid,
+                        note=Note, by=By)
+        return {"bore_fix": self.BoreFixJson(Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Pid,))), "original": self.Get(Row["id"])}
+
+    def BoreFixJson(self, F: dict) -> dict:
+        Corr = json.loads(F["correction_json"] or "{}")
+        U = Corr.get("uniform_scale")
+        return {"id": F["id"], "session_3d_id": F["session_3d_id"], "status": F["status"], "target_mm": F["target_mm"],
+                "before": json.loads(F["before_json"] or "{}"), "after": json.loads(F["after_json"] or "null"),
+                # The correction against the uniform scaling of the same model: along the oval's long axis, its short axis, the finger
+                "scales": {K: Corr[K] / U for K in ("scale_major", "scale_minor", "scale_axis") if U and Corr.get(K)} or None,
+                "ellipticity": Corr.get("ellipticity"), "file_sha256": F["file_sha256"], "file_bytes": F["file_bytes"], "error": F["error"],
+                "revision_id": F["revision_id"], "proposed_by": F["proposed_by"], "proposed_at": F["created_at"], "decided_by": F["decided_by"],
+                "decided_at": F["decided_at"], "decision_note": F["decision_note"], "raw_sha256": F["raw_sha256"], "method_version": F["method_version"]}
 
     def _BoreFixed(self, Job: dict, Result, Error, Started: bool = False) -> None:
         """The fix_bore job: the corrected production STL is on disk and measured — this result's production numbers."""
@@ -971,10 +1157,10 @@ class Production3D:
             "done": R["status"] in Terminal, "stages": All,
             "queue": {"ahead": self.Queue.Ahead(Job), "job_id": Job["id"]} if Job else None,
             "can_cancel": bool(Job),
-            "can_retry": R["status"] in ("failed", "cancelled")
+            "can_retry": not self.BoreFixOf(Sid) and (R["status"] in ("failed", "cancelled")
                          or (R["status"] == "needs_review" and not Current)    # e.g. an improved measurement
                          or (R["status"] in ("measured", "needs_review") and self._Corrected(Sid))    # undo a bore correction
-                         or (R["status"] == "measured" and (not Current or not self._CurrentResult(Sid))),   # re-measure in place
+                         or (R["status"] == "measured" and (not Current or not self._CurrentResult(Sid)))),  # re-measure in place
             "retry_is_local": bool(Mesh and Mesh["status"] == "ready"),
             "raw": Raw and {"faces": Raw["faces"], "bytes": Raw["bytes"], "sha256": Raw["sha256"],
                             "integrity": Raw["integrity"], "preview_ready": bool(Raw["preview_path"]),
@@ -1045,6 +1231,13 @@ class Production3D:
             "ring_id": RingIds.CandidateRef(Db, R["candidate_id"]),
             "live": self.Status(Sid),
         }
+        # The manual FixBore (2026-10-15): this result's proposals, newest first; a revision names the result it corrects
+        Fixes = [self.BoreFixJson(F) for F in Db.All("SELECT * FROM bore_fixes WHERE session_3d_id = ? ORDER BY created_at DESC", (Sid,))]
+        Of = self.BoreFixOf(Sid)
+        Out.update({"bore_fix": Fixes[0] if Fixes else None, "bore_fixes": Fixes,
+                    "derived_from": {"session_3d_id": Of["session_3d_id"], "bore_fix_id": Of["id"], "accepted_by": Of["decided_by"],
+                                     "accepted_at": Of["decided_at"], "note": Of["decision_note"], "file_sha256": Of["file_sha256"],
+                                     "file_bytes": Of["file_bytes"]} if Of else None})
         if Charm:                    # a charm: scaled to a height in mm (rings keep exactly the fields of before)
             Out.update({"product_type": Products.Charm, "target_inner_diameter_mm": None, "target_height_mm": R["production_size"],
                         "size_label": Products.CharmSizeLabel(R["production_size"]),

@@ -136,7 +136,8 @@ The gallery on the customer site (home page, first 8, and the Inspiration page) 
   2. Find the bore: exact cross-sections at 9 heights across the band, combined — the narrowest wall over the heights,
      what a finger must pass. The **inner diameter is the largest circle that passes** (what a ring gauge reads), so a
      US 10 ring passes a Ø 19.76 mm gauge exactly; the widest diameter of the hole is shown next to it, and a bore more
-     than 4% off round is flagged for review (the ring is loose its wide way — *Make the bore round* scales it round).
+     than 4% off round is flagged for review (the ring is loose its wide way — *Propose a bore correction (FixBore)…*
+     proposes a corrected STL for review; accepted, it becomes a new revision of its own and the result stays as it was).
   3. Compute the volume from two reference points. If they agree, the mesh is probably closed. This is a cheap heuristic, not proof of watertightness.
 - **Any size or material is arithmetic** (`Scaled`), with no file read: s = target ID / raw ID, then lengths × s, area × s², volume × s³, and weight = volume × density (`config/materials.json`). US size → mm: 11.63 + 0.8128 × size.
 - **Status:** `measured`, or `needs_review` if:
