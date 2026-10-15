@@ -6,6 +6,7 @@ blanket redirect, no chain, and nothing outside the public gallery becomes reach
 import re
 
 from p3 import app as P3App
+from p3 import sitepages as SitePages
 from p3.gallery import ShareSlug
 from p3.settings import WebDir
 from tests.conftest import Harness
@@ -133,6 +134,41 @@ async def test_each_product_mode_shows_the_pages_of_the_products_on_offer_only(t
             assert (await H.Client.get("/gallery")).status_code == 200
     finally:
         await H.Close()
+
+
+def _LiveGallery(Page: str) -> str:
+    """The Gallery's own markup as served (its live copy, outside any <template>)."""
+    I = Page.index('data-ssr-view="inspiration"')
+    return Page[I:Page.rindex("<template", I, Page.index(" && ssrView !== 'inspiration'\">", I))]
+
+
+async def test_the_gallery_keeps_its_room_from_the_first_paint(tmp_path):
+    """Phones (CLS): the Gallery — and a design's page over it — carries its grid's loading squares, as many as the
+    visitor's designs, and the products on offer; the app starts from both, so neither the cards nor the filter move
+    the page when they arrive."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        await _Set(H, "charm", True)
+        await _Publish(H, "A slim band", product="ring")
+        _C, _CI, Charm = await _Publish(H, "A heart charm", product="charm")
+        for Path_ in ("/gallery", f"/gallery/{Charm['slug']}"):
+            Page = (await H.Client.get(Path_)).text
+            assert _LiveGallery(Page).count(SitePages.GallerySquare) == 2, Path_            # one per design
+            assert '"products": ["ring", "charm"]' in Page and '"gallery_count": 2' in Page, Path_
+        await _Set(H, "ring", False)
+        Page = (await H.Client.get("/gallery")).text
+        assert _LiveGallery(Page).count(SitePages.GallerySquare) == 1 and '"products": ["charm"]' in Page and '"gallery_count": 1' in Page
+        Home = (await H.Client.get("/")).text
+        assert "data-ssr-placeholder" not in Home and '"gallery_count"' not in Home and '"products": ["charm"]' in Home
+    finally:
+        await H.Close()
+    # the page's squares are the app's own loading squares (the same look), and the app counts them the same way
+    Source = (WebDir / "index.html").read_text(encoding="utf-8")
+    Square = SitePages.GallerySquare.replace(' data-ssr-placeholder x-init="$el.remove()"', "")
+    assert f'{SitePages.GalleryLoading}:key="i">{Square}</template></template>' in Source
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    assert "get galleryPlaceholders() { const n = window.__p3?.gallery_count; return Number.isInteger(n) && n >= 0 ? n : 8; }," in Js
+    assert "get productsList() { return this.catalog?.products?.available || SERVER_PRODUCTS || ['ring']; }," in Js
 
 
 def test_the_cards_are_links_and_the_dialog_keeps_the_design_address():

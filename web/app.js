@@ -32,6 +32,9 @@ const PAGE_PATHS = { home: '', inspiration: 'gallery', faq: 'faq', materials: 'm
                      'shipping-returns': 'shipping-returns', terms: 'terms', privacy: 'privacy', contact: 'contact' };
 // The page the server rendered: its view is in the HTML as real markup (a copy that leaves when the visitor moves on)
 const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'home';
+// The products on offer as the server rendered the page — the app's until the catalog says so itself, so the Gallery's
+// filter, the badges and the wording are right from the first frame and nothing moves when the catalog arrives
+const SERVER_PRODUCTS = Array.isArray(window.__p3?.products) ? window.__p3.products : null;
 // This page load's own history steps (a gallery design opened from its card) carry this mark: Back may step through
 // them in place. A step kept from before a reload belongs to the page load that is gone.
 const PAGE_LOAD = Math.random().toString(36).slice(2);
@@ -1151,10 +1154,10 @@ function p3App() {
 
     // ── the products on offer (Admin → Settings → Products). The catalog's products block is absent while rings are
     //    the only product on offer (the ring-only site); otherwise it lists what this browser may design. ──
-    get productsList() { return this.catalog?.products?.available || ['ring']; },
+    get productsList() { return this.catalog?.products?.available || SERVER_PRODUCTS || ['ring']; },
     get productsOn() { return this.productsList.length > 1; },                 // a choice to make: selector, filters, badges
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
-    get nothingOnOffer() { return !!this.catalog && this.productsList.length === 0; },
+    get nothingOnOffer() { return (!!this.catalog || !!SERVER_PRODUCTS) && this.productsList.length === 0; },
     get previewedProducts() { return this.catalog?.products?.previewed || []; },  // hidden products an Admin's browser sees
     get charmPreview() { return this.previewedProducts.length > 0; },
     get previewText() { return this.previewedProducts.map(p => this.productPlural(p).toLowerCase()).join(' and ') + ' are hidden from customers'; },
@@ -1184,6 +1187,9 @@ function p3App() {
     get newNoun() { return this.productLabel(this.productsList.includes(this.newProduct) ? this.newProduct : (this.productsList[0] || 'ring')).toLowerCase(); },
     get designLabel() { return this.isCharm(this.design) ? 'Charm' : 'Ring'; },
     get galleryFilters() { return [['', 'All'], ...this.productsList.map(p => [p, this.productPlural(p)])]; },
+    // The Gallery's loading squares: as many as its designs (the page carries the same number, p3/sitepages.py
+    // GalleryPlaceholders), so the grid keeps its height from the first paint until the cards take their place
+    get galleryPlaceholders() { const n = window.__p3?.gallery_count; return Number.isInteger(n) && n >= 0 ? n : 8; },
     get galleryIntro() {
       const tail = ' — real XJet designs. Open one to see it large; make it yours to start from its four options.';
       if (this.nothingOnOffer) return 'Real XJet designs. Open one to see it large.';

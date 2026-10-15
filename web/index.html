@@ -589,7 +589,7 @@
                     </div>
                 </div>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
-                <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                <template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
                 <template x-for="g in galleryShown" :key="g.id">
                     <div class="relative group">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">

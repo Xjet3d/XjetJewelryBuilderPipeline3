@@ -383,14 +383,20 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
         Og = OgTags(request, Title, Description, Url) if not Design else ""
         Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
-        Html = _VersionedPage("index.html", Base, {**PageConfig, "view": View, "ssr": View, "titles": Titles,
-                                                   "analytics": Analytics.Public(Ctx.Products)}, PageRobots(),
-                              Description, Og, Mock=Modes.Mode == "mock")
+        # The products on offer as this page says them, and on the Gallery the number of its designs: the app starts from
+        # them (the filter, the wording, the grid's loading squares), so nothing moves when the catalog and the cards arrive
+        Config = {**PageConfig, "view": View, "ssr": View, "titles": Titles, "analytics": Analytics.Public(Ctx.Products),
+                  "products": list(Visible)}
+        if View == "inspiration":
+            Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
+        Html = _VersionedPage("index.html", Base, Config, PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration"):
             Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
             Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
+        if View == "inspiration":                      # the grid's room from the first paint (CLS)
+            Before[SitePages.GalleryLoading] = SitePages.GalleryPlaceholders(Config["gallery_count"])
         if View == "materials":
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
         if Design:

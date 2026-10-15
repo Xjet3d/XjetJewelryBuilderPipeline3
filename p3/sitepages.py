@@ -303,6 +303,17 @@ def DesignHeading(Html: str) -> str:
                         '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>')
 
 
+# The Gallery's loading squares (index.html): the page carries as many as the visitor's gallery has designs, before the
+# app's own loading squares (the same number: app.js galleryPlaceholders); each removes itself as the app starts. The
+# grid holds its height from the first paint to the cards, so nothing below it moves (CLS).
+GalleryLoading = """<template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" """
+GallerySquare = '<div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"></div>'
+
+
+def GalleryPlaceholders(Count: int) -> str:
+    return GallerySquare * max(0, Count)
+
+
 # The Inspiration Gallery lightbox's picture (index.html, class gallery-shot): its sizes attribute, which a design page's
 # preload repeats so the browser fetches the same thumbnail once
 LightboxSizes = "(min-width: 768px) 490px, 85vw"
@@ -432,7 +443,7 @@ def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:
 
 
 def DesignFingerprint(Link: dict) -> str:
-    """A gallery design's own page: its name, image, product and address (the rest is the home page around it)."""
+    """A gallery design's own page: its name, image, product and address (the rest is the Gallery around it)."""
     Own = {K: Link.get(K) for K in ("slug", "title", "image_url", "product_type")}
     return f"{FingerprintVersion}:" + hashlib.sha256(json.dumps(Own, sort_keys=True).encode("utf-8")).hexdigest()
 
