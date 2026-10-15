@@ -15,7 +15,7 @@ on 2026-10-13.
 |---|---|
 | Customers, accounts, quotes, orders, lines, prices, currencies, promo codes | Manufacturing parts and their identifiers (`MP-<order>-<line>`, builds `B-nnnn`) |
 | Designs, 3D versions, the pin of each order line and the production file handed over | The production revisions, their immutable files and their history after the hand-over |
-| Payment status and every payment decision (whether it gates production is Atelier's rule, `P3_FULFILLMENT_PAYMENT_GATE`) | Manufacturing review, profiles, the pool, builds, operations, QC, holds, rework, reprints |
+| Payment status and every payment decision (payment is never a gate for production: the owner's decision of 2026-10-15) | Manufacturing review, profiles, the pool, builds, operations, QC, holds, rework, reprints |
 | The shipping address and its changes | Packing and shipping execution, tracking, delivery |
 | Commercial cancellation requests | Operations' decision on them |
 | Customer-facing status and every customer email | Events that drive that status; internal notes and attention requests for the Admin |
@@ -103,7 +103,7 @@ needs this checkout (`FULFILLMENT_P3_PATH`) and this repository's virtual enviro
 |---|---|---|
 | `P3_FULFILLMENT_INTEGRATION` | `false` | Turns the integration on: the service API answers, the Admin's *Send to Production* works, sent lines are owned by Fulfillment. Off: the integration routes answer 404, no bridge table is written, nothing changes for anyone. |
 | `P3_FULFILLMENT_SERVICE_KEY` | unset | The service credential Fulfillment presents (`Authorization: Bearer …`): 16+ characters in development, 24+ in production, no spaces, different from the Admin key and the signing secret. Required when the integration is on; never the Admin key. |
-| `P3_FULFILLMENT_PAYMENT_GATE` | `true` | The commercial rule advertised to Fulfillment as `identity.payment_gate`. `true`: an unpaid order's lines are not released (the live checks say `PAYMENT_PENDING`). `false`: payment is shown, never gating — the Admin decides what enters Production (complimentary samples, internal evaluations; the reason goes in the order's notes). Switched to `false` at the integration's activation (K8), not before. |
+| ~~`P3_FULFILLMENT_PAYMENT_GATE`~~ | — | **Removed 2026-10-15** (the owner's decision: payment is never a gate for production). Atelier advertises `identity.payment_gate: false` always; the release and shipping checks carry the payment, never `PAYMENT_PENDING`. An old line in a `.env` is ignored. |
 | `P3_FULFILLMENT_URL` | unset | The Fulfillment application's URL (e.g. `https://tron/atelier-fulfillment`) for the Production page's *Open in Fulfillment* links to the part. Unset: no links. |
 | `P3_FULFILLMENT_ORDER_ALLOWLIST` | unset | The controlled phase (the owner's authorization of 2026-10-13, §6): while set, only the listed orders (ids or references, comma-separated) can be sent to Production — the server refuses every other order (`409 not_eligible`) and the order page says so; an order already in Production stays allowed. Fulfillment keeps its own list (`FULFILLMENT_ENROLLMENT_ALLOWLIST`) at ingestion. Unset: every eligible order. |
 | `P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS`, `P3_FULFILLMENT_NOTIFICATION_RECIPIENT`, `P3_FULFILLMENT_NOTIFICATION_WINDOW_S` | off / unset / 120 | Customer notifications (Batch 8): off by default; every message to the test recipient while one is set; parts of one order reaching a milestone together make one email. |
@@ -119,8 +119,9 @@ The environment id Fulfillment pins (`EXPECTED_ATELIER_ENVIRONMENT_ID` there) is
   creates designs there.
 - Existing behaviour for orders that are **not** sent to Production is unchanged, and the whole test suite stays
   green (two tests assert a `0o600` file mode and can only pass on Linux).
-- Payment: no fake payment confirmation, no change to checkout or payment records; whether payment gates production
-  is the one flag above (D-5 superseded by the owner's decision of 2026-10-13: production is a manual Admin decision).
+- Payment: no fake payment confirmation, no change to checkout or payment records; payment is never a gate for
+  production (the owner's decision of 2026-10-15; before, the flag `P3_FULFILLMENT_PAYMENT_GATE`). Production is held
+  only by production conditions: the print file, the line's state, the hand-over rules, Fulfillment's own review.
 - Migrations are additive; no Atelier table is renamed or dropped.
 
 ## Batches

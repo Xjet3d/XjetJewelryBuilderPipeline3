@@ -414,7 +414,7 @@ async def test_a_quotation_stays_with_the_admin_and_the_order_it_becomes_carries
         await H.Close()
 
 
-async def test_release_checks_answer_payment_cancellation_and_quantity_live(tmp_path):
+async def test_release_checks_answer_cancellation_and_quantity_live_and_show_the_payment(tmp_path):
     H = _On(tmp_path)
     try:
         Did, O = await _Placed(H, Qty=2)
@@ -424,9 +424,10 @@ async def test_release_checks_answer_payment_cancellation_and_quantity_live(tmp_
         R = await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}]}, headers=Service)
         assert R.status_code == 200 and R.json()["items"][0]["blockers"][0]["code"] == "LINE_NOT_FOUND"        # not enrolled: nothing is told
         await _Enrolled(H, Did, O)
-        assert (await H.Client.get(Prefix + "/identity", headers=Service)).json()["payment_gate"] is True     # the deployed rule, until activation (K8)
+        assert (await H.Client.get(Prefix + "/identity", headers=Service)).json()["payment_gate"] is False    # payment never gates production (2026-10-15)
         R = (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}]}, headers=Service)).json()
-        assert R["ok"] is False and [B["code"] for B in R["items"][0]["blockers"]] == ["PAYMENT_PENDING"] and R["items"][0]["source_version"] == 1
+        assert R["ok"] is True and R["items"][0]["blockers"] == [] and R["items"][0]["payment"] == {"status": "pending", "basis": None}
+        assert R["items"][0]["source_version"] == 1
         assert R["check_id"].startswith("chk_") and R["checked_at"] and R["environment_id"]
         await H.Client.post(f"/api/admin/orders/{O['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)
         R = (await H.Client.post(Url, json={"items": [{"line_id": LineId, "quantity": 2}, {"line_id": LineId, "quantity": 3}, {"line_id": "nope", "quantity": 1}]},
@@ -441,10 +442,13 @@ async def test_release_checks_answer_payment_cancellation_and_quantity_live(tmp_
         await H.Close()
 
 
-async def test_with_the_payment_gate_off_payment_is_shown_and_never_blocks(tmp_path):
-    """§J, K8: the rule Atelier owns, advertised in the identity; off, the live checks carry the payment but no PAYMENT_PENDING."""
-    H = _On(tmp_path, FulfillmentPaymentGate=False)
+async def test_payment_is_shown_and_never_blocks_production(tmp_path):
+    """The owner's decision of 2026-10-15: payment is never a gate for production. The identity says so (payment_gate is
+    False, kept in the contract), the live checks carry the payment but never PAYMENT_PENDING, and no setting can switch
+    a gate on (P3_FULFILLMENT_PAYMENT_GATE is gone)."""
+    H = _On(tmp_path)
     try:
+        assert not hasattr(H.Ctx.Settings, "FulfillmentPaymentGate")
         Did, O = await _Placed(H, Qty=1)
         await _Enrolled(H, Did, O)
         LineId = H.Svc.Orders.AdminGet(O["id"])["lines"][0]["id"]
@@ -473,7 +477,7 @@ async def test_shipping_checks_answer_the_authoritative_address_and_its_version_
         await _Enrolled(H, Did, O)
         Snap = (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).json()
         R = (await H.Client.post(Url, json={"order_id": O["id"]}, headers=Service)).json()
-        assert R["ok"] is False and [B["code"] for B in R["blockers"]] == ["PAYMENT_PENDING"]
+        assert R["ok"] is True and R["blockers"] == [] and R["payment"] == {"status": "pending", "basis": None}      # shown, never a gate
         assert R["address"] == Snap["order"]["address"] and R["address_version"] == Snap["order"]["address_version"] and len(R["address_version"]) == 16
         assert R["order_ref"] == O["ref"] and R["check_id"].startswith("shk_") and R["source_version"] == Snap["source_version"] and R["cancellation"]["state"] == "none"
         await H.Client.post(f"/api/admin/orders/{O['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)
@@ -575,13 +579,13 @@ async def test_the_lists_carry_the_fulfillment_state_and_filter_by_it(tmp_path):
         D2, O2 = await _Placed(H, "Band two", Click="c2")
         await _Enrolled(H, D2, O2)
         E = _Event("evt-l1", O2["id"], 1, parts=[{"display_no": "MP-10002-001", "status": "awaiting_review", "review_status": "in_review", "summary": "0/2 passed QC",
-                                                  "file_state": "unavailable", "blockers": ["PAYMENT_PENDING", "REVISION_NOT_APPROVED"]}], commercial_action_pending=False)
+                                                  "file_state": "unavailable", "blockers": ["PROFILE_MISSING", "REVISION_NOT_APPROVED"]}], commercial_action_pending=False)
         await H.Client.post(Prefix + "/events", json={"events": [E]}, headers=Service)
         L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
         ById = {X["id"]: X for X in L["orders"]}
         assert ById[O1["id"]]["fulfillment"] is None
         F = ById[O2["id"]]["fulfillment"]
-        assert F["enrolled"] and F["customer_status"] == "UNDER_REVIEW" and F["review_status"] == "in_review" and F["blocker"] == "PAYMENT_PENDING" and F["pending_commands"] == 0
+        assert F["enrolled"] and F["customer_status"] == "UNDER_REVIEW" and F["review_status"] == "in_review" and F["blocker"] == "PROFILE_MISSING" and F["pending_commands"] == 0
         assert F["parts"][0]["display_no"] == "MP-10002-001" and {X["id"] for X in L["fulfillment_filters"]} >= {"enrolled", "review", "blocked", "shipped"}
         for Filter, Expected in (("enrolled", [O2["id"]]), ("review", [O2["id"]]), ("shipped", []), ("blocked", []), ("commercial_action", [])):
             R = (await H.Client.get(f"/api/admin/orders?fulfillment={Filter}", headers=Admin)).json()

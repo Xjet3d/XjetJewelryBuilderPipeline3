@@ -350,9 +350,9 @@ class FulfillmentBridge:
                 "base_path": self.Ctx.Settings.BasePath or "/"},
                 "capabilities": ["changes", "requests", "events", "assets.image", "assets.production_stl", "commands", "release_checks", "shipping_checks",
                                  "line_production", "admin_payload", "attention", "about_parts"],
-                # The commercial rule Atelier owns (docs/order-to-production-review.md §J): while True, an unpaid order's
-                # lines are released only once paid — the checks say PAYMENT_PENDING; False: payment is shown, never gating
-                "payment_gate": bool(self.Ctx.Settings.FulfillmentPaymentGate), "server_now": Now()}
+                # Payment is never a gate for production (the owner's decision of 2026-10-15): it is shown, never waited
+                # for. The field stays in the contract, always False — Fulfillment holds unpaid parts only while it is true
+                "payment_gate": False, "server_now": Now()}
 
     # ── enrollment ───────────────────────────────────────────────────────
     def Enrollment(self, EntityType: str, EntityId: str) -> dict | None:
@@ -1098,8 +1098,9 @@ class FulfillmentBridge:
 
     # ── the live commercial check at release time (spec §15) ─────────────
     def ReleaseChecks(self, Body: dict) -> dict:
-        """Payment, cancellation and quantity for the exact lines and quantities about to be released, read now — no
-        price is changed, no payment created. Fulfillment stores the answer with its request id."""
+        """Cancellation and quantity for the exact lines and quantities about to be released, read now, with the payment
+        shown — never a gate (the owner's decision of 2026-10-15). No price is changed, no payment created. Fulfillment
+        stores the answer with its request id."""
         Items = Body.get("items") if isinstance(Body, dict) else None
         if not isinstance(Items, list) or not Items or len(Items) > MaxCheckItems:
             raise HttpError(400, "invalid_items", f"items is a list of 1–{MaxCheckItems} {{line_id, quantity}}.")
@@ -1114,8 +1115,6 @@ class FulfillmentBridge:
             O = self.Ctx.Db.One("SELECT id, order_no, status, payment_status FROM orders WHERE id = ?", (L["order_id"],))
             E = self.Enrollment("order", O["id"])
             B = []
-            if self.Ctx.Settings.FulfillmentPaymentGate and O["payment_status"] != "paid":     # the gate Atelier owns (identity.payment_gate)
-                B.append({"code": "PAYMENT_PENDING", "text": f"Payment is {O['payment_status']}; only a paid order releases production."})
             if O["status"] == "cancelled":
                 B.append({"code": "ORDER_CANCELLED", "text": "The order is cancelled."})
             if not isinstance(Qty, int) or isinstance(Qty, bool) or Qty < 1:
@@ -1141,8 +1140,6 @@ class FulfillmentBridge:
         B = []
         if O["status"] == "cancelled":
             B.append({"code": "ORDER_CANCELLED", "text": "The order is cancelled."})
-        if self.Ctx.Settings.FulfillmentPaymentGate and O["payment_status"] != "paid":         # the gate Atelier owns (identity.payment_gate)
-            B.append({"code": "PAYMENT_PENDING", "text": f"Payment is {O['payment_status']}."})
         Address = O["address"]
         return {**Base, "ok": not B, "blockers": B, "order_ref": O["ref"], "address": Address, "address_lines": O["address_lines"],
                 "address_version": _Sha(Dumps(Address))[:16], "address_validation": O["address_validation"], "shipping_method": O["shipping_method"],

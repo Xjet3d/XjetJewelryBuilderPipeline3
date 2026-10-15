@@ -88,10 +88,8 @@ class Settings:
     # The milestones e-mailed once sending is on (the owner's decision of 2026-10-15: shipped and delivered); the others are
     # recorded as suppressed, never sent later. Known: review_approved, changes_required, cannot_produce, production_started, shipped, delivered
     FulfillmentNotificationMilestones: tuple = ("shipped", "delivered")   # P3_FULFILLMENT_NOTIFICATION_MILESTONES (comma-separated)
-    # The commercial rule Atelier owns and advertises to Fulfillment (identity.payment_gate; docs/order-to-production-review.md
-    # §J, K8): True (the default, the deployed systems) — an unpaid order's lines are not released and the live checks say
-    # PAYMENT_PENDING; False — payment is shown, never gating: the Admin decides what enters Production (switched at activation)
-    FulfillmentPaymentGate: bool = True          # P3_FULFILLMENT_PAYMENT_GATE
+    # Payment is never a gate for production (the owner's decision of 2026-10-15): there is no setting for it — an old
+    # P3_FULFILLMENT_PAYMENT_GATE line is ignored (p3/fulfillment_bridge.py: Identity, ReleaseChecks, ShippingChecks)
     FulfillmentUrl: str = ""                     # P3_FULFILLMENT_URL: the Fulfillment application's URL for the Admin's "Open in Fulfillment" links (e.g. https://tron/atelier-fulfillment)
     # The controlled phase (the owner's authorization of 2026-10-13, §6): while set, only these orders (ids or references,
     # comma-separated) can be sent to Production — enforced by the server, not by the page; empty: every eligible order
@@ -200,7 +198,6 @@ def LoadSettings(**Overrides) -> Settings:
         FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
         FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
         FulfillmentNotificationMilestones=tuple(X.strip() for X in (os.environ.get("P3_FULFILLMENT_NOTIFICATION_MILESTONES") or "shipped,delivered").split(",") if X.strip()),
-        FulfillmentPaymentGate=_Bool("P3_FULFILLMENT_PAYMENT_GATE", True),
         FulfillmentUrl=os.environ.get("P3_FULFILLMENT_URL", "").strip().rstrip("/"),
         FulfillmentOrderAllowlist=tuple(X.strip() for X in os.environ.get("P3_FULFILLMENT_ORDER_ALLOWLIST", "").split(",") if X.strip()),
     )
