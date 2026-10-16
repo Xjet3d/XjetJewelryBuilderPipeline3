@@ -46,7 +46,7 @@ async def test_an_internal_order_is_test_only_once_an_admin_marks_it_and_fulfill
         assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM order_events WHERE order_id = ? AND kind = 'test_marked'", (O["id"],))["n"] == 1
         # The customer's own view: the order, never who marked it or why
         Mine = (await H.Client.get(f"/api/orders/{O['id']}")).json()
-        assert "test_marked" not in Mine and "internal trial" not in str(Mine)
+        assert Mine["test"] is False and "test_marked" not in Mine and "internal trial" not in str(Mine)
         # Out of the dashboard's figures (the summary behind them; this suite's designs are mock ones, so they are counted here)
         Figures = H.Svc.Orders.Summary(ExcludeMock=False)
         assert Figures["test_orders"] == 1 and Figures["orders"] == 0
@@ -59,6 +59,8 @@ async def test_an_internal_order_is_test_only_once_an_admin_marks_it_and_fulfill
         await _Send(H, O["id"])
         Snap = (await H.Client.get(Prefix + f"/requests/order/{O['id']}", headers=Service)).json()
         assert Snap["order"]["test"] is True
+        Rows = (await H.Client.get(f"/api/admin/production?order_id={O['id']}", headers=Admin)).json()      # the Production page's Test badge
+        assert Rows["rows"] and all(R["order"]["test"] is True for R in Rows["rows"])
         R = await _Mark(H, O["id"], False, Reason="trying to change it after the hand-over")
         assert R.status_code == 409 and R.json()["error"]["code"] == "test_marking_not_allowed" and "sent to Production" in R.json()["error"]["message"]
         assert (await _Admin(H, O["id"]))["test_marking"]["possible"] is False

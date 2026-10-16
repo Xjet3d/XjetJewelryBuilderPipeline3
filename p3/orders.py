@@ -366,8 +366,9 @@ class OrderService:
             "payment_message": Pay.get("message") or "", "payment_provider": O["payment_provider"],
             "customer": json.loads(O["customer_json"]),
             # A synthetic order (p3/testrecords.py) or one an Admin marked Test (2026-10-16): marked Test, out of the figures,
-            # its customer never emailed by Fulfillment's milestones; Fulfillment ships it like any Test order
-            "test": IsTestCustomer(json.loads(O["customer_json"])) or bool(O.get("test_marked_at")),
+            # its customer never emailed by Fulfillment's milestones; Fulfillment ships it like any Test order. The
+            # customer's own view stays the address's verdict: nothing of the marking reaches the customer
+            "test": IsTestCustomer(json.loads(O["customer_json"])) or (not ForCustomer and bool(O.get("test_marked_at"))),
             "address": {K: Shipping.get(K, "") for K in Addressing.Fields}, "address_lines": Addressing.Lines(Shipping),
             "address_validation": O["address_validation"], "address_validation_detail": Shipping.get("validation"),
             "shipping_method": O["shipping_method"], "shipping_label": Ship.get("label"), "shipping_eta": Ship.get("eta"),

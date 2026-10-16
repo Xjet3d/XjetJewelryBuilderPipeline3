@@ -1620,7 +1620,7 @@ class FulfillmentBridge:
     def _ProductionRows(self, OrderId: str | None = None, LineId: str | None = None) -> list[dict]:
         Where = " WHERE p.order_id = ?" if OrderId else " WHERE p.line_id = ?" if LineId else ""
         return self.Ctx.Db.All("SELECT p.*, l.title, l.ring_id, l.material_id, l.material_label, l.product_type, l.ring_size, l.charm_size, l.quantity, l.image_path, "
-                               "l.position, o.order_no, o.status AS order_status, o.customer_json, o.payment_status FROM fulfillment_line_production p "
+                               "l.position, o.order_no, o.status AS order_status, o.customer_json, o.payment_status, o.test_marked_at FROM fulfillment_line_production p "
                                "JOIN order_lines l ON l.id = p.line_id JOIN orders o ON o.id = p.order_id" + Where + " ORDER BY p.sent_at DESC, p.id",
                                (OrderId or LineId,) if Where else ())
 
@@ -1635,7 +1635,7 @@ class FulfillmentBridge:
                 "order": {"id": R["order_id"], "ref": OrdersModule.OrderRef(R["order_no"]), "status": R["order_status"],
                           "status_label": OrdersModule.StatusLabels.get(R["order_status"], R["order_status"]), "payment_status": R["payment_status"],
                           "customer": (str(Customer.get("first_name", "")) + " " + str(Customer.get("last_name", ""))).strip(), "customer_email": Customer.get("email"),
-                          "test": IsTestCustomer(Customer)},
+                          "test": IsTestCustomer(Customer) or bool(R["test_marked_at"])},                 # synthetic, or marked Test by an Admin
                 "line": {"title": R["title"], "item_ref": R["ring_id"], "product_type": R["product_type"], "material_id": R["material_id"], "material_label": R["material_label"],
                          "size_label": Products.SizeLabel(R["product_type"] or Products.Ring, R["ring_size"], R["charm_size"]), "quantity": R["quantity"],
                          "position": R["position"], "image_url": self.Ctx.AssetUrl(R["image_path"])},
