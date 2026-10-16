@@ -140,6 +140,15 @@ The gallery on the customer site (home page, first 8, and the Inspiration page) 
      proposes a corrected STL for review, with the order lines it would change; accepted, it becomes a new revision of
      its own and the active STL of those lines at once — a line with Fulfillment only while its part is in review, and
      once Fulfillment confirms; the result stays as it was, and *Restore the original STL…* makes it active again).
+     **From the order line** (2026-10-16): a flagged line says why (e.g. *The bore is not round (5.0% deviation)*) and
+     offers *Fix bore (FixBore)…* — the same proposal, then compared and accepted on the session page; Prepare STL and
+     Link STL refresh the line's verdict at once, and a flagged STL is never downloaded by itself. **The same correction
+     in another material:** a correction is computed from the master model and the size only (verified: the silver and
+     vermeil proposals are byte-identical files), so once a person accepted one, a flagged result of the same design,
+     model version, method and size in another material offers *Use the accepted bore correction (…)…*. Explicit,
+     never automatic, and only from an accepted, still active correction whose file is intact: it is recorded as that
+     result's own accepted correction naming the one reused, a new revision with its own material's weight and price,
+     made active for its lines like any accepted correction (restorable). `POST /api/admin/3d/{id}/reuse-bore-fix`.
   3. Compute the volume from two reference points. If they agree, the mesh is probably closed. This is a cheap heuristic, not proof of watertightness.
 - **Any size or material is arithmetic** (`Scaled`), with no file read: s = target ID / raw ID, then lengths × s, area × s², volume × s³, and weight = volume × density (`config/materials.json`). US size → mm: 11.63 + 0.8128 × size.
 - **Status:** `measured`, or `needs_review` if:
@@ -280,6 +289,8 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
 ### Test orders
 
 An order whose customer is at a domain reserved for tests (`example.com`, `*.test`, `*.invalid` …: no real customer can have one) is a **test order**: a dashed *Test* badge on the Orders list, the order page and the Production page; the dashboard leaves it out of its figures (and says how many it left out); the customer gets no email from it (the confirmation, the quote emails and Fulfillment's notifications are recorded as skipped or suppressed), while the staff notification still goes out, marked `[TEST]`. Fulfillment receives the verdict (`order.test`) and marks the parts *TEST*.
+
+**Marked Test by an Admin** (2026-10-16). An internal order — its customer at an internal domain, `P3_TEST_ORDER_DOMAINS` (default `xjet3d.com`) — is a real order until an Admin marks it: *Mark as test order…* on the order page, with a reason kept in the order history (`POST /api/admin/orders/{id}/test`). An internal address alone never makes an order Test. Possible only before the order is sent to Production and while it is unpaid; never for a customer's order. A marked order carries *Test order (marked)* on the Admin pages, is left out of the dashboard's figures, reaches Fulfillment as Test (so it may be shipped and delivered there), and Fulfillment's milestones never e-mail its customer. The confirmation e-mail at placement is sent before any marking, as for any internal order. The customer's own view shows nothing of the marking. *Unmark test order…* (with a reason) undoes it until the hand-over.
 
 ### Production (Orders → Production) — with the Fulfillment integration on
 
