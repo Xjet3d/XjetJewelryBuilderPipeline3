@@ -699,7 +699,7 @@ function adminApp() {
     // An internal order marked Test (or unmarked) by an Admin, with a reason, before the hand-over (2026-10-16)
     async markTest(Test) {
       if (!this.od || this.odBusy) return;
-      const yes = await this.ask({ title: (Test ? 'Mark ' : 'Unmark ') + this.od.ref + (Test ? ' as a test order?' : ' as a test order?'),
+      const yes = await this.ask({ title: (Test ? 'Mark ' : 'Unmark ') + this.od.ref + ' as a test order?',
         text: Test ? 'For an internal trial: Fulfillment will treat it as a Test order — it can be marked shipped and delivered, its customer is never e-mailed by Fulfillment’s milestones, and it is kept out of the figures. Possible only before the order is sent to Production, and never for a paid order or a customer’s order.'
                    : 'It becomes a normal order again: during the pilot Fulfillment will stop it at Packed. Possible only before it is sent to Production.',
         confirmLabel: Test ? 'Mark as test order' : 'Unmark', input: { label: 'Reason (kept in the order history)', required: true } });
