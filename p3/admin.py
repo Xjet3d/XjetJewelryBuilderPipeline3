@@ -954,6 +954,14 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Who = Admin(authorization)
         return Production.FixBore(Sid, Who.Id)
 
+    @App_.post("/api/admin/3d/{Sid}/reuse-bore-fix")
+    async def ReuseBoreFix3D(Sid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        """Take a bore correction already accepted for the same design, 3D version and size in another material (the owner's
+        decision of 2026-10-16): the very same file, recorded as this result's own correction — naming the one reused and
+        who reused it — and activated for its order lines exactly as an accepted correction is."""
+        Who = Admin(authorization)
+        return Production.ReuseBoreFix(Sid, Who.Id, str(Body_.get("note") or ""))
+
     @App_.post("/api/admin/bore-fixes/{Pid}/accept")
     async def AcceptBoreFix(Pid: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
         """The reviewed correction becomes a new revision (a result of its own, its STL stored) and the active STL of the

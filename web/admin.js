@@ -672,6 +672,7 @@ function adminApp() {
     prodWhyLong(x) {
       if (!x || x.eligible || x.production?.sent) return '';
       const bits = [];
+      if (x.stl && x.stl.state === 'review_required' && x.stl.reason) bits.push(x.stl.reason);   // why it is flagged (2026-10-16)
       if (x.stl && !x.stl.ready && x.stl.action) bits.push(x.stl.action);          // the STL's own words are on its badge above
       if (x.handover && !x.handover.allowed && x.handover.state !== 'sent') bits.push(x.handover.label + (x.handover.action ? ' — ' + x.handover.action : ''));
       return bits.join(' · ');
@@ -694,6 +695,42 @@ function adminApp() {
       this.odBusy = true; this.odError = '';
       try { await this.api('POST', `/api/admin/orders/${encodeURIComponent(this.od.id)}/lines/${encodeURIComponent(l.id)}/link-stl`, { three_d_id: r.choice }); this.notify(l.ring_id + ': STL linked.'); await this.loadOrder(); }
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // The order and each line's Send-to-Production verdict, reloaded together (the owner's request of 2026-10-16)
+    async refreshOrderVerdicts() {
+      if (!this.od) return;
+      this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id));
+      this.of = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/fulfillment').catch(() => null);
+    },
+    // FixBore from the order line (2026-10-16): the existing proposal, for the line's flagged result
+    async fixBoreLine(l) {
+      const x = this.prodLine(l), sid = x?.stl?.result_id; if (!sid || this.odBusy) return;
+      const yes = await this.ask({ title: 'Propose a bore correction for ' + l.ring_id + ' (' + this.sizeOf(l) + ' · ' + l.material_label + ')?',
+        text: (x.stl.reason ? x.stl.reason + ' ' : '') + 'A corrected STL is computed from the 3D model (about a minute; local work, no AI cost) and kept for your review: compare it and accept or reject it on the session page. Nothing changes until you accept; accepting switches this line to it.',
+        confirmLabel: 'Propose the correction' });
+      if (!yes) return;
+      this.odBusy = true; this.odError = '';
+      try {
+        await this.api('POST', '/api/admin/3d/' + encodeURIComponent(sid) + '/fix-bore', {});
+        await this.refreshOrderVerdicts();
+        this.notify(l.ring_id + ': the bore correction is being computed — compare and accept it on the session page in a minute.');
+      } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // An accepted correction of the same design, version and size in another material: the very same file (2026-10-16)
+    async reuseBoreFixLine(l) {
+      const x = this.prodLine(l), r = x?.stl?.reusable_correction, sid = x?.stl?.result_id; if (!r || !sid || this.odBusy) return;
+      const yes = await this.ask({ title: 'Use the accepted bore correction for ' + l.ring_id + '?',
+        text: 'The correction accepted for ' + r.material_label + ' at ' + this.sizeOf(l) + ' (' + this.dateTime(r.accepted_at) + ', ' + (r.accepted_by || 'admin') + ') is the very same file for ' + l.material_label
+          + ': a correction is computed from the 3D model and the size only, never the material. It is recorded as this result’s own correction, naming that one, with ' + l.material_label
+          + '’s own weight and price; this line switches to it. It can be restored like any correction.',
+        confirmLabel: 'Use the accepted correction', input: { label: 'Note (optional)', required: false } });
+      if (!yes) return;
+      this.odBusy = true; this.odError = '';
+      try {
+        await this.api('POST', '/api/admin/3d/' + encodeURIComponent(sid) + '/reuse-bore-fix', { note: ((yes && yes.value) || '').trim() });
+        await this.refreshOrderVerdicts();
+        this.notify(l.ring_id + ': the accepted bore correction is now this line’s STL.');
+      } catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
     },
     // A completed order that never went to Production, reopened for it — Admin only, with a reason (I-35)
     // G9: the customer's other orders that hold the same piece (same item, size and material), as one line
@@ -939,10 +976,14 @@ function adminApp() {
         let s = await this.api('GET', `/api/admin/3d/${encodeURIComponent(r.three_d_id)}/status`);
         const until = Date.now() + 120000;
         while (!s.done && Date.now() < until) { await new Promise(x => setTimeout(x, 1500)); s = await this.api('GET', `/api/admin/3d/${encodeURIComponent(r.three_d_id)}/status`); }
-        this.od = await this.api('GET', '/api/admin/orders/' + encodeURIComponent(this.od.id));
+        await this.refreshOrderVerdicts();             // the order AND each line's verdict: the status shown changes at once (2026-10-16)
         if (!s.done) { this.notify('The geometry is still being calculated — try again in a moment.', 'error'); return; }
         if (s.status === 'failed') { this.notify('Geometry failed: ' + (s.error || ''), 'error'); return; }
         const fresh = this.od.lines.find(x => x.id === line.id);
+        if (fresh?.three_d_state === 'review_required') {     // flagged: never downloaded by itself — the line says why and what fixes it
+          this.notify(line.ring_id + ': the STL is prepared but flagged — ' + (this.prodLine(fresh)?.stl?.reason || 'review required') + ' See the line for what fixes it.', 'error');
+          return;
+        }
         if (fresh?.three_d_id && fresh.three_d_match) await this.safeExportStl({ id: fresh.three_d_id, scaled_stl: 'on_demand', production_state: fresh.three_d_state }, this.od.ref);
       } catch (e) { this.fail(e); }
       finally { const p = { ...this.linePrep }; delete p[line.id]; this.linePrep = p; }
@@ -2118,6 +2159,16 @@ function adminApp() {
         confirmLabel: 'Propose the correction' });
       if (!ok) return;
       try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/fix-bore`, {}); await this.loadSession(); this.notify('Computing the bore correction — the comparison follows in a moment'); }
+      catch (e) { this.fail(e); }
+    },
+    async reuseBoreFix(t) {
+      const r = t.reusable_bore_fix; if (!r) return;
+      const ok = await this.ask({ title: `Use the bore correction accepted for ${r.material_label}?`,
+        text: `It is the very same file for this result (${t.size_label || 'US ' + t.production_size} · ${t.material_label || t.material_id}): a correction is computed from the 3D model and the size only, never the material. ` +
+              'It is recorded as this result’s own correction, naming that one, with this material’s weight and price, and activated for this material’s order lines like an accepted correction (restorable).',
+        confirmLabel: 'Use the accepted correction' });
+      if (!ok) return;
+      try { await this.api('POST', `/api/admin/3d/${encodeURIComponent(t.id)}/reuse-bore-fix`, {}); await this.loadSession(); this.notify('The accepted correction is this result’s too — its order lines switched'); }
       catch (e) { this.fail(e); }
     },
     // The manual FixBore (2026-10-15): proposed only for a ring result whose bore is flagged, with no correction open or accepted — never for a revision

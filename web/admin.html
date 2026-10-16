@@ -1273,7 +1273,8 @@
                 <p class="text-[12px] text-amber-900/70">Viewing or downloading the model does not approve it for production.</p>
                 <div class="flex flex-wrap gap-2">
                   <!-- A bore that is not round: scale the model along the bore's two axes so it is a circle of the target size (local work) -->
-                  <button x-show="canProposeFix(t)" class="btn !py-1.5" @click="fixBore(t)">Propose a bore correction (FixBore)…</button>
+                  <button x-show="t.reusable_bore_fix" class="btn !py-1.5" @click="reuseBoreFix(t)" x-text="'Use the correction accepted for ' + (t.reusable_bore_fix?.material_label || '') + '…'"></button>
+                  <button x-show="canProposeFix(t)" class="btn !py-1.5" :class="t.reusable_bore_fix ? 'btn2' : ''" @click="fixBore(t)">Propose a bore correction (FixBore)…</button>
                   <!-- The Admin's decision: produce as measured (a slightly off-round bore is sized by its median; the numbers stand) -->
                   <button class="btn2 !py-1.5" @click="accept3d(t)">Accept — produce as measured</button>
                   <!-- A correction that made the bore rounder but not round: back to the model as generated -->
@@ -2203,6 +2204,9 @@
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
                             <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
                             <button x-show="prodLine(l).stl?.state === 'ambiguous'" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="linkStl(l)">Link STL…</button>
+                            <button x-show="prodLine(l).stl?.state === 'review_required' && prodLine(l).stl?.reusable_correction" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="reuseBoreFixLine(l)" x-text="'Use the accepted bore correction (' + (prodLine(l).stl?.reusable_correction?.material_label || '') + ')…'"></button>
+                            <button x-show="prodLine(l).stl?.state === 'review_required' && prodLine(l).stl?.bore_not_round && !prodLine(l).stl?.reusable_correction && !prodLine(l).stl?.correction" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="fixBoreLine(l)">Fix bore (FixBore)…</button>
+                            <a x-show="prodLine(l).stl?.state === 'review_required' && prodLine(l).stl?.correction" class="underline text-zinc-700 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)" x-text="prodLine(l).stl?.correction?.status === 'computing' ? 'Bore correction being computed — session page' : 'Bore correction proposed — compare and accept it'"></a>
                             <a x-show="['review_required', 'missing', 'other_option'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)" x-text="prodLine(l).stl?.state === 'review_required' ? 'Review it on the session page' : 'Open the session page'"></a>
                             <button x-show="prodLine(l).handover?.state === 'order_completed' && of?.reopen?.possible" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="reopenForProduction()">Reopen for Production…</button></p>
                         </div>

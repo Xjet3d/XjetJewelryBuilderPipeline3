@@ -47,7 +47,7 @@ StlLabels = {
     "ambiguous": ("STL ready — several different results for {size}", "choose which one is this line's STL (Link STL…)"),
     "needs_preparation": ("STL exists — preparation required for {size}", "Prepare STL: scaled from the existing 3D model, no AI cost"),
     "preparing": ("STL being prepared for {size}", "the result is being measured — usually a few seconds"),
-    "review_required": ("STL flagged — review required", "accept it on the session page, or prepare it again"),
+    "review_required": ("STL flagged — review required", "fix it (FixBore, when the bore is not round), or review it on the session page and accept it as it is"),
     "failed": ("STL preparation failed", "prepare it again"),
     "file_missing": ("STL file missing on disk", "the record exists but the file does not: upload the STL again (Upload revised STL…)"),
     "other_option": ("3D model is of another option", "generate a model of the ordered option on the session page (a paid Hi3D request)"),
@@ -431,7 +431,7 @@ class FulfillmentBridge:
             if State == "complete" and L.get("three_d_match"):
                 return V("ready", **Act)
             if State == "review_required":
-                return V("review_required", **Act)
+                return V("review_required", **Act, **self._Flag(L.get("three_d_id")))
             if State in ("failed", "cancelled"):
                 return V("failed")
             return V("preparing")
@@ -447,10 +447,27 @@ class FulfillmentBridge:
         if C["pending"]:
             return V("preparing")
         if C["flagged"]:
-            return V("review_required")
+            return V("review_required", **self._Flag(C["flagged"][0]["id"]))
         if C["failed"]:
             return V("failed")
         return V("needs_preparation")
+
+    def _Flag(self, Sid: str | None) -> dict:
+        """Why a line's STL is flagged and what can fix it (the owner's request of 2026-10-16): the result's own review text,
+        whether its bore is out of round (FixBore applies), a correction being computed or waiting for a decision, and an
+        accepted correction of the same design, version and size — another material — this result may take."""
+        from p3.production3d import MaxRoundness
+        if not Sid:
+            return {}
+        R = self.Ctx.Db.One("SELECT s.id, s.error, g.checks_json FROM session_3d s LEFT JOIN geometry_results g ON g.session_3d_id = s.id AND g.stage = 'production' "
+                            "WHERE s.id = ?", (Sid,))
+        if R is None:
+            return {}
+        Round = json.loads(R["checks_json"] or "{}").get("roundness")
+        Open = self.Ctx.Db.One("SELECT id, status FROM bore_fixes WHERE session_3d_id = ? AND status IN ('computing', 'proposed') ORDER BY created_at DESC LIMIT 1", (Sid,))
+        Reuse = self.Production.ReusableBoreFix(Sid) if self.Production is not None and hasattr(self.Production, "ReusableBoreFix") else None
+        return {"result_id": Sid, "reason": R["error"] or "The STL was flagged for review.", "roundness": Round,
+                "bore_not_round": Round is not None and Round > MaxRoundness, "correction": dict(Open) if Open else None, "reusable_correction": Reuse}
 
     def Reopenable(self, O: dict) -> tuple[bool, str | None]:
         """A completed order may be reopened for Production only when nothing of it was ever handed over — no line sent,
