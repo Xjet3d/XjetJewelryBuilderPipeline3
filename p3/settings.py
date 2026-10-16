@@ -88,6 +88,9 @@ class Settings:
     # The milestones e-mailed once sending is on (the owner's decision of 2026-10-15: shipped and delivered); the others are
     # recorded as suppressed, never sent later. Known: review_approved, changes_required, cannot_produce, production_started, shipped, delivered
     FulfillmentNotificationMilestones: tuple = ("shipped", "delivered")   # P3_FULFILLMENT_NOTIFICATION_MILESTONES (comma-separated)
+    # The customers whose orders an Admin may mark Test (the owner's decision of 2026-10-16): internal addresses only — a
+    # real customer's order can never be made a Test order. Marking is explicit; an address alone never makes an order Test.
+    TestOrderDomains: tuple = ("xjet3d.com",)     # P3_TEST_ORDER_DOMAINS (comma-separated; empty: no order can be marked)
     # Payment is never a gate for production (the owner's decision of 2026-10-15): there is no setting for it — an old
     # P3_FULFILLMENT_PAYMENT_GATE line is ignored (p3/fulfillment_bridge.py: Identity, ReleaseChecks, ShippingChecks)
     FulfillmentUrl: str = ""                     # P3_FULFILLMENT_URL: the Fulfillment application's URL for the Admin's "Open in Fulfillment" links (e.g. https://tron/atelier-fulfillment)
@@ -198,6 +201,7 @@ def LoadSettings(**Overrides) -> Settings:
         FulfillmentNotificationRecipient=os.environ.get("P3_FULFILLMENT_NOTIFICATION_RECIPIENT", "").strip() or None,
         FulfillmentNotificationWindowS=int(os.environ.get("P3_FULFILLMENT_NOTIFICATION_WINDOW_S") or 120),
         FulfillmentNotificationMilestones=tuple(X.strip() for X in (os.environ.get("P3_FULFILLMENT_NOTIFICATION_MILESTONES") or "shipped,delivered").split(",") if X.strip()),
+        TestOrderDomains=tuple(X.strip().lower() for X in os.environ.get("P3_TEST_ORDER_DOMAINS", "xjet3d.com").split(",") if X.strip()),
         FulfillmentUrl=os.environ.get("P3_FULFILLMENT_URL", "").strip().rstrip("/"),
         FulfillmentOrderAllowlist=tuple(X.strip() for X in os.environ.get("P3_FULFILLMENT_ORDER_ALLOWLIST", "").split(",") if X.strip()),
     )

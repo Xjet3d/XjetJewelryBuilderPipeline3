@@ -784,6 +784,13 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Admin(authorization)
         return Orders.AdminGet(OrderId)
 
+    @App_.post("/api/admin/orders/{OrderId}/test")
+    async def AdminOrderTest(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """Mark an internal order Test, or unmark it (the owner's decision of 2026-10-16): explicit, with a reason, before
+        the hand-over to Production, unpaid only."""
+        Who = Admin(authorization)
+        return Orders.MarkTest(OrderId, bool(Body_.get("test")), Who.Id, str(Body_.get("reason") or ""))
+
     @App_.post("/api/admin/orders/{OrderId}/status")
     async def AdminOrderStatus(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)

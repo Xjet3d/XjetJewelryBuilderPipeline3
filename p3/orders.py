@@ -365,8 +365,9 @@ class OrderService:
             "payment_status": O["payment_status"], "payment_label": Payments.Labels.get(O["payment_status"], O["payment_status"]),
             "payment_message": Pay.get("message") or "", "payment_provider": O["payment_provider"],
             "customer": json.loads(O["customer_json"]),
-            # A synthetic order (p3/testrecords.py): marked Test, out of the figures, its customer never emailed
-            "test": IsTestCustomer(json.loads(O["customer_json"])),
+            # A synthetic order (p3/testrecords.py) or one an Admin marked Test (2026-10-16): marked Test, out of the figures,
+            # its customer never emailed by Fulfillment's milestones; Fulfillment ships it like any Test order
+            "test": IsTestCustomer(json.loads(O["customer_json"])) or bool(O.get("test_marked_at")),
             "address": {K: Shipping.get(K, "") for K in Addressing.Fields}, "address_lines": Addressing.Lines(Shipping),
             "address_validation": O["address_validation"], "address_validation_detail": Shipping.get("validation"),
             "shipping_method": O["shipping_method"], "shipping_label": Ship.get("label"), "shipping_eta": Ship.get("eta"),
@@ -390,6 +391,8 @@ class OrderService:
             Out["notes"] = O["notes"]
             Out["payment_ref"] = O["payment_ref"]
             Out["client_request_id"] = O["client_request_id"]
+            # who marked it Test and why (Admin only; the customer sees nothing of it — 2026-10-16)
+            Out["test_marked"] = {"at": O["test_marked_at"], "by": O.get("test_marked_by"), "reason": O.get("test_reason")} if O.get("test_marked_at") else None
             for J, L in zip(Out["lines"], Lines):          # the 3D result and version the line is pinned to (Admin only)
                 J["pinned_three_d_id"], J["pinned_mesh_id"] = L.get("three_d_id"), L.get("mesh_id")
         return Out
@@ -881,6 +884,7 @@ class OrderService:
             raise HttpError(404, "order_not_found", "Order not found.")
         Lines = self._Lines(O["id"])
         J = self.ToJson(O, Lines, ForCustomer=False)
+        J["test_marking"] = self.TestMarking(dict(O))                        # may an Admin mark it Test (or unmark it) now (2026-10-16)
         for L in J["lines"]:
             L.update(self._ThreeDForLine(L))
             # what the activation of a bore-corrected STL did with this line, if it concerned it (FixBore update, 2026-10-15)
@@ -943,6 +947,56 @@ class OrderService:
                         "size_label": Products.SizeLabel(L["product_type"] or Products.Ring, L["ring_size"], L["charm_size"]), "material_label": L["material_label"],
                         "same_design": bool(L["customization_id"]) and L["customization_id"] == L2["customization_id"]})
         return Out
+
+    def TestMarking(self, O: dict) -> dict:
+        """Whether an Admin may mark this order Test (or unmark it) now, and why not (the owner's decision of 2026-10-16)."""
+        Email = (json.loads(O["customer_json"] or "{}").get("email") or "").strip().lower()
+        Domain = Email.rsplit("@", 1)[1] if "@" in Email else ""
+        if ReservedEmail(Email):
+            return {"possible": False, "why": "the customer is at a reserved test domain: the order is Test by its address"}
+        if self._SentToProduction(O["id"]):
+            return {"possible": False, "why": "it was sent to Production: Fulfillment classified it at the hand-over"}
+        if O["payment_status"] == "paid":
+            return {"possible": False, "why": "it is paid: a paid order is a real sale"}
+        if Domain not in tuple(self.Ctx.Settings.TestOrderDomains or ()):
+            return {"possible": False, "why": "its customer is not internal (" + (", ".join("@" + D for D in self.Ctx.Settings.TestOrderDomains) or "no internal domain is set")
+                    + "): a customer's order is always real"}
+        return {"possible": True, "why": None}
+
+    def _SentToProduction(self, OrderId: str) -> bool:
+        Db = self.Ctx.Db
+        for Table, Col in (("fulfillment_line_production", "order_id"), ("fulfillment_enrollments", "entity_id")):
+            if Db.One("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = ?", (Table,)) and Db.One(f"SELECT 1 AS x FROM {Table} WHERE {Col} = ?", (OrderId,)):
+                return True
+        return False
+
+    def MarkTest(self, OrderId: str, Test: bool, By: str, Reason: str) -> dict:
+        """An Admin marks an internal order Test — or unmarks it — so a trial can run through Fulfillment to Shipped and
+        Delivered without the real-order rule (the owner's decision of 2026-10-16). Explicit, with a reason, recorded in
+        the order's history; never from an address alone; only before the order is sent to Production (Fulfillment
+        classifies it once, at the hand-over); only an unpaid order of an internal customer (P3_TEST_ORDER_DOMAINS). A
+        Test order is kept out of the figures and Fulfillment's milestones never e-mail its customer."""
+        Reason = " ".join(str(Reason or "").split())[:300]
+        if len(Reason) < 5:
+            raise HttpError(400, "reason_required", "Say why the order is " + ("marked Test" if Test else "no longer Test") + " (kept in its history).")
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? OR order_no = ?", (OrderId, _OrderNo(OrderId)))
+        if O is None:
+            raise HttpError(404, "order_not_found", "Order not found.")
+        if bool(O["test_marked_at"]) == bool(Test):
+            return self.AdminGet(O["id"])                                    # already so: recorded once
+        Can = self.TestMarking(O)
+        if not Can["possible"]:
+            raise HttpError(409, "test_marking_not_allowed", f"{OrderRef(O['order_no'])} cannot be " + ("marked Test" if Test else "unmarked") + f": {Can['why']}.")
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT test_marked_at, payment_status FROM orders WHERE id = ?", (O["id"],)).fetchone()
+            if bool(Cur["test_marked_at"]) == bool(Test) or Cur["payment_status"] == "paid":
+                raise HttpError(409, "test_marking_not_allowed", "The order changed meanwhile: reload it.")
+            Conn.execute("UPDATE orders SET test_marked_at = ?, test_marked_by = ?, test_reason = ?, updated_at = ? WHERE id = ?",
+                         (T if Test else None, By if Test else None, Reason if Test else None, T, O["id"]))
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (O["id"], "test_marked" if Test else "test_unmarked", Dumps({"reason": Reason}), By, T))
+        return self.AdminGet(O["id"])
 
     def SetStatus(self, OrderId: str, Status: str, By: str, Note: str = "", Force: bool = False) -> dict:
         """Production and every later status need each line's 3D result for the ordered size and material to be
@@ -1167,7 +1221,7 @@ class OrderService:
             Lines = self._Lines(O["id"])
             if ExcludeMock and Lines and all(L["design_id"] in Mock for L in Lines):
                 continue
-            if IsTestCustomer(json.loads(O["customer_json"] or "{}")):   # a synthetic order: counted apart, never in the figures
+            if IsTestCustomer(json.loads(O["customer_json"] or "{}")) or O["test_marked_at"]:   # a synthetic or marked Test order: counted apart
                 Tests += 1
                 continue
             Orders.append(O)

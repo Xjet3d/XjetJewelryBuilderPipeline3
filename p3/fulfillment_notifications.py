@@ -92,9 +92,9 @@ class NotificationService:
         Key = ScopeKey(OrderId, Milestone, Public)
         if Conn.execute("SELECT 1 FROM fulfillment_notification_intents WHERE scope_key = ?", (Key,)).fetchone():
             return None
-        O = Conn.execute("SELECT customer_json FROM orders WHERE id = ?", (OrderId,)).fetchone()
+        O = Conn.execute("SELECT customer_json, test_marked_at FROM orders WHERE id = ?", (OrderId,)).fetchone()
         Email = (json.loads(O["customer_json"]).get("email") or "").strip() if O else ""
-        Test = ReservedEmail(Email)                          # a synthetic order (p3/testrecords.py): recorded, never sent
+        Test = ReservedEmail(Email) or bool(O and O["test_marked_at"])     # a synthetic or marked Test order: recorded, never sent
         Chosen = Milestone in tuple(self.Ctx.Settings.FulfillmentNotificationMilestones or ())    # the milestones the owner chose to e-mail
         Id = NewId("nti")
         Payload = {K: Public.get(K) for K in ("customer_status", "order_status", "review", "shipment") if Public.get(K) is not None}

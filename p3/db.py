@@ -672,6 +672,14 @@ VersionColumns = {
 }
 
 
+def _InstallTestOrders(Conn) -> None:
+    """An order an Admin marked Test (the owner's decision of 2026-10-16): additive columns, old code ignores them."""
+    Have = _Columns(Conn, "orders")
+    for Col in ("test_marked_at TEXT", "test_marked_by TEXT", "test_reason TEXT"):
+        if Col.split()[0] not in Have:
+            Conn.execute(f"ALTER TABLE orders ADD COLUMN {Col}")
+
+
 def _InstallVersions(Conn) -> None:
     """3D versions (additive: new columns and tables; old code ignores them). The backfill runs once per database."""
     Conn.executescript(VersionTables)
@@ -880,6 +888,7 @@ class Database:
                     from p3 import ringids
                     ringids.Install(Conn)                 # item IDs: R-1042 … for rings, C-1001 … for charms
                     _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
+                    _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 
