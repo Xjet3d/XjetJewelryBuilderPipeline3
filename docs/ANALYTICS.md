@@ -193,7 +193,8 @@ and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
 
 | Event | When | Fields |
 |---|---|---|
-| `sign_up` / `login` | registration sent / signed in with the code or a link | `method` (email · code · link) |
+| `sign_up` | a new account: made with Google or Apple, or its email confirmed by its link (the six-letter code's registration: when sent) | `method` (email · google · apple) |
+| `login` | signed in: a password (an email or a username), Google, Apple, the six-letter code or its link | `method` (password · google · apple · code · link) |
 | `design_session_started` | a new design journey (a first prompt, or a gallery design) | `product_type`, `entry` (home · gallery) |
 | `prompt_submitted` | a description or a change is sent | `product_type`, `kind` (new · refine), `has_reference_image`, `prompt_length` (short · medium · long) — never the text |
 | `design_generation_started` / `_completed` / `_failed` | generation accepted / finished while watched / refused or failed | `product_type`, `kind` (new · refine · retry), `options_ready`, `options_failed`, `duration_s`, `reason` (content_policy · prompt_refused · no_credits · provider · error) |
@@ -204,10 +205,31 @@ and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
 | `material_selected` / `size_selected` | metal / size chosen | `product_type`, `material_id`, `material_group` / `size` |
 | `add_to_cart` / `begin_checkout` | added to the bag / checkout opened | `currency`, `value`, `items` |
 | `quote_requested` / `quote_viewed` / `quote_approved` / `quote_declined` | gold quote steps | `product_type`, (`material_group`), (`currency`, `value`) |
-| `order_created` (+ GA4 `purchase`) | an order placed (checkout or approved quote) | `source`, `currency`, `value`, `item_count`; `purchase`: `transaction_id` (ORD-…), `items` |
+| `order_created` | an order placed (checkout or approved quote) — not a payment | `source`, `currency`, `value`, `item_count` |
 | `scroll` | the visitor scrolled a screen to 90 % (once per screen; only a page taller than the window, only their own scrolling — the window or the screen's `<main>`) | `percent_scrolled` (90) |
 
 Items are anonymous: `item_id` `custom-ring` / `custom-charm`, `item_variant` = the metal, `price`, `quantity`.
+
+The method of a sign-in that returns from Google, Apple or an emailed link is the one the server's session records
+(`/api/auth/session` `method`); a confirmed email is a new account (`#auth=created`).
+
+**`purchase` is kept for a payment received, and is not sent today** (since 2026-10-17; it used to duplicate
+`order_created`). No payment is taken online (`P3_PAYMENT_PROVIDER=none`): staff mark an order paid in the Admin. A
+`purchase` at that moment would be sent by the server (GA4 Measurement Protocol): it needs a Measurement Protocol API
+secret, the visitor's GA4 client id kept with the order (only with Analytics consent) and a line on the Privacy page —
+the owner's decision. A payment provider, once connected, confirms payments the same way.
+
+### Event hierarchy (which events are key events)
+
+Not every event is a key event: a few business outcomes are, the funnel is read in an exploration, and the rest is
+for diagnosis.
+
+| Level | Events | GA4 |
+|---|---|---|
+| Primary business conversions | `order_created` (an order placed, with its value), `quote_requested` (a gold quote: a sales lead); later `purchase` (a payment received) | key events |
+| Secondary conversion signals | `sign_up` (a new account), `design_generation_completed` (a design made: four options ready) | key events, reported apart from the primary ones |
+| Funnel steps | page views of `/design`, `/customize`, `/bag`, `/checkout`; `gallery_design_opened`, `design_session_started`, `prompt_submitted`, `design_selected`, `customize_opened`, `add_to_cart`, `begin_checkout` | one funnel exploration; never key events |
+| Diagnostics | `login`, `design_generation_started` / `_failed`, `movie_generation_*`, `material_selected`, `size_selected`, `quote_viewed` / `_approved` / `_declined`, `scroll`; GA4's `first_visit`, `session_start`, `user_engagement` | never key events |
 Not GA4 events: 3D production failures (back office, in the Admin) and abandoned quotes (from Atelier's own quote data
 in the reporting layer).
 

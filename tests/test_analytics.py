@@ -210,8 +210,7 @@ async def test_the_quote_page_offers_consent_never_clarity_and_states_events_wit
         Events = {E["name"]: E["params"] for E in json.loads(Raw)}
         assert Events["quote_approved"] == {"product_type": "ring", "currency": "USD", "value": 5200}
         assert Events["order_created"] == {"source": "quote", "currency": "USD", "value": 5200, "item_count": 2}
-        assert Events["purchase"]["transaction_id"] == "ORD-10001" and Events["purchase"]["items"] == [
-            {"item_id": "custom-ring", "item_name": "Custom ring", "item_category": "ring", "item_variant": "gold_18k_yellow", "price": 2600, "quantity": 2}]
+        assert "purchase" not in Events                                     # an order placed is not a payment received
         for Personal in (Customer["first_name"], Customer["last_name"], Customer["email"], Customer["phone"], Address["line1"], Address["city"],
                          Address["postal_code"], Token, "Engrave", "crescent"):
             assert Personal not in Raw, Personal
@@ -272,3 +271,29 @@ def test_the_banner_names_no_tool_and_marketing_is_shown_as_not_used():
     assert "marketing: false" in Js[Js.index("function save("):Js.index("function decide(")]
     for Tag in ("fbq(", "connect.facebook", "googleadservices", "doubleclick", "AW-", "ads_data_redaction"):
         assert Tag not in Js, Tag
+
+
+def test_sign_ins_and_new_accounts_name_their_method_and_an_order_is_no_purchase():
+    """web/app.js, web/consent.js, web/authpage.html (2026-10-17): login and sign_up for every way in — a password (an
+    email or a username), Google, Apple, the six-letter code and its link — and sign_up when Google or Apple made the
+    account or its email was confirmed by its link; the method of a return from Google, Apple or an emailed link is
+    the server's session's. An order placed sends order_created, never "purchase": no payment is taken online yet, and
+    "purchase" is kept for a payment received."""
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    Consent = (WebDir / "consent.js").read_text(encoding="utf-8")
+    Page = (WebDir / "authpage.html").read_text(encoding="utf-8")
+    assert "sign_up: { method: ['email', 'google', 'apple'] }," in Consent
+    assert "login: { method: ['password', 'google', 'apple', 'code', 'link'] }," in Consent
+    assert "purchase" not in Consent[Consent.index("var SCHEMA = {"):Consent.index("var ITEM = {")]
+    assert "this.measure('purchase'" not in Js and "this.measure('order_created', { source: 'checkout'" in Js
+    Map = Js[Js.index("    _measureSignIn(created) {"):Js.index("    submitSignIn() {")]
+    assert "m === 'google' || m === 'apple' ? m : m === 'password' ? (created ? 'email' : 'password') : ''" in Map
+    assert "this.measure(created ? 'sign_up' : 'login', { method });" in Map
+    SignIn = Js[Js.index("    submitSignIn() {"):Js.index("    submitRegister() {")]
+    assert SignIn.index("this.measure('login', { method: 'password' });") < SignIn.index("await this._signedIn(R);")
+    Claim = Js[Js.index("    submitClaimPassword() {"):Js.index("    // ── Account page: Sign-in & security")]
+    assert "this.measure('login', { method: 'password' });" in Claim
+    Init = Js[Js.index("    async init() {"):Js.index("    persist(patch) {")]
+    assert "this._measureSignIn(authStatus === 'created');" in Init
+    assert "this.authCsrf = S.csrf; this._authMethod = S.method || '';" in Js
+    assert "location.replace(BASE + '/#auth=' + (MODE === 'verify' ? 'created' : 'ok'))" in Page

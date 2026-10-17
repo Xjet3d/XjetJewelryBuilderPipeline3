@@ -170,7 +170,7 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
         if not Session:
             return {"authenticated": False, "mode": S.AuthMode, "providers": {P: P in Ctx.Oidc for P in ("google", "apple")}}
         return {"authenticated": True, "csrf": Session["csrf"], "account": Account(Session["account_id"]),
-                "recent": Id.IsRecent(Session), "mode": S.AuthMode}
+                "recent": Id.IsRecent(Session), "mode": S.AuthMode, "method": Session["auth_method"]}
 
     # ── email and password ───────────────────────────────────────────────
     @App_.post("/api/auth/register")

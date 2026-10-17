@@ -110,7 +110,7 @@ async def test_register_verify_login_and_logout(A):
     assert V.status_code == 200 and V.json()["account"] == {"name": "Dana", "email": "dana@example.com"}
     assert "atelier_session" in V.headers["set-cookie"] and "HttpOnly" in V.headers["set-cookie"] and "samesite=lax" in V.headers["set-cookie"].lower()
     S = (await B.get("/api/auth/session")).json()
-    assert S["authenticated"] and S["csrf"] == V.json()["csrf"]
+    assert S["authenticated"] and S["csrf"] == V.json()["csrf"] and S["method"] == "password"   # how it was made (analytics)
     # the private API answers for this browser, with the credits of a new account
     Me = await B.get("/api/token-status")
     assert Me.status_code == 200 and (Me.json()["max"], Me.json()["used"], Me.json()["email"]) == (10, 0, "dana@example.com")
@@ -270,6 +270,7 @@ async def test_secrets_never_reach_the_logs(A, caplog):
 async def test_google_creates_an_account_once_with_welcome_credits(A):
     B = Browser(A)
     assert await ViaProvider(A, B) == "auth=created"
+    assert (await B.get("/api/auth/session")).json()["method"] == "google"
     Me = (await B.get("/api/token-status")).json()
     assert (Me["max"], Me["name"], Me["email"]) == (10, "Dana", "dana@example.com")
     await B.post("/api/auth/logout", headers=Csrf(await B.get("/api/auth/session")))

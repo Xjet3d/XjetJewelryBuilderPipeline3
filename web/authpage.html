@@ -67,7 +67,7 @@
       .then(function (r) {
         if (r.ok) {
           say(MODE === 'reset' ? 'Your password is saved. Taking you to the studio…' : 'Done. Taking you to the studio…', 'ok');
-          $('form').hidden = true; setTimeout(function () { location.replace(BASE + '/#auth=ok'); }, 900);
+          $('form').hidden = true; setTimeout(function () { location.replace(BASE + '/#auth=' + (MODE === 'verify' ? 'created' : 'ok')); }, 900);
         } else {
           say((r.j && r.j.error && r.j.error.message) || 'Something went wrong. Please try again.', 'err');
           $('go').disabled = false;

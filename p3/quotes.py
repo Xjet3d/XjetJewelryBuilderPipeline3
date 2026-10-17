@@ -449,13 +449,10 @@ class QuoteDesk:
         Mail = {"sent": "A confirmation email has been sent to you.", "pending": "A confirmation email is on its way to you."}.get(
             Email["status"], "Please keep your order reference.")
         Product, Cur = self._Product(R), Order.get("currency") or "USD"
-        Items = [{"item_id": f"custom-{L.get('product_type') or Product}", "item_name": f"Custom {L.get('product_type') or Product}",
-                  "item_category": L.get("product_type") or Product, "item_variant": L.get("material_id"), "price": L.get("unit_price"),
-                  "quantity": L.get("quantity")} for L in Order.get("lines") or []]
+        # An order placed, not a payment: GA4's "purchase" is kept for a payment received (docs/ANALYTICS.md)
         Events = [{"name": "quote_approved", "params": {"product_type": Product, "currency": Cur, "value": Order["total"]}},
                   {"name": "order_created", "params": {"source": "quote", "currency": Cur, "value": Order["total"],
-                                                       "item_count": Order.get("count") or 1}},
-                  {"name": "purchase", "params": {"transaction_id": Order["ref"], "currency": Cur, "value": Order["total"], "items": Items}}]
+                                                       "item_count": Order.get("count") or 1}}]
         return self._Render("Thank you — your order is placed",
                             f"<p>Quote {_E(QuoteRef(R['request_no']))} is approved and your order <strong>{_E(Order['ref'])}</strong> is "
                             f"placed: {_E(Order['lines'][0]['title'])}, {_E(Order['lines'][0]['material_label'])}, "

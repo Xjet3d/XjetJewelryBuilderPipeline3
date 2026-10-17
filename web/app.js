@@ -279,6 +279,7 @@ function p3App() {
       if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); this.loadSecurity(); }
       if (authStatus === 'ok' || authStatus === 'created') {
         try { this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
+        this._measureSignIn(authStatus === 'created');
         await this._afterSignIn(false); this.measureScreen(); return;              // the screen it opened (sent once)
       }
       if (fromLink) {
@@ -870,7 +871,7 @@ function p3App() {
       let S = null;
       try { S = await this.api('GET', '/api/auth/session', null, { noAuth: true }); } catch (_) {}
       if (S && S.authenticated) {
-        this.authCsrf = S.csrf;
+        this.authCsrf = S.csrf; this._authMethod = S.method || '';
         this._setSession({ token: 'session', session: true, name: S.account.name, email: S.account.email, quotaUsed: 0, quotaMax: 10 });
         this._saveUserProfile(S.account.name || null, S.account.email || null);
         try { localStorage.removeItem(SESSION_KEY); } catch (_) {}                // nothing of a session lives in the browser's storage
@@ -947,9 +948,18 @@ function p3App() {
       this.regLoading = true; this.regError = ''; this.regInfo = ''; this.regUnverified = false;
       try { await fn(); } catch (E) { this.regError = E.message; this.regUnverified = E.code === 'email_unverified'; } finally { this.regLoading = false; }
     },
+    // Sign-in and new accounts for the analytics tools, by the way they were made: login (password — an email or a
+    // username —, Google, Apple; the six-letter code and its link before them) and sign_up (Google, Apple, or an email
+    // confirmed by its link). A return from Google, Apple or an emailed link names it through the server's session.
+    _measureSignIn(created) {
+      const m = this._authMethod;
+      const method = m === 'google' || m === 'apple' ? m : m === 'password' ? (created ? 'email' : 'password') : '';
+      if (method) this.measure(created ? 'sign_up' : 'login', { method });
+    },
     submitSignIn() {
       return this._regCall(async () => {
         const R = await this.api('POST', '/api/auth/login', { email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
+        this.measure('login', { method: 'password' });
         await this._signedIn(R);
       });
     },
@@ -982,6 +992,7 @@ function p3App() {
       return this._regCall(async () => {
         const R = await this.api('POST', '/api/auth/claim/password', { ticket: this.claim.ticket, email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
         if (R.verification_sent) { this.regInfo = R.message; this.regForm.password = ''; return; }
+        this.measure('login', { method: 'password' });
         await this._signedIn(R);
       });
     },
@@ -2161,9 +2172,8 @@ function p3App() {
           client_request_id: this.co.requestId, use_suggested_address: this.co.useSuggested,
         });
         this.order = o;
+        // An order placed, not a payment (none is taken online yet): GA4's "purchase" is kept for a payment received
         this.measure('order_created', { source: 'checkout', currency: o.currency, value: o.total, item_count: o.count });
-        this.measure('purchase', { transaction_id: o.ref, currency: o.currency, value: o.total,
-                                   items: (o.lines || []).map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
         this.co.requestId = ''; this.co.promo_code = ''; this.co.promo_input = ''; this.co.terms = false; this.co.addrCheck = null;
         await this.refreshBag();
         this.navigateTo('confirmation');

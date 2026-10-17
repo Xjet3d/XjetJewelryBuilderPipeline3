@@ -197,8 +197,8 @@
 
   var P = ['ring', 'charm'], KIND = ['new', 'refine', 'retry'], GROUP = ['fashion', 'luxury'], CUR = ['USD'];
   var SCHEMA = {
-    sign_up: { method: ['email'] },
-    login: { method: ['code', 'link'] },
+    sign_up: { method: ['email', 'google', 'apple'] },
+    login: { method: ['password', 'google', 'apple', 'code', 'link'] },
     design_session_started: { product_type: P, entry: ['home', 'gallery'] },
     prompt_submitted: { product_type: P, kind: ['new', 'refine'], has_reference_image: 'bool', prompt_length: ['short', 'medium', 'long'] },
     design_generation_started: { product_type: P, kind: KIND },
@@ -218,8 +218,7 @@
     quote_viewed: { product_type: P },
     quote_approved: { product_type: P, currency: CUR, value: 'num' },
     quote_declined: { product_type: P },
-    order_created: { source: ['checkout', 'quote'], currency: CUR, value: 'num', item_count: 'int' },
-    purchase: { transaction_id: 'order', currency: CUR, value: 'num', items: 'items' }
+    order_created: { source: ['checkout', 'quote'], currency: CUR, value: 'num', item_count: 'int' }
   };
   var ITEM = { item_id: ['custom-ring', 'custom-charm'], item_name: ['Custom ring', 'Custom charm'], item_category: P,
                item_variant: 'id', price: 'num', quantity: 'int' };
@@ -229,7 +228,6 @@
     num: function (v) { return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1e7 ? Math.round(v * 100) / 100 : undefined; },
     id: function (v) { return typeof v === 'string' && /^[a-z0-9_]{2,40}$/.test(v) ? v : undefined; },
     title: function (v) { return typeof v === 'string' && /^[\p{L}\p{N} '’.-]{2,60}$/u.test(v) && !/\d{5,}/.test(v) ? v : undefined; },
-    order: function (v) { return typeof v === 'string' && /^ORD-\d{1,9}$/.test(v) ? v : undefined; },
     items: function (v) {
       if (!Array.isArray(v)) return undefined;
       var out = v.slice(0, 20).map(function (x) { return clean(x, ITEM); }).filter(function (x) { return x && x.item_id; });
