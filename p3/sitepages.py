@@ -35,6 +35,15 @@ Legal = ("terms", "privacy", "shipping-returns", "contact")
 # The customer's journey (web/app.js FLOW_PATHS): the app at its own addresses — never indexed, never in the sitemap, no
 # server-side content (nothing about a customer is in the page; the app restores the step for the signed-in customer)
 FlowPaths = ("design", "my-designs", "favorites", "customize", "bag", "checkout")
+# The tab's title on each screen of the journey, by the app's view ("my-designs" and "favorites": the Design screen's
+# side panel at its own address). The page served at a step's address carries its step's title, so the page view a
+# reload or a link sends first is the same screen the app then shows (one page view, not two).
+ScreenTitles = {"ai-studio": "Design Studio · XJet Atelier", "my-designs": "My Designs · XJet Atelier",
+                "favorites": "Favorites · XJet Atelier", "review": "Customize · XJet Atelier",
+                "checkout": "Your Bag · XJet Atelier", "order": "Checkout · XJet Atelier",
+                "confirmation": "Your Order · XJet Atelier", "account": "My Account · XJet Atelier"}
+FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "favorites", "customize": "review",
+               "bag": "checkout", "checkout": "order"}
 _LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
 _OpenTag = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*/?>""")

@@ -1,8 +1,8 @@
 """The customer's journey at its own addresses (2026-10-15): /design, /my-designs, /favorites, /customize, /bag and
 /checkout serve the app, which restores the step for the signed-in customer or asks them to sign in first. They are
 never indexed (noindex meta and header), never in the sitemap, and carry no canonical link, social tags, structured
-data, server-side copy or anything of a customer. A design is never in an address. The public pages, the Gallery's
-addresses and the analytics calls are unchanged."""
+data, server-side copy or anything of a customer. A design is never in an address. The public pages and the Gallery's
+addresses are unchanged. Each screen has its own title, and its page view names its real address (2026-10-17)."""
 
 import json
 import re
@@ -96,8 +96,8 @@ def test_the_app_walks_the_journey_with_the_browser():
     assert "await this.openDesign(id, { restoreView: at, history: 'replace' });" in Flow and "this.persist({ designId: null });" in Flow
     assert "checkout: 'order' }[flow]" in Flow and "resumed: true" in Flow                  # checkout again, straight (no bag first)
     assert "_doResetAIFlow" not in Flow                                                    # a restore is no New design click
-    assert "if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); }" in Flow   # Back from the panel: no page view
-    # one page view per screen, as before: startNew leaves it to its caller; a resumed checkout counts no new start
+    assert "if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); this._screenShown(); }" in Flow   # from the panel
+    # one page view per screen: startNew leaves it to its caller; a resumed checkout counts no new start
     New = Js[Js.index("    startNew({ history = 'push' } = {}) {"):Js.index("    async openDesign(designId, {")]
     assert "navigateTo(" not in New and "this._route(history);" in New
     Co = Js[Js.index("    async startCheckout({ history = 'push', resumed = false } = {}) {"):Js.index("    coGoTo(step) {")]
@@ -105,8 +105,68 @@ def test_the_app_walks_the_journey_with_the_browser():
     assert "backToDesign() { this._goBackOr('ai-studio'); }," in Js
     assert "if (this.co.step === 'details') { this._goBackOr('checkout'); return; }" in Js
     assert "await this.openDesign(d.id, { history: fromDialog ? 'replace' : 'push' });" in Js   # Make it yours takes the dialog's step
-    assert Js.count("AtelierAnalytics?.page(") == 2                                           # the same page views as before
+    assert Js.count("AtelierAnalytics?.page(") == 2                                           # the landing, then each screen
     for Call in ("panelTab('designs')", "panelTab('favorites')", "continueFromBag()"):
         assert f'@click="{Call}"' in Page, Call
     assert Page.count('@click="closePanel()"') == 2 and '@click="sidebarOpen = false"' not in Page
     assert "@click=\"sidebarTab = 'designs'\"" not in Page
+
+
+async def test_each_screen_has_its_title_and_the_server_page_at_a_step_carries_it(tmp_path):
+    """The tab's title follows the screen (p3/sitepages.py ScreenTitles): the page served at a step's address carries
+    that step's title — the one the app shows there — so a reload or a link counts one page view, not two."""
+    H = Harness(tmp_path, AdminKey=AdminKey, BasePath="/JewelryB2C3")
+    try:
+        assert set(SitePages.FlowScreens) == set(SitePages.FlowPaths) and set(SitePages.FlowScreens.values()) <= set(SitePages.ScreenTitles)
+        Home = await H.Client.get("/")
+        Titles = _Config(Home.text)["titles"]
+        for View, Title in SitePages.ScreenTitles.items():
+            assert Titles[View] == Title, View                                             # the app's copy of them
+        assert Titles["inspiration"].startswith("Inspiration Gallery") and Titles["home"]
+        for Flow, View in SitePages.FlowScreens.items():
+            R = await H.Client.get("/" + Flow)
+            assert re.search(r"<title>(.*?)</title>", R.text, re.S).group(1) == SitePages.ScreenTitles[View].replace("&", "&amp;"), Flow
+            assert _Config(R.text)["titles"] == Titles, Flow
+        assert re.search(r"<title>(.*?)</title>", Home.text, re.S).group(1) == Titles["home"].replace("&", "&amp;")
+    finally:
+        await H.Close()
+
+
+def test_page_views_name_the_real_address_and_title_once_per_screen():
+    """web/app.js and web/consent.js (2026-10-17): a step's page view is its real address (/design, /customize, /bag,
+    /checkout …), never BASE/app/<step>; the tab's title is the screen's; a gallery design opened in its dialog has its
+    own page view (/gallery/<slug>) and closing it gives the screen behind one; one page view per screen (address and
+    title; a burst of screens counts the last); events carry the screen they happen on; GA4's address is set, never
+    pinned in config; the site's own scroll depth replaces GA4's."""
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    Consent = (WebDir / "consent.js").read_text(encoding="utf-8")
+    assert "'app/'" not in Js and "app/' + v" not in Js
+    Measure = Js[Js.index("    measureScreen() {"):Js.index("    measureItem(")]
+    assert "this.routePath()" in Measure and "this.galleryHref(this.galleryItem)" in Measure and ".replace(/#.*$/, '')" in Measure
+    Nav = Js[Js.index("    navigateTo(v, {"):Js.index("    pageUrl(v) {")]
+    assert "this._screenShown();" in Nav and "measureScreen(v)" not in Nav
+    assert "_screenShown() { document.title = this.screenTitle(); this.measureScreen(); }," in Js
+    for Name, Start, End in (("openPanel", "    openPanel(tab = 'designs'", "    panelTab(tab) {"), ("panelTab", "    panelTab(tab) {", "    closePanel() {"),
+                             ("closePanel", "    closePanel() {", "    signOutFromAccount()")):
+        assert "this._screenShown();" in Js[Js.index(Start):Js.index(End)], Name
+    Open = Js[Js.index("    openGallery(g, {"):Js.index("    metalLabel(id) {")]
+    assert Open.index("this.measureScreen();") < Open.index("this.measure('gallery_design_opened'")      # the page view, then the event
+    Close = Js[Js.index("    closeGallery(how = '') {"):Js.index("    _onHistory() {")]
+    assert "if (wasOpen && how !== 'navigate') this.measureScreen();" in Close
+    Proceed = Js[Js.index("    async proceed() {"):Js.index("    showCustomization(c, {")]
+    assert Proceed.index("this.navigateTo('review');") < Proceed.index("this.measure('customize_opened'")
+    Co = Js[Js.index("    async startCheckout({"):Js.index("    coGoTo(step) {")]
+    assert Co.index("this.navigateTo('order', { history });") < Co.index("this.measure('begin_checkout'")
+    # consent.js: the address set (not in config), a screen = address + title, sent once a burst is over, events after it
+    Ga4 = Consent[Consent.index("function startGa4()"):Consent.index("// ── Microsoft Clarity")]
+    assert Ga4.index("gtag('set', { page_location: cleanUrl(location.href)") < Ga4.index("gtag('config', CFG.ga4, {")
+    assert "page_location" not in Ga4[Ga4.index("gtag('config', CFG.ga4, {"):]
+    Send = Consent[Consent.index("function sendPage(path, title) {"):Consent.index("function flushPage() {")]
+    assert "if (loc + '\\n' + t === pageSent) return;" in Send and "window.gtag('set', { page_location: loc" in Send
+    Track = Consent[Consent.index("function track(name, params) {"):Consent.index("// Events a server-rendered page states")]
+    assert "flushPage();" in Track and "data.page_location = pageLoc; data.page_title = pageTitle;" in Track
+    Page = Consent[Consent.index("    page: function (path, title) {"):Consent.index("    openSettings: openSettings,")]
+    assert "pageTimer = setTimeout(flushPage, 0);" in Page and "sendPage(" not in Page
+    Scroll = Consent[Consent.index("  function scrolled(e) {"):Consent.index("  var P = ['ring', 'charm']")]
+    assert "Date.now() - lastGesture > 4000" in Scroll and "el.tagName !== 'MAIN'" in Scroll and "percent_scrolled: 90" in Scroll
+    assert "el.scrollHeight * 0.9 <= seen" in Scroll                                           # a page that fits the window: never

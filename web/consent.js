@@ -34,7 +34,7 @@
   var VENDORS = ACTIVE ? ['ga4', 'clarity'].filter(function (k) { return !!CFG[k]; }) : [];
   var DRY = { ga4: ACTIVE && /^G-TEST/i.test(CFG.ga4 || ''), clarity: ACTIVE && /^test/i.test(CFG.clarity || '') };   // placeholders
   var running = { ga4: false, clarity: false };
-  var lastPage = null, pageSent = '', pendingDefault = null;
+  var lastPage = null, pageSent = '', pageLoc = '', pageTitle = '', pendingDefault = null, pageTimer = null;
 
   // ── the decision ──────────────────────────────────────────────────────
   function read() {
@@ -74,9 +74,11 @@
       document.head.appendChild(s);
     }
     gtag('js', new Date());
+    // The clean address of the screen in front, for every hit — the page views and GA4's own events alike; sendPage()
+    // moves it with each screen. Set, never in config: an address in config would stay on every later event.
+    gtag('set', { page_location: cleanUrl(location.href), page_referrer: cleanReferrer(), page_title: document.title });
     gtag('config', CFG.ga4, {
       send_page_view: false,                                  // page views are sent by sendPage() with clean addresses
-      page_location: cleanUrl(location.href), page_referrer: cleanReferrer(),
       allow_google_signals: false, allow_ad_personalization_signals: false,
       cookie_domain: cookieDomain(), cookie_flags: location.protocol === 'https:' ? 'SameSite=Lax;Secure' : 'SameSite=Lax'
     });
@@ -106,9 +108,10 @@
     startGa4();
     startClarity();
     if (lastPage) sendPage(lastPage.path, lastPage.title);
-    else {                                                    // a page without the app (the quote page): its own address
+    else if (!window.__p3) sendPage(location.pathname, document.title);   // a page without the app (the quote page), first
+    else {                                                    // the app names its screen; if it never does, the address
       clearTimeout(pendingDefault);
-      pendingDefault = setTimeout(function () { if (!pageSent) sendPage(location.pathname, document.title); }, window.__p3 ? 1500 : 0);
+      pendingDefault = setTimeout(function () { if (!pageSent) sendPage(location.pathname, document.title); }, 1500);
     }
     flushPageEvents();
   }
@@ -140,20 +143,56 @@
       return u.origin + u.pathname + (q ? '?' + q : '');
     } catch (e) { return location.origin + location.pathname; }
   }
+  // Google's and Apple's sign-in pages are a step of signing in here, never where a visitor came from (GA4's "unwanted
+  // referrals", in the page itself): the return from them names no referrer
+  var SIGN_IN_HOSTS = /(?:^|\.)(?:accounts\.google\.com|appleid\.apple\.com)$/i;
   function cleanReferrer() {
     if (!document.referrer) return '';
-    try { var u = new URL(document.referrer); return u.origin + u.pathname; } catch (e) { return ''; }
+    try { var u = new URL(document.referrer); return SIGN_IN_HOSTS.test(u.hostname) ? '' : u.origin + u.pathname; } catch (e) { return ''; }
   }
 
   // ── page views and events ─────────────────────────────────────────────
+  // A screen is its address and its title: an order's confirmation keeps Checkout's address under its own title. The
+  // same screen again sends nothing (a re-render, the app showing the screen the page was opened at).
   function sendPage(path, title) {
     if (!running.ga4) return;
-    var loc = cleanUrl(location.origin + path + location.search);
-    if (loc === pageSent) return;                            // the same screen again (a re-render, a reload of a view)
-    var referrer = pageSent || cleanReferrer();
-    pageSent = loc;
-    window.gtag('set', { page_location: loc, page_referrer: referrer, page_title: title || document.title });
-    window.gtag('event', 'page_view', { page_location: loc, page_referrer: referrer, page_title: title || document.title });
+    var loc = cleanUrl(location.origin + path + location.search), t = title || document.title;
+    if (loc + '\n' + t === pageSent) return;
+    var referrer = pageLoc || cleanReferrer();
+    pageSent = loc + '\n' + t; pageLoc = loc; pageTitle = t;
+    scrollArmed = true;                                       // this screen's scroll depth, once
+    window.gtag('set', { page_location: loc, page_referrer: referrer, page_title: t });
+    window.gtag('event', 'page_view', { page_location: loc, page_referrer: referrer, page_title: t });
+  }
+  // The app's screens arrive in bursts (a reload's restore passes through the Design screen on its way to My Designs):
+  // the page view goes out once the burst is over, for the screen it ended on — or at once when an event follows
+  function flushPage() {
+    if (!pageTimer) return;
+    clearTimeout(pageTimer); pageTimer = null;
+    if (lastPage) sendPage(lastPage.path, lastPage.title);
+  }
+
+  // Scroll depth. GA4's own scroll event (enhanced measurement, switched off for this site: docs/ANALYTICS.md) watches the
+  // window alone — on wide screens the page scrolls inside its <main> — fires on short pages without any scrolling, and
+  // only once per page load. This one is "scroll" (percent_scrolled 90), once per screen, when the visitor has scrolled
+  // the window or the screen's <main> to 90 % of a page that does not fit the window: their own scrolling (a wheel, a
+  // touch, a key or the scroll bar in the last 4 s), never the app's.
+  var scrollArmed = false, lastGesture = 0;
+  function gesture() { lastGesture = Date.now(); }
+  function scrolled(e) {
+    if (!scrollArmed || !running.ga4 || pageTimer || Date.now() - lastGesture > 4000) return;
+    var root = document.scrollingElement || document.documentElement, el = e.target === document ? root : e.target;
+    if (el !== root && el.tagName !== 'MAIN') return;        // a list or a dialog scrolling inside the page
+    var seen = el === root ? window.innerHeight : el.clientHeight;
+    if (el.scrollHeight * 0.9 <= seen || el.scrollTop + seen < el.scrollHeight * 0.9) return;
+    scrollArmed = false;
+    window.gtag('event', 'scroll', { percent_scrolled: 90, page_location: pageLoc, page_title: pageTitle });
+  }
+  if (ACTIVE && CFG.ga4) {
+    ['wheel', 'touchmove', 'keydown', 'pointerdown'].forEach(function (t) {
+      document.addEventListener(t, gesture, { capture: true, passive: true });
+    });
+    document.addEventListener('scroll', scrolled, { capture: true, passive: true });     // the window's, and <main>'s
   }
 
   var P = ['ring', 'charm'], KIND = ['new', 'refine', 'retry'], GROUP = ['fashion', 'luxury'], CUR = ['USD'];
@@ -213,6 +252,8 @@
   function track(name, params) {
     if (!SCHEMA[name] || !(running.ga4 || running.clarity)) return false;     // no consent, no tool: nothing is sent
     var data = clean(params, SCHEMA[name]);
+    flushPage();                                              // the screen's page view first: the event happens on it
+    if (pageLoc) { data.page_location = pageLoc; data.page_title = pageTitle; }
     if (running.ga4) window.gtag('event', name, data);
     if (running.clarity && window.clarity) window.clarity('event', name);       // the name only: a filter for recordings
     return true;
@@ -436,11 +477,12 @@
   // ── what the app and the pages call ──────────────────────────────────
   window.AtelierAnalytics = {
     track: track,
-    // The screen the visitor is on (a page of the site, or a step of the design journey under BASE/app/…)
+    // The screen the visitor is on: its address (a page of the site, a step of the journey, a gallery design) and title
     page: function (path, title) {
       lastPage = { path: path, title: title };
       clearTimeout(pendingDefault);
-      sendPage(path, title);
+      clearTimeout(pageTimer);
+      pageTimer = setTimeout(flushPage, 0);
     },
     openSettings: openSettings,
     allowed: function () { return ACTIVE && !!(read() || {}).analytics; },

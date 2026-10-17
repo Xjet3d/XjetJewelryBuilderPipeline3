@@ -151,8 +151,9 @@ guard.
 ### GA4 property settings
 
 Web stream → Enhanced measurement: **off** for *Page changes based on browser history events* (the site sends its own
-page views with clean addresses), *Form interactions* and *Site search*. Data collection: Google signals off. Data
-retention: 14 months. No Google Ads link. Internal-traffic filtering may be added later.
+page views with clean addresses), *Scrolls* (the site sends its own `scroll`, below; switched off when that release
+goes live, so a screen is never counted twice), *Form interactions* and *Site search*. Data collection: Google signals
+off. Data retention: 14 months. No Google Ads link. Internal-traffic filtering may be added later.
 
 ### Clarity project settings
 
@@ -163,9 +164,32 @@ identifiers are sent.
 
 ## Events
 
-Sent only after consent, through `AtelierAnalytics.track()`; anything not listed is dropped. Page views: every screen,
-sites pages at their own address, design-journey steps as `<base>/app/<step>` (`ai-studio`, `review`, `checkout`,
-`order`, `confirmation`, `account`).
+Sent only after consent, through `AtelierAnalytics.track()`; anything not listed is dropped.
+
+**Page views (since 2026-10-17): one per screen, at its real address, under its own title.** A screen is its address
+and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
+
+| Screen | Page location | Page title |
+|---|---|---|
+| The site's pages | `/`, `/gallery`, `/materials`, `/technology`, `/about`, `/faq`, `/contact`, the legal pages | the page's own (`p3/sitepages.py` `Meta`) |
+| A gallery design (its page, or its dialog opened from a card) | `/gallery/<slug>` | `<Design> · Custom Ring Design · XJet Atelier` |
+| Design · My Designs · Favorites | `/design` · `/my-designs` · `/favorites` | Design Studio · My Designs · Favorites |
+| Customize · Bag · Checkout | `/customize` · `/bag` · `/checkout` | Customize · Your Bag · Checkout |
+| An order's confirmation | where it was reached (`/checkout`) | Your Order |
+| My Account | `/` (its `#account` is not sent) | My Account |
+
+- The page served at a step's address carries that step's title (`ScreenTitles`), so a reload or a link sends the same
+  screen the app then shows: one page view, not two. The same screen again sends nothing.
+- A burst of screens counts once, for the screen it ends on: a reload's restore passes through the Design screen on its
+  way to My Designs, Customize or Checkout.
+- Opening a gallery design sends its page view; closing it sends the screen behind (Back and Forward too). An old
+  `#faq` link counts as the FAQ page.
+- A sign-in's return (`#auth=…` from Google, Apple or an email link, `#token=…`) is no screen of its own: its page view
+  is the screen the sign-in opens, or the page it came back to when it did not complete. Google's and Apple's sign-in
+  pages are never sent as a referrer.
+- Every event carries the screen it happens on (`page_location`, `page_title`), after that screen's page view: the
+  address moves with each screen (`gtag('set')`, never fixed in `config`), for GA4's own events too.
+  `gallery_design_opened`, `customize_opened` and `begin_checkout` come right after the page view of the screen they open.
 
 | Event | When | Fields |
 |---|---|---|
@@ -181,6 +205,7 @@ sites pages at their own address, design-journey steps as `<base>/app/<step>` (`
 | `add_to_cart` / `begin_checkout` | added to the bag / checkout opened | `currency`, `value`, `items` |
 | `quote_requested` / `quote_viewed` / `quote_approved` / `quote_declined` | gold quote steps | `product_type`, (`material_group`), (`currency`, `value`) |
 | `order_created` (+ GA4 `purchase`) | an order placed (checkout or approved quote) | `source`, `currency`, `value`, `item_count`; `purchase`: `transaction_id` (ORD-…), `items` |
+| `scroll` | the visitor scrolled a screen to 90 % (once per screen; only a page taller than the window, only their own scrolling — the window or the screen's `<main>`) | `percent_scrolled` (90) |
 
 Items are anonymous: `item_id` `custom-ring` / `custom-charm`, `item_variant` = the metal, `price`, `quantity`.
 Not GA4 events: 3D production failures (back office, in the Admin) and abandoned quotes (from Atelier's own quote data

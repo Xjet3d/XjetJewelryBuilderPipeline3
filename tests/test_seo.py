@@ -104,7 +104,8 @@ async def test_every_public_page_has_its_own_url_title_description_canonical_and
         assert "if (PAGE_VIEWS.includes(hashView)) this.navigateTo(hashView, { history: 'replace' });" in App
         # every screen at its own address — a page's, My Account's, a step of the journey's — then the tab's title
         Nav = App[App.index("    navigateTo(v, { history = 'push' } = {}) {"):App.index("    pageUrl(v)")]
-        assert "this._route(history);" in Nav and Nav.index("document.title") > Nav.index("this._route(history);")
+        assert "this._route(history);" in Nav and Nav.index("this._screenShown();") > Nav.index("this._route(history);")
+        assert "_screenShown() { document.title = this.screenTitle(); this.measureScreen(); }," in App
         Route = App[App.index("    routePath() {"):App.index("    _goBackOr(v) {")]
         assert "if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);" in Route and "if (v === 'account') return BASE + '/#account';" in Route
         assert "if (!to || how === 'none' || to === here) return;" in Route                 # the same address adds no step

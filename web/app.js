@@ -225,7 +225,14 @@ function p3App() {
 
     // ── lifecycle ─────────────────────────────────────────────────────
     async init() {
-      try { window.AtelierAnalytics?.page(location.pathname, document.title); } catch (_) {}
+      // The landing page view at once, for the screen this address shows: an old #faq link is the FAQ page at its own
+      // address, #account My Account (shown below: the same screen again, not counted twice). A sign-in's return
+      // (#auth=… from Google, Apple or an email link; #token=… a sign-in link) is no screen of its own: its page view is
+      // the screen the sign-in opens, or the page it came back to when it did not complete.
+      const h = (location.hash || '').replace('#', ''), T = window.__p3?.titles || {};
+      const authReturn = /(?:^|&)(?:auth|token)=/.test(h);
+      const landing = PAGE_VIEWS.includes(h) ? [this.pageUrl(h), T[h]] : [location.pathname, h === 'account' ? T.account : ''];
+      if (!authReturn) try { window.AtelierAnalytics?.page(landing[0], landing[1] || document.title); } catch (_) {}
       const st = loadStore();
       // Rotate the waiting-screen status line every 3.5 s (P2 cadence); skipped for reduced motion.
       if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
@@ -263,20 +270,22 @@ function p3App() {
       });
       // Back / Forward: the address names the screen (a page, a step of the journey) and the gallery design that is open
       window.addEventListener('popstate', () => this._onHistory());
-      if (hashView === 'account') this.view = 'account';          // signed out, the page offers the sign-in
+      if (hashView === 'account') { this.view = 'account'; this._screenShown(); }   // signed out, the page offers the sign-in
       if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
+      const signedInNow = !!this.token && (fromLink || authStatus === 'ok' || authStatus === 'created');
+      if (authReturn && !signedInNow) this.measureScreen();                        // a sign-in that did not complete
       if (!this.token) { if (P3_FLOW) this._signInFor(P3_FLOW); return; }          // a step of the journey: sign in first
       this.refreshBag();
       if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); this.loadSecurity(); }
       if (authStatus === 'ok' || authStatus === 'created') {
         try { this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
-        await this._afterSignIn(false); return;
+        await this._afterSignIn(false); this.measureScreen(); return;              // the screen it opened (sent once)
       }
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
         this.measure('login', { method: 'link' });
-        await this._afterSignIn(true);
+        await this._afterSignIn(true); this.measureScreen();
         return;
       }
       // A step of the journey opened at its address (F5, a link, a new tab) comes back as the customer left it. The home
@@ -377,9 +386,7 @@ function p3App() {
       if (v === 'ai-studio') this.sidebarTab = 'designs';                                // /design: the panel on My Designs
       this.view = v; this.panelRoute = '';
       this._route(history);                                                              // the screen's own address
-      const titles = window.__p3?.titles || {};                                          // the tab's title follows (p3/sitepages.py)
-      if (titles[v] || titles.home) document.title = titles[v] || titles.home;
-      this.measureScreen(v);
+      this._screenShown();
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
@@ -431,9 +438,21 @@ function p3App() {
     // Site analytics (web/consent.js, docs/ANALYTICS.md): nothing is sent unless the visitor allowed Analytics, and
     // consent.js keeps only the listed fields with fixed values — never prompts, names, emails, addresses or file names
     measure(name, params = {}) { try { window.AtelierAnalytics?.track(name, params); } catch (_) {} },
-    // A screen: a page of the site at its own address, a step of the design journey as BASE/app/<step>
-    measureScreen(v) {
-      const path = BASE + '/' + (PAGE_VIEWS.includes(v) ? (PAGE_PATHS[v] || '') : 'app/' + v);
+    // The tab's title: the page's or the journey screen's (p3/sitepages.py Meta, ScreenTitles; My Designs and Favorites
+    // when the Design screen's panel is open at their address)
+    screenTitle() {
+      const t = window.__p3?.titles || {};
+      const k = this.view === 'ai-studio' && this.sidebarOpen && this.panelRoute ? this.panelRoute : this.view;
+      return t[k] || t.home || document.title;
+    },
+    // The screen in front changed: the tab's title follows, and the analytics tools get its page view
+    _screenShown() { document.title = this.screenTitle(); this.measureScreen(); },
+    // A screen for the analytics tools (web/consent.js): the address it is shown at — a page, a step of the journey
+    // (/design, /my-designs, /favorites, /customize, /bag, /checkout), a gallery design while its dialog is open; My Account
+    // and an order's confirmation keep the address they are shown at — and the tab's title. One page view per screen:
+    // the same screen again is not counted, nor a screen a restore only passes through.
+    measureScreen() {
+      const path = this.galleryItem ? this.galleryHref(this.galleryItem) : (this.routePath() || location.pathname).replace(/#.*$/, '');
       try { window.AtelierAnalytics?.page(path, document.title); } catch (_) {}
     },
     measureItem(product, materialId, price, quantity) {
@@ -539,7 +558,6 @@ function p3App() {
     // address: 'push' (a card: a history step, so Back closes the dialog), 'replace' (the page arrived on a design's
     // link: its address becomes the design's canonical one), 'none' (Back / Forward: the address is already right)
     openGallery(g, { address = 'push' } = {}) {
-      this.measure('gallery_design_opened', { product_type: g.product_type || 'ring', design: g.title });
       this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetal[g.id] || ''; this.shareUrl = ''; this.shareCopied = false;
       this._pauseStory();
       const href = this.galleryHref(g);
@@ -551,6 +569,8 @@ function p3App() {
       }
       if (!this._restoreTitle) this._restoreTitle = document.title;                     // the page's own title, after the dialog
       document.title = this._galleryTitle(g);
+      this.measureScreen();                                                             // the design's page view, then the event
+      this.measure('gallery_design_opened', { product_type: g.product_type || 'ring', design: g.title });
       // The share link is fetched as the preview opens, so Share / Copy link act at once inside the tap (browsers
       // only allow the share sheet and copying during the click itself)
       this.shareInfo = null;
@@ -633,6 +653,7 @@ function p3App() {
       this.galleryItem = null; this.galleryBusy = false;
       this._resumeStory();
       if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // the page's own title again
+      if (wasOpen && how !== 'navigate') this.measureScreen();            // the screen behind it again (Make it yours: the next)
       if (!wasOpen || how === 'popstate' || how === 'navigate' || !this._isGalleryPath(location.pathname)) return;
       try {
         if (history.state && history.state.p3Pushed === PAGE_LOAD) history.back();
@@ -679,7 +700,7 @@ function p3App() {
         this.sidebarTab = 'designs';
         if (window.innerWidth < 1024) this.sidebarOpen = false; else if (!restore && typeof col === 'boolean') this.sidebarOpen = col;
         if (restore) return;
-        if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); }      // from the panel: the same screen
+        if (this.view === 'ai-studio') { this.panelRoute = ''; this._route(history); this._screenShown(); }   // from the panel
         else this.navigateTo('ai-studio', { history });
       } else if (flow === 'my-designs' || flow === 'favorites') {
         this.openPanel(flow === 'favorites' ? 'favorites' : 'designs', { history: restore ? 'replace' : history });
@@ -826,7 +847,7 @@ function p3App() {
     closeRegModal() {
       this.showRegModal = false;
       this._setPendingGallery(''); this._setPendingFav(''); this._pendingPanel = '';
-      if (this._takePendingRoute() && !this.userSession) this._route('replace');   // a step's address, not signed in: home's
+      if (this._takePendingRoute() && !this.userSession) { this._route('replace'); this._screenShown(); }   // a step's address, not signed in: home's
       const el = this._returnFocus; this._returnFocus = null;
       if (el && el.isConnected) setTimeout(() => el.focus(), 0);
     },
@@ -1190,6 +1211,7 @@ function p3App() {
       this.sidebarOpen = true;
       this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';      // its own address
       this._route(history, wasOpen);
+      this._screenShown();
       if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
     },
     // The panel's tabs are its two screens, each at its own address
@@ -1199,6 +1221,7 @@ function p3App() {
       this.panelRoute = this.sidebarTab === 'favorites' ? 'favorites' : 'my-designs';
       if (tab === 'favorites') this.loadFavorites(); else this.loadDesigns();
       this._route('push');
+      this._screenShown();
     },
     // Closing the panel (×, the backdrop): the Design screen's address — one step back when the visitor came from there
     closePanel() {
@@ -1207,6 +1230,7 @@ function p3App() {
       this.panelRoute = '';
       const s = history.state;
       if (s && s.p3Pushed === PAGE_LOAD && s.p3Prev === BASE + '/' + FLOW_PATHS.design) history.back(); else this._route('replace');
+      this._screenShown();                                                   // the Design screen again
     },
     signOutFromAccount() { this.closeAccountPanel(); this.logout(); },
 
@@ -1805,8 +1829,8 @@ function p3App() {
                     product_type: this.design?.product_type || 'ring', charm_size: null };
       this.mediaTab = 'movie'; this.custError = ''; this.bagMessage = '';
       this.groupOpen = { fashion: true, luxury: false };
+      this.navigateTo('review');                                    // Customize's page view, then the event at its address
       this.measure('customize_opened', { product_type: this.design?.product_type || 'ring', source: this.design?.shared ? 'gallery' : 'results' });
-      this.navigateTo('review');
       try {
         const c = await this.api('POST', `/api/designs/${designId}/customize`, { candidate_id: candidateId });
         if (this.design?.id !== designId || this.cust?.candidate_id !== candidateId) return;
@@ -2061,15 +2085,15 @@ function p3App() {
       this.co.busy = true; this.co.error = '';
       try {
         const info = await this.api('GET', '/api/checkout');
-        if (!resumed) this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
-                                                       items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
         this.checkout = info; this.coQuote = info.quote;
         const c = this.co.customer, p = info.customer || {};
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
         if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
         this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
-        this.navigateTo('order', { history });
+        this.navigateTo('order', { history });                       // Checkout's page view, then the event at its address
+        if (!resumed) this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
+                                                       items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
       } catch (e) { this.co.error = e.message; }
       finally { this.co.busy = false; }
     },

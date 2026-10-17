@@ -443,7 +443,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if View == "home" and not Design and not Flow:
             Data = [SitePages.Organization(Home, S.SupportEmail), SitePages.WebSite(Home)]
         Og = OgTags(request, Title, Description, Url) if not Design and not Flow else ""
-        Titles = {V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}     # the tab's title as the visitor moves on
+        # The tab's title as the visitor moves on: each page's, and each screen of the journey's
+        Titles = {**{V: SitePages.Meta(V, Ctx, Visible, "")[0] for V in SitePages.Paths}, **SitePages.ScreenTitles}
         # The products on offer as this page says them, and on the Gallery the number of its designs: the app starts from
         # them (the filter, the wording, the grid's loading squares), so nothing moves when the catalog and the cards arrive
         Config = {**PageConfig, "view": View, "ssr": View, "titles": Titles, "analytics": Analytics.Public(Ctx.Products),
@@ -469,7 +470,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Html = SitePages.ServerView(Html, View, Fill, Before)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
             Html = SitePages.DesignHeading(Html)
-        if View != "home":
+        if Flow:                                       # the step's own title, the one the app shows there
+            Title = SitePages.ScreenTitles[SitePages.FlowScreens[Flow]]
+        if View != "home" or Flow:
             Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{html.escape(Title, quote=False)}</title>", Html, count=1, flags=re.S)
         if Data:
             Html = Html.replace("</head>", "    " + SitePages.JsonLd(*Data) + "\n</head>", 1)
