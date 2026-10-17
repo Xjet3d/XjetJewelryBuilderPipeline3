@@ -414,10 +414,15 @@ function p3App() {
       const to = this.routePath(), here = location.pathname + location.hash;
       if (!to || how === 'none' || to === here) return;
       try {
-        if (how === 'push') {
+        if (how === 'push' && history.state && history.state.p3Preview === PAGE_LOAD) {
+          history.replaceState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);     // the enlarged view's step, now this screen's
+        } else if (how === 'push') {
           history.replaceState({ ...(history.state || {}), p3Col: !!colLeft }, '');
           history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);
-        } else history.replaceState(history.state, '', to);
+        } else {
+          const { p3Preview, ...kept } = history.state || {};                         // never a closed enlarged view's mark
+          history.replaceState(kept, '', to);
+        }
       } catch (_) {}
     },
     // The app's own Back (Customize → Design, Checkout → Bag, the bag's Continue): one step back when the visitor came from
@@ -680,6 +685,11 @@ function p3App() {
     // Back / Forward: the address names the screen — a page, a step of the journey, My Account — and the gallery design
     // that is open; the screen in front follows it (the address already moved)
     _onHistory() {
+      if (this._previewBack) { this._previewBack = false; return; }       // the enlarged view's own step, taken back
+      if (this.previewOpen) {                                              // Back with it open: it closes, the screen stays
+        this.closePreview('popstate');
+        if (this.routePath() === location.pathname + location.hash) return;
+      }
       const p = location.pathname;
       if (this._isGalleryPath(p)) {
         let slug = '';
@@ -1597,7 +1607,7 @@ function p3App() {
     },
     batchLabel(b) {
       if (b.kind === 'initial') return 'Original';
-      const n = this.design.batches.filter(x => x.kind === 'refine').indexOf(b) + 1;
+      const n = (this.design?.batches || []).filter(x => x.kind === 'refine').indexOf(b) + 1;   // the design may just have been cleared
       return `Variation ${n}`;
     },
     // Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per finished 360° movie (the server's tariff)
@@ -1792,11 +1802,23 @@ function p3App() {
     toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; if (this.sidebarOpen) this.loadDesigns(); },
 
     // ── preview overlay: one option at a time, large; arrows / keys / swipe step through the four ──
+    // The enlarged view is a step of its own in the browser's history, at the same address (no design is ever in an
+    // address): Back closes it instead of leaving the screen; the next screen the app opens takes its step.
     openPreview(media, src, candidate = null) {
       this.previewMedia = media; this.previewSrc = src; this.previewCandidate = candidate;
-      this.previewResetZoom(); this.previewOpen = true;
+      this.previewResetZoom();
+      if (!this.previewOpen) {
+        try { history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD }, '', location.pathname + location.search + location.hash); } catch (_) {}
+      }
+      this.previewOpen = true;
     },
-    closePreview() { this.previewOpen = false; this.previewCandidate = null; },
+    // how: 'user' (×, Escape, the backdrop: its step is taken back), 'popstate' (Back: the address already moved),
+    // 'leave' (the app moves on: the next screen it opens takes the step, _route)
+    closePreview(how = 'leave') {
+      if (!this.previewOpen) return;
+      this.previewOpen = false; this.previewCandidate = null;
+      if (how === 'user' && history.state && history.state.p3Preview === PAGE_LOAD) { this._previewBack = true; history.back(); }
+    },
     get previewSiblings() {
       if (!this.previewCandidate) return [];
       const b = this.batch(this.previewCandidate.batch_id);

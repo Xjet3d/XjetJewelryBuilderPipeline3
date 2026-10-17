@@ -2740,8 +2740,8 @@
 
     <template x-if="previewOpen">
         <div class="fixed inset-0 z-[100] flex items-center justify-center fade-in" style="background:rgba(248,248,248,0.97);"
-             @click.self="closePreview()" @keydown.escape.window="closePreview()" @keydown.window="previewKey($event)" role="dialog" aria-modal="true" aria-label="Enlarged design">
-            <button @click="closePreview()" class="absolute top-4 right-5 z-10 p-2.5 text-2xl leading-none transition text-[#6F6F6F] hover:text-[#1A1A1A]" title="Close" aria-label="Close enlarged preview">✕</button>
+             @click.self="closePreview('user')" @keydown.escape.window="closePreview('user')" @keydown.window="previewKey($event)" role="dialog" aria-modal="true" aria-label="Enlarged design">
+            <button @click="closePreview('user')" class="absolute top-4 right-5 z-10 p-2.5 text-2xl leading-none transition text-[#6F6F6F] hover:text-[#1A1A1A]" title="Close" aria-label="Close enlarged preview">✕</button>
             <!-- One option at a time, large: arrows (and ← → keys, or a swipe on a phone) step through the four -->
             <template x-if="previewSiblings.length > 1">
                 <div>
@@ -2757,8 +2757,8 @@
                 <button @click="previewResetZoom()" class="min-w-[52px] h-8 flex items-center justify-center text-[12px] font-medium tracking-wider transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" title="Reset zoom" x-text="Math.round(previewZoom * 100) + '%'"></button>
                 <button @click="previewZoomBy(1.25)" class="w-8 h-8 flex items-center justify-center text-lg transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" aria-label="Zoom in">+</button>
             </div>
-            <div class="flex flex-col items-center gap-3" style="width:94vw; height:88vh;" @click.self="closePreview()">
-                <div class="flex-1 w-full flex items-center justify-center overflow-hidden" @click.self="closePreview()"
+            <div class="flex flex-col items-center gap-3" style="width:94vw; height:88vh;" @click.self="closePreview('user')">
+                <div class="flex-1 w-full flex items-center justify-center overflow-hidden" @click.self="closePreview('user')"
                      @wheel.prevent="previewMedia === 'image' && previewZoomBy($event.deltaY < 0 ? 1.2 : 1/1.2)">
                     <template x-if="previewMedia === 'image'">
                         <img :src="previewSrc" alt="Enlarged design" class="object-contain select-none max-w-[92vw] max-h-[78vh]" draggable="false"
@@ -2784,8 +2784,8 @@
                     <p x-show="previewMedia === 'image'" class="text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Tap to zoom · swipe to switch</span></p>
                     <template x-if="previewCandidate">
                         <div>
-                            <button x-show="previewCandidate.id !== selectedId" @click="selectFromPreview()" class="btn-black px-6 py-2.5">Select this design</button>
-                            <span x-show="previewCandidate.id === selectedId" class="text-[12px] uppercase tracking-widest font-semibold text-zinc-800">✓ Selected — this is your design</span>
+                            <button x-show="previewCandidate?.id !== selectedId" @click="selectFromPreview()" class="btn-black px-6 py-2.5">Select this design</button>
+                            <span x-show="previewCandidate?.id === selectedId" class="text-[12px] uppercase tracking-widest font-semibold text-zinc-800">✓ Selected — this is your design</span>
                         </div>
                     </template>
                 </div>

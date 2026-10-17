@@ -170,3 +170,30 @@ def test_page_views_name_the_real_address_and_title_once_per_screen():
     Scroll = Consent[Consent.index("  function scrolled(e) {"):Consent.index("  var P = ['ring', 'charm']")]
     assert "Date.now() - lastGesture > 4000" in Scroll and "el.tagName !== 'MAIN'" in Scroll and "percent_scrolled: 90" in Scroll
     assert "el.scrollHeight * 0.9 <= seen" in Scroll                                           # a page that fits the window: never
+
+
+def test_back_closes_the_enlarged_view_and_a_cleared_design_breaks_nothing():
+    """WP7 (2026-10-17): the enlarged view is a step of its own in the browser's history, at the same address — Back
+    closes it and the screen stays; ×, Escape and the backdrop take that step back; the next screen the app opens takes
+    it (no dead step). The parts that read an option or a design the app has just cleared are guarded (the two errors in
+    Clarity: "reading 'id'" with Back from the enlarged view, "reading 'batches'" on a new design after checkout)."""
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    Page = (WebDir / "index.html").read_text(encoding="utf-8")
+    Open = Js[Js.index("    openPreview(media, src, candidate = null) {"):Js.index("    get previewSiblings() {")]
+    assert "history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD }, '', location.pathname + location.search + location.hash);" in Open
+    assert "closePreview(how = 'leave') {" in Open
+    assert "if (how === 'user' && history.state && history.state.p3Preview === PAGE_LOAD) { this._previewBack = true; history.back(); }" in Open
+    Hist = Js[Js.index("    _onHistory() {"):Js.index("    async _openFlow(flow, {")]
+    assert Hist.index("if (this._previewBack) { this._previewBack = false; return; }") < Hist.index("this.closePreview('popstate');")
+    assert "if (this.routePath() === location.pathname + location.hash) return;" in Hist
+    Route = Js[Js.index("    _route(how = 'push', colLeft = this.sidebarOpen) {"):Js.index("    _goBackOr(v) {")]
+    assert "if (how === 'push' && history.state && history.state.p3Preview === PAGE_LOAD) {" in Route
+    assert "const { p3Preview, ...kept } = history.state || {};" in Route
+    Overlay = Page[Page.index('<template x-if="previewOpen">'):Page.index("</template>", Page.index('<template x-if="previewOpen">'))]
+    assert Overlay.count("closePreview('user')") == 3 and "closePreview()" not in Overlay
+    assert Page.count("closePreview('user')") == 5
+    assert 'x-show="previewCandidate?.id !== selectedId"' in Page and 'x-show="previewCandidate?.id === selectedId"' in Page
+    assert "previewCandidate.id" not in Page
+    assert "const n = (this.design?.batches || []).filter(x => x.kind === 'refine').indexOf(b) + 1;" in Js
+    Label = Js[Js.index("    batchLabel(b) {"):Js.index("    get quotaText() {")]
+    assert "this.design.batches" not in Label                                           # (the polling tick checks first)
