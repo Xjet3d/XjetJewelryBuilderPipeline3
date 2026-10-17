@@ -44,13 +44,22 @@ MaxChanges, MaxEvents, MaxCheckItems = 500, 200, 100
 StlLabels = {
     "ready": ("STL ready", None),
     "ready_unlinked": ("STL ready — not yet linked to this line", "Send to Production links it; the confirmation names the exact file"),
+    # The same file finished for this version and size in another material (2026-10-17): the material changes the weight and
+    # the price, never the file — recorded for this line's material when it is sent, at once
+    "ready_shared": ("STL ready — the same file as the {twin} STL at {size_only}",
+                     "Send to Production records it for {material} (instant, no AI cost) and links it; the confirmation names the file"),
     "ambiguous": ("STL ready — several different results for {size}", "choose which one is this line's STL (Link STL…)"),
-    "needs_preparation": ("STL exists — preparation required for {size}", "Prepare STL: scaled from the existing 3D model, no AI cost"),
+    "needs_preparation": ("STL not yet prepared at {size} — the 3D model exists", "Prepare STL scales the model to {size} — instant, no AI cost"),
+    # Its picture, 3D version or STL is not of the ordered design, option, size or material (2026-10-17): never sent as it is
+    "inconsistent": ("STL does not match this line — not sendable", "{problems}. Prepare STL on this line makes the STL of the ordered option, size "
+                                                                 "and material and links it in its place (recorded in the history); it is never sent as it is"),
     "preparing": ("STL being prepared for {size}", "the result is being measured — usually a few seconds"),
     "review_required": ("STL flagged — review required", "fix it (FixBore, when the bore is not round), or review it on the session page and accept it as it is"),
     "failed": ("STL preparation failed", "prepare it again"),
     "file_missing": ("STL file missing on disk", "the record exists but the file does not: upload the STL again (Upload revised STL…)"),
-    "other_option": ("3D model is of another option", "generate a model of the ordered option on the session page (a paid Hi3D request)"),
+    "other_option": ("No 3D model of the ordered option {ring} — the design's model is of {model}",
+                     "the model of {model} is never used for this line: make a 3D model of {ring} on the session page (a paid Hi3D "
+                     "request), or confirm the option with the customer"),
     "missing": ("STL missing — generation required", "generate the 3D model on the session page (a paid Hi3D request), or upload an STL"),
 }
 # Whether the line's ORDER may hand it over now: commercial status, the pilot allowlist, an earlier hand-over
@@ -413,12 +422,21 @@ class FulfillmentBridge:
         confirmation) · ambiguous (several different files: the Admin chooses) · preparation required · being prepared
         · review required · preparation failed · file missing on disk · model of another option · missing."""
         Size = f"{L.get('size_label') or ''} · {L.get('material_label') or ''}".strip(" ·")
+        Words = {"size": Size, "size_only": L.get("size_label") or "", "material": L.get("material_label") or "",
+                 "ring": L.get("ring_id") or "this option", "model": L.get("model_ring_id") or "another option"}
 
-        def V(State: str, **More) -> dict:
+        def V(State: str, Fmt: dict | None = None, **More) -> dict:
             Label, Action = StlLabels[State]
-            return {"state": State, "label": Label.format(size=Size), "action": Action.format(size=Size) if Action else None,
-                    "ready": State in ("ready", "ready_unlinked"), "linked": bool(L.get("three_d_pinned")), **More}
+            W = {**Words, **(Fmt or {})}
+            return {"state": State, "label": Label.format(**W), "action": Action.format(**W) if Action else None,
+                    "ready": State in ("ready", "ready_unlinked", "ready_shared"), "linked": bool(L.get("three_d_pinned")), **More}
 
+        # Whatever else is true, a line whose picture, 3D version or STL is not of its design, option, size or material is
+        # never sendable — named exactly (the owner's report of 2026-10-17)
+        Problems = L.get("three_d_problems") or []
+        if Problems:
+            Text = "; ".join(Problems)
+            return V("inconsistent", Fmt={"problems": Text[:1].upper() + Text[1:]}, problems=Problems)
         if not L.get("has_model"):
             return V("missing")
         if L.get("three_d_pinned"):
@@ -448,6 +466,9 @@ class FulfillmentBridge:
             return V("preparing")
         if C["flagged"]:
             return V("review_required", **self._Flag(C["flagged"][0]["id"]))
+        if C.get("shared"):
+            T = C["shared"][0]
+            return V("ready_shared", Fmt={"twin": T["from_material_label"]}, link=T, shared=len(C["shared"]))
         if C["failed"]:
             return V("failed")
         return V("needs_preparation")
@@ -573,7 +594,7 @@ class FulfillmentBridge:
             raise HttpError(409, "not_eligible", f"{O['ref']} cannot be sent to Production: {Why}.")
         Links = Links if isinstance(Links, dict) else {}
         Duplicates = Duplicates if isinstance(Duplicates, dict) else {}
-        Blocked, Pins, ToLink, Acked = [], {}, {}, {}
+        Blocked, Pins, ToLink, Acked, Share = [], {}, {}, {}, {}
         for Id in Ids:
             El = self.LineEligibility(O, Lines[Id])
             if not El["eligible"]:
@@ -581,13 +602,18 @@ class FulfillmentBridge:
                                 **({"action": El["stl"]["action"]} if El["stl"]["action"] and not El["stl"]["ready"] else {})})
                 continue
             Sid = Lines[Id]["three_d_id"]
-            if El["stl"]["state"] == "ready_unlinked":
+            if El["stl"]["state"] in ("ready_unlinked", "ready_shared"):
                 Want = El["stl"]["link"]
                 if Links.get(Id) != Want["id"]:
+                    Same = f" (the same file as the {Want['from_material_label']} STL)" if El["stl"]["state"] == "ready_shared" else ""
                     Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "link_confirmation_required", "link": Want,
-                                    "message": f"STL ready — not yet linked: confirm linking {Want['version_label']} · {Want['size_label']} · {Want['material_label']} to this line"})
+                                    "message": f"STL ready — not yet linked: confirm linking {Want['version_label']} · {Want['size_label']} · "
+                                               f"{Want['material_label']}{Same} to this line"})
                     continue
-                ToLink[Id], Sid = Want, Want["id"]
+                if El["stl"]["state"] == "ready_shared":
+                    Share[Id] = Want["id"]                    # recorded below, once nothing of this hand-over is refused
+                else:
+                    ToLink[Id], Sid = Want, Want["id"]
             Dups = Lines[Id].get("duplicates") or []
             Seen = {X for X in (Duplicates.get(Id) or []) if isinstance(X, str)}
             if any(D["order_id"] not in Seen for D in Dups):
@@ -598,10 +624,20 @@ class FulfillmentBridge:
                 continue
             if Dups:
                 Acked[Id] = [D["order_ref"] for D in Dups]
+            if Id in Share:
+                continue
             try:                                              # the export is started (or found) before the transaction: never a paid call
                 Pins[Id] = {**self._PinInfo({**Lines[Id], "three_d_id": Sid}), "file": self._ProductionFile(Sid)}
             except HttpError as E:
                 Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "export_failed", "message": f"{ProductionReasons['export_failed']}: {E.Message}"})
+        # The same file finished in another material (2026-10-17): each such line's own STL is recorded from it at once (instant,
+        # no AI cost), checked identical and pinned — only now that nothing else of this hand-over was refused
+        for Id, From in ([] if Blocked else Share.items()):
+            try:
+                Sid = self.Orders.PrepareShared(O["id"], Id, From, By)["three_d_id"]
+                Pins[Id] = {**self._PinInfo({**Lines[Id], "three_d_id": Sid}), "file": self._ProductionFile(Sid)}
+            except HttpError as E:
+                Blocked.append({"line_id": Id, "item_ref": Lines[Id]["ring_id"], "reason": "shared_stl", "message": E.Message})
         if Blocked:
             Reasons = {B["reason"] for B in Blocked}
             Code = ("already_sent" if Reasons == {"already_sent"} else "link_confirmation_required" if Reasons == {"link_confirmation_required"}

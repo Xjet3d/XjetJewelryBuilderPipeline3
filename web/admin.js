@@ -2,6 +2,9 @@
 // per browser: POST /api/admin/login turns it into a server-side session cookie (HttpOnly) that outlives
 // closed tabs, a closed browser and a restart, until Sign out. The key itself is never stored here.
 const BASE = document.querySelector('meta[name="p3-base"]')?.content || '';
+// The build this page was loaded with (2026-10-17): sent with every Admin request; the server refuses a change from an
+// outdated page, and its answers tell the page when a release made it outdated (a reload banner)
+const ADMIN_BUILD = ((b) => (b && !b.includes('{{')) ? b : '')(document.querySelector('meta[name="p3-admin-build"]')?.content);
 
 const STATUS = {
   active: ['Active', 'bg-emerald-100 text-emerald-800'],
@@ -195,6 +198,7 @@ function adminApp() {
     refBox: null,                                  // full-size view of a customer's reference image (Journey)
     // In-app dialogs and toasts instead of the browser's alert() / confirm() / prompt()
     dialog: null, toasts: [],
+    adminOutdated: false,          // the server runs a newer Admin than this page (2026-10-17): reload banner; its changes are refused
     newModel: { open: false, text: '', candidate: '', error: '', busy: false },
     // External parts and 3D versions (docs/EXTERNAL-PARTS.md): the Add External Part dialog, an explicit session (S-1001)
     xp: null, sc: null, scError: '', containers: [], maxUpload: 300e6,   // the largest STL accepted (from the server)
@@ -294,10 +298,12 @@ function adminApp() {
     authHeaders() { return this.key ? { Authorization: 'Bearer ' + this.key } : {}; },   // cookie otherwise
     async api(method, path, body) {
       const r = await fetch(BASE + path, {
-        method, headers: { ...this.authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        method, headers: { ...this.authHeaders(), ...(ADMIN_BUILD ? { 'X-Admin-Build': ADMIN_BUILD } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
       });
       const data = await r.json().catch(() => ({}));
+      const served = r.headers.get('X-Admin-Build');
+      if (ADMIN_BUILD && served && served !== ADMIN_BUILD) this.adminOutdated = true;     // a release since this page was opened
       if ((r.status === 401 || r.status === 403) && !path.endsWith('/login')) {
         this.ok = false; this.error = 'Your admin sign-in has expired or was revoked — please sign in again.';
       }
@@ -666,7 +672,8 @@ function adminApp() {
     prodWhy(x) {
       if (!x) return '';
       if (x.production?.sent) return 'in Production';
-      if (x.eligible) return x.stl?.state === 'ready_unlinked' ? 'STL ready — linked at the hand-over' : '';
+      if (x.eligible) return x.stl?.state === 'ready_unlinked' ? 'STL ready — linked at the hand-over'
+        : x.stl?.state === 'ready_shared' ? 'STL ready — the same file as the ' + (x.stl.link?.from_material_label || '') + ' STL, recorded for this line at the hand-over' : '';
       return x.message || '';
     },
     prodWhyLong(x) {
@@ -679,10 +686,15 @@ function adminApp() {
     },
     stlClass(x) {
       const s = x?.stl?.state;
-      return ['ready', 'ready_unlinked'].includes(s) ? 'bg-emerald-100 text-emerald-800' : s === 'preparing' ? 'bg-sky-100 text-sky-800'
+      return ['ready', 'ready_unlinked', 'ready_shared'].includes(s) ? 'bg-emerald-100 text-emerald-800' : s === 'preparing' ? 'bg-sky-100 text-sky-800'
            : ['needs_preparation', 'ambiguous', 'review_required'].includes(s) ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
     },
-    stlLinkLine(c) { return c ? c.version_label + ' · ' + c.size_label + ' · ' + c.material_label + ' · measured ' + this.dateTime(c.measured_at) : ''; },
+    stlLinkLine(c) {
+      if (!c) return '';
+      // The same file finished in another material (2026-10-17): recorded for this line's material at the hand-over, at once
+      const same = c.from_material_label ? ' — the same file as the ' + c.from_material_label + ' STL, recorded for ' + c.material_label + ' (instant, no AI cost)' : '';
+      return c.version_label + ' · ' + c.size_label + ' · ' + c.material_label + same + ' · measured ' + this.dateTime(c.measured_at);
+    },
     // Several different finished STLs for the line's size and material: the Admin chooses which one is its print file (never silently)
     async linkStl(l) {
       const x = this.prodLine(l), choices = x?.stl?.choices || [];
@@ -801,9 +813,10 @@ function adminApp() {
       const lines = (this.of.lines || []).filter(x => lineIds.includes(x.line_id));
       if (!lines.length) return;
       // A ready STL not yet linked to its line (I-35) is named here exactly and linked with the hand-over — the link is confirmed to the server
-      const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — ' + (x.stl?.state === 'ready_unlinked'
+      const linking = x => ['ready_unlinked', 'ready_shared'].includes(x.stl?.state);
+      const what = lines.map(x => '• ' + x.item_ref + ' · ' + x.title + ' ×' + x.quantity + ' — ' + (linking(x)
         ? 'links STL: ' + this.stlLinkLine(x.stl.link) : 'STL: ' + (x.print_version?.label || '—') + (x.pinned ? ' · linked' : ''))).join('\n');
-      const links = Object.fromEntries(lines.filter(x => x.stl?.state === 'ready_unlinked').map(x => [x.line_id, x.stl.link.id]));
+      const links = Object.fromEntries(lines.filter(linking).map(x => [x.line_id, x.stl.link.id]));
       // G9: a piece another order of the same customer also holds is named, and sending confirms exactly those orders (nothing is cancelled)
       const dups = lines.filter(x => (x.duplicates || []).length);
       const acknowledged_duplicates = Object.fromEntries(dups.map(x => [x.line_id, x.duplicates.map(o => o.order_id)]));

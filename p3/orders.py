@@ -579,6 +579,9 @@ class OrderService:
 
         def SameSize(R):
             return Size is not None and R["production_size"] is not None and float(R["production_size"]) == float(Size)
+
+        def Fits(R):                                     # of the ordered option, at the ordered size and material (2026-10-17)
+            return R is not None and R["candidate_id"] == L.get("candidate_id") and SameSize(R) and R["material_id"] == L["material_id"]
         Pin = next((R for R in Rows if R["id"] == L.get("pinned_three_d_id")), None)
         if Pin and Pin["status"] in ("failed", "cancelled"):
             Pin = None                                   # a pinned result that failed: prepared again (and pinned again)
@@ -591,7 +594,9 @@ class OrderService:
             Match = next((R for R in Mine if R["status"] in Done and SameSize(R) and R["material_id"] == L["material_id"]), None)
             Pending = next((R for R in Mine if R["status"] not in Done + ("failed", "cancelled") and SameSize(R)
                             and R["material_id"] == L["material_id"]), None)
-        Latest = Rows[0] if Rows else None
+        # The newest result of the ORDERED option only: another option's result is never shown beside the line (the owner's
+        # report of 2026-10-17: Aurora Curve, ordered as option C, showed option B's result as its "latest")
+        Latest = next((R for R in Rows if R["candidate_id"] == L.get("candidate_id")), None)
         Model = Versions.ActiveMesh(Db, L["design_id"])
         Chosen = Match or Pending
         Active = Model["id"] if Model else None
@@ -601,8 +606,10 @@ class OrderService:
         return {"three_d_id": Chosen["id"] if Chosen else None,
                 "three_d_status": Chosen["status"] if Chosen else None,
                 "three_d_state": ProductionState(Chosen["status"], Chosen["integrity"], bool(Chosen["accepted_at"])) if Chosen else None,
-                "three_d_match": bool(Match),
+                "three_d_match": Fits(Match),                          # a result of another option, size or material never matches
                 "three_d_pinned": bool(Pin),                           # its result (prepared, or released with the order)
+                # What does not belong to this line among its picture, 3D version and STL (empty when they agree): blocks the hand-over
+                "three_d_problems": self.LineAssetProblems(L),
                 "three_d_version_pinned": bool(Pin or L.get("pinned_mesh_id")),   # its version (from the moment it was ordered)
                 # the 3D version the line is (or would be) produced from, and the versions of the ordered option to choose from
                 "three_d_version": Versions.Brief(Version, Active),
@@ -625,6 +632,54 @@ class OrderService:
             return False
         return Path_.is_file() and (Raw["bytes"] is None or Path_.stat().st_size == Raw["bytes"])
 
+    def LineAssetProblems(self, L: dict) -> list[str]:
+        """What does not belong to THIS line among what it is shown and produced with (the owner's report of 2026-10-17):
+        its option must be an option of the ordered design, its picture of that option, its 3D version of that option, and
+        its recorded STL of the design, option and version at the ordered size and material. Empty when everything agrees;
+        any problem blocks the line's hand-over to Production and is named exactly. Nothing is changed here."""
+        Db, Out = self.Ctx.Db, []
+        Cand = L.get("candidate_id")
+        if not Cand:
+            return Out
+
+        def Ref(C):
+            return (RingIds.CandidateRef(Db, C) if C else None) or "another option"
+        Of = Db.One("SELECT b.design_id FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE c.id = ?", (Cand,))
+        if Of is None or Of["design_id"] != L["design_id"]:
+            Out.append("its option is not an option of the ordered design")
+        Img = L.get("image_path") or L.get("image_url") or ""
+        if "/candidates/" in Img and f"/candidates/{Cand}." not in Img:
+            Out.append(f"its picture is not of the ordered option {L.get('ring_id') or ''}".rstrip())
+        if L.get("pinned_mesh_id"):
+            M = Db.One("SELECT candidate_id FROM meshes WHERE id = ?", (L["pinned_mesh_id"],))
+            if M is None:
+                Out.append("its 3D version no longer exists")
+            elif M["candidate_id"] != Cand:
+                Out.append(f"its 3D version is of {Ref(M['candidate_id'])}, not of the ordered {L.get('ring_id')}")
+        if L.get("pinned_three_d_id"):
+            R = Db.One("SELECT s.design_id, s.candidate_id, s.mesh_id, s.production_size, s.material_id, m.candidate_id AS mesh_candidate "
+                       "FROM session_3d s LEFT JOIN meshes m ON m.id = s.mesh_id WHERE s.id = ?", (L["pinned_three_d_id"],))
+            Product = L.get("product_type") or Products.Ring
+            Size = LineSize(L)
+            if R is None:
+                Out.append("its STL record no longer exists")
+                return Out
+            if R["design_id"] != L["design_id"]:
+                Out.append("its STL belongs to another design")
+            elif R["candidate_id"] != Cand or (R["mesh_candidate"] and R["mesh_candidate"] != Cand):
+                Out.append(f"its STL is of {Ref(R['mesh_candidate'] or R['candidate_id'])}, not of the ordered {L.get('ring_id')}")
+            if L.get("pinned_mesh_id") and R["mesh_id"] != L["pinned_mesh_id"]:
+                Out.append("its STL was not made from its 3D version")
+            if Size is None or R["production_size"] is None or float(R["production_size"]) != float(Size):
+                Got = Products.SizeLabel(Product, None if Product == Products.Charm else R["production_size"],
+                                         R["production_size"] if Product == Products.Charm else None)
+                Out.append(f"its STL is for {Got or 'no size'}, the line is {L.get('size_label') or 'without a size'}")
+            if R["material_id"] != L["material_id"]:
+                Mat = CharmPrices.Label(self.Ctx.Catalog, R["material_id"]) if Product == Products.Charm else \
+                    ((self.Ctx.Catalog.Get(R["material_id"]).Label if self.Ctx.Catalog.Get(R["material_id"]) else R["material_id"]))
+                Out.append(f"its STL is recorded for {Mat}, the line is {L.get('material_label')}")
+        return Out
+
     def StlCandidates(self, L: dict) -> dict:
         """The finished 3D results that may become an unlinked line's print file (the owner's decisions of 2026-10-14,
         Fulfillment I-35): made from the line's own 3D version (the one fixed when it was ordered, else its option's
@@ -638,7 +693,7 @@ class OrderService:
         Version = (Db.One("SELECT * FROM meshes WHERE id = ?", (L.get("pinned_mesh_id"),)) if L.get("pinned_mesh_id") else None) \
             or Versions.MeshFor(Db, L["design_id"], L.get("candidate_id"))
         Out = {"version": Versions.Brief(Version), "candidates": [], "same_file": False, "pending": [], "flagged": [], "failed": [],
-               "master_present": self.MasterPresent(Version["id"]) if Version else None}
+               "shared": [], "master_present": self.MasterPresent(Version["id"]) if Version else None}
         Size = LineSize(L)
         if Version is None or Size is None:
             return Out
@@ -679,7 +734,75 @@ class OrderService:
             Keys.add((G.get("method_version"), Corrected, Own or ""))
             Out["candidates"].append({**Brief, "bore_corrected": Corrected, "own_file": bool(Own)})
         Out["same_file"] = bool(Out["candidates"]) and len(Keys) == 1
+        if not Out["candidates"] and Out["master_present"]:
+            Out["shared"] = self._SharedStls(L, Version, float(Size))
         return Out
+
+    def _SharedStls(self, L: dict, Version: dict, Size: float) -> list[dict]:
+        """The STL of the line's own option and 3D version at its size, finished in ANOTHER material (the owner's report of
+        2026-10-17, ORD-10002 Fil Rope: the 14 mm STL existed in Silver, Stainless Steel was asked to prepare it again). A
+        scaled STL is made from the master and the size only — the material changes the weight and the price, never the
+        file — so such a result is the very same file. Only plain results count: measured, unflagged and never accepted
+        as flagged (each material's flagged STL is reviewed on its own), no file of their own (a bore-corrected file is
+        reused explicitly, ReuseBoreFix), and the active side of a FixBore pair. Newest first."""
+        from p3.production3d import ProductionState
+        from p3.stl_activation import Inactive
+        Db, Out = self.Ctx.Db, []
+        Rows = Db.All("SELECT s.id, s.status, s.accepted_at, s.created_at, s.updated_at, s.material_id, r.integrity FROM session_3d s "
+                      "LEFT JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? AND s.mesh_id = ? AND s.candidate_id = ? "
+                      "AND s.material_id != ? AND s.production_size = ? ORDER BY s.created_at DESC",
+                      (L["design_id"], Version["id"], L.get("candidate_id"), L["material_id"], Size))
+        Product = L.get("product_type") or Products.Ring
+        for R in Rows:
+            if R["status"] != "measured" or R["accepted_at"] or ProductionState(R["status"], R["integrity"], False) != "complete":
+                continue
+            G = Db.One("SELECT checks_json, stl_path FROM geometry_results WHERE session_3d_id = ? AND stage = 'production'", (R["id"],)) or {}
+            if G.get("stl_path") or json.loads(G.get("checks_json") or "{}").get("bore_corrected"):
+                continue
+            if self.Activations is not None and Inactive(self.Activations.Pair(R["id"]), R["id"]):
+                continue
+            Out.append({"id": R["id"], "state": "complete", "created_at": R["created_at"], "measured_at": R["updated_at"],
+                        "version_label": Versions.Label(Version), "size_label": L.get("size_label"), "material_label": L.get("material_label"),
+                        "from_material_id": R["material_id"],
+                        "from_material_label": CharmPrices.Label(self.Ctx.Catalog, R["material_id"]) if Product == Products.Charm
+                        else (self.Ctx.Catalog.Get(R["material_id"]).Label if self.Ctx.Catalog.Get(R["material_id"]) else R["material_id"])})
+        return Out
+
+    def PrepareShared(self, OrderId: str, LineId: str, FromId: str, By: str) -> dict:
+        """Record the line's own STL from the same file finished in another material (_SharedStls), at once — no geometry job,
+        no AI cost — and pin the line to it. Refused unless FromId is still such a file for this line; the new result must
+        be finished and its geometry identical to FromId's (only the weight and the price differ), else nothing is pinned."""
+        O = self.AdminGet(OrderId)
+        L = next((X for X in O["lines"] if X["id"] == LineId), None)
+        if L is None:
+            raise HttpError(404, "order_line_not_found", "Order line not found.")
+        if L.get("three_d_pinned"):
+            return {"line": L, "three_d_id": L["three_d_id"], "prepared": False}
+        Version = L.get("three_d_version")
+        C = self.StlCandidates(L)
+        From = next((X for X in C.get("shared", []) if X["id"] == FromId), None)
+        if From is None or not Version or self.Production is None:
+            raise HttpError(409, "shared_stl_changed", f"{L['ring_id']}: the {L.get('size_label')} STL named in the confirmation is no longer the same "
+                                                        "file for this line — reload the order and check it.")
+        Customer = (Sessions.Summaries(self.Ctx, SessionIds=[L["session_id"]]) or [None])[0]
+        T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"],
+                                    CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer, MeshId=Version["mesh_id"])
+        Db = self.Ctx.Db
+        Geo = {X["session_3d_id"]: X for X in Db.All("SELECT session_3d_id, volume_mm3, size_x_mm, size_y_mm, size_z_mm FROM geometry_results "
+                                                     "WHERE stage = 'production' AND session_3d_id IN (?, ?)", (T["id"], FromId))}
+        A, B = Geo.get(T["id"]), Geo.get(FromId)
+        Same = A is not None and B is not None and all(
+            A[K] is not None and B[K] is not None and abs(float(A[K]) - float(B[K])) <= 1e-6 * max(1.0, abs(float(B[K])))
+            for K in ("volume_mm3", "size_x_mm", "size_y_mm", "size_z_mm"))
+        if T.get("production_state") != "complete" or not Same:
+            raise HttpError(409, "shared_stl_not_identical", f"{L['ring_id']}: the {L.get('material_label')} STL could not be recorded as the same file as the "
+                                                             f"{From['from_material_label']} one ({T.get('production_state') or T.get('status')}) — "
+                                                             "prepare it on the line and check it; nothing was linked.")
+        self._Pin(O["id"], L, T["id"], By, "3d_prepared", ring_size=L["ring_size"], charm_size=L.get("charm_size"),
+                  product_type=L.get("product_type"), material_id=L["material_id"], reused_model=True, shared_from=FromId,
+                  shared_from_material_id=From["from_material_id"])
+        Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
+        return {"line": Fresh, "three_d_id": T["id"], "prepared": True, "shared_from": FromId}
 
     def LinkLine3D(self, OrderId: str, LineId: str, ThreeDId: str, By: str) -> dict:
         """Link one finished result to a line as its print file — the Admin's explicit choice when several different
@@ -720,7 +843,18 @@ class OrderService:
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
             raise HttpError(404, "order_line_not_found", "Order line not found.")
-        if L["three_d_id"]:
+        # A line pinned to an STL that is not its own (2026-10-17): its own STL is made from its option's own version and
+        # pinned in its place, the replaced one and why named in the history — never for a line in Production, and never
+        # when the line's own record (its picture or its option) is wrong: that line is not changed here, nor ever sent
+        Repair = bool(L["three_d_id"] and L["three_d_pinned"] and L.get("three_d_problems"))
+        if Repair:
+            Own = [P for P in L["three_d_problems"] if P.startswith(("its picture", "its option"))]
+            if Own:
+                raise HttpError(409, "line_record_inconsistent", f"{L['ring_id']}: {'; '.join(Own)} — the order line itself is not consistent: "
+                                                                 "it is not changed here and is never sent as it is.")
+            if self.LineGuard:
+                self.LineGuard(O, L)
+        elif L["three_d_id"]:
             if not L["three_d_pinned"]:
                 # A finished result exists for the line's size and material: link it — the newest when they are all the
                 # very same file, never a choice among different ones (I-35: the Admin chooses with Link STL)
@@ -737,6 +871,8 @@ class OrderService:
                                              "(a paid Hi3D call), then prepare the STL here.")
         # The STL is prepared from the option the customer ordered — never from another option's model
         Version = L.get("three_d_version")              # the pinned version, else the one the ordered option is made from
+        if Repair:                                      # the pinned version may be the wrong one: the option's own current version
+            Version = Versions.Brief(Versions.MeshFor(self.Ctx.Db, L["design_id"], L["candidate_id"]))
         if not Version:
             raise HttpError(409, "model_of_other_option",
                             f"The 3D model of this design is of option {L['model_ring_id'] or '—'}; this line was ordered as "
@@ -748,7 +884,8 @@ class OrderService:
         T = self.Production.Request(L["design_id"], ProductionSize=LineSize(L), MaterialId=L["material_id"],
                                     CandidateId=L["candidate_id"], RequestedBy=By, Customer=Customer, MeshId=Version["mesh_id"])
         self._Pin(O["id"], L, T["id"], By, "3d_prepared", ring_size=L["ring_size"], charm_size=L.get("charm_size"),
-                  product_type=L.get("product_type"), material_id=L["material_id"], reused_model=bool(T.get("raw_available")))
+                  product_type=L.get("product_type"), material_id=L["material_id"], reused_model=bool(T.get("raw_available")),
+                  **({"replaced": L["three_d_id"], "replaced_because": L["three_d_problems"]} if Repair else {}))
         Fresh = next(X for X in self.AdminGet(OrderId)["lines"] if X["id"] == LineId)
         return {"line": Fresh, "three_d_id": T["id"], "prepared": True}
 

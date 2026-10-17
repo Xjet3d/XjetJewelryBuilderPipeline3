@@ -249,7 +249,7 @@ async def test_the_production_file_is_pinned_at_the_hand_over_and_served_with_it
         await H.Idle()
         State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=Admin)).json()
         assert State["lines"][0]["reason"] == "needs_preparation" and not State["eligible"]
-        assert State["lines"][0]["stl"]["label"] == "STL exists — preparation required for US 10 · Silver" and "no AI cost" in State["lines"][0]["stl"]["action"]
+        assert State["lines"][0]["stl"]["label"] == "STL not yet prepared at US 10 · Silver — the 3D model exists" and "no AI cost" in State["lines"][0]["stl"]["action"]
         assert (await _Send(H, O["id"], [LineId], Expect=409))["error"]["blocked"][0]["reason"] == "needs_preparation"
         # Prepare STL on the line: the ordered size and material by arithmetic (no paid call), the line pinned — eligible now
         assert (await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{LineId}/3d", headers=Admin)).status_code == 200

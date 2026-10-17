@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
   <meta name="p3-base" content="{{BASE}}">
+  <meta name="p3-admin-build" content="{{ADMIN_BUILD}}">
   <title>XJet Admin</title>
   <link rel="icon" type="image/png" sizes="32x32" href="{{BASE}}/static/images/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="{{BASE}}/static/images/favicon-16.png">
@@ -37,6 +38,7 @@
     th { font-size: 12px; letter-spacing: 0.01em; color: #71717a; font-weight: 600; text-align: left; padding: 10px 12px; }
     td { padding: 10px 12px; font-size: 13px; border-top: 1px solid #f4f4f5; vertical-align: middle; }
     .badge { display: inline-block; font-size: 11px; letter-spacing: 0.02em; padding: 2px 8px; font-weight: 600; white-space: nowrap; border-radius: 3px; }
+    .badge.wrap { white-space: normal; }   /* a long verdict wraps in its column instead of widening the page */
     /* Long tables: the header stays visible while scrolling (the wrapper must not clip vertically on wide screens) */
     .sticky-head thead th { position: sticky; top: 0; background: #fff; z-index: 5; box-shadow: inset 0 -1px 0 #e4e4e7; }
     @media (min-width: 768px) { .table-wrap { overflow: visible; } }
@@ -161,6 +163,14 @@
     <p class="text-[12px] text-zinc-600 mt-1.5 truncate" x-text="zoom?.label"></p>
   </div>
 
+  <!-- A release since this page was opened (2026-10-17): its changes are refused until it is reloaded, so nothing acts on
+       outdated page logic or statuses -->
+  <div x-show="adminOutdated" x-cloak class="sticky top-0 z-50 bg-amber-100 text-amber-900 border-b border-amber-300" role="alert">
+    <div class="max-w-6xl mx-auto px-4 md:px-8 py-2 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span><span class="font-semibold">The Admin was updated on the server.</span> Reload this page to use the current version — changes from this page are refused until it is reloaded.</span>
+      <button class="btn2" @click="location.reload()">Reload now</button>
+    </div>
+  </div>
   <header class="bg-white border-b border-zinc-200">
     <div class="max-w-6xl mx-auto px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <div class="flex items-center gap-3">
@@ -1044,18 +1054,20 @@
         </ul>
         <p class="text-[12px] text-zinc-500">Nothing to show, to make a movie of or to turn into 3D. A credit is charged only when an image is delivered, so none was charged here; the AI cost above is the estimate for the requests that were sent.</p>
       </section>
-      <!-- What exists: image · movie · 3D -->
+      <!-- What exists: image · movie · 3D — each names its option; a model of another option is said plainly (2026-10-17) -->
+      <p x-show="!noImage() && sd.artifacts.model_ring_id && sd.artifacts.ring_id && sd.artifacts.model_ring_id !== sd.artifacts.ring_id"
+         class="text-[12px] text-amber-700" x-text="'The 3D model is of ' + sd.artifacts.model_ring_id + '; the selected image' + (sd.artifacts.movie_ring_id === sd.artifacts.ring_id ? ' and its movie are ' : ' is ') + sd.artifacts.ring_id + '. An order of ' + sd.artifacts.ring_id + ' never uses the model of ' + sd.artifacts.model_ring_id + '.'"></p>
       <section x-show="!noImage()" class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="card overflow-hidden"><div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2"><p class="lbl" x-text="'Selected image' + (sd.artifacts.ring_id ? ' · ' + sd.artifacts.ring_id : '')"></p>
             <button x-show="sd.artifacts.image_url && !sd.external" class="text-[11px] uppercase tracking-widest underline whitespace-nowrap" :class="sd.gallery ? 'text-amber-700' : 'text-zinc-500'" @click="sd.gallery ? galleryRemove(sd.gallery) : galleryAdd(null)" x-text="sd.gallery ? 'In gallery · remove' : 'Show in gallery'"></button>
             <span x-show="sd.external" class="text-[11px] text-zinc-500">Render of the active 3D version</span></div>
           <div class="aspect-square bg-zinc-50 flex items-center justify-center"><img x-show="sd.artifacts.image_url" :src="sd.artifacts.image_url" class="w-full h-full object-contain" alt="">
             <span x-show="!sd.artifacts.image_url" class="text-xs text-zinc-500">No image</span></div></div>
-        <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2">360° movie</p>
+        <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2" x-text="'360° movie' + (sd.artifacts.movie_ring_id ? ' · ' + sd.artifacts.movie_ring_id : '')"></p>
           <div class="aspect-square bg-zinc-50 flex items-center justify-center">
             <template x-if="sd.artifacts.movie_url"><video :src="sd.artifacts.movie_url" class="w-full h-full object-contain" autoplay muted loop playsinline controls></video></template>
             <span x-show="!sd.artifacts.movie_url" class="text-xs text-zinc-500">No movie</span></div></div>
-        <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2" x-text="'3D model' + (viewer3d.label ? ' · ' + viewer3d.label : '')"></p>
+        <div class="card overflow-hidden"><p class="lbl px-4 pt-3 pb-2" x-text="'3D model' + (viewer3d.label ? ' · ' + viewer3d.label : (sd.artifacts.model_ring_id ? ' · ' + sd.artifacts.model_ring_id : ''))"></p>
           <div class="aspect-square bg-zinc-50 relative">
             <template x-if="thumb() && !viewer3d.id"><img :src="thumb()" alt="Hi3D thumbnail" class="absolute inset-0 w-full h-full object-contain"></template>
             <div x-ref="viewer" class="absolute inset-0"></div>
@@ -2166,11 +2178,14 @@
                   <!-- Only a result for THIS size and material counts as the line's 3D; anything else is "not prepared yet" -->
                   <span x-show="l.three_d_state && l.three_d_match" class="badge" :class="prodClass(l.three_d_state)" x-text="l.three_d_state === 'review_required' ? 'Review required' : prodLabel(l.three_d_state)"></span>
                   <span x-show="l.three_d_state && l.three_d_match && !l.three_d_pinned" class="text-[11px] text-zinc-600"> · not yet linked to this line</span>
-                  <span x-show="l.three_d_state && !l.three_d_match" class="badge bg-sky-100 text-sky-800">Preparing…</span>
-                  <span x-show="!l.three_d_state && l.has_model" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to ' + sizeOf(l) + ' · ' + l.material_label"></span>
+                  <span x-show="l.three_d_state && !l.three_d_match && (l.three_d_problems || []).length" class="badge bg-red-100 text-red-700">Does not match this line</span>
+                  <span x-show="l.three_d_state && !l.three_d_match && !(l.three_d_problems || []).length" class="badge bg-sky-100 text-sky-800">Preparing…</span>
+                  <span x-show="!l.three_d_state && l.three_d_version && prodLine(l)?.stl?.state !== 'ready_shared'" class="text-[12px] text-zinc-600" x-text="'Model exists — not yet scaled to ' + sizeOf(l) + ' · ' + l.material_label"></span>
                   <span x-show="!l.three_d_state && !l.has_model" class="text-[12px] text-amber-700">No 3D model yet — generate it on the session page (paid Hi3D call)</span>
-                  <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result: ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line)'"></p>
-                  <p x-show="l.model_ring_id && l.ring_id && l.model_ring_id !== l.ring_id && !l.three_d_version" class="text-[11px] text-amber-700" x-text="'The design’s model is of option ' + l.model_ring_id + '; this order is for ' + l.ring_id + ' — check on the session page whether a new model is needed'"></p>
+                  <!-- The ordered option has no model of its own (2026-10-17): the design's model of another option is never this line's -->
+                  <p x-show="!l.three_d_state && l.has_model && !l.three_d_version" class="text-[12px] text-amber-700" x-text="'No 3D model of the ordered option ' + (l.ring_id || '') + ' — the design’s model is of ' + (l.model_ring_id || 'another option') + ' and is never used for this line'"></p>
+                  <p x-show="(l.three_d_problems || []).length" class="text-[11px] text-red-700" x-text="'Not sendable: ' + (l.three_d_problems || []).join('; ')"></p>
+                  <p x-show="l.three_d_latest" class="text-[11px] text-zinc-500" x-text="'Latest result of ' + (l.ring_id || 'this option') + ': ' + (isCharm(l) ? l.three_d_latest?.size + ' mm' : 'US ' + l.three_d_latest?.size) + ' · ' + materialLabelFor(l.three_d_latest?.material_id, l.product_type) + ' (not this line’s size or material)'"></p>
                   <!-- The 3D version the line is produced from (pinned once prepared: a later version never changes it) -->
                   <p x-show="l.three_d_version" class="text-[11px] mt-1" :class="l.three_d_version_pinned ? 'text-zinc-700' : 'text-zinc-500'"
                      :title="l.three_d_version_pinned ? 'Pinned: this line keeps this geometry whatever version the design uses later' : 'Ordered before the design had a 3D model: it follows the design’s version until its STL is prepared'"
@@ -2196,15 +2211,15 @@
                         <!-- The line's STL and its order's hand-over, apart and together (I-35); what to do, right on the line -->
                         <div class="normal-case tracking-normal space-y-1">
                           <p class="flex flex-wrap items-center gap-2">
-                            <button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? (prodLine(l).stl?.state === 'ready_unlinked' ? 'Link the STL named in the confirmation and send this line to Production' : 'Send this line to Production with its linked STL') : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
-                            <span class="badge" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span>
+                            <button class="btn !py-1 !text-[11px]" :disabled="odBusy || !prodLine(l).eligible" :title="prodLine(l).eligible ? (['ready_unlinked', 'ready_shared'].includes(prodLine(l).stl?.state) ? 'Link the STL named in the confirmation and send this line to Production' : 'Send this line to Production with its linked STL') : prodWhy(prodLine(l))" @click="sendToProduction([l.id])">Send to Production</button>
+                            <span class="badge wrap" :class="stlClass(prodLine(l))" x-text="prodLine(l).stl?.label"></span>
                             <span x-show="l.stl_revision" class="badge bg-emerald-100 text-emerald-800" :title="'The bore-corrected STL (FixBore), stored: sha256 ' + (l.stl_revision?.file_sha256 || '').slice(0, 12) + '…'">Accepted revision · FixBore</span></p>
-                          <p x-show="prodLine(l).stl?.state === 'ready_unlinked'" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
+                          <p x-show="['ready_unlinked', 'ready_shared'].includes(prodLine(l).stl?.state)" class="text-zinc-600" x-text="'Not yet linked — Send to Production links ' + stlLinkLine(prodLine(l).stl?.link) + (prodLine(l).stl?.duplicates ? ' (' + prodLine(l).stl.duplicates + ' identical result' + (prodLine(l).stl.duplicates === 1 ? '' : 's') + ' beside it)' : '')"></p>
                           <p x-show="!prodLine(l).eligible" class="text-amber-700" x-text="prodWhyLong(prodLine(l))"></p>
                           <p x-show="l.stl_activation" :class="actClass(l.stl_activation?.followed_by ? 'switched' : l.stl_activation?.outcome)" x-text="actNote(l.stl_activation)"></p>
                           <p x-show="(prodLine(l).duplicates || []).length" class="text-amber-800" x-text="'Possible duplicate: ' + dupText(prodLine(l)) + '. Send to Production asks you to confirm; nothing is cancelled.'"></p>
                           <p class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
-                            <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
+                            <button x-show="['needs_preparation', 'failed'].includes(prodLine(l).stl?.state) || (prodLine(l).stl?.state === 'inconsistent' && (l.three_d_versions || []).length)" class="underline text-zinc-700 hover:text-black" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label + ' (no AI cost)'"></button>
                             <button x-show="prodLine(l).stl?.state === 'ambiguous'" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="linkStl(l)">Link STL…</button>
                             <button x-show="prodLine(l).stl?.state === 'review_required' && prodLine(l).stl?.reusable_correction" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="reuseBoreFixLine(l)" x-text="'Use the accepted bore correction (' + (prodLine(l).stl?.reusable_correction?.material_label || '') + ')…'"></button>
                             <button x-show="prodLine(l).stl?.state === 'review_required' && prodLine(l).stl?.bore_not_round && !prodLine(l).stl?.reusable_correction && !prodLine(l).stl?.correction" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="fixBoreLine(l)">Fix bore (FixBore)…</button>
@@ -2217,7 +2232,7 @@
                   </template></td>
                 <td class="text-right whitespace-nowrap">
                   <button x-show="l.three_d_id && l.three_d_match && ['complete','review_required'].includes(l.three_d_state)" class="text-xs uppercase tracking-widest underline" :class="l.three_d_state === 'review_required' ? 'text-amber-800' : ''" :disabled="!!exports3d[l.three_d_id]" @click="downloadOrderStl(l)" x-text="l.three_d_state === 'review_required' ? 'Download STL · not reviewed' : 'Download STL'"></button>
-                  <button x-show="!l.three_d_match && l.has_model" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
+                  <button x-show="!l.three_d_match && l.three_d_version && (!(l.three_d_problems || []).length ? (!of?.enabled || ['needs_preparation', 'failed'].includes(prodLine(l)?.stl?.state)) : (l.three_d_versions || []).length > 0)" class="btn2 !py-1.5 !text-[11px]" :disabled="!!linePrep[l.id]" @click="prepareOrderStl(l)" x-text="linePrep[l.id] ? 'Preparing…' : 'Prepare STL · ' + sizeOf(l) + ' · ' + l.material_label"></button>
                   <a x-show="!l.has_model" class="text-xs uppercase tracking-widest underline" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Generate 3D on the session</a>
                   <p x-show="l.three_d_id && exports3d[l.three_d_id]" class="text-[12px] text-sky-800" x-text="exportLine({ id: l.three_d_id })"></p>
                   <button x-show="prodLine(l)?.production?.sent && od.status !== 'cancelled'" class="text-xs uppercase tracking-widest underline text-zinc-500 hover:text-black block mt-1 ml-auto" @click="requestCancellation(l)">Request cancellation…</button></td>

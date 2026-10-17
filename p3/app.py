@@ -6,6 +6,7 @@ under that prefix (the deployment layout behind proto/tron); without it, at "/".
 """
 
 import asyncio
+import hashlib
 import html
 import json
 import logging
@@ -129,6 +130,20 @@ def _ScriptJson(Value) -> str:
     return json.dumps(Value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
+AdminBuildFiles = ("admin.html", "admin.js", "products.js")
+
+
+def AdminBuild() -> str:
+    """The Admin page's build: its page and scripts as they are on disk now — a release changes them. A page loaded before
+    a release carries the old build, and its changes are refused until it is reloaded (the owner's report of 2026-10-17:
+    a tab open since before a deployment kept the old page logic and showed outdated production verdicts)."""
+    Parts = []
+    for Name in AdminBuildFiles:
+        P = WebDir / Name
+        Parts.append(f"{Name}:{P.stat().st_mtime_ns if P.is_file() else 0}")
+    return hashlib.sha256(";".join(Parts).encode()).hexdigest()[:16]
+
+
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
                    Og: str = "", Mock: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
@@ -150,6 +165,8 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
                                           if (WebDir / M.group(1) / M.group(2)).is_file() else ""), Html)
     Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
     Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;")).replace("{{OG}}", Og)
+    if "{{ADMIN_BUILD}}" in Html:
+        Html = Html.replace("{{ADMIN_BUILD}}", AdminBuild())
     return Html.replace("{{BASE}}", BasePath)
 
 
@@ -271,6 +288,24 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     ApiDocs = ("/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json")
     # /showcase (the reference page) is a developer tool; /api/showcase is the homepage hero's public data
     DevPaths = ("/dev", "/showcase", "/static/dev.html", "/static/showcase.html")
+
+    @App_.middleware("http")
+    async def _AdminBuildGuard(Req: Request, CallNext):
+        """An Admin page tells its build (X-Admin-Build); a change sent from a page older than the server's is refused, so
+        a tab left open across a release never acts on outdated page logic; every Admin answer carries the current build,
+        so the page knows to reload. Requests without the header (scripts, tools) are not affected. Runs inside
+        _Separation: an Admin path on the public host is still a plain 404."""
+        if not _Rel(Req).startswith("/api/admin/"):
+            return await CallNext(Req)
+        Build, Sent = AdminBuild(), Req.headers.get("x-admin-build")
+        if Sent and Sent != Build and Req.method not in ("GET", "HEAD", "OPTIONS"):
+            Resp = JSONResponse(status_code=409, content={"error": {"code": "admin_outdated", "message":
+                                "This Admin page is out of date: the server was updated since it was opened. Reload the page, "
+                                "then repeat the action — nothing was changed."}})
+        else:
+            Resp = await CallNext(Req)
+        Resp.headers["X-Admin-Build"] = Build
+        return Resp
 
     @App_.middleware("http")
     async def _Separation(Req: Request, CallNext):

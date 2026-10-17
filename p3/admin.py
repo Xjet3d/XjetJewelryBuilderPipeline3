@@ -402,12 +402,13 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
     Flow = Sessions.Pipeline(Ctx, DesignId, AllUsage, Prices, Owner=Owner)
     def ShownMovie(Cands):
         """An image may have several movies (made under different movie configurations): the Admin's choice for it,
-        else its newest ready one."""
+        else its newest ready one — with the option it is of."""
         Ready = [(C, M) for C in Cands for M in C["movies"] if M["status"] == "ready"]
-        Chosen = next((M for C, M in Ready if M["id"] == C.get("movie_id")), None)
-        return Chosen or max((M for _, M in Ready), key=lambda M: M["created_at"], default=None)
-    Movie = ShownMovie([C for B in Batches for C in B["candidates"] if C["selected"]]) \
-        or ShownMovie([C for B in Batches for C in B["candidates"]])
+        Chosen = next(((C, M) for C, M in Ready if M["id"] == C.get("movie_id")), None)
+        return Chosen or max(Ready, key=lambda X: X[1]["created_at"], default=(None, None))
+    MovieOf, Movie = ShownMovie([C for B in Batches for C in B["candidates"] if C["selected"]])
+    if Movie is None:
+        MovieOf, Movie = ShownMovie([C for B in Batches for C in B["candidates"]])
     Keep = ("material_id", "ring_size", "charm_size", "quantity", "unit_price", "pricing_version", "pricing_status")
     Choices = [{"at": E["at"], "kind": E["kind"], **{K: V for K, V in (E.get("data") or {}).items() if K in Keep}}
                for E in Timeline if E["kind"] in ("customize_opened", "customization_changed")]
@@ -449,8 +450,12 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                  "basis": "Estimated at list prices (Admin → AI Prompts & Params → AI prices); mock requests are $0."
                           + (" Shared gallery design: only this customer's own requests are counted." if Use else ""),
                  "price_list_version": Prices.Current()["version"]},
+        # Each artifact names the option it is of (the owner's report of 2026-10-17: Aurora Curve showed option C's image and
+        # movie beside option B's 3D model, unlabelled)
         "artifacts": {"image_url": Summary["thumbnail_url"], "movie_url": Movie["url"] if Movie else None,
-                      "ring_id": Refs.get(SelCand["id"]) if SelCand else None},
+                      "ring_id": Refs.get(SelCand["id"]) if SelCand else None,
+                      "movie_ring_id": Refs.get(MovieOf["id"]) if MovieOf else None,
+                      "model_ring_id": Refs.get(Mesh["candidate_id"]) if Mesh else None},
         "last_choice": Last,
         "timeline": Timeline,
         "design": {**Design, "shared": bool(Use), "master_ring_id": Summary["ring_id"]} if Design else None,
