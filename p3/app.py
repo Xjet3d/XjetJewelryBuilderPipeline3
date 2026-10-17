@@ -451,6 +451,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   "products": list(Visible)}
         if View == "inspiration":
             Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
+        Hero = None
+        if View == "home" and not Design and not Flow:  # the hero's story in the page: it starts without asking (LCP)
+            try:
+                Hero = Showcase.Story(Ctx, SitePages.HeroDesign, Visible)
+                Config["story"] = {"design": SitePages.HeroDesign, "data": Hero}
+            except Exception:                          # never the page's failure: the story then asks /api/showcase itself
+                Logger.exception("The homepage story could not be put in the page")
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
@@ -476,6 +483,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{html.escape(Title, quote=False)}</title>", Html, count=1, flags=re.S)
         if Data:
             Html = Html.replace("</head>", "    " + SitePages.JsonLd(*Data) + "\n</head>", 1)
+        if Hero and Hero.get("story"):                 # the finished ring the story opens on, with the first files
+            Html = Html.replace("</head>", "    " + SitePages.HeroPreload(Hero["story"]["still_url"]) + "\n</head>", 1)
         Verification = Ctx.Products.Get(SitePages.VerificationKey) if View == "home" and not Design and not Flow else ""
         if Verification and SitePages.VerificationPattern.fullmatch(Verification):    # Search Console's ownership check
             Html = Html.replace("</head>", f'    <meta name="google-site-verification" content="{Verification}">\n</head>', 1)

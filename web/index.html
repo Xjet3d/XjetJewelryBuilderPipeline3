@@ -415,7 +415,7 @@
                     <div class="w-full md:w-[min(100%,700px,calc(100vh-195px))]" data-testid="hero-showcase">
                         <!-- sc-stage from the first paint: the story's room is kept before the scripts start (nothing below moves) -->
                         <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
-                             x-init="$nextTick(() => window.P3Showcase && P3Showcase.mount($el, { design: 'aurora-mesh' }))"></div>
+                             data-sc-design="aurora-mesh" x-init="$nextTick(() => window.P3Showcase && !$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' }))"></div>
                     </div>
                     <div class="md:hidden w-full px-2">
                         <p x-show="heroCollection.label" class="mt-5 text-[13px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>

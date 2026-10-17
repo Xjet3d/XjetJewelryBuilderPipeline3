@@ -10,6 +10,9 @@
     const CAPTIONS = ['Your idea', 'Four possibilities', 'Make it yours', 'Make it yours', 'Every angle', 'Your finish', ''];
     const LABELS = ['Prompt', '4 designs', 'Select', 'Refine', '360°', 'Metal', 'Final'];
     const VCOVER = 1.855;               // seconds of movie the turn beat plays: 1.48 s at normal speed, then 0.6 s easing to ¼
+    // The large ring's sizes — the page's preload of the hero's picture says the same (p3/sitepages.py HeroPreload), so
+    // the browser takes the picture it already has
+    const FOCUS_SIZES = '(max-width: 767px) 80vw, 520px';
     // Silver for a warm (gold) render: a contrast curve that keeps depth and the bright highlights; near-white pixels
     // (the background, the brightest sparkle) stay untouched.
     const SILVER = `<filter id="sc-silver" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
@@ -55,6 +58,8 @@
     const stories = new Map();          // design → the API answer (one request per page)
     function fetchStory(design) {
         const key = design || '';
+        const inPage = window.__p3 && window.__p3.story;          // the homepage brings its hero's story (p3/app.py)
+        if (!stories.has(key) && inPage && inPage.design === key && inPage.data) stories.set(key, Promise.resolve(inPage.data));
         if (!stories.has(key)) {
             stories.set(key, fetch(base() + '/api/showcase' + (design ? '?design=' + encodeURIComponent(design) : ''))
                 .then(r => r.json()).catch(e => { stories.delete(key); throw e; }));
@@ -90,6 +95,9 @@
             defs: q('.sc-defs'), loading: q('.sc-loading'),
         };
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches && opts.motion !== 'always';
+        // startAt 'final' (the homepage): the story opens on its finished ring — its largest picture, so the page's
+        // largest paint comes at once and no later beat replaces it — and plays on from the idea
+        const finalFirst = opts.startAt === 'final';
         let S = null, D = null, T = 0, last = null, raf = 0, visible = true, playing = opts.autoplay !== false && !reduced, destroyed = false;
         let chipKey = '', chips = [], VOFF = 0, small = null, fellBack = false;
         X.loading.textContent = opts.loadingText || '';
@@ -183,13 +191,19 @@
             const wipe = S.refine ? ramp(t, s3 + D.wipeAt, s3 + D.wipeAt + 800) : 0;
             const revealed = !!S.refine && t >= s3 + D.wipeAt + 800;
             const out = videoOk ? ramp(t, s4, s4 + 220) : 0;                 // the turn starts with a short fade through white
-            X.orig.style.opacity = (S.refine ? (revealed ? 0 : 1) : 1 - out).toFixed(3);
+            // once the metal layers cover the card (the same picture) nothing is left under them: the finished ring is
+            // then the card's only picture, as large as it ever is — the page's largest paint, which no later beat beats
+            const under = t >= s5 + 450;
+            X.orig.style.opacity = (under ? 0 : S.refine ? (revealed ? 0 : 1) : 1 - out).toFixed(3);
+            // …and not painted at all: a hidden layer of the same picture painted first would be the one the browser
+            // counts (smaller), and the ring's own paint would not count (LCP)
+            X.orig.style.visibility = X.ref.style.visibility = under ? 'hidden' : '';
             if (S.refine) {
                 const W = lerp(-20, 120, ease(wipe));
                 const m = t < s3 + D.wipeAt ? 'linear-gradient(105deg, transparent 0%, transparent 100%)'
                         : revealed ? 'none' : `linear-gradient(105deg, #000 ${(W - 14).toFixed(1)}%, transparent ${(W + 14).toFixed(1)}%)`;
                 X.ref.style.webkitMaskImage = m; X.ref.style.maskImage = m;
-                X.ref.style.opacity = (t < s3 + D.wipeAt ? 0 : 1 - out).toFixed(3);
+                X.ref.style.opacity = (under || t < s3 + D.wipeAt ? 0 : 1 - out).toFixed(3);
                 X.sweep.style.opacity = (wipe > 0 && wipe < 1 ? Math.sin(Math.PI * wipe) * 0.35 : 0).toFixed(3);
                 X.sweep.style.background = `linear-gradient(105deg, transparent ${(W - 7).toFixed(1)}%, rgba(255,247,228,.85) ${W.toFixed(1)}%, transparent ${(W + 7).toFixed(1)}%)`;
             } else X.ref.style.opacity = '0';
@@ -270,9 +284,10 @@
                 img.srcset = `${thumb(u, 320)} 320w, ${thumb(u, 800)} 800w`; img.sizes = sm ? '40vw' : '240px'; img.src = thumb(u, sm ? 320 : 800);
                 img.alt = 'Design option ' + (+el.dataset.k + 1);                 // as the design studio labels its options
             });
-            const set = (img, u) => { img.srcset = `${thumb(u, 800)} 800w, ${thumb(u, 1024)} 1024w`; img.sizes = sm ? '80vw' : '520px'; img.src = thumb(u, 800); };
+            const set = (img, u) => { img.srcset = `${thumb(u, 800)} 800w, ${thumb(u, 1024)} 1024w`; img.sizes = FOCUS_SIZES; img.src = thumb(u, 800); };
             set(X.orig, S.options[S.picked]); set(X.ref, S.refine ? S.refine.image_url : S.options[S.picked]);
             X.orig.alt = S.title ? S.title + ' — designed with XJet Atelier' : '';   // the refined and metal layers repeat it
+            if (finalFirst) { X.silver.fetchPriority = 'high'; X.gold.fetchPriority = 'high'; }   // the picture shown first
             set(X.silver, S.still_url); set(X.gold, S.still_url);
             // the render's own metal is shown untouched; only the other metal is a filter
             const goldFilter = X.defs.querySelector('#sc-gold') ? 'url(#sc-gold)' : '';
@@ -290,8 +305,10 @@
             stage.setAttribute('aria-label', `${S.title}, designed with XJet Atelier: an idea, four possibilities, one chosen and refined, seen from every angle and in Silver and Yellow Gold`);
         }
         function preload() {
-            const imgs = [...X.opts.map(o => o.querySelector('img')), X.orig, X.ref];
-            const ready = el => (el.complete && el.naturalWidth ? Promise.resolve() : (el.decode ? el.decode() : Promise.resolve())).catch(() => {});
+            const imgs = finalFirst ? [X.silver, X.gold] : [...X.opts.map(o => o.querySelector('img')), X.orig, X.ref];
+            // the finished ring decoded before it shows, also when it is already in the cache (the page's preload): a
+            // picture painted before its decode is not counted as painted (LCP)
+            const ready = el => ((finalFirst || !(el.complete && el.naturalWidth)) && el.decode ? el.decode() : Promise.resolve()).catch(() => {});
             return Promise.race([Promise.all(imgs.map(ready)), new Promise(r => setTimeout(r, 2500))]);
         }
         function frame(now) {
@@ -362,7 +379,7 @@
             build(); await preload();
             if (destroyed) return;
             X.loading.classList.add('sc-gone');
-            if (reduced) T = D.start[6] + 1500;          // reduced motion: the finished ring and its name, still
+            if (reduced || finalFirst) T = D.start[6] + 1500;   // the finished ring and its name (reduced motion: still)
             render(T);
             if (opts.onReady) opts.onReady(ctl);
             raf = requestAnimationFrame(frame);
@@ -371,4 +388,10 @@
     }
 
     window.P3Showcase = { mount, captions: CAPTIONS, labels: LABELS, planFor };
+
+    // The homepage hero starts as soon as the page is read — its story is in the page and its picture already on its
+    // way — not after the app's first requests; the page's own x-init finds it running and leaves it be
+    document.querySelectorAll('.sc-stage[data-sc-design]').forEach(el => {
+        if (!el._sc) mount(el, { design: el.dataset.scDesign, startAt: 'final' });
+    });
 })();

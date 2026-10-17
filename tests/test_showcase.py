@@ -166,7 +166,8 @@ async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
     assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
     assert "Bespoke Jewelry" in Hero and "Powered by AI" in Hero and "Designed by You" in Hero
     assert 'resetAIFlow()' in Hero and 'scrollToHowItWorks()' in Hero and "made to order in real metal" in Hero
-    assert 'data-testid="hero-showcase"' in Hero and "P3Showcase.mount($el, { design: 'aurora-mesh' })" in Hero
+    assert 'data-testid="hero-showcase"' in Hero and 'data-sc-design="aurora-mesh"' in Hero
+    assert "!$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' })" in Hero
     assert 'aria-label="Rings from the Inspiration Gallery"' not in Hero and "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
     assert re.search(r'src="' + re.escape(H.Base) + r'/static/showcase\.js\?v=\d+"', Index)
     Engine = (await H.Client.get("/static/showcase.js")).text
@@ -202,3 +203,32 @@ async def test_the_hero_tells_a_story_only_where_its_movie_may_be_shown(HG):
     # The engine shows the still when there is no story
     Js = (await H.Client.get("/static/showcase.js")).text
     assert "if (A.still && A.still.image_url) showStill(A.still);" in Js
+
+
+async def test_the_homepage_story_opens_on_its_finished_ring_at_once(HG):
+    """Home LCP (2026-10-17): the story's finished ring is its largest picture; the homepage brings the story with it
+    (no request after the app's first calls) and fetches that picture with its first files, at the sizes showcase.js
+    gives it; the story starts on it as soon as the page is read and plays on from the idea. Other pages bring nothing."""
+    from p3 import sitepages as SitePages
+    H = HG
+    await _Story(H)
+    Index = (await H.Client.get("/")).text
+    Cfg = json.loads(re.search(r"window\.__p3 = (\{.*?\});</script>", Index).group(1))
+    S = Cfg["story"]
+    assert S["design"] == SitePages.HeroDesign and S["data"] == (await H.Client.get(f"/api/showcase?design={SitePages.HeroDesign}")).json()
+    Still = S["data"]["story"]["still_url"].replace("/assets/", "/thumb/", 1)
+    Head = Index.split("</head>")[0]
+    assert (f'<link rel="preload" as="image" href="{Still}?w=800" imagesrcset="{Still}?w=800 800w, {Still}?w=1024 1024w" '
+            f'imagesizes="{SitePages.HeroSizes}" fetchpriority="high">') in Head
+    for Other in ("/gallery", "/faq", "/design"):
+        Page = (await H.Client.get(Other)).text
+        assert '"story":' not in Page.split("</head>")[0] and 'rel="preload" as="image" href="' + Still not in Page, Other
+    Engine = (await H.Client.get("/static/showcase.js")).text
+    assert f"const FOCUS_SIZES = '{SitePages.HeroSizes}';" in Engine and "img.sizes = FOCUS_SIZES;" in Engine
+    assert "if (reduced || finalFirst) T = D.start[6] + 1500;" in Engine and "const finalFirst = opts.startAt === 'final';" in Engine
+    assert "const imgs = finalFirst ? [X.silver, X.gold] : [" in Engine             # the first frame waits for its own pictures
+    assert "const under = t >= s5 + 450;" in Engine                                 # nothing under the finished ring
+    assert "X.orig.style.visibility = X.ref.style.visibility = under ? 'hidden' : '';" in Engine   # …not even painted
+    assert "((finalFirst || !(el.complete && el.naturalWidth)) && el.decode ? el.decode() : Promise.resolve())" in Engine
+    assert "document.querySelectorAll('.sc-stage[data-sc-design]').forEach(el => {" in Engine
+    assert "if (!stories.has(key) && inPage && inPage.design === key && inPage.data) stories.set(key, Promise.resolve(inPage.data));" in Engine

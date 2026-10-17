@@ -339,6 +339,21 @@ def LightboxPreload(ImageUrl: str) -> str:
             f'imagesizes="{LightboxSizes}" fetchpriority="high">')
 
 
+# The homepage hero: the gallery design its story tells (web/index.html data-sc-design) and the sizes of its large ring
+# (web/showcase.js FOCUS_SIZES)
+HeroDesign = "aurora-mesh"
+HeroSizes = "(max-width: 767px) 80vw, 520px"
+
+
+def HeroPreload(StillUrl: str) -> str:
+    """The homepage's head: the hero story's finished ring — the story opens on it, and it is the page's largest picture
+    — fetched with the stylesheets instead of after the scripts and the story's request; the same thumbnails and sizes
+    as showcase.js, so the browser takes the picture it already has."""
+    Set = ", ".join(f"{E(Media.ThumbUrl(StillUrl, W))} {W}w" for W in (800, 1024))
+    return (f'<link rel="preload" as="image" href="{E(Media.ThumbUrl(StillUrl, 800))}" imagesrcset="{Set}" '
+            f'imagesizes="{HeroSizes}" fetchpriority="high">')
+
+
 def CrawlerBlock(Inner: str) -> str:
     """Markup for readers that run no scripts (the same content the page shows once its scripts start): hidden from the
     first paint and removed as the page starts."""
