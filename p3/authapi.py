@@ -208,7 +208,7 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
             R = Id.VerifyPassword(Email, str(Body_.get("password") or ""))
         except IdentityError as E:
             Log.warning("Password sign-in refused for %s", MaskEmail(Email))
-            raise HttpError(401, "invalid_credentials", "The email or password is not right.") from E
+            raise HttpError(401, "invalid_credentials", "The email, username or password is not right.") from E
         if not R["verified"]:
             raise HttpError(403, "email_unverified", "Please confirm your email first. We can send the link again.")
         if not Id.Usable(R["account_id"]):

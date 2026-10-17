@@ -4,6 +4,7 @@
   python -m p3.cli set-quota <token> --max-generations 20 [--reset-usage]
   python -m p3.cli list-tokens
   python -m p3.cli deactivate-token <token>
+  python -m p3.cli set-username-login ory [--name "Ory"]   # a username + password sign-in with no email; password is prompted for
   python -m p3.cli check-provider     # verify FAL_KEY with a free storage upload (no generation)
 
 Administrator access (AJW-39). The Admin opens only for enrolled Google / Apple identities; these commands are the only way to
@@ -43,6 +44,9 @@ def Main(Argv=None) -> int:
     Sub.add_parser("list-tokens")
     Deact = Sub.add_parser("deactivate-token"); Deact.add_argument("token")
     Sub.add_parser("check-provider")
+    Username = Sub.add_parser("set-username-login", help="create or reset a username + password login (no email)")
+    Username.add_argument("username")
+    Username.add_argument("--name", default="")
     Sub.add_parser("legacy-report")
     Retire = Sub.add_parser("retire-legacy-codes")
     Retire.add_argument("--yes", action="store_true", help="really deactivate (without it only the count is shown)")
@@ -77,6 +81,19 @@ def Main(Argv=None) -> int:
         Accounts.SetQuota(Who.AccountId, Args.max_generations, Args.reset_usage)
         P = Accounts.Profile(Who)
         print(f"{P['remaining']} of {P['max']} credits remaining ({Who.AccountId})")
+    elif Args.cmd == "set-username-login":
+        import getpass
+        from p3.accounts.identity import IdentityError
+        Password = getpass.getpass(f"Password for {Args.username}: ")
+        if Password != getpass.getpass("Again: "):
+            print("The passwords differ.")
+            return 2
+        try:
+            AccountId, Created = Accounts.Identity.SetUsernamePassword(Args.username, Password, Args.name)
+        except IdentityError as E:
+            print(E.Message)
+            return 2
+        print(f"{'created' if Created else 'password reset for'} {Args.username.strip().lower()} (account {AccountId})")
     elif Args.cmd == "legacy-report":
         R = Accounts.Identity.LegacyReport()
         for K, V in R.items():

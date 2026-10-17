@@ -533,3 +533,43 @@ async def test_registering_again_never_replaces_a_pending_password(A):
     assert (await Browser(A).post("/api/auth/verify-email", json={"token": Link})).status_code == 200
     assert (await Browser(A).post("/api/auth/login", json={"email": "dana@example.com", "password": "attacker passphrase 1"})).status_code == 401
     assert (await Browser(A).post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})).status_code == 200
+
+
+# ── operator-made username + password login (no email) ──────────────────────
+
+async def test_username_login_signs_in_without_an_email(A):
+    from p3.accounts.identity import IdentityError
+    Id = A.Ctx.Accounts.Identity
+    AccountId, Created = Id.SetUsernamePassword("Ory", "a-long-enough-pass", "Ory")
+    assert Created
+    B = Browser(A)
+    Bad = await B.post("/api/auth/login", json={"email": "ory", "password": "nope-nope-nope"})
+    Unknown = await B.post("/api/auth/login", json={"email": "ghost", "password": "nope-nope-nope"})
+    assert Bad.status_code == Unknown.status_code == 401 and Bad.json() == Unknown.json()
+    R = await B.post("/api/auth/login", json={"email": " ORY ", "password": "a-long-enough-pass"})
+    assert R.status_code == 200, R.text
+    assert R.json()["account"] == {"name": "Ory", "email": ""}
+    Me = await B.get("/api/token-status")
+    assert Me.status_code == 200 and Me.json()["account_id"] == AccountId and Me.json()["max"] == 10
+    assert Mails(A) == []                                               # no mail is ever sent for a username
+    assert Id.Account(AccountId)["email"] is None                       # the username never leaks into the email column
+    # running it again resets the password on the same account
+    Again, Created = Id.SetUsernamePassword("ory", "another-long-pass")
+    assert Again == AccountId and not Created
+    assert (await Browser(A).post("/api/auth/login", json={"email": "ory", "password": "a-long-enough-pass"})).status_code == 401
+    assert (await Browser(A).post("/api/auth/login", json={"email": "ory", "password": "another-long-pass"})).status_code == 200
+    # bad names and weak passwords are refused
+    for Name in ("a@b.co", "x", "has space", "-lead"):
+        with pytest.raises(IdentityError) as E:
+            Id.SetUsernamePassword(Name, "a-long-enough-pass")
+        assert E.value.Code == "invalid_username"
+    with pytest.raises(IdentityError) as E:
+        Id.SetUsernamePassword("other", "short")
+    assert E.value.Code == "weak_password"
+
+
+async def test_a_username_cannot_be_self_registered(A):
+    B = Browser(A)
+    R = await B.post("/api/auth/register", json={"name": "Mallory", "email": "ory", "password": Pw})
+    assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_email"
+    assert (await B.post("/api/auth/forgot", json={"email": "ory"})).status_code == 400
