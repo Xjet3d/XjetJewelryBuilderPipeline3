@@ -302,3 +302,29 @@ def test_polling_pauses_while_the_tab_is_hidden():
     assert "if (document.hidden) return;" in Movie
     Admin = (WebDir / "admin.js").read_text(encoding="utf-8")
     assert "}, document.hidden ? 10000 : 2000);" in Admin[Admin.index("    poll3d() {"):Admin.index("    now() {")]
+
+
+async def test_the_materials_page_keeps_its_cards_room_until_the_catalog_answers(tmp_path):
+    """/materials CLS (2026-10-17): the metal grids are loops filled when /api/catalog answers; the page as served holds
+    one placeholder card per metal before each loop, at the cards' size (index.html .material-ph, .gold-ph), shown until
+    the catalog arrives — so nothing below them moves. Only the live copy has them; no other page does."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Page = (await H.Client.get("/materials")).text
+        Live = _Live(Page, "materials")
+        Groups = {G["id"]: len(G["materials"]) for G in H.Ctx.Catalog.ToJson()["groups"]}
+        Fashion, Gold = Live.count('<div class="material-ph"></div>'), Live.count('gold-ph" aria-hidden="true" data-ssr-placeholder x-show="!catalog"')
+        assert Fashion == Groups["fashion"] >= 1 and Gold == Groups["luxury"] >= 1
+        for Group, Loop in SitePages.MaterialLoops.items():
+            I = Live.index(Loop)
+            assert Live.rindex("data-ssr-placeholder", 0, I) > Live.rindex('<div class="grid', 0, I), Group    # inside the grid, before the loop
+        assert Page.count('<div class="material-ph"></div>') == Fashion                        # not in the template the app keeps
+        assert 'x-cloak x-show="!catalog"' not in Live                                           # visible from the first paint
+        Css = (WebDir / "index.html").read_text(encoding="utf-8")
+        for Rule in (".material-ph { height: 436px; }", ".gold-ph { height: 240px; }",
+                     "@media (min-width: 1280px) { .material-ph { height: 444px; } .gold-ph { height: 232px; } }"):
+            assert Rule in Css, Rule
+        for Other in ("/", "/gallery", "/faq"):
+            assert '<div class="material-ph"></div>' not in (await H.Client.get(Other)).text, Other
+    finally:
+        await H.Close()

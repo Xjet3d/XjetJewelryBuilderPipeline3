@@ -165,6 +165,13 @@
         /* Selected = a clear rectangular border (confirmed requirement), square corners. */
         .cand-card.is-selected, .cand-card.is-selected:hover { outline: 3px solid #1A1A1A; border-radius: 0 !important; }
         .shimmer { background: linear-gradient(100deg, #F1F1F1 30%, #FAFAFA 50%, #F1F1F1 70%); background-size: 300% 100%; animation: sh 1.4s infinite linear; }
+        /* /materials before the catalog answers: the server's placeholder cards (p3/sitepages.py MaterialPlaceholders) at
+           the cards' measured height below their picture, so nothing below them moves when the cards arrive */
+        .material-ph { height: 436px; }
+        .gold-ph { height: 240px; }
+        @media (min-width: 768px) { .material-ph { height: 700px; } .gold-ph { height: 224px; } }
+        @media (min-width: 1024px) { .material-ph { height: 548px; } .gold-ph { height: 302px; } }
+        @media (min-width: 1280px) { .material-ph { height: 444px; } .gold-ph { height: 232px; } }
         @keyframes sh { from { background-position: 100% 0; } to { background-position: -100% 0; } }
         /* Forms (checkout, quote request): readable labels, clear errors, visible focus */
         .fld { width: 100%; border: 1px solid #D4D4D8; padding: 12px 14px; font-size: 15px; border-radius: 6px; background: #fff; color: #1A1A1A; transition: border-color .12s; }

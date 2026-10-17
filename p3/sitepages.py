@@ -371,6 +371,21 @@ def DesignLinks(Base: str, Items: list[dict], Exclude: str = "") -> str:
     return CrawlerBlock(f"<ul>{Li}</ul>")
 
 
+# /materials: the two grids are loops the app fills when /api/catalog answers. Until then the server's copy holds one
+# placeholder card per metal, of the cards' size (measured 2026-10-17 from 360 to 1600 px; index.html .material-ph and
+# .gold-ph), so the notes and the gold section stay where they will be (no layout shift); they hide as the catalog
+# arrives, in the frame the real cards take their place.
+MaterialLoops = {"fashion": """<template x-for="m in materialsOf('fashion')" :key="m.id">""",
+                 "luxury": """<template x-for="m in materialsOf('luxury')" :key="m.id">"""}
+_MaterialCard = ('<article class="rounded-2xl border border-zinc-100 bg-white overflow-hidden flex flex-col" aria-hidden="true" '
+                 'data-ssr-placeholder x-show="!catalog"><div class="aspect-[4/3] shimmer"></div><div class="material-ph"></div></article>')
+_GoldCard = '<div class="rounded-xl border border-zinc-100 bg-white gold-ph" aria-hidden="true" data-ssr-placeholder x-show="!catalog"></div>'
+
+
+def MaterialPlaceholders(Ctx, Group: str) -> str:
+    return (_MaterialCard if Group == "fashion" else _GoldCard) * len(_Labels(Ctx, Group))
+
+
 def MaterialList(Ctx) -> str:
     Fashion = "".join(f"<li>{E(L)} — available to order</li>" for L in _Labels(Ctx, "fashion"))
     Gold = "".join(f"<li>{E(L)} — by request (quoted individually)</li>" for L in _Labels(Ctx, "luxury"))
