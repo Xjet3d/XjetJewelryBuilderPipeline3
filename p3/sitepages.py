@@ -296,7 +296,7 @@ def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | No
     return Html[:S] + Live + Kept + Inner + "</template>" + Html[End:]
 
 
-GalleryHeading = '<h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>'     # the Gallery page's own (index.html)
+GalleryHeading = '<h1 class="text-4xl brand-font mb-4">Inspiration Gallery</h1>'       # the Gallery page's own (index.html)
 GalleryAnchor = '<div class="max-w-4xl mx-auto text-center mb-16">'                     # the top of the Gallery page
 
 
@@ -358,6 +358,19 @@ def CrawlerBlock(Inner: str) -> str:
     """Markup for readers that run no scripts (the same content the page shows once its scripts start): hidden from the
     first paint and removed as the page starts."""
     return f'<div data-ssr-fallback x-cloak x-init="$el.remove()">{Inner}</div>'
+
+
+# About, Materials, Technology and FAQ end with four gallery designs, each a link to its own page: a different four on
+# each page, from this place in the gallery's order (web/app.js PAGE_DESIGN_OFFSETS shows the same)
+PageDesignOffsets = {"materials": 0, "technology": 4, "designers": 8, "faq": 12}
+PageDesignsAnchor = "<!-- From the Inspiration Gallery: four real designs"
+
+
+def PageDesigns(Items: list[dict], View: str) -> list[dict]:
+    if View not in PageDesignOffsets or not Items:
+        return []
+    At = PageDesignOffsets[View] % len(Items)
+    return (Items[At:] + Items[:At])[:4]
 
 
 def DesignLinks(Base: str, Items: list[dict], Exclude: str = "") -> str:

@@ -244,12 +244,12 @@ async def test_a_design_page_is_headed_by_the_design_name(tmp_path):
         Title = html.escape(Share["title"])
         assert f"<h1>{Title}</h1>" in Live and "data-ssr-fallback" in Live          # for readers that run no scripts
         assert Live.count("<h1") == 1                                               # one H1 in the page's own markup
-        assert '<h2 class="text-4xl brand-font mb-4">What Will You Create?</h2>' in Live   # the Gallery's heading steps down
+        assert '<h2 class="text-4xl brand-font mb-4">Inspiration Gallery</h2>' in Live     # the Gallery's heading steps down
         assert '<h2 class="hero-title text-5xl' in Page and '<h1 class="hero-title' not in Page   # so does the tagline
         assert '<h1 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h1>' in Page        # the dialog's name is the H1
         assert f"<title>{Title} · Custom Ring Design · XJet Atelier</title>" in Page and Page.count('rel="canonical"') == 1
         Gallery = (await H.Client.get("/gallery")).text
-        assert '<h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>' in _Live(Gallery, "inspiration")   # its own H1
+        assert '<h1 class="text-4xl brand-font mb-4">Inspiration Gallery</h1>' in _Live(Gallery, "inspiration")     # its own H1, named
         Home = (await H.Client.get("/")).text
         assert '<h1 class="hero-title text-5xl' in Home and "<h1>" not in Home        # the home page keeps its own H1
     finally:
@@ -326,5 +326,39 @@ async def test_the_materials_page_keeps_its_cards_room_until_the_catalog_answers
             assert Rule in Css, Rule
         for Other in ("/", "/gallery", "/faq"):
             assert '<div class="material-ph"></div>' not in (await H.Client.get(Other)).text, Other
+    finally:
+        await H.Close()
+
+
+async def test_four_gallery_designs_close_about_materials_technology_and_faq(tmp_path):
+    """WP5 (2026-10-17): About, Materials, Technology and FAQ end with four gallery designs, each a link to its own page —
+    a different four on each page, from a fixed place in the gallery's order, the same in the page as served and in the
+    app; the gallery's pictures say what they are (alt text); the Gallery page's H1 is its name."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        for N in range(6):
+            await _Publish(H, f"A slim band with motif number {N}")
+        Order = [I["slug"] for I in (await H.Client.get("/api/gallery")).json()["items"]]
+        assert len(Order) == 6
+        for View, Path_ in (("materials", "/materials"), ("technology", "/technology"), ("designers", "/about"), ("faq", "/faq")):
+            Live = _Live((await H.Client.get(Path_)).text, View)
+            At = SitePages.PageDesignOffsets[View] % 6
+            Want = (Order[At:] + Order[:At])[:4]
+            Links = re.findall(r'<li><a href="/gallery/([^"]+)">', Live[Live.index(SitePages.PageDesignsAnchor) - 2000:Live.index(SitePages.PageDesignsAnchor)])
+            assert Links == Want, (View, Links, Want)
+            assert 'x-for="g in pageDesigns"' in Live and "See every design" in Live, View
+        Page = (WebDir / "index.html").read_text(encoding="utf-8")
+        Js = (WebDir / "app.js").read_text(encoding="utf-8")
+        assert Page.count('<template x-for="g in pageDesigns"') == 4
+        Offsets = re.search(r"const PAGE_DESIGN_OFFSETS = \{([^}]*)\};", Js).group(1)
+        assert dict((K.strip(), int(V)) for K, V in (X.split(":") for X in Offsets.split(","))) == SitePages.PageDesignOffsets
+        for Other in ("/", "/gallery", "/contact"):
+            assert SitePages.PageDesignsAnchor not in _Live((await H.Client.get(Other)).text, {"/": "home", "/gallery": "inspiration", "/contact": "contact"}[Other])
+        # alt text: what the picture is, everywhere a gallery design is shown, and on its own page
+        assert Page.count(':alt="galleryAlt(g, cardMetal[g.id])"') == 3 and ':alt="galleryAlt(galleryItem, galleryMetal)"' in Page
+        assert "design from the XJet Atelier Inspiration Gallery`" in Js
+        Design = (await H.Client.get(f"/gallery/{Order[0]}")).text
+        assert re.search(r'alt="[^"]+ — custom ring design from the XJet Atelier Inspiration Gallery"', Design)
+        assert '<h1 class="text-4xl brand-font mb-4">Inspiration Gallery</h1>' in _Live((await H.Client.get("/gallery")).text, "inspiration")
     finally:
         await H.Close()

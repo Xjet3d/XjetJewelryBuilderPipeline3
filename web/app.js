@@ -30,6 +30,8 @@ const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'de
 // Each page's URL under the base path (p3/sitepages.py Paths): /gallery, /faq … ('' = the home page)
 const PAGE_PATHS = { home: '', inspiration: 'gallery', faq: 'faq', materials: 'materials', technology: 'technology', designers: 'about',
                      'shipping-returns': 'shipping-returns', terms: 'terms', privacy: 'privacy', contact: 'contact' };
+// The designs each page shows at its foot start at this place in the gallery's order (p3/sitepages.py PageDesignOffsets)
+const PAGE_DESIGN_OFFSETS = { materials: 0, technology: 4, designers: 8, faq: 12 };
 // The page the server rendered: its view is in the HTML as real markup (a copy that leaves when the visitor moves on)
 const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'home';
 // The products on offer as the server rendered the page — the app's until the catalog says so itself, so the Gallery's
@@ -545,6 +547,20 @@ function p3App() {
     galleryHref(g) { return g && g.slug ? BASE + '/gallery/' + encodeURIComponent(g.slug) : BASE + '/gallery'; },
     _isGalleryPath(p) { return (p || '').startsWith(BASE + '/gallery/'); },
     _galleryTitle(g) { return `${g.title} · Custom ${g.product_type === 'charm' ? 'Charm' : 'Ring'} Design · XJet Atelier`; },
+    // Four real designs at the foot of About, Materials, Technology and FAQ, each a link to its own page: a different four
+    // on each page, in the gallery's order (p3/sitepages.py PageDesignOffsets lists the same in the page as served)
+    get pageDesigns() {
+      const at = PAGE_DESIGN_OFFSETS[this.view], all = this.gallery || [];
+      if (at === undefined || !all.length) return [];
+      const from = at % all.length;
+      return [...all.slice(from), ...all.slice(0, from)].slice(0, 4);
+    },
+    // A gallery design's picture in words (its alt text, as the design's page says it: p3/app.py): its name, what it is,
+    // where it is from, and the metal it is previewed in
+    galleryAlt(g, metal = '') {
+      return `${g.title} — custom ${g.product_type === 'charm' ? 'charm' : 'ring'} design from the XJet Atelier Inspiration Gallery`
+        + (metal ? `, shown in ${this.galleryMetalLabel(metal)}` : '');
+    },
     // A design of a product switched OFF (the owner's policy, 2026-10-15): viewable, read-only — no Make it yours,
     // refining, Customize or ordering, whichever way it was opened; the server refuses them too (design_unavailable)
     isOff(g) { return !!g && g.available === false; },

@@ -48,13 +48,15 @@ async def test_lastmod_is_the_date_each_pages_own_content_last_changed(tmp_path)
         H.Ctx.Db.Execute("UPDATE page_lastmod SET changed_at = ?", (Old,))
         assert set((await _Map(H)).values()) == {"2020-01-01T00:00:00+00:00"}
         assert set((await _Map(H)).values()) == {"2020-01-01T00:00:00+00:00"}
-        # one design renamed: its page moves, and the pages that list the designs (home, gallery); the others stay
+        # one design renamed: its page moves, and the pages that list the designs (home, gallery, and About, Materials,
+        # Technology and FAQ, which end with four of them); the others stay
         R = await H.Client.patch(f"/api/admin/designs/{D1}", json={"title": "Aurora Lattice"}, headers=Admin)
         assert R.status_code == 200, R.text
         Map = await _Map(H)
         Moved = {U for U, V in Map.items() if V != "2020-01-01T00:00:00+00:00"}
-        assert Moved == {Design1, f"{Base}/", f"{Base}/gallery"}, Moved
-        assert Design2 not in Moved and f"{Base}/faq" not in Moved and f"{Base}/terms" not in Moved
+        assert Moved == {Design1, f"{Base}/", f"{Base}/gallery", f"{Base}/about", f"{Base}/materials", f"{Base}/technology",
+                         f"{Base}/faq"}, Moved
+        assert Design2 not in Moved and f"{Base}/terms" not in Moved and f"{Base}/contact" not in Moved
     finally:
         await H.Close()
 

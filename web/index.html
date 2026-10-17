@@ -446,7 +446,7 @@
                     <template x-for="g in homeGallery" :key="g.id">
                         <div class="relative group">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                             <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </a>
@@ -582,8 +582,8 @@
     <template x-if="view === 'inspiration'">
         <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
             <div class="max-w-4xl mx-auto text-center mb-16">
-                <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Gallery</span>
-                <h1 class="text-4xl brand-font mb-4">What Will You Create?</h1>
+                <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">What Will You Create?</span>
+                <h1 class="text-4xl brand-font mb-4">Inspiration Gallery</h1>
                 <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="galleryIntro"></p>
             </div>
             <div x-show="productsOn" x-cloak class="flex justify-center mb-8" role="group" aria-label="Show designs">
@@ -600,7 +600,7 @@
                 <template x-for="g in galleryShown" :key="g.id">
                     <div class="relative group">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                        <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                        <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                         <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                         <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                     </a>
@@ -640,6 +640,22 @@
                     <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Designing</button>
                 </div>
             </div>
+            <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
+                 four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+                <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
+                    <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
+                    <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-for="g in pageDesigns" :key="'pd' + g.id">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
+                            <img :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
+                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        </a>
+                    </template>
+                </div>
+            </section>
         </main>
     </template>
 
@@ -715,6 +731,22 @@
                     </div>
                 </div>
             </section>
+            <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
+                 four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+                <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
+                    <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
+                    <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-for="g in pageDesigns" :key="'pd' + g.id">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
+                            <img :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
+                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        </a>
+                    </template>
+                </div>
+            </section>
         </main>
     </template>
 
@@ -738,6 +770,22 @@
                     </figure>
                 </div>
             </div>
+            <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
+                 four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+                <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
+                    <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
+                    <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-for="g in pageDesigns" :key="'pd' + g.id">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
+                            <img :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
+                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        </a>
+                    </template>
+                </div>
+            </section>
         </main>
     </template>
 
@@ -812,6 +860,22 @@
             <section class="px-6 md:px-20 py-14 text-center">
                 <p class="text-[13px] text-zinc-500 mb-5">Unsure which metal suits you? <a :href="mailto('Which metal should I choose?')" class="underline underline-offset-2 hover:text-black">Ask our design team</a> — we reply within one business day.</p>
                 <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Designing</button>
+            </section>
+            <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
+                 four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+                <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
+                    <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
+                    <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-for="g in pageDesigns" :key="'pd' + g.id">
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
+                            <img :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
+                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        </a>
+                    </template>
+                </div>
             </section>
         </main>
     </template>
@@ -2597,7 +2661,7 @@
                     <template x-for="g in galleryShown" :key="g.id">
                         <div class="relative group">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="g.title + (cardMetal[g.id] ? ' shown in ' + galleryMetalLabel(cardMetal[g.id]) : '')" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
+                            <img :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
                             <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
                             <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
                         </a>
@@ -2628,7 +2692,7 @@
                 <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4 relative">
                     <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
                     <!-- Opens in the metal its card shows (the original by default); the swatches apply the metal filter to this preview only -->
-                    <img :srcset="srcsetFor(galleryItem.image_url)" sizes="(min-width: 768px) 490px, 85vw" :src="thumb(galleryItem.image_url, 800)" width="1024" height="1024" fetchpriority="high" decoding="async" :alt="galleryItem.title + (galleryMetal ? ' shown in ' + galleryMetalLabel(galleryMetal) : '')" class="gallery-shot object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
+                    <img :srcset="srcsetFor(galleryItem.image_url)" sizes="(min-width: 768px) 490px, 85vw" :src="thumb(galleryItem.image_url, 800)" width="1024" height="1024" fetchpriority="high" decoding="async" :alt="galleryAlt(galleryItem, galleryMetal)" class="gallery-shot object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
                     <div class="flex flex-col items-center gap-2">
                         <div class="flex flex-wrap items-center justify-center gap-2.5" role="radiogroup" aria-label="See it in another metal — preview only">
                             <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip" :class="!galleryMetal ? 'is-on' : ''">Original</button>
