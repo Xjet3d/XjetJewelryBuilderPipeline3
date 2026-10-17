@@ -245,3 +245,37 @@ async def test_several_sizes_and_materials_of_one_design_are_each_sent_with_thei
             assert not L["three_d_problems"]
     finally:
         await H.Close()
+
+
+async def test_the_selected_option_is_ordered_with_its_own_picture_version_movie_and_stl_never_another_option_s(tmp_path):
+    """ORD-10002 Aurora Curve: the line is the option the customer had selected (C there, A here), never silently another;
+    the option that has the model (B) is ordered with B's own picture, version, movie and STL."""
+    H = _On(tmp_path)
+    try:
+        B = await H.NewDesign("A curved band with a soft wave")
+        Did, OptA, OptB = B["design_id"], B["candidates"][0]["id"], B["candidates"][1]["id"]
+        H.Svc.Meshes.Create(OptB, None)                                          # the design's model is of option B
+        await H.Idle()
+        MeshB = H.Ctx.Db.One("SELECT id FROM meshes WHERE candidate_id = ? AND status = 'ready'", (OptB,))["id"]
+        await _InBag(H, Did, OptB, "silver", Size=9.5)                           # the customer selects B
+        OB = await _Place(H, "sel-b")
+        LB = _Admin(H, OB["id"])
+        assert LB["candidate_id"] == OptB and LB["ring_id"].endswith("-B") and f"/candidates/{OptB}." in LB["image_url"]
+        assert LB["pinned_mesh_id"] == MeshB and LB["three_d_version"]["mesh_id"] == MeshB and not LB["three_d_problems"]
+        assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM movies WHERE candidate_id = ?", (OptB,))["n"] >= 1     # B's own movie
+        await _Prepare(H, OB["id"], LB["id"])
+        assert (await _SendLine(H, OB["id"])).status_code == 200
+        Sid = H.Ctx.Db.One("SELECT three_d_id FROM fulfillment_line_production WHERE line_id = ?", (LB["id"],))["three_d_id"]
+        S = H.Ctx.Db.One("SELECT candidate_id, mesh_id FROM session_3d WHERE id = ?", (Sid,))
+        assert (S["candidate_id"], S["mesh_id"]) == (OptB, MeshB)                 # B's STL went to Production
+        await _InBag(H, Did, OptA, "silver", Size=9.5)                           # then the customer selects A: A is ordered
+        OA = await _Place(H, "sel-a")
+        LA = _Admin(H, OA["id"])
+        assert LA["candidate_id"] == OptA and LA["ring_id"].endswith("-A") and f"/candidates/{OptA}." in LA["image_url"]
+        assert LA["pinned_mesh_id"] is None and LA["three_d_version"] is None   # A has no model: never B's
+        assert (await _Verdict(H, OA["id"]))["stl"]["state"] == "other_option"
+        assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM movies WHERE candidate_id = ?", (OptA,))["n"] >= 1     # A's own movie
+        Page = (await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["artifacts"]
+        assert Page["ring_id"].endswith("-A") and Page["movie_ring_id"].endswith("-A") and Page["model_ring_id"].endswith("-B")
+    finally:
+        await H.Close()
