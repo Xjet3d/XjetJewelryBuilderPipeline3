@@ -14,11 +14,12 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "20c9490376740e0832ecc86129519e4d64cd57bd3a6639e2c07927f9eaec1972"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "a439290ade012fff9ff0e669506815e74491aea1cc4f9c7ffb192a22aa0bd40f"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)
 #   2026-10-12: the story's stage carries sc-stage from the first paint, so its room is kept before the scripts start (CLS)
+#   2026-10-17: the stage names its story (data-sc-design) and the story opens on its finished ring (startAt 'final': LCP)
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
