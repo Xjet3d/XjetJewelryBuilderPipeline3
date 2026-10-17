@@ -286,6 +286,10 @@ The customer path for fixed-price materials (Stainless Steel, Silver, Vermeil): 
   - `GET …/3d/{id}/export/{job}`;
   - `GET /api/admin/storage` (3D bytes and free disk; shown on the Dashboard, with no automatic deletion).
 
+### An outdated Admin page (2026-10-17)
+
+The Admin page carries its build (`p3-admin-build`, from its page and scripts on disk) and sends it with every request. After a release, a change sent from a page opened before it is refused — *This Admin page is out of date … nothing was changed* — and every answer tells the page the current build, so it shows **The Admin was updated on the server** with *Reload now*. Reading keeps working; scripts and tools (no build header) are not affected.
+
 ### Test orders
 
 An order whose customer is at a domain reserved for tests (`example.com`, `*.test`, `*.invalid` …: no real customer can have one) is a **test order**: a dashed *Test* badge on the Orders list, the order page and the Production page; the dashboard leaves it out of its figures (and says how many it left out); the customer gets no email from it (the confirmation, the quote emails and Fulfillment's notifications are recorded as skipped or suppressed), while the staff notification still goes out, marked `[TEST]`. Fulfillment receives the verdict (`order.test`) and marks the parts *TEST*.
