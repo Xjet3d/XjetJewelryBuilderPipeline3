@@ -38,6 +38,17 @@ Old="$(git rev-parse HEAD)"; New="$(git rev-parse "origin/$BRANCH")"
 [[ "$Old" == "$New" ]] && exit 0
 git merge-base --is-ancestor "$Old" "$New" || { echo "checkout has commits that are not on origin/$BRANCH ($Old): not deploying" >&2; exit 1; }
 [[ -f .auto-deploy.bad && "$(cat .auto-deploy.bad)" == "$New" ]] && { echo "$New failed to start before; waiting for a newer $BRANCH"; exit 0; }
+# Local edits to tracked files stop the deploy, loudly: a fast-forward would either refuse half-way or leave them outside
+# Git, and the rollback below (git reset --hard) would erase them. A copy goes to the backup dir first (once per distinct
+# change), so nothing is lost. Commit them through GitHub, then set the local copy aside and deploy
+# (docs/ATELIER-DRIFT-2026-10-16.md).
+if ! git diff --quiet HEAD --; then
+    mkdir -p "$P3_BACKUP_DIR"
+    Keep="$P3_BACKUP_DIR/local-changes-${Old:0:7}-$(git diff --binary HEAD -- | sha256sum | cut -c1-12).patch"
+    [[ -f "$Keep" ]] || git diff --binary HEAD -- > "$Keep"
+    echo "checkout has local changes to tracked files ($(git diff --name-only HEAD -- | tr '\n' ' ')), kept in $Keep: not deploying ${New:0:7}" >&2
+    exit 1
+fi
 
 echo "deploying ${Old:0:7} -> ${New:0:7}: $(git log -1 --format=%s "$New")"
 Busy="$(.venv/bin/python - <<'PY'

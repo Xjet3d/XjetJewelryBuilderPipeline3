@@ -90,7 +90,9 @@ line, in shell history or over the web.
    (`deploy/atelier/`) runs `scripts/auto-deploy-atelier.sh` every 2 minutes. When `atelier-production` moved, it backs
    up, fast-forwards, restarts, waits for the health answer and rolls back if there is none; a push to `main` changes
    nothing there. Backups (`scripts/backup.sh`) hard-link every unchanged asset file to the previous backup, so a backup
-   at every deploy costs only what changed.
+   at every deploy costs only what changed. Code is never edited in atelier's checkout: a local edit to a tracked file
+   makes the auto-deploy refuse (after keeping a copy in `~/p3-backups/local-changes-*.patch`) until it is committed
+   through GitHub and set aside, as `docs/ATELIER-DRIFT-2026-10-16.md` shows.
 2. **Gallery content: an explicit step, only with the owner's approval, whenever proto's approved Inspiration Gallery
    changed.** From a machine with ssh to tron and to atelier:
 

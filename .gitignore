@@ -5,8 +5,16 @@ var/
 *.db-shm
 *.log
 
-# Secrets / local config
+# Secrets / local config — and any copy of them (an .env backup in a server checkout must never be one git add away
+# from this public repository)
 .env
+.env.*
+!.env.example
+!.env.*.example
+*.bak
+*.bak-*
+*.secret
+backups/
 *.priv
 *.key
 config/pricing_profile.local.json
