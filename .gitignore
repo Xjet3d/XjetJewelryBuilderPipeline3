@@ -17,6 +17,9 @@ var/
 backups/
 *.priv
 *.key
+*.pem
+*.p12
+*.pfx
 config/pricing_profile.local.json
 
 # Python

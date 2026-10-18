@@ -642,7 +642,7 @@
             </div>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
@@ -772,7 +772,7 @@
             </div>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
@@ -2687,7 +2687,7 @@
 
     <!-- Inspiration Gallery lightbox: a shared XJet design; "Make it yours" links the customer to it -->
     <template x-if="galleryItem">
-        <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" @click.self="closeGallery('user')" @keydown.escape.window="closeGallery('user')" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
+        <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" tabindex="-1" style="outline:none" x-init="$nextTick(() => trapEnter($el))" @keydown.tab.window="trapTab($event, $el)" @click.self="closeGallery('user')" @keydown.escape.window="closeGallery('user')" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
             <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
                 <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4 relative">
                     <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>

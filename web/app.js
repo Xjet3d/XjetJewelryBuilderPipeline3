@@ -386,6 +386,7 @@ function p3App() {
     navigateTo(v, { history = 'push' } = {}) {
       if (this.previewOpen) this.closePreview();
       this.menuOpen = false; this.aboutOpen = false;
+      if (this.galleryItem) this.closeGallery('navigate');      // a gallery design open in front: the next screen replaces it
       if (v === 'ai-studio') this.sidebarTab = 'designs';                                // /design: the panel on My Designs
       this.view = v; this.panelRoute = '';
       this._route(history);                                                              // the screen's own address
@@ -420,7 +421,7 @@ function p3App() {
           history.replaceState({ ...(history.state || {}), p3Col: !!colLeft }, '');
           history.pushState({ p3Pushed: PAGE_LOAD, p3Prev: here }, '', to);
         } else {
-          const { p3Preview, ...kept } = history.state || {};                         // never a closed enlarged view's mark
+          const { p3Preview, p3PreviewOf, ...kept } = history.state || {};            // never a closed enlarged view's mark
           history.replaceState(kept, '', to);
         }
       } catch (_) {}
@@ -671,7 +672,9 @@ function p3App() {
     // takes the dialog's step). A close steps back when opening the dialog added the step, so Back and Forward stay in
     // order; otherwise the screen's own address takes its place.
     closeGallery(how = '') {
-      const wasOpen = !!this.galleryItem;
+      const wasOpen = !!this.galleryItem, back = this._trapReturn;
+      this._trapReturn = null;
+      if (wasOpen && how === 'user' && back && back.isConnected) try { back.focus({ preventScroll: true }); } catch (_) {}   // the card it was opened from
       this.galleryItem = null; this.galleryBusy = false;
       this._resumeStory();
       if (this._restoreTitle) { document.title = this._restoreTitle; this._restoreTitle = ''; }   // the page's own title again
@@ -682,6 +685,28 @@ function p3App() {
         else history.replaceState(null, '', this.routePath() || BASE + '/');
       } catch (_) {}
     },
+    // A dialog in front of the page (aria-modal) keeps the keyboard inside it: it takes the focus as it opens, Tab and
+    // Shift+Tab go round its own controls, and focus that has left it (to the page behind) comes back. Closing it by its
+    // own controls returns the focus to where it was. Used by the gallery design's dialog.
+    _focusables(root) {
+      return [...root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+    },
+    trapEnter(root) {
+      if (root.contains(document.activeElement)) return;
+      this._trapReturn = document.activeElement;
+      try { root.focus({ preventScroll: true }); } catch (_) {}
+    },
+    trapTab(e, root) {
+      const a = document.activeElement;
+      if (a && !root.contains(a) && a.closest('[aria-modal="true"]')) return;            // another dialog in front keeps its own
+      const f = this._focusables(root);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0], last = f[f.length - 1];
+      if (!root.contains(a) || a === root) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    },
     // Back / Forward: the address names the screen — a page, a step of the journey, My Account — and the gallery design
     // that is open; the screen in front follows it (the address already moved)
     _onHistory() {
@@ -689,6 +714,11 @@ function p3App() {
       if (this.previewOpen) {                                              // Back with it open: it closes, the screen stays
         this.closePreview('popstate');
         if (this.routePath() === location.pathname + location.hash) return;
+      }
+      const st = history.state;                                            // Forward onto its step after Back closed it: it opens again
+      if (st && st.p3Preview === PAGE_LOAD && st.p3PreviewOf && this.routePath() === location.pathname + location.hash) {
+        this._reopenPreview(st.p3PreviewOf);
+        return;
       }
       const p = location.pathname;
       if (this._isGalleryPath(p)) {
@@ -1807,9 +1837,23 @@ function p3App() {
       this.previewMedia = media; this.previewSrc = src; this.previewCandidate = candidate;
       this.previewResetZoom();
       if (!this.previewOpen) {
-        try { history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD }, '', location.pathname + location.search + location.hash); } catch (_) {}
-      }
+        try { history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD, p3PreviewOf: this._previewOf() }, '', location.pathname + location.search + location.hash); } catch (_) {}
+      } else this._previewMark();
       this.previewOpen = true;
+    },
+    // What the enlarged view shows is kept in its own history step, so Forward opens it again after Back closed it
+    _previewOf() { return { media: this.previewMedia, src: this.previewSrc, candidate: this.previewCandidate?.id || null }; },
+    _previewMark() {                                   // another option shown (arrows, swipe, a thumbnail): its step follows
+      try {
+        const s = history.state;
+        if (this.previewOpen && s && s.p3Preview === PAGE_LOAD) history.replaceState({ ...s, p3PreviewOf: this._previewOf() }, '');
+      } catch (_) {}
+    },
+    _reopenPreview(of) {                               // Forward onto the enlarged view's step: it opens on what it showed
+      const c = of.candidate ? (this.design?.batches || []).flatMap(b => b.candidates || []).find(x => x.id === of.candidate) || null : null;
+      this.previewMedia = of.media || 'image';
+      this.previewSrc = c && this.previewMedia === 'image' ? c.image_url : of.src;
+      this.previewCandidate = c; this.previewResetZoom(); this.previewOpen = true;
     },
     // how: 'user' (×, Escape, the backdrop: its step is taken back), 'popstate' (Back: the address already moved),
     // 'leave' (the app moves on: the next screen it opens takes the step, _route)
@@ -1827,9 +1871,9 @@ function p3App() {
     previewStep(delta) {
       const s = this.previewSiblings; if (s.length < 2) return;
       const c = s[(this.previewIndex + delta + s.length) % s.length];
-      this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom();
+      this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom(); this._previewMark();
     },
-    previewShow(c) { if (c?.status === 'ready') { this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom(); } },
+    previewShow(c) { if (c?.status === 'ready') { this.previewCandidate = c; this.previewSrc = c.image_url; this.previewResetZoom(); this._previewMark(); } },
     previewKey(ev) {
       if (!this.previewOpen || this.previewMedia !== 'image') return;
       if (ev.key === 'ArrowRight') this.previewStep(1);

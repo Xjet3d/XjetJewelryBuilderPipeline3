@@ -350,6 +350,12 @@ async def test_four_gallery_designs_close_about_materials_technology_and_faq(tmp
         Page = (WebDir / "index.html").read_text(encoding="utf-8")
         Js = (WebDir / "app.js").read_text(encoding="utf-8")
         assert Page.count('<template x-for="g in pageDesigns"') == 4
+        # room above the four (2026-10-18): FAQ and Technology end on content with no space of its own below it
+        Strip = '<section x-show="pageDesigns.length" class="px-6 md:px-20 {}pb-16 max-w-6xl mx-auto w-full"'
+        assert Page.count(Strip.format("pt-14 ")) == 2 and Page.count(Strip.format("")) == 2
+        for View, Path_ in (("faq", "/faq"), ("technology", "/technology")):         # the page as served (x-cloak added)
+            Live = _Live((await H.Client.get(Path_)).text, View)
+            assert 'class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery"' in Live, View
         Offsets = re.search(r"const PAGE_DESIGN_OFFSETS = \{([^}]*)\};", Js).group(1)
         assert dict((K.strip(), int(V)) for K, V in (X.split(":") for X in Offsets.split(","))) == SitePages.PageDesignOffsets
         for Other in ("/", "/gallery", "/contact"):

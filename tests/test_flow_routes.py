@@ -180,7 +180,7 @@ def test_back_closes_the_enlarged_view_and_a_cleared_design_breaks_nothing():
     Js = (WebDir / "app.js").read_text(encoding="utf-8")
     Page = (WebDir / "index.html").read_text(encoding="utf-8")
     Open = Js[Js.index("    openPreview(media, src, candidate = null) {"):Js.index("    get previewSiblings() {")]
-    assert "history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD }, '', location.pathname + location.search + location.hash);" in Open
+    assert "history.pushState({ ...(history.state || {}), p3Preview: PAGE_LOAD, p3PreviewOf: this._previewOf() }, '', location.pathname + location.search + location.hash);" in Open
     assert "closePreview(how = 'leave') {" in Open
     assert "if (how === 'user' && history.state && history.state.p3Preview === PAGE_LOAD) { this._previewBack = true; history.back(); }" in Open
     Hist = Js[Js.index("    _onHistory() {"):Js.index("    async _openFlow(flow, {")]
@@ -188,7 +188,7 @@ def test_back_closes_the_enlarged_view_and_a_cleared_design_breaks_nothing():
     assert "if (this.routePath() === location.pathname + location.hash) return;" in Hist
     Route = Js[Js.index("    _route(how = 'push', colLeft = this.sidebarOpen) {"):Js.index("    _goBackOr(v) {")]
     assert "if (how === 'push' && history.state && history.state.p3Preview === PAGE_LOAD) {" in Route
-    assert "const { p3Preview, ...kept } = history.state || {};" in Route
+    assert "const { p3Preview, p3PreviewOf, ...kept } = history.state || {};" in Route
     Overlay = Page[Page.index('<template x-if="previewOpen">'):Page.index("</template>", Page.index('<template x-if="previewOpen">'))]
     assert Overlay.count("closePreview('user')") == 3 and "closePreview()" not in Overlay
     assert Page.count("closePreview('user')") == 5
@@ -197,3 +197,34 @@ def test_back_closes_the_enlarged_view_and_a_cleared_design_breaks_nothing():
     assert "const n = (this.design?.batches || []).filter(x => x.kind === 'refine').indexOf(b) + 1;" in Js
     Label = Js[Js.index("    batchLabel(b) {"):Js.index("    get quotaText() {")]
     assert "this.design.batches" not in Label                                           # (the polling tick checks first)
+
+
+def test_forward_reopens_the_enlarged_view_and_the_gallery_dialog_keeps_the_keyboard():
+    """Small fixes after the Atelier release (2026-10-18). Forward after Back closed the enlarged view opens it again on
+    what it showed (its history step keeps it), so no Back is spent on an empty step. Another screen opened while a
+    gallery design's dialog is open closes the dialog first, so the next page view has the new screen's address (it kept
+    the design's when Tab reached a header link behind the dialog). The dialog keeps the keyboard inside it: it takes the
+    focus as it opens, Tab and Shift+Tab go round its controls, and closing it by its own controls returns the focus."""
+    Js = (WebDir / "app.js").read_text(encoding="utf-8")
+    Page = (WebDir / "index.html").read_text(encoding="utf-8")
+    Open = Js[Js.index("    openPreview(media, src, candidate = null) {"):Js.index("    get previewSiblings() {")]
+    assert "_previewOf() { return { media: this.previewMedia, src: this.previewSrc, candidate: this.previewCandidate?.id || null }; }" in Open
+    assert "} else this._previewMark();" in Open and "history.replaceState({ ...s, p3PreviewOf: this._previewOf() }, '');" in Open
+    assert "this.previewCandidate = c; this.previewResetZoom(); this.previewOpen = true;" in Open           # no new step
+    Step = Js[Js.index("    previewStep(delta) {"):Js.index("    previewKey(ev) {")]
+    assert Step.count("this._previewMark();") == 2                                       # arrows and a thumbnail
+    Hist = Js[Js.index("    _onHistory() {"):Js.index("    async _openFlow(flow, {")]
+    Reopen = "if (st && st.p3Preview === PAGE_LOAD && st.p3PreviewOf && this.routePath() === location.pathname + location.hash) {"
+    assert Hist.index("this.closePreview('popstate');") < Hist.index(Reopen) < Hist.index("const p = location.pathname;")
+    assert "this._reopenPreview(st.p3PreviewOf);" in Hist
+    Nav = Js[Js.index("    navigateTo(v, { history = 'push' } = {}) {"):Js.index("    pageUrl(v) {")]
+    assert Nav.index("if (this.galleryItem) this.closeGallery('navigate');") < Nav.index("this.view = v;")
+    Close = Js[Js.index("    closeGallery(how = '') {"):Js.index("    // A dialog in front of the page (aria-modal)")]
+    assert "if (wasOpen && how === 'user' && back && back.isConnected)" in Close
+    Trap = Js[Js.index("    trapTab(e, root) {"):Js.index("    _onHistory() {")]
+    assert "if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }" in Trap
+    assert "if (!root.contains(a) || a === root) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }" in Trap
+    Dialog = Page[Page.index('<template x-if="galleryItem">'):Page.index('<template x-if="galleryItem">') + 600]
+    for Part in ('tabindex="-1"', 'x-init="$nextTick(() => trapEnter($el))"', '@keydown.tab.window="trapTab($event, $el)"',
+                 'role="dialog" aria-modal="true"'):
+        assert Part in Dialog, Part
