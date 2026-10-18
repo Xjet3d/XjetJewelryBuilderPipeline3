@@ -2387,8 +2387,8 @@
                     <!-- Sign in -->
                     <form x-show="regMode === 'signin' && !regInfo" @submit.prevent="submitSignIn()" novalidate>
                         <div class="mb-4">
-                            <label for="si-email" class="flbl">Email or username</label>
-                            <input id="si-email" x-model="regForm.email" type="text" required :disabled="regLoading" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="you@example.com" class="fld">
+                            <label for="si-email" class="flbl">Email</label>
+                            <input id="si-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="username" inputmode="email" placeholder="you@example.com" class="fld">
                         </div>
                         <div class="mb-2">
                             <label for="si-password" class="flbl">Password</label>

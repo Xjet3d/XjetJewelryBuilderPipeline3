@@ -974,9 +974,8 @@ function p3App() {
       this.regLoading = true; this.regError = ''; this.regInfo = ''; this.regUnverified = false;
       try { await fn(); } catch (E) { this.regError = E.message; this.regUnverified = E.code === 'email_unverified'; } finally { this.regLoading = false; }
     },
-    // Sign-in and new accounts for the analytics tools, by the way they were made: login (password — an email or a
-    // username —, Google, Apple; the six-letter code and its link before them) and sign_up (Google, Apple, or an email
-    // confirmed by its link). A return from Google, Apple or an emailed link names it through the server's session.
+    // Sign-in and new accounts for the analytics tools, by the way they were made: login (password, Google, Apple;
+    // the six-letter code and its link before them) and sign_up (Google, Apple, or an email confirmed by its link). A return from Google, Apple or an emailed link names it through the server's session.
     _measureSignIn(created) {
       const m = this._authMethod;
       const method = m === 'google' || m === 'apple' ? m : m === 'password' ? (created ? 'email' : 'password') : '';

@@ -139,7 +139,6 @@ def NormalizeEmail(Email: str | None) -> str:
 
 
 EmailPattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-UsernamePattern = re.compile(r"^[a-z0-9][a-z0-9._-]{1,39}$")
 
 
 def IsRelayEmail(Email: str | None) -> bool:
@@ -384,24 +383,6 @@ class IdentityStore:
             if EmailVerified:
                 self.MarkPasswordEmailVerified(AccountId)
         self.Accounts._Event(AccountId, "password_set", "")
-
-    def SetUsernamePassword(self, Username: str, Password: str, Name: str = "") -> tuple[str, bool]:
-        """Operator-made login by a plain username (no email, no mail ever sent to it): (account_id, created). The username is
-        stored as the password identity's sign-in name, so VerifyPassword and the rate limits treat it like an address. It has no
-        "@", so it can never equal an address a customer can register, and self-registration cannot make one."""
-        Username = NormalizeEmail(Username)
-        if not UsernamePattern.match(Username):
-            raise IdentityError("invalid_username", "A username is 2-40 letters, digits, dots, dashes or underscores, with no @.")
-        Problem = PasswordProblem(Password, Username)
-        if Problem:
-            raise IdentityError("weak_password", Problem)
-        Row = self.PasswordIdentity(Username)
-        Created = Row is None
-        AccountId = Row["account_id"] if Row else self.CreateAccount(Name or Username, None, True)
-        self.SetPassword(AccountId, Password, Username, False)      # False: "verified" would copy the name into accounts.email
-        self.Db.Execute("UPDATE login_identities SET email_verified = 1 WHERE account_id = ? AND provider = 'password'", (AccountId,))
-        self.Accounts._Event(AccountId, "username_login_set", "")
-        return AccountId, Created
 
     def VerifyPassword(self, Email: str, Password: str) -> dict:
         """{"account_id", "verified"} for a right password, else raises IdentityError('invalid'). Unknown addresses cost the

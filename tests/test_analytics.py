@@ -274,8 +274,8 @@ def test_the_banner_names_no_tool_and_marketing_is_shown_as_not_used():
 
 
 def test_sign_ins_and_new_accounts_name_their_method_and_an_order_is_no_purchase():
-    """web/app.js, web/consent.js, web/authpage.html (2026-10-17): login and sign_up for every way in — a password (an
-    email or a username), Google, Apple, the six-letter code and its link — and sign_up when Google or Apple made the
+    """web/app.js, web/consent.js, web/authpage.html (2026-10-17): login and sign_up for every way in — a password,
+    Google, Apple, the six-letter code and its link — and sign_up when Google or Apple made the
     account or its email was confirmed by its link; the method of a return from Google, Apple or an emailed link is
     the server's session's. An order placed sends order_created, never "purchase": no payment is taken online yet, and
     "purchase" is kept for a payment received."""

@@ -194,7 +194,7 @@ and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
 | Event | When | Fields |
 |---|---|---|
 | `sign_up` | a new account: made with Google or Apple, or its email confirmed by its link (the six-letter code's registration: when sent) | `method` (email · google · apple) |
-| `login` | signed in: a password (an email or a username), Google, Apple, the six-letter code or its link | `method` (password · google · apple · code · link) |
+| `login` | signed in: a password, Google, Apple, the six-letter code or its link | `method` (password · google · apple · code · link) |
 | `design_session_started` | a new design journey (a first prompt, or a gallery design) | `product_type`, `entry` (home · gallery) |
 | `prompt_submitted` | a description or a change is sent | `product_type`, `kind` (new · refine), `has_reference_image`, `prompt_length` (short · medium · long) — never the text |
 | `design_generation_started` / `_completed` / `_failed` | generation accepted / finished while watched / refused or failed | `product_type`, `kind` (new · refine · retry), `options_ready`, `options_failed`, `duration_s`, `reason` (content_policy · prompt_refused · no_credits · provider · error) |
