@@ -411,9 +411,12 @@ def JsonLd(*Objects: dict) -> str:
                    + json.dumps(O, ensure_ascii=False).replace("</", "<\\/") + "</script>" for O in Objects)
 
 
+XJetHome = "https://xjet3d.com/"          # XJet's own site as it answers (www.xjet3d.com redirects here: one hop less)
+
+
 def Organization(Home: str, SupportEmail: str = "") -> dict:
     Out = {"@context": "https://schema.org", "@type": "Organization", "@id": Home + "#organization", "name": "XJet Ltd.",
-           "url": "https://www.xjet3d.com/", "brand": {"@type": "Brand", "name": "XJet Atelier"}}
+           "url": XJetHome, "brand": {"@type": "Brand", "name": "XJet Atelier"}}
     if SupportEmail:
         Out["contactPoint"] = {"@type": "ContactPoint", "contactType": "customer support", "email": SupportEmail}
     return Out
@@ -435,7 +438,7 @@ def DesignWork(Title: str, Url: str, Image: str, Description: str, Product: str)
     rating — a Product without one is only reported invalid, and a price is never invented to satisfy it."""
     return {"@context": "https://schema.org", "@type": "CreativeWork", "name": Title, "url": Url, "image": [Image],
             "description": Description, "genre": Products.Plurals.get(Product, "Rings"), "inLanguage": "en",
-            "creator": {"@type": "Organization", "name": "XJet Ltd.", "url": "https://www.xjet3d.com/"}}
+            "creator": {"@type": "Organization", "name": "XJet Ltd.", "url": XJetHome}}
 
 
 def Breadcrumbs(*Steps: tuple[str, str]) -> dict:

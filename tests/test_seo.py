@@ -148,6 +148,42 @@ async def test_crawlers_read_each_page_without_running_scripts(tmp_path):
         await H.Close()
 
 
+async def test_no_page_carries_an_email_address_for_cloudflare_to_rewrite(tmp_path):
+    """Atelier's Cloudflare rewrites an email address in a page's markup into a /cdn-cgi/l/email-protection link, which
+    answers 404 to every crawler (19 Oct; browsers decode it). The address reaches a page only in its settings (a
+    script) and every link is built from it: the privacy sentence too, so it follows the address set in the Admin.
+    Cloudflare rewrites addresses in the text and in mailto: links only (a field's placeholder is left as it is)."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Share = await _Publish(H)
+        Address = re.compile(r"[\w.+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}", re.I)
+        for Path_ in [*SitePages.Paths.values(), f"gallery/{Share['slug']}"]:
+            Page = (await H.Client.get("/" + Path_)).text
+            Markup = re.sub(r"<(script|style)\b.*?</\1>", "", Page, flags=re.S)
+            Text = [T for T in re.findall(r">([^<]+)<", Markup) if Address.search(T)]
+            assert not Text and 'href="mailto:' not in Markup, (Path_, Text[:2])
+        Privacy = _Live((await H.Client.get("/privacy")).text, "privacy")
+        assert ("""write to <a :href="mailto('Privacy question')" class="underline underline-offset-2 hover:text-black" """
+                """x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a>.""") in Privacy
+    finally:
+        await H.Close()
+
+
+async def test_links_to_xjet_go_straight_to_its_site(tmp_path):
+    """www.xjet3d.com answers 301 to https://xjet3d.com/ (the 19 Oct crawl): the page and its structured data link there
+    directly."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Share = await _Publish(H)
+        for Path_ in ("", f"gallery/{Share['slug']}"):
+            Page = (await H.Client.get("/" + Path_)).text
+            assert "www.xjet3d.com" not in Page and 'href="https://xjet3d.com/"' in Page, Path_
+            Orgs = [D.get("creator") or D for D in _JsonLd(Page) if D.get("@type") in ("Organization", "CreativeWork")]
+            assert Orgs and all(O["url"] == "https://xjet3d.com/" for O in Orgs), Path_
+    finally:
+        await H.Close()
+
+
 async def test_the_admin_switch_lets_search_engines_index_the_public_pages(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey, PublicBaseUrl="https://atelier.example.com", BasePath="/JewelryB2C3")
     try:

@@ -239,7 +239,8 @@ async def test_the_privacy_page_tells_customers_what_is_used_with_no_draft_notic
                      "Analytics &amp; Performance — only with your consent.", "Google Analytics 4", "Microsoft Clarity",
                      "configured to mask sensitive information", "Atelier does not currently use marketing or advertising cookies.",
                      ">Technology<", ">Purpose<", ">How long<", "Cookies: up to 2 years. Detailed data: 14 months.",
-                     "Session recordings: 30 days", "View technical cookie names", ">_ga<", ">_clck<", ">_clsk<", "atelier@xjet3d.com"):
+                     "Session recordings: 30 days", "View technical cookie names", ">_ga<", ">_clck<", ">_clsk<",
+                     """<a :href="mailto('Privacy question')" """, "x-text=\"SUPPORT_EMAIL || "):
             assert Text in Live, Text
         Names = Live[Live.index("View technical cookie names"):]
         assert Live.index(">Technology<") < Live.index("View technical cookie names") and ">atelier_session<" in Names
