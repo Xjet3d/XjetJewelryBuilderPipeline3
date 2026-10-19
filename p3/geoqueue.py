@@ -24,6 +24,7 @@ Priority = {"export": 10, "fix_bore": 15, "fix_bore_proposal": 15, "measure": 20
 MaxAttempts = 2
 JobTimeoutS = 1800
 ExportTtlS = 3600
+CodeDir = Path(__file__).resolve().parent.parent   # holds the p3 package: the worker runs there (python -m finds p3 by it)
 
 
 def WorkerCommand() -> list[str]:
@@ -146,7 +147,9 @@ class GeometryQueue:
         Error, Result = None, None
         try:
             Env = {**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
-            Proc = await asyncio.create_subprocess_exec(*WorkerCommand(), str(ArgsPath), env=Env,
+            # In the code's directory, not the server's: a server whose directory was moved away under it (proto's
+            # /home went to a new disk on 19 Oct) otherwise starts workers that cannot find p3, until it restarts.
+            Proc = await asyncio.create_subprocess_exec(*WorkerCommand(), str(ArgsPath), env=Env, cwd=str(CodeDir),
                                                         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             try:
                 _, Err = await asyncio.wait_for(Proc.communicate(), JobTimeoutS)

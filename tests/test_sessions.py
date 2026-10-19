@@ -397,6 +397,20 @@ async def test_geometry_failure_retries_locally_without_another_hi3d_call(HS, mo
     assert len(H.Provider.SubmissionsFor(endpoints.Mesh)) == 1
 
 
+async def test_the_geometry_worker_runs_from_the_code_wherever_the_server_runs(HS, monkeypatch, tmp_path):
+    # 19 Oct on proto: the server's directory was moved under it, and every worker failed with "No module named 'p3'"
+    # (python -m finds p3 through its working directory). From any directory, the worker still measures.
+    H = HS
+    Away = tmp_path / "elsewhere"
+    Away.mkdir()
+    monkeypatch.chdir(Away)
+    Batch = await H.NewDesign("Plain band")
+    T = (await H.Client.post(f"/api/admin/sessions/{Batch['design_id']}/3d", json={}, headers=Admin)).json()
+    await H.Idle()
+    St = (await H.Client.get(f"/api/admin/3d/{T['id']}/status", headers=Admin)).json()
+    assert St["status"] == "measured", St.get("error")
+
+
 async def test_persistent_queue_position_cancel_and_restart_recovery(HS, monkeypatch):
     H = HS
     Q = H.App.state.Services.Geometry
