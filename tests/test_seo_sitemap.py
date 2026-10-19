@@ -181,7 +181,7 @@ async def test_a_design_page_preloads_its_lightbox_picture_and_its_crawler_pictu
         assert (f'<link rel="preload" as="image" href="{Thumb}?w=800" imagesrcset="{Set}" '
                 f'imagesizes="{SitePages.LightboxSizes}" fetchpriority="high">') in Page
         Crawler = re.search(r"<div data-ssr-fallback[^>]*>.*?</div>", Page, re.S).group(0)
-        assert re.search(r'<img src="[^"]+" alt="[^"]+" loading="lazy">', Crawler)        # hidden: never fetched by a browser
+        assert re.search(r'<img src="[^"]+" alt="[^"]+" width="800" height="800" loading="lazy">', Crawler)   # hidden: never fetched by a browser; its size for crawlers
         assert "loading=\"lazy\"" not in Page.split("<body", 1)[0]                           # the preload itself is not lazy
     finally:
         await H.Close()

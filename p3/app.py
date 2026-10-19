@@ -622,8 +622,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         DescriptionText = (f"{Found['title']} — a {Noun} designed with XJet Atelier, from the Inspiration Gallery. "
                            + (Products.UnavailableText if Off else "See it in 360°, choose your metal and make it yours."))
         Description = html.escape(DescriptionText, quote=True)
-        Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"
-                                       f'<img src="{Image}" alt="{Title} — custom {Noun} design from the XJet Atelier Inspiration Gallery" loading="lazy">'
+        Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"   # the picture: square, 800 x 800
+                                       f'<img src="{Image}" alt="{Title} — custom {Noun} design from the XJet Atelier Inspiration Gallery" width="800" height="800" loading="lazy">'
                                        f'<p><a href="{html.escape(Base, quote=True)}/gallery">See every design in the Inspiration Gallery</a></p>')
         Html = RenderPage(request, "inspiration", Design={"block": Block, "anchor": SitePages.GalleryAnchor, "slug": Found["slug"]})
         SiteTitle = html.unescape(re.search(r"<title>(.*?)</title>", Html, re.S).group(1))     # the Gallery's, after the dialog
