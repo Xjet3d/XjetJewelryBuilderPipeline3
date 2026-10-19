@@ -189,7 +189,7 @@ async def test_a_design_page_preloads_its_lightbox_picture_and_its_crawler_pictu
 
 def test_public_images_carry_descriptive_alt_text():
     Page = (WebDir / "index.html").read_text(encoding="utf-8")
-    Ink = re.search(r'<img src="\{\{BASE\}\}/static/images/Ink\.JPG" alt="([^"]*)"', Page).group(1)
+    Ink = re.search(r'<img (?:width="\d+" height="\d+" )?src="\{\{BASE\}\}/static/images/Ink\.JPG" alt="([^"]*)"', Page).group(1)
     assert Ink == "Bottles of XJet NanoParticle Jetting metal and support materials"
     Js = (WebDir / "showcase.js").read_text(encoding="utf-8")
     assert "img.alt = 'Design option ' + (+el.dataset.k + 1);" in Js and "X.orig.alt = S.title ?" in Js
