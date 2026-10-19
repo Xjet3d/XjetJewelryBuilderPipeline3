@@ -205,6 +205,17 @@ async def test_the_hero_tells_a_story_only_where_its_movie_may_be_shown(HG):
     assert "if (A.still && A.still.image_url) showStill(A.still);" in Js
 
 
+async def test_a_browser_that_cannot_play_the_movie_fetches_no_video(HG):
+    """The clip and the movie are H.264 in MP4. PageSpeed Insights' browser cannot play them: it fetched the clip,
+    failed on it and then fetched the whole 8 MB movie (19 Oct). The engine asks the browser first and shows the stills;
+    only a clip that fails to load falls back to the whole movie, where it can play and on a large screen."""
+    Js = (await HG.Client.get("/static/showcase.js")).text
+    assert """const playable = !v.canPlayType || v.canPlayType('video/mp4; codecs="avc1.64001F"') !== '';""" in Js
+    assert "if (playable) v.src = S.clip_url ? S.clip_url.replace('w=720', sm ? 'w=480' : 'w=720') : S.movie_url;" in Js
+    assert "v.onerror = () => { if (!fellBack && playable && !sm && S.movie_url) { fellBack = true; v.src = S.movie_url; v.load(); } };" in Js
+    assert Js.count("v.src = S.movie_url") == 1                     # the fallback is the only other way to the whole movie
+
+
 async def test_the_homepage_story_opens_on_its_finished_ring_at_once(HG):
     """Home LCP (2026-10-17): the story's finished ring is its largest picture; the homepage brings the story with it
     (no request after the app's first calls) and fetches that picture with its first files, at the sizes showcase.js

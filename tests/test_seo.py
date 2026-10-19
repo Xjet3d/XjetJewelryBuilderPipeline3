@@ -169,6 +169,22 @@ async def test_no_page_carries_an_email_address_for_cloudflare_to_rewrite(tmp_pa
         await H.Close()
 
 
+def test_pictures_of_a_known_shape_carry_their_size():
+    """PageSpeed Insights and Screaming Frog flagged pictures without width and height (19 Oct). Every design picture
+    (square), the static pictures and the boxes a picture fills carry theirs, so the browser knows their shape before
+    they load. Only the pictures shown at their own size, which varies, do not: the zoom, the full Customize picture and
+    the enlarged view."""
+    Tag = re.compile(r"""<img\b(?:[^>"']|"[^"]*"|'[^']*')*>""")                   # a ">" inside a quoted value is no end
+    Imgs = Tag.findall((WebDir / "index.html").read_text(encoding="utf-8"))
+    Missing = [I for I in Imgs if not re.search(r"\swidth=", I)]
+    assert len(Missing) == 3 and all(any(K in I for K in (':src="zoom?.src"', ':src="cust?.image_url"', ':src="previewSrc"'))
+                                     for I in Missing), Missing
+    for Name, (W, H) in {"Ink.JPG": (658, 508), "ISO.png": (242, 114), "Angel.JPG": (430, 681),
+                         "atelier-loading-poster.jpg": (1152, 720)}.items():
+        assert any(Name in I and f'width="{W}" height="{H}"' in I for I in Imgs), Name
+    assert all(re.search(r'width="(\d+)" height="\1"', I) for I in Imgs if "thumb(" in I)        # design pictures: square
+
+
 async def test_links_to_xjet_go_straight_to_its_site(tmp_path):
     """www.xjet3d.com answers 301 to https://xjet3d.com/ (the 19 Oct crawl): the page and its structured data link there
     directly."""

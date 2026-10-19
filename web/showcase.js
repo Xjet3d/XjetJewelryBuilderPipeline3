@@ -296,8 +296,12 @@
             const v = X.video;
             v.muted = true; v.defaultMuted = true; v.loop = false; v.playsInline = true;
             v.onloadedmetadata = () => { VOFF = Math.max(0, (v.duration || VCOVER) - VCOVER - 0.03); try { v.currentTime = VOFF; } catch (_) {} };
-            v.onerror = () => { if (!fellBack && S.movie_url) { fellBack = true; v.src = S.movie_url; v.load(); } };     // no clip: the whole movie
-            v.src = S.clip_url ? S.clip_url.replace('w=720', sm ? 'w=480' : 'w=720') : S.movie_url;
+            // The clip and the movie are H.264 in MP4. A browser that cannot play that (PageSpeed Insights' among them, 19
+            // Oct: it fetched the clip, failed on it and then fetched the whole 8 MB movie) shows the stills and fetches no
+            // video. A clip that fails to load falls back to the whole movie only where it can play, on a large screen.
+            const playable = !v.canPlayType || v.canPlayType('video/mp4; codecs="avc1.64001F"') !== '';
+            v.onerror = () => { if (!fellBack && playable && !sm && S.movie_url) { fellBack = true; v.src = S.movie_url; v.load(); } };
+            if (playable) v.src = S.clip_url ? S.clip_url.replace('w=720', sm ? 'w=480' : 'w=720') : S.movie_url;
             const shown = [['Silver', (S.metals || []).find(m => m.id === 'silver')], ['18K Yellow Gold', (S.metals || []).find(m => m.id === 'gold_18k_yellow')]].filter(x => x[1]);
             X.metals.innerHTML = '';
             chips = shown.map(([label, m]) => { const c = document.createElement('span'); c.className = 'sc-metal'; c.innerHTML = `<i style="background:${m.swatch}"></i>`; c.append(label); X.metals.appendChild(c); return c; });
