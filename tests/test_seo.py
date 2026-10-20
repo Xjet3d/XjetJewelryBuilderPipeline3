@@ -374,7 +374,8 @@ async def test_the_materials_page_keeps_its_cards_room_until_the_catalog_answers
         assert 'x-cloak x-show="!catalog"' not in Live                                           # visible from the first paint
         Css = (WebDir / "index.html").read_text(encoding="utf-8")
         for Rule in (".material-ph { height: 445px; }", ".gold-ph { height: 240px; }",               # re-measured 2026-10-20
-                     "@media (min-width: 1150px) { .material-ph { height: 464px; } }", "@media (min-width: 1280px) { .gold-ph { height: 232px; } }"):
+                     "@media (min-width: 1150px) { .material-ph { height: 464px; } .material-ph.ph-charm { height: 497px; } }",
+                     "@media (min-width: 1280px) { .gold-ph { height: 232px; } }"):
             assert Rule in Css, Rule
         for Other in ("/", "/gallery", "/faq"):
             assert '<div class="material-ph"></div>' not in (await H.Client.get(Other)).text, Other

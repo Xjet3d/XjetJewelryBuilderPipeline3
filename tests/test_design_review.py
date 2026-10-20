@@ -143,6 +143,22 @@ def test_materials_prices_are_whole_dollars_and_links_stay_on_one_line():
     assert "x-text=\"'Design in ' + m.label.split(' ').pop().toLowerCase()\"" in Index and "materialPriceText" not in Index + App
 
 
+async def test_materials_loading_cards_follow_the_products_on_offer(tmp_path):
+    """The server's loading cards on /materials keep the real cards' height (CLS): with rings and charms both on offer
+    a fashion card has one line more (its charm price), so its loading card is taller (.ph-charm, measured on proto)."""
+    H = Harness(tmp_path)
+    try:
+        Rings = _Live((await H.Client.get("/materials")).text, "materials")
+        assert Rings.count('<div class="material-ph"></div>') >= 3 and "ph-charm" not in Rings
+        H.Ctx.Products.Set("charms_available", True, "test")
+        Both = _Live((await H.Client.get("/materials")).text, "materials")
+        assert Both.count('<div class="material-ph ph-charm"></div>') == Rings.count('<div class="material-ph"></div>')
+    finally:
+        await H.Close()
+    for Rule in (".material-ph.ph-charm { height: 478px; }", "@media (min-width: 1150px) { .material-ph { height: 464px; } .material-ph.ph-charm { height: 497px; } }"):
+        assert Rule in Index, Rule
+
+
 def test_the_home_band_shows_xjets_photograph_of_printed_jewelry():
     """F16: the technology band shows XJet's own photograph of printed rings and charms (the brand book's PR picture,
     cropped, its watermark left out), sized; the bottles picture stays on Technology."""

@@ -199,13 +199,15 @@
         .shimmer { background: linear-gradient(100deg, #F1F1F1 30%, #FAFAFA 50%, #F1F1F1 70%); background-size: 300% 100%; animation: sh 1.4s infinite linear; }
         /* /materials before the catalog answers: the server's placeholder cards (p3/sitepages.py MaterialPlaceholders) at
            the cards' measured height below their picture, so nothing below them moves when the cards arrive (the fashion
-           cards re-measured 2026-10-20 with the type scale: 375–430, 640–767, 820–834, 1024 and 1150–1600 px) */
+           cards re-measured 2026-10-20 with the type scale: 375–430, 640–767, 820–834, 1024 and 1150–1600 px; .ph-charm:
+           rings and charms both on offer, the card's extra charm-price line, measured on proto) */
         .material-ph { height: 445px; }
+        .material-ph.ph-charm { height: 478px; }
         .gold-ph { height: 240px; }
-        @media (min-width: 640px) { .material-ph { height: 387px; } }
-        @media (min-width: 768px) { .material-ph { height: 646px; } .gold-ph { height: 224px; } }
-        @media (min-width: 1024px) { .material-ph { height: 550px; } .gold-ph { height: 302px; } }
-        @media (min-width: 1150px) { .material-ph { height: 464px; } }
+        @media (min-width: 640px) { .material-ph { height: 387px; } .material-ph.ph-charm { height: 420px; } }
+        @media (min-width: 768px) { .material-ph { height: 646px; } .material-ph.ph-charm { height: 700px; } .gold-ph { height: 224px; } }
+        @media (min-width: 1024px) { .material-ph { height: 550px; } .material-ph.ph-charm { height: 604px; } .gold-ph { height: 302px; } }
+        @media (min-width: 1150px) { .material-ph { height: 464px; } .material-ph.ph-charm { height: 497px; } }
         @media (min-width: 1280px) { .gold-ph { height: 232px; } }
         @keyframes sh { from { background-position: 100% 0; } to { background-position: -100% 0; } }
         /* Forms (checkout, quote request): readable labels, clear errors, visible focus */

@@ -477,7 +477,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if View == "materials":
             Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
             for Group, Loop in SitePages.MaterialLoops.items():     # the cards' room from the first paint (CLS)
-                Before[Loop] = SitePages.MaterialPlaceholders(Ctx, Group)
+                Before[Loop] = SitePages.MaterialPlaceholders(Ctx, Group, Visible)
         if Design:
             Before[Design.get("anchor") or '<section class="hero-section'] = Design["block"]     # the view's top
         if not Flow:

@@ -403,8 +403,11 @@ _MaterialCard = ('<article class="rounded-2xl border border-zinc-100 bg-white ov
 _GoldCard = '<div class="rounded-xl border border-zinc-100 bg-white gold-ph" aria-hidden="true" data-ssr-placeholder x-show="!catalog"></div>'
 
 
-def MaterialPlaceholders(Ctx, Group: str) -> str:
-    return (_MaterialCard if Group == "fashion" else _GoldCard) * len(_Labels(Ctx, Group))
+def MaterialPlaceholders(Ctx, Group: str, Visible: tuple = (Products.Ring,)) -> str:
+    """With rings and charms both on offer a fashion card also gives its charm price, one line more (.ph-charm)."""
+    W = Words(Visible)
+    Card = _MaterialCard.replace('class="material-ph"', 'class="material-ph ph-charm"') if W["ring"] and W["charm"] else _MaterialCard
+    return (Card if Group == "fashion" else _GoldCard) * len(_Labels(Ctx, Group))
 
 
 def MaterialList(Ctx) -> str:
