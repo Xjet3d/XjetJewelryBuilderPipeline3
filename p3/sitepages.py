@@ -121,11 +121,11 @@ def FaqHtml(Items: list[tuple[str, str]]) -> str:
             '<div class="border border-zinc-100 rounded-xl overflow-hidden">'
             f'<button @click="open === {I} ? open = null : open = {I}" :aria-expanded="open === {I}" '
             'class="w-full flex justify-between items-center p-6 text-left hover:bg-zinc-50 transition">'
-            f'<span class="text-sm font-semibold text-zinc-800">{E(Q)}</span>'
+            f'<span class="text-base font-semibold text-zinc-800">{E(Q)}</span>'
             f'<svg class="w-4 h-4 text-zinc-400 shrink-0 transition-transform" :class="open === {I} ? \'rotate-45\' : \'\'" '
             'fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" '
             'stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>'
-            f'<div x-show="open === {I}" x-cloak class="px-6 pb-6"><p class="text-sm text-zinc-500 leading-relaxed">{E(A)}</p></div>'
+            f'<div x-show="open === {I}" x-cloak class="px-6 pb-6"><p class="text-base text-zinc-600 leading-relaxed">{E(A)}</p></div>'
             '</div>')
     return "\n                    ".join(Out)
 
@@ -147,11 +147,11 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       f"The metals XJet Atelier prints in: {Metals} at a fixed price per {W['noun']}, and solid gold "
                       "quoted individually — appearance, finish, durability and care for each."),
         "technology": ("NanoParticle Jetting™ — How XJet Prints in Metal · XJet Atelier",
-                       "XJet's NanoParticle Jetting™ prints metal in 8-micron layers at 99.8% density, with soluble "
-                       f"support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
-        "designers": ("About XJet — The Inkjet Revolution · XJet Atelier",
-                      "XJet pioneered 3D inkjet manufacturing in metal and ceramics with NanoParticle Jetting™: 80+ "
-                      "patents, ISO 9001 and ISO 13485 certified. XJet Atelier is its custom jewelry service."),
+                       "XJet's NanoParticle Jetting™ prints metal from a liquid ink in layers of about 8 microns, with "
+                       f"soluble support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
+        "designers": ("About XJet — The Makers Behind Atelier · XJet Atelier",
+                      "XJet Atelier is the jewelry service of XJet Ltd., developer of NanoParticle Jetting™ — "
+                      "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
                              "Production takes 7–10 business days. Standard delivery is free (up to 14 business days), "
                              "Express is $45 (about 5). Prices in US dollars; returns and the two-year warranty."),
@@ -169,7 +169,14 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
 
 # ── a crawler's reading of computed text: the same sentences web/app.js shows (the page replaces them on start) ──────
 def Fallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict[str, str]:
-    """x-text expression → its text on this site, for the server copy of a page (only where the page computes it)."""
+    """x-text expression → its text on this site, for the server copy of a page (only where the page computes it): the
+    page's own sentences and the line in the site's footer, which every page ends with."""
+    W = Words(Visible)
+    Footer = {"footerLine": f"Custom {W['text']} designed with AI, made in real metal with NanoParticle Jetting™."}
+    return {**_PageFallbacks(View, Ctx, Visible, HeroCollection), **Footer}
+
+
+def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict[str, str]:
     W = Words(Visible)
     R, C = W["ring"], W["charm"]
     Tail = " — real XJet designs you can make your own, or the spark for one of yours."
@@ -179,8 +186,7 @@ def Fallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict[str,
     if View == "home":
         return {"'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'": f"Your idea. Your style. A {W['noun']} that’s uniquely yours.",
                 "heroCollection.label": HeroCollection.get("label", ""), "heroCollection.text": HeroCollection.get("text", ""),
-                "homeGalleryIntro": HomeGallery,
-                "footerLine": f"© 2026 XJet Ltd. Custom {W['text']} designed with AI, produced with NanoParticle Jetting™."}
+                "homeGalleryIntro": HomeGallery}
     if View == "inspiration":
         Intro = ("Real XJet designs. Open one to see it large." if W["none"] else
                  (W["list"] if W["many"] else "Charms" if W["sole"] == Products.Charm else "Bands, signets, statement and stackable rings")
@@ -316,10 +322,12 @@ def DesignHeading(Html: str) -> str:
 
 
 # The Gallery's loading squares (index.html): the page carries as many as the visitor's gallery has designs, before the
-# app's own loading squares (the same number: app.js galleryPlaceholders); each removes itself as the app starts. The
-# grid holds its height from the first paint to the cards, so nothing below it moves (CLS).
+# app's own loading squares (the same number: app.js galleryPlaceholders); each removes itself as the app starts. Each
+# has the card's shape (its top row, the square picture, the name and the swatch row: index.html .g-card), so the grid
+# holds its height from the first paint to the cards and nothing below it moves (CLS).
 GalleryLoading = """<template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" """
-GallerySquare = '<div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"></div>'
+GallerySquare = ('<div class="g-card" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"><div class="h-11"></div>'
+                 '<div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div>')
 
 
 def GalleryPlaceholders(Count: int) -> str:

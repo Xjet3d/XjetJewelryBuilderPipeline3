@@ -199,4 +199,8 @@ def test_the_cards_are_links_and_the_dialog_keeps_the_design_address():
     assert "(BASE || '') + '/'" not in Shared and "this.openGallery(g, { address: 'replace' });" in Shared   # the address stays
     # the dialog's own controls are the visitor's close (Back and Forward stay in order)
     assert '@click.self="closeGallery(\'user\')" @keydown.escape.window="closeGallery(\'user\')"' in Page
-    assert '<button @click="closeGallery(\'user\')" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>' in Page
+    # a 44 px × (2026-10-20); Back to gallery a text button on one line, beside Share / Copy link
+    assert ('<button type="button" @click="closeGallery(\'user\')" class="absolute top-2 right-2 md:top-3 md:right-3 z-[3] w-11 h-11 '
+            'rounded-full bg-white') in Page and 'aria-label="Close" title="Close">' in Page
+    assert ('<button @click="closeGallery(\'user\')" class="h-11 inline-flex items-center gap-2 text-[12px] font-semibold uppercase '
+            'tracking-[0.08em] whitespace-nowrap') in Page and '</svg>Back to gallery</button>' in Page

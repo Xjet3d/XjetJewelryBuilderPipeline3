@@ -59,8 +59,10 @@
            arrives. The sizes attribute of the picture says the same (p3/sitepages.py LightboxSizes). */
         .gallery-shot { width: 100%; max-width: 42vh; height: auto; aspect-ratio: 1 / 1; }
         @media (min-width: 768px) { .gallery-shot { max-width: 72vh; } }
-        /* ♥ Favorites: a small heart on gallery tiles and in the lightbox (gold outline; filled when saved) */
+        /* ♥ Favorites: a small heart on gallery tiles and in the lightbox (gold outline; filled when saved). On a card it
+           sits in the card's top row, beside the badge (.is-plain: no disc of its own) */
         .fav-heart { background: rgba(255,255,255,0.88); color: #8A6420; box-shadow: 0 1px 4px rgba(0,0,0,0.08); backdrop-filter: blur(4px); }
+        .fav-heart.is-plain { background: transparent; box-shadow: none; backdrop-filter: none; }
         .fav-heart:hover { background: #fff; transform: scale(1.06); }
         .fav-heart:disabled { opacity: .6; }
         .fav-heart.is-fav { color: #B8873A; }
@@ -68,20 +70,43 @@
         .fav-heart.is-fav svg { animation: favPop .35s ease; }
         @keyframes favPop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
         /* Metal preview chips in the gallery lightbox (preview only) */
-        .metal-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 9999px; border: 1px solid #DCDCDC; background: #fff; color: #6F6F6F; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; transition: border-color .2s, color .2s, box-shadow .2s; }
+        .metal-chip { display: inline-flex; align-items: center; gap: 7px; height: 44px; padding: 0 16px; border-radius: 9999px; border: 1px solid #DCDCDC; background: #fff; color: #6F6F6F; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; transition: border-color .2s, color .2s, box-shadow .2s; }
         .metal-chip:hover { border-color: #C9A96E; color: #1A1A1A; }
         .metal-chip.is-on { border-color: #C9A96E; color: #1A1A1A; box-shadow: 0 0 0 2px #F1E6D2; }
         .metal-dot { width: 14px; height: 14px; border-radius: 9999px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08), inset 2px 2px 4px rgba(255,255,255,.6); }
-        /* Gallery: metal swatches (visual preview only) and the product badge (Ring / Charm), the same for both products */
-        .metal-swatches { background: rgba(255,255,255,.88); backdrop-filter: blur(4px); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-        .metal-swatch { position: relative; width: 12px; height: 12px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), inset 2px 2px 4px rgba(255,255,255,.55);
-                        outline: 1.5px solid transparent; outline-offset: 2px; transition: outline-color .2s, transform .2s; }
-        .metal-swatch::before { content: ''; position: absolute; inset: -3px; }      /* a larger tap area than the dot itself */
-        @media (min-width: 640px) { .metal-swatch { width: 15px; height: 15px; } }
-        .metal-swatch:hover { transform: scale(1.12); }
-        .metal-swatch.is-on { outline-color: #8A6420; }
-        .metal-swatch.metal-swatch-lg { width: 26px; height: 26px; }
+        /* Gallery: metal swatches (visual preview only) and the product badge (Ring / Charm), the same for both products.
+           Each swatch is a 44 × 44 button (40 × 44 on a card on a phone, so three fit beside the arrow) holding its dot:
+           16 px on a card (14 px on a phone), 26 px in a design's dialog; the chosen one is ringed in gold. */
+        .metal-swatch { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none;
+                        background: transparent; border-radius: 9999px; }
+        .metal-swatch > span { width: 16px; height: 16px; border-radius: 9999px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), inset 2px 2px 4px rgba(255,255,255,.55);
+                               transition: box-shadow .2s, transform .2s; }
+        .metal-swatch:hover > span { transform: scale(1.12); }
+        .metal-swatch.is-on > span { box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), inset 2px 2px 4px rgba(255,255,255,.55), 0 0 0 2px #fff, 0 0 0 3.5px #8A6420; }
+        .metal-swatch:focus-visible { outline: 2px solid rgba(201,169,110,.8); outline-offset: -4px; }
+        .metal-swatch.metal-swatch-lg > span { width: 26px; height: 26px; }
         .product-badge { background: rgba(255,255,255,.9); color: #8A6420; border: 1px solid #E8DCC4; backdrop-filter: blur(4px); }
+        /* A gallery card (.g-card): the badge and the heart in its top row, the picture whole on white, the name never
+           cut, the swatches and "Make it yours" below. The card's link covers the whole card (::after), under the
+           buttons; its focus ring rings the card. */
+        .g-card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid #EEE7DA; border-radius: .75rem;
+                  transition: border-color .2s, box-shadow .2s; container-type: inline-size; }
+        .g-card:hover { border-color: #DCCFB6; box-shadow: 0 10px 28px -18px rgba(60,40,10,.35); }
+        .g-card .g-link { display: block; outline: none; }
+        .g-card .g-link::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: .75rem; }
+        .g-card .g-link:focus-visible::after { outline: 2px solid #C9A96E; outline-offset: 2px; }
+        .g-card .g-over { position: relative; z-index: 2; pointer-events: none; }      /* only its buttons take a click */
+        .g-card .g-over button { pointer-events: auto; }
+        .g-name { font-family: 'Cinzel', serif; font-weight: 500; letter-spacing: .02em; color: #1A1A1A; font-size: 16px; line-height: 1.35; }
+        /* "Make it yours": the words where the card has room for them beside the swatches, else a gold arrow. A narrow
+           card (a phone's two columns) has 14 px names and 40 × 44 swatches, so three swatches and the arrow fit. */
+        .g-cue-word { display: none; }
+        .g-cue-arrow { display: inline-flex; }             /* no display utility on either: these rules decide */
+        @container (min-width: 270px) { .g-cue-word { display: inline; } .g-cue-arrow { display: none; } }
+        @container (max-width: 209.98px) { .g-name { font-size: 14px; } .metal-swatch { width: 40px; } .metal-swatch > span { width: 14px; height: 14px; } }
+        /* a card's loading square: the card's own shape (top row, picture, name and swatch row) */
+        .g-ph-foot { height: 74px; }
+        @container (max-width: 209.98px) { .g-ph-foot { height: 71px; } }
         /* No fill-mode: a lingering transform would turn the screen into the containing block of its fixed bars */
         .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -110,10 +135,11 @@
         }
         .btn-black:hover { background: #1A1A1A !important; }
         .btn-black:disabled { opacity: 0.45; cursor: not-allowed; }
+        /* the secondary button: the primary's type (14 px, semibold, .08em capitals), in outline */
         .btn-outline {
             display: inline-flex; align-items: center; justify-content: center;
             background: transparent !important; color: #222222 !important; border: 1px solid #222222 !important;
-            font-weight: 500 !important; font-size: 12px !important; text-transform: uppercase; border-radius: 6px;
+            font-weight: 600 !important; font-size: 14px !important; letter-spacing: 0.08em !important; text-transform: uppercase; border-radius: 6px;
         }
         .btn-outline:hover { background: rgba(0,0,0,0.04) !important; }
         .btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -123,7 +149,13 @@
         .bg-white .text-zinc-400, .bg-zinc-50 .text-zinc-400 { color: #52525B; }
         .bg-white .text-zinc-300, .bg-zinc-50 .text-zinc-300 { color: #71717A; }
         .bg-zinc-900 .text-zinc-400, .bg-zinc-800 .text-zinc-400 { color: #A1A1AA; }
-        .step-numeral { color: #E8DFD0 !important; }
+        /* the site's footer (web/partials/site-footer.html): links #D4D4D8 in rows of 36 px on a phone, headings in gold */
+        .f-link { display: block; padding: .5rem 0; font-size: 14px; line-height: 1.4; color: #D4D4D8; letter-spacing: normal; transition: color .15s; }
+        .f-link:hover, .f-link:focus-visible { color: #FFFFFF; }
+        @media (min-width: 768px) { .f-link { padding: .3125rem 0; } }
+        .f-head { margin-bottom: .5rem; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #C9A96E; }
+        .step-numeral { color: #B08D57 !important; }      /* 3.1:1 on white: readable at its 48 px */
+        .step-title { font-family: 'Inter', sans-serif; }  /* an h3 with the look of the step titles before it (Inter, not Cinzel) */
         .cand-card.is-selected { border-color: #8A6420 !important; box-shadow: 0 0 0 3px rgba(138, 100, 32, 0.28); }
         .cand-row { scrollbar-width: none; } .cand-row::-webkit-scrollbar { display: none; }
         .tap, .tap-lg { position: relative; }
@@ -142,14 +174,14 @@
         .nav-icon.is-gold:hover, .nav-icon.is-gold:focus-visible, .nav-icon.is-gold.is-on { color: #8A6420; background: #FBF7EF; }
         .nav-icon.is-gold:hover .heart, .nav-icon.is-gold:focus-visible .heart, .nav-icon.is-gold.is-on .heart { fill: #C9A96E; }
         .nav-icon .ico { position: relative; display: inline-flex; flex-shrink: 0; }
-        .nav-label { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; margin-left: 0; font-size: 11px; font-weight: 600;
+        .nav-label { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; margin-left: 0; font-size: 12px; font-weight: 600;
                      letter-spacing: .14em; text-transform: uppercase; transition: max-width .22s ease, opacity .15s ease, margin-left .22s ease; }
         .nav-icon:hover .nav-label, .nav-icon:focus-visible .nav-label { max-width: 9rem; opacity: 1; margin-left: .45rem; }
-        .nav-badge { position: absolute; top: -7px; right: -8px; min-width: 17px; height: 17px; border-radius: 9999px; color: #fff; font-size: 11px;
+        .nav-badge { position: absolute; top: -7px; right: -8px; min-width: 17px; height: 17px; border-radius: 9999px; color: #fff; font-size: 12px;
                      font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
         @media (prefers-reduced-motion: reduce) { .nav-icon, .nav-label { transition: none; } }
         .icon-tip { position: absolute; top: 100%; left: 50%; transform: translate(-50%, 7px); padding: .3rem .6rem; border-radius: .25rem;
-                    background: #1A1A1A; color: #fff; font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+                    background: #1A1A1A; color: #fff; font-size: 12px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
                     white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 300; }
         .icon-tip::before { content: ''; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; background: #1A1A1A; transform: translateX(-50%) rotate(45deg); }
         /* .is-left: the label sits to the left of the icon (buttons at a panel's right edge) */
@@ -166,15 +198,18 @@
         .cand-card.is-selected, .cand-card.is-selected:hover { outline: 3px solid #1A1A1A; border-radius: 0 !important; }
         .shimmer { background: linear-gradient(100deg, #F1F1F1 30%, #FAFAFA 50%, #F1F1F1 70%); background-size: 300% 100%; animation: sh 1.4s infinite linear; }
         /* /materials before the catalog answers: the server's placeholder cards (p3/sitepages.py MaterialPlaceholders) at
-           the cards' measured height below their picture, so nothing below them moves when the cards arrive */
-        .material-ph { height: 436px; }
+           the cards' measured height below their picture, so nothing below them moves when the cards arrive (the fashion
+           cards re-measured 2026-10-20 with the type scale: 375–430, 640–767, 820–834, 1024 and 1150–1600 px) */
+        .material-ph { height: 445px; }
         .gold-ph { height: 240px; }
-        @media (min-width: 768px) { .material-ph { height: 700px; } .gold-ph { height: 224px; } }
-        @media (min-width: 1024px) { .material-ph { height: 548px; } .gold-ph { height: 302px; } }
-        @media (min-width: 1280px) { .material-ph { height: 444px; } .gold-ph { height: 232px; } }
+        @media (min-width: 640px) { .material-ph { height: 387px; } }
+        @media (min-width: 768px) { .material-ph { height: 646px; } .gold-ph { height: 224px; } }
+        @media (min-width: 1024px) { .material-ph { height: 550px; } .gold-ph { height: 302px; } }
+        @media (min-width: 1150px) { .material-ph { height: 464px; } }
+        @media (min-width: 1280px) { .gold-ph { height: 232px; } }
         @keyframes sh { from { background-position: 100% 0; } to { background-position: -100% 0; } }
         /* Forms (checkout, quote request): readable labels, clear errors, visible focus */
-        .fld { width: 100%; border: 1px solid #D4D4D8; padding: 12px 14px; font-size: 15px; border-radius: 6px; background: #fff; color: #1A1A1A; transition: border-color .12s; }
+        .fld { width: 100%; border: 1px solid #D4D4D8; padding: 12px 14px; font-size: 16px; border-radius: 6px; background: #fff; color: #1A1A1A; transition: border-color .12s; }
         .fld:focus { border-color: #1A1A1A; outline: 2px solid rgba(201,169,110,0.45); outline-offset: 1px; }
         .fld.bad { border-color: #C0392B; }
         .fld:disabled { background: #F6F6F6; color: #6F6F6F; }
@@ -182,10 +217,15 @@
         .ferr { font-size: 12px; color: #A1261D; margin-top: 5px; }
 
         /* ── Header (nav.site-header): one grid in three arrangements, so every control exists once.
-           Phones: one row — menu + XJet · the utility icons and the account.
+           Phones: one row — menu + XJet Atelier · the utility icons and the account.
            The site's pages from 768 px: the utility row on top (My Designs · ♥ Favorites · bag · account), then the main
-           row — XJet Atelier · the pages · Start Designing.
-           The Design screen (.is-studio): one row — XJet Atelier · Design — Customize — Bag · account · Exit. */
+           row — XJet Atelier · the pages · Start Designing; from 1280 px one bar (below).
+           The Design screen (.is-studio): one row — XJet Atelier · Design — Customize — Bag · account · Exit.
+           XJet Atelier: XJet's own logo (web/images/xjet-logo.png, never redrawn) with its clearspace — the height of its
+           T — before the divider, then ATELIER in the site's display face. */
+        :root { --hdr: 64px; }                                      /* the header's height on the site's pages (the hero's room) */
+        @media (min-width: 768px) { :root { --hdr: 117px; } }
+        @media (min-width: 1280px) { :root { --hdr: 74px; } }
         .site-header { display: grid; align-items: center; column-gap: .375rem; padding: 1rem .5rem;
                        grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "brand nav util cta"; }
         .site-header > .h-brand { grid-area: brand; }
@@ -193,6 +233,15 @@
         .site-header > .h-util { grid-area: util; }
         .site-header > .h-cta { grid-area: cta; }
         .site-header > #mobile-menu { grid-column: 1 / -1; }
+        .site-header > .h-brand, .site-header > .h-util, .site-header > .h-cta { min-width: max-content; }   /* never under their content */
+        @media (max-width: 379.98px) { .site-header .h-signin-text { display: none; } }                      /* Sign in: its icon */
+        @media (max-width: 359.98px) {                     /* the smallest phones: a smaller lockup (its clearspace kept), tighter gaps */
+            .site-header { column-gap: .25rem; padding-left: .375rem; padding-right: .375rem; }
+            .site-header .h-logo { height: 16px; }
+            .site-header .h-word { margin-left: 16px; font-size: 11px; letter-spacing: .12em; }
+            .site-header .nav-icon { padding-left: .375rem; padding-right: .375rem; }
+            .site-header [data-account-button] { padding-left: .125rem; padding-right: .125rem; }
+        }
         @media (max-width: 767.98px) { .site-header:not(.is-studio) > .h-cta { display: none; } }
         @media (min-width: 768px) {
             .site-header { column-gap: 1rem; padding: 1rem 2rem; }
@@ -202,6 +251,17 @@
             .site-header:not(.is-studio) > .h-brand,
             .site-header:not(.is-studio) > .h-nav,
             .site-header:not(.is-studio) > .h-cta { padding: .875rem 0; }
+        }
+        /* From 1280 px the site's pages have one 72 px bar: XJet Atelier · the pages · the utility icons and the account
+           beside Start Designing */
+        @media (min-width: 1280px) {
+            .site-header:not(.is-studio) { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "brand nav util cta"; }
+            .site-header:not(.is-studio) > .h-util { margin: 0; padding: 0; background: none; border-bottom: 0; }
+            .site-header:not(.is-studio) .h-name { max-width: 120px; }
+            .site-header:not(.is-studio) .h-mock { display: none; }          /* the mock banner above says it */
+        }
+        @media (min-width: 1280px) and (max-width: 1439.98px) {             /* the account: icon, coin and count */
+            .site-header:not(.is-studio) .h-name, .site-header:not(.is-studio) .h-name-dot { display: none; }
         }
     </style>
     <!-- Tailwind last in <head>, exactly where the former CDN script injected its styles, so the cascade is unchanged:
@@ -242,28 +302,29 @@
                 <svg x-show="!menuOpen" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
                 <svg x-show="menuOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
-            <a href="{{BASE}}/" class="flex items-center gap-2 md:gap-3" @click="pageLink($event, 'home')" aria-label="XJet Atelier — home">
-                <span class="text-lg md:text-2xl font-bold tracking-[0.08em] md:tracking-[0.15em] uppercase italic brand-font text-zinc-900">XJet</span>
-                <span class="hidden md:block h-4 md:h-5 w-[1px] bg-zinc-300"></span>
-                <span class="hidden md:inline text-[12px] md:text-[12px] uppercase tracking-[0.2em] text-zinc-500 font-medium">Atelier</span>
+            <a href="{{BASE}}/" class="flex items-center ml-1 md:ml-0 py-2.5" @click="pageLink($event, 'home')" aria-label="XJet Atelier — home">
+                <img src="{{BASE}}/static/images/xjet-logo.png" width="270" height="96" alt="XJet" class="h-logo block h-[18px] md:h-6 w-auto">
+                <span class="hidden md:block h-5 w-px bg-zinc-300 ml-6" aria-hidden="true"></span>
+                <span class="h-word brand-font uppercase text-[12px] md:text-[14px] tracking-[0.18em] md:tracking-[0.26em] text-zinc-900 ml-[18px] md:ml-4 leading-none">Atelier</span>
             </a>
         </div>
 
         <!-- Main navigation (from 1024 px; below that it is in the menu) · the Design screen's steps -->
         <div class="h-nav flex items-center justify-center min-w-0">
-            <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-11 whitespace-nowrap text-[13px] uppercase tracking-[0.12em] font-medium text-zinc-600">
-                <button @click="scrollToHowItWorks()" class="hover:text-black transition">How It Works</button>
-                <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</a>
-                <a href="{{BASE}}/materials" @click="pageLink($event, 'materials')"   :class="view === 'materials'   ? 'text-black' : 'hover:text-black transition'">Materials</a>
+            <!-- the four in one style: capitals, 12 px (a button takes neither the case nor the size from around it) -->
+            <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-8 2xl:gap-11 whitespace-nowrap text-[12px] uppercase tracking-[0.12em] font-medium text-zinc-600">
+                <button @click="scrollToHowItWorks()" class="uppercase text-[12px] py-3 hover:text-black transition">How It Works</button>
+                <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="py-3" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</a>
+                <a href="{{BASE}}/materials" @click="pageLink($event, 'materials')" class="py-3" :class="view === 'materials' ? 'text-black' : 'hover:text-black transition'">Materials</a>
                 <!-- About: the informational pages, gathered in one small menu -->
                 <div class="relative" @click.outside="aboutOpen = false" @keydown.escape="aboutOpen = false">
                     <button type="button" @click="aboutOpen = !aboutOpen" :aria-expanded="aboutOpen" aria-haspopup="menu" aria-controls="about-menu"
-                            class="inline-flex items-center gap-1.5 transition" :class="aboutOpen || ['designers','technology','faq','contact'].includes(view) ? 'text-black' : 'hover:text-black'">
+                            class="inline-flex items-center gap-1.5 uppercase text-[12px] py-3 transition" :class="aboutOpen || ['designers','technology','faq','contact'].includes(view) ? 'text-black' : 'hover:text-black'">
                         About
                         <svg class="w-3 h-3 transition-transform" :class="aboutOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                     </button>
                     <div id="about-menu" x-show="aboutOpen" x-cloak role="menu" aria-label="About"
-                         class="absolute left-1/2 -translate-x-1/2 top-full mt-[30px] w-56 bg-white rounded-xl py-2 normal-case tracking-normal font-normal text-[14px] z-10"
+                         class="absolute left-1/2 -translate-x-1/2 top-full mt-[18px] w-56 bg-white rounded-xl py-2 normal-case tracking-normal font-normal text-[14px] z-10"
                          style="border:1px solid #ECE6DA; box-shadow:0 18px 44px rgba(26,26,26,0.12);">
                         <a href="{{BASE}}/about" role="menuitem" @click="aboutOpen = false; pageLink($event, 'designers')" class="w-full block text-left px-5 py-2.5 transition"
                                 :class="view === 'designers' ? 'text-black font-medium bg-[#FBF8F3]' : 'text-zinc-600 hover:text-black hover:bg-[#FBF8F3]'">About XJet</a>
@@ -296,14 +357,14 @@
         <!-- Utility: My Designs · ♥ Favorites · bag · account — a row of its own on the site's pages from 768 px -->
         <div class="h-util flex items-center justify-end gap-0.5 sm:gap-1 md:gap-2.5">
             <!-- Mode chip — internal testing only (live mode is the normal state: no chip); the banner above says it too -->
-            <!--mock--><span x-show="isMock && !inStudio" x-cloak class="hidden md:inline-flex mr-auto items-center gap-1.5 px-2 py-0.5 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
+            <!--mock--><span x-show="isMock && !inStudio" x-cloak class="h-mock hidden md:inline-flex mr-auto items-center gap-1.5 px-2 py-0.5 rounded text-[12px] font-semibold uppercase tracking-[0.14em]"
                   style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;" title="Simulated provider — nothing is generated or charged">
                 <span class="w-1.5 h-1.5 rounded-full" style="background:#D08A00;"></span>Mock
             </span><!--/mock-->
             <!-- My Designs (signed in) and ♥ Favorites open the Design screen's side panel on that tab (in the studio its toolbar has them) -->
             <!-- Icon-first: an icon alone; hovering or focusing it reveals the name beside the icon (.nav-icon / .nav-label).
                  The open panel or page keeps the selected look (.is-on), still without text. -->
-            <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')" class="tap nav-icon"
+            <button type="button" x-show="userSession && !inStudio" x-cloak @click="openPanel('designs')" class="tap nav-icon hidden md:inline-flex"
                     :class="{ 'is-on': sidebarOpen && sidebarTab === 'designs' && view === 'ai-studio' }" aria-label="My Designs">
                 <span class="ico"><svg class="w-5 h-5 md:w-[18px] md:h-[18px]" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></span>
                 <span class="nav-label" aria-hidden="true">My Designs</span>
@@ -334,8 +395,8 @@
                     class="relative items-center gap-1.5 select-none group rounded-md px-1.5 py-1 transition hover:bg-black/[0.04]" :class="inStudio ? 'hidden md:flex' : 'flex'"
                     :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="My account and credits">
                 <svg class="w-[18px] h-[18px] shrink-0 text-zinc-600" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
-                <span x-show="displayName" x-text="displayName" data-clarity-mask="true" class="text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
-                <span x-show="displayName" class="text-[13px] text-zinc-400 px-0.5" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'" aria-hidden="true">·</span>
+                <span x-show="displayName" x-text="displayName" data-clarity-mask="true" class="h-name text-[12px] font-medium text-zinc-800 max-w-[160px] truncate" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'"></span>
+                <span x-show="displayName" class="h-name-dot text-[14px] text-zinc-400 px-0.5" :class="inStudio ? 'hidden lg:inline' : 'hidden md:inline'" aria-hidden="true">·</span>
                 <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                     <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
@@ -349,24 +410,24 @@
                 </div>
             </button>
             <!-- Signed out: Sign in, in the account's place -->
-            <button type="button" x-show="!userSession && !inStudio" @click="openRegModal()"
+            <button type="button" x-show="!userSession && !inStudio" @click="openRegModal()" aria-label="Sign in"
                     class="tap inline-flex items-center gap-2 p-2 md:p-1.5 text-[12px] uppercase tracking-[0.14em] font-medium whitespace-nowrap text-zinc-600 hover:text-black transition">
                 <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.7-3.6 3.5-5.6 7-5.6s6.3 2 7 5.6" stroke-linecap="round"/></svg>
-                <span>Sign in</span>
+                <span class="h-signin-text">Sign in</span>
             </button>
         </div>
 
         <!-- Start Designing — the primary call to action on the site's pages (from 768 px; on phones the hero and the menu
              have it) · Exit on the Design screen (back to the homepage; you stay signed in) -->
         <div class="h-cta flex items-center justify-end">
-            <button x-show="!inStudio" @click="resetAIFlow()" class="btn-gold hidden md:inline-flex px-7 py-3 text-[12px] uppercase tracking-[0.16em] font-semibold whitespace-nowrap stream-glow transition">Start Designing</button>
+            <button x-show="!inStudio" @click="resetAIFlow()" class="btn-gold hidden md:inline-flex px-6 py-3 whitespace-nowrap stream-glow transition">Start Designing</button>
             <button x-show="inStudio" @click="navigateTo('home')" class="tap-lg text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
         </div>
         <!-- Menu panel (below 1024 px): every page, Start Designing, My Designs and Favorites, the bag, Sign in / Sign out -->
         <div id="mobile-menu" x-show="menuOpen" x-cloak class="lg:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
-            <ul class="flex flex-col divide-y divide-zinc-100 text-[15px]">
+            <ul class="flex flex-col divide-y divide-zinc-100 text-[16px]">
                 <li><a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="w-full text-left py-3 px-2 flex items-center justify-between">Inspiration Gallery <span class="text-zinc-400">→</span></a></li>
-                <li><button @click="scrollToHowItWorks()" class="w-full text-left py-3 px-2 flex items-center justify-between">How it works <span class="text-zinc-400">→</span></button></li>
+                <li><button @click="scrollToHowItWorks()" class="w-full text-left text-[16px] py-3 px-2 flex items-center justify-between">How It Works <span class="text-zinc-400">→</span></button></li>
                 <li><a href="{{BASE}}/materials" @click="pageLink($event, 'materials')" class="w-full text-left py-3 px-2 flex items-center justify-between">Materials &amp; Pricing <span class="text-zinc-400">→</span></a></li>
                 <li><a href="{{BASE}}/technology" @click="pageLink($event, 'technology')" class="w-full text-left py-3 px-2 flex items-center justify-between">Technology <span class="text-zinc-400">→</span></a></li>
                 <li><a href="{{BASE}}/faq" @click="pageLink($event, 'faq')" class="w-full text-left py-3 px-2 flex items-center justify-between">FAQ <span class="text-zinc-400">→</span></a></li>
@@ -392,22 +453,24 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'home'">
         <main class="flex-1 overflow-y-auto fade-in">
-            <section class="hero-section flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh-115px)] bg-white">
-                <div class="hero-text md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:p-14 2xl:p-20 flex flex-col justify-center">
+            <section class="hero-section flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh_-_var(--hdr))] bg-white">
+                <div class="hero-text md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:py-14 lg:px-12 2xl:p-20 flex flex-col justify-center">
                     <div class="hero-eyebrow flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewelry</span>
                         <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
                     </div>
-                    <h1 class="hero-title text-5xl md:text-6xl lg:text-[4rem] 2xl:text-[4.5rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
-                        Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by You</span>
+                    <!-- "by You" never splits: "You" is never a line of its own -->
+                    <h1 class="hero-title text-5xl lg:text-[4rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
+                        Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by&nbsp;You</span>
                     </h1>
-                    <p class="hero-sub text-zinc-700 text-[17px] md:text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
-                    <div class="hero-cta flex flex-col sm:flex-row gap-3 sm:gap-4">
-                        <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-[12px] uppercase tracking-[0.16em] stream-glow transition font-semibold">Start Designing</button>
-                        <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 transition">How It Works</button>
+                    <p class="hero-sub text-zinc-700 text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
+                    <!-- side by side where both fit on one line each (640–767 and from 1280 px), stacked otherwise -->
+                    <div class="hero-cta flex flex-col sm:flex-row md:flex-col xl:flex-row gap-3 sm:gap-4 md:gap-3 xl:gap-4">
+                        <button @click="resetAIFlow()" class="btn-gold px-10 py-4 whitespace-nowrap stream-glow transition">Start Designing</button>
+                        <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 whitespace-nowrap transition">How It Works</button>
                     </div>
                     <div class="hidden md:block">
-                        <p x-show="heroCollection.label" class="mt-5 text-[13px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
+                        <p x-show="heroCollection.label" class="mt-5 text-[14px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
                         <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
                         <!--mock--><p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
                            style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
@@ -418,14 +481,14 @@
                 <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
                      (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
                      On phones it comes after the headline and the buttons. -->
-                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh-115px)] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
-                    <div class="w-full md:w-[min(100%,700px,calc(100vh-195px))]" data-testid="hero-showcase">
+                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh_-_var(--hdr))] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
+                    <div class="w-full md:w-[min(100%,700px,calc(100vh_-_var(--hdr)_-_80px))]" data-testid="hero-showcase">
                         <!-- sc-stage from the first paint: the story's room is kept before the scripts start (nothing below moves) -->
                         <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
                              data-sc-design="aurora-mesh" x-init="$nextTick(() => window.P3Showcase && !$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' }))"></div>
                     </div>
                     <div class="md:hidden w-full px-2">
-                        <p x-show="heroCollection.label" class="mt-5 text-[13px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
+                        <p x-show="heroCollection.label" class="mt-5 text-[14px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
                         <!--mock--><p x-show="isMock" x-cloak class="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
                            style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8">
                             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
@@ -438,29 +501,36 @@
                 <div class="text-center mb-12">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Inspiration Gallery</span>
                     <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
-                    <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="homeGalleryIntro">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
+                    <p class="text-zinc-600 text-[16px] max-w-xl mx-auto" x-text="homeGalleryIntro">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
                 </div>
                 <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-                    <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                    <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="g-card" aria-hidden="true"><div class="h-11"></div><div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div></template></template>
+                    <!-- One card: the badge and the heart above the picture, the picture whole on white, the name, then the
+                         swatches and "Make it yours". The whole card opens the design (the link's ::after covers it). -->
                     <template x-for="g in homeGallery" :key="g.id">
-                        <div class="relative group">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
-                            <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
-                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                        </a>
-                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
-                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                        <div class="g-card group">
+                            <div class="g-over flex items-center h-11 pl-2.5">
+                                <span x-show="productsOn" x-cloak class="product-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
+                                <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                        class="fav-heart is-plain ml-auto w-11 h-11 rounded-full flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                                    <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                                </button>
+                            </div>
+                            <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
+                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 42vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                                <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
+                            </a>
+                            <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                            <div class="g-over mt-auto flex items-center justify-between pr-1.5">
+                                <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                                </div>
+                                <span aria-hidden="true" class="shrink-0"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap pr-1.5" style="color:#8A6420;">Make it yours →</span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></span>
+                            </div>
                         </div>
-                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
-                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
-                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-                        </button>
-                    </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
@@ -472,7 +542,7 @@
                     </button>
                 </div>
                 <div class="text-center mt-10">
-                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button>
+                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 stream-glow transition">Start Designing</button>
                 </div>
             </section>
 
@@ -491,7 +561,7 @@
                     ]" :key="i">
                         <div class="bg-white rounded-xl p-8 border border-zinc-100 hover:border-zinc-200 transition shadow-sm flex flex-col">
                             <span class="step-numeral text-5xl font-light brand-font mb-5 block leading-none" aria-hidden="true" x-text="s.num"></span>
-                            <h4 class="text-sm font-semibold text-zinc-900 mb-2" x-text="s.title"></h4>
+                            <h3 class="step-title text-sm font-semibold text-zinc-900 mb-2" x-text="s.title"></h3>
                             <p class="text-xs text-zinc-500 leading-relaxed" x-text="s.desc"></p>
                         </div>
                     </template>
@@ -502,17 +572,19 @@
             <section class="py-24 px-8 md:px-20 bg-zinc-900 text-white">
                 <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-16 items-center">
                     <div class="md:w-1/2">
-                        <span class="text-[12px] uppercase tracking-[0.4em] mb-4 block" style="color:#8A6420">Technology</span>
+                        <span class="text-[12px] uppercase tracking-[0.4em] mb-4 block" style="color:#C9A96E">Technology</span>
                         <h2 class="text-3xl md:text-4xl brand-font mb-6">Made with XJet<br>NanoParticle Jetting™</h2>
-                        <p class="text-zinc-400 leading-relaxed mb-8 text-sm">Your design is created digitally and made in real metal with advanced production technology. This allows more detail, more personalization, and more freedom than traditional custom jewelry.</p>
+                        <p class="text-zinc-400 leading-relaxed mb-8 text-base">Your design is created digitally and made in real metal with advanced production technology. This allows more detail, more personalization, and more freedom than traditional custom jewelry.</p>
                         <ul class="space-y-3 mb-8">
                             <template x-for="b in ['Great for one-of-a-kind pieces','More personal shapes and forms','Fine details and surface textures','Real metals only','Digital design control — no compromises']" :key="b">
-                                <li class="flex items-center gap-3 text-sm text-zinc-400"><span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:#C9A96E"></span><span x-text="b"></span></li>
+                                <li class="flex items-center gap-3 text-base text-zinc-400"><span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:#C9A96E"></span><span x-text="b"></span></li>
                             </template>
                         </ul>
                         <p class="text-[12px] uppercase tracking-widest text-zinc-400">Powered by XJet's advanced metal 3D printing technology.</p>
                     </div>
-                    <div class="md:w-1/2"><img width="658" height="508" src="{{BASE}}/static/images/Ink.JPG" alt="Bottles of XJet NanoParticle Jetting metal and support materials" class="rounded-lg shadow-2xl w-full object-cover" onerror="this.style.display='none'"></div>
+                    <!-- XJet's own photograph of printed pieces (the brand book's PR picture, cropped to its rings and charms; its
+                         watermark left out) -->
+                    <div class="md:w-1/2"><picture><source srcset="{{BASE}}/static/images/printed-jewelry.webp" type="image/webp"><img width="960" height="740" src="{{BASE}}/static/images/printed-jewelry.jpg" alt="Rings and jewelry pieces printed by XJet with NanoParticle Jetting" class="rounded-lg shadow-2xl w-full h-auto object-cover" loading="lazy" decoding="async" onerror="this.closest('picture').style.display='none'"></picture></div>
                 </div>
             </section>
 
@@ -529,7 +601,7 @@
                                 <svg class="w-5 h-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="t.icon"/></svg>
                             </div>
                             <div class="text-sm font-semibold text-zinc-800 mb-1" x-text="t.label"></div>
-                            <div class="text-[12px] text-zinc-400 leading-relaxed" x-text="t.sub"></div>
+                            <div class="text-sm text-zinc-400 leading-relaxed" x-text="t.sub"></div>
                         </div>
                     </template>
                 </div>
@@ -539,12 +611,13 @@
                 <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="bg-white rounded-xl p-10 border border-zinc-100 shadow-sm">
                         <svg class="w-8 h-8 mb-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                        <h3 class="text-xl brand-font mb-3">Expert Design Support</h3>
-                        <p class="text-zinc-500 text-sm leading-relaxed">Need help? Our design team is available to assist with your custom piece. Custom jewelry should feel personal — and so should the service.</p>
+                        <h3 class="text-2xl brand-font mb-3">Expert Design Support</h3>
+                        <p class="text-zinc-500 text-base leading-relaxed">Need help? Our design team is available to assist with your custom piece. Custom jewelry should feel personal — and so should the service.</p>
+                        <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="btn-outline mt-6 px-7 py-3">Contact us</a>
                     </div>
                     <div class="bg-white rounded-xl p-10 border border-zinc-100 shadow-sm">
                         <svg class="w-8 h-8 mb-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                        <h3 class="text-xl brand-font mb-5">Production &amp; Delivery</h3>
+                        <h3 class="text-2xl brand-font mb-5">Production &amp; Delivery</h3>
                         <div class="space-y-3">
                             <div class="flex justify-between items-center text-sm border-b border-zinc-100 pb-3"><span class="text-zinc-500">Design</span><span class="font-semibold text-zinc-800">Same day</span></div>
                             <div class="flex justify-between items-center text-sm border-b border-zinc-100 pb-3"><span class="text-zinc-500">Production</span><span class="font-semibold text-zinc-800">7–10 business days</span></div>
@@ -555,77 +628,72 @@
             </section>
 
             <section class="py-28 px-8 text-center bg-zinc-900 text-white">
-                <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#8A6420">Your Design.</span></h2>
-                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-sm leading-relaxed">Start with a description or an image. Choose from four designs, refine your favourite and preview it in 360°.</p>
-                <button @click="resetAIFlow()" class="btn-gold px-12 py-5 text-xs uppercase tracking-[0.25em] stream-glow transition">Start Designing Now</button>
+                <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#C9A96E">Your Design.</span></h2>
+                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-base leading-relaxed">Start with a description or an image. Choose from four designs, refine your favourite and preview it in 360°.</p>
+                <button @click="resetAIFlow()" class="btn-gold px-12 py-5 stream-glow transition">Start Designing</button>
             </section>
 
-            <footer class="px-8 md:px-20 py-10 bg-zinc-900 border-t border-zinc-800 text-zinc-400 text-[12px]">
-                <div class="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div class="flex flex-col gap-1">
-                        <span class="brand-font text-white text-base tracking-[0.12em] uppercase italic">XJet <span class="not-italic text-zinc-400 text-[12px] tracking-[0.2em]">Atelier</span></span>
-                        <span x-text="footerLine">© 2026 XJet Ltd. Custom rings designed with AI, produced with NanoParticle Jetting™.</span>
-                    </div>
-                    <nav aria-label="Legal and support" class="flex flex-wrap gap-x-6 gap-y-2">
-                        <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="tap-lg hover:text-white transition">Shipping &amp; Returns</a>
-                        <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-white transition">Terms of Service</a>
-                        <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-white transition">Privacy</a>
-                        <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-white transition">Contact &amp; Support</a>
-                        <button type="button" data-cookie-settings class="tap-lg hover:text-white transition text-left">Cookie Settings</button>
-                    </nav>
-                </div>
-            </footer>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
     <!-- ── Inspiration ─────────────────────────────────────────────────── -->
     <template x-if="view === 'inspiration'">
-        <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
+        <main class="flex-1 overflow-y-auto fade-in bg-white flex flex-col">
+            <div class="flex-1 p-8 md:p-24">
             <div class="max-w-4xl mx-auto text-center mb-16">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">What Will You Create?</span>
                 <h1 class="text-4xl brand-font mb-4">Inspiration Gallery</h1>
-                <p class="text-zinc-600 text-[15px] max-w-xl mx-auto" x-text="galleryIntro"></p>
+                <p class="text-zinc-600 text-[16px] max-w-xl mx-auto" x-text="galleryIntro"></p>
             </div>
             <div x-show="productsOn" x-cloak class="flex justify-center mb-8" role="group" aria-label="Show designs">
                     <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
                         <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
                                     class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
-                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
+                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#5F5F5F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
                         </template>
                     </div>
                 </div>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-16">
-                <template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                <template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" :key="i"><div class="g-card" aria-hidden="true"><div class="h-11"></div><div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div></template></template>
                 <template x-for="g in galleryShown" :key="g.id">
-                    <div class="relative group">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                        <img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
-                        <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
-                        <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                    </a>
-                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
-                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                    <div class="g-card group">
+                        <div class="g-over flex items-center h-11 pl-2.5">
+                            <span x-show="productsOn" x-cloak class="product-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
+                            <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                    class="fav-heart is-plain ml-auto w-11 h-11 rounded-full flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                                <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                            </button>
                         </div>
-                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
-                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
-                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-                        </button>
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
+                            <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 42vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                            <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
+                        </a>
+                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                        <div class="g-over mt-auto flex items-center justify-between pr-1.5">
+                            <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                            </div>
+                            <span aria-hidden="true" class="shrink-0"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap pr-1.5" style="color:#8A6420;">Make it yours →</span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></span>
+                        </div>
                     </div>
                 </template>
                 <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
                 <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
             </div>
-            <div class="text-center"><button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Your Design</button></div>
+            <div class="text-center"><button @click="resetAIFlow()" class="btn-gold px-10 py-4 stream-glow transition">Start Designing</button></div>
+            </div>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
     <!-- ── FAQ ─────────────────────────────────────────────────────────── -->
     <template x-if="view === 'faq'">
-        <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
+        <main class="flex-1 overflow-y-auto fade-in bg-white flex flex-col">
+            <div class="flex-1 p-8 md:p-24">
             <div class="max-w-3xl mx-auto">
                 <div class="text-center mb-16">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Questions</span>
@@ -635,9 +703,13 @@
                     <!-- the questions and answers (p3/sitepages.py: the page and its FAQPage data) -->
                     {{FAQ_ITEMS}}
                 </div>
+                <!-- Still a question: the Contact page first, a new design second -->
                 <div class="text-center mt-16">
-                    <p class="text-sm text-zinc-500 mb-6">Still have questions? Our design team is here to help.</p>
-                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Designing</button>
+                    <p class="text-base text-zinc-500 mb-6">Still have questions? Our design team is here to help.</p>
+                    <div class="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
+                        <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="btn-gold px-10 py-4 stream-glow transition">Contact us</a>
+                        <button @click="resetAIFlow()" class="btn-outline px-10 py-4 transition">Start Designing</button>
+                    </div>
                 </div>
             </div>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
@@ -649,124 +721,143 @@
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
-                            <img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
-                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
                 </div>
             </section>
+            </div>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
     <!-- ── About XJet ──────────────────────────────────────────────────── -->
     <template x-if="view === 'designers'">
         <main class="flex-1 overflow-y-auto fade-in bg-white">
+            <!-- About XJet, for a jewelry buyer: who makes the pieces and how. Every figure is one XJet publishes on xjet3d.com
+                 (About us, NPJ technology, Print-Wash-Sinter and Carmel Pro pages; read 20 Oct 2026). -->
             <section class="py-20 px-8 md:px-20 bg-white border-b border-zinc-100">
                 <div class="max-w-4xl mx-auto">
                     <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">About XJet</span>
-                    <h1 class="text-4xl brand-font mb-10">The Inkjet Revolution</h1>
-                    <div class="space-y-6 text-zinc-600 text-[15px] leading-relaxed">
-                        <p>As the pioneer of 3D inkjet technologies, XJet 3D offers a disruptive digital manufacturing solution for metal and ceramic production, delivering exceptional part quality, maximum automation, and superior sustainability benefits. Our technology addresses the challenges of printing <strong class="text-zinc-900">small, complex and high-quality</strong> components at scale for premium products and luxury applications.</p>
-                        <p>Powered by proprietary powderless <strong class="text-zinc-900">NanoParticle Jetting™ technology</strong>, we provide an end-to-end solution encompassing <strong class="text-zinc-900">advanced systems, specialized materials, intuitive software, and expert application development support</strong>, enabling additive manufacturing users to achieve maximum quality, convenience, and consistency.</p>
-                        <p>XJet's material portfolio spans <strong class="text-zinc-900">precious metals, technical metals, and ceramics</strong>, serving diverse sectors and industries in the advancement of manufacturing excellence. Our technology powers the creation of high-value components for applications that drive product innovation, from fine jewelry and luxury accessories to cutting-edge fashion tech and premium consumer goods.</p>
+                    <h1 class="text-4xl brand-font mb-10">The Makers Behind Atelier</h1>
+                    <div class="space-y-6 text-zinc-600 text-base leading-relaxed">
+                        <p>XJet Atelier is the custom jewelry service of XJet Ltd., the company that developed NanoParticle Jetting™: metal printed from a liquid ink instead of loose powder. XJet was established in 2014 at the Science Park in Rehovot, Israel, and is active in North America, Europe, the Middle East, Africa and Asia-Pacific.</p>
+                        <p>Every Atelier piece is printed on XJet's own industrial printers, one at a time, in layers about eight microns thin — fine enough to keep the detail of your design.</p>
                     </div>
                 </div>
             </section>
             <section class="py-20 px-8 md:px-20 bg-zinc-50 border-b border-zinc-100">
                 <div class="max-w-4xl mx-auto">
-                    <h2 class="text-3xl brand-font mb-8">ESG is in our DNA</h2>
-                    <div class="space-y-5 text-zinc-600 text-[15px] leading-relaxed mb-10">
-                        <p>At XJet, we are committed to <strong class="text-zinc-900">sustainability and eco-efficiency</strong>.</p>
-                        <p>We are among the most sustainable additive manufacturing technologies globally. Our <strong class="text-zinc-900">powderless inkjet technology is inherently safe and automated</strong>, resulting in minimal <strong class="text-zinc-900">material waste</strong> and <strong class="text-zinc-900">lowest inventory requirements possible</strong>, while creating a clean, risk-free manufacturing environment that prioritizes operator health and safety.</p>
-                        <div class="border-t border-zinc-200 pt-5 flex flex-col md:flex-row md:items-center gap-8">
-                            <div class="flex-1">
-                                <p>With over 80 patents and a team of leading scientists and industry experts, XJet is redefining what's possible in luxury manufacturing.</p>
-                                <p class="mt-3">XJet is proudly certified for <strong class="text-zinc-900">ISO 9001</strong> and <strong class="text-zinc-900">ISO 13485</strong>.</p>
+                    <h2 class="text-3xl md:text-4xl brand-font mb-4">How Your Piece Is Made</h2>
+                    <p class="text-zinc-600 text-base leading-relaxed mb-10 max-w-2xl">XJet's process has three steps: print, wash and sinter.</p>
+                    <ol class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <li class="bg-white rounded-xl border border-zinc-100 p-7">
+                            <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-3" style="color:#8A6420">Print</p>
+                            <p class="text-base text-zinc-600 leading-relaxed">Your design is jetted layer by layer from an ink of fine metal particles, with a support material printed at the same time.</p>
+                        </li>
+                        <li class="bg-white rounded-xl border border-zinc-100 p-7">
+                            <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-3" style="color:#8A6420">Wash</p>
+                            <p class="text-base text-zinc-600 leading-relaxed">The support material dissolves in water, so intricate openings and hollows are possible.</p>
+                        </li>
+                        <li class="bg-white rounded-xl border border-zinc-100 p-7">
+                            <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-3" style="color:#8A6420">Sinter</p>
+                            <p class="text-base text-zinc-600 leading-relaxed">Heat fuses the metal particles into solid metal.</p>
+                        </li>
+                    </ol>
+                </div>
+            </section>
+            <section class="py-20 px-8 md:px-20 bg-white border-b border-zinc-100">
+                <div class="max-w-4xl mx-auto">
+                    <h2 class="text-3xl md:text-4xl brand-font mb-12">Fast Facts</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                        <div class="flex flex-col items-center">
+                            <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/></svg>
                             </div>
-                            <img width="242" height="114" src="{{BASE}}/static/images/ISO.png" alt="ISO Certification" class="h-24 w-auto object-contain shrink-0">
+                            <div class="text-2xl font-semibold brand-font text-zinc-900 mb-1">2014</div>
+                            <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">XJet established</div>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            </div>
+                            <div class="text-2xl font-semibold brand-font text-zinc-900 mb-1">80+</div>
+                            <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Patents issued and pending</div>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4l8 4-8 4-8-4 8-4zm-8 8l8 4 8-4M4 16l8 4 8-4"/></svg>
+                            </div>
+                            <div class="text-2xl font-semibold brand-font text-zinc-900 mb-1">~8</div>
+                            <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Microns per layer</div>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
+                                <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </div>
+                            <div class="text-2xl font-semibold brand-font text-zinc-900 mb-1">Israel</div>
+                            <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Based at the Rehovot Science Park</div>
                         </div>
                     </div>
                 </div>
             </section>
-            <section class="py-20 px-8 md:px-20 bg-white">
-                <div class="max-w-4xl mx-auto">
-                    <h2 class="text-3xl brand-font mb-12">Fast Facts</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-8 text-center">
-                        <div class="flex flex-col items-center">
-                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/></svg>
-                                </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">2014</div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">XJet Founded</div>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">ESG</div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Strong Benefits</div>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">Global</div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Leading Customers</div>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">80+</div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Patents</div>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-16 h-16 rounded-full border-2 border-zinc-200 flex items-center justify-center mb-4">
-                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
-                                </div>
-                                <div class="text-xl font-semibold brand-font text-zinc-900 mb-1">#1</div>
-                                <div class="text-[12px] uppercase tracking-widest text-zinc-400 leading-tight text-center">Quality</div>
-                            </div>
+            <section class="py-20 px-8 md:px-20 bg-zinc-50">
+                <div class="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center gap-8">
+                    <div class="flex-1">
+                        <h2 class="text-3xl md:text-4xl brand-font mb-6">Certified Quality, Cleaner Printing</h2>
+                        <div class="space-y-5 text-zinc-600 text-base leading-relaxed">
+                            <p>XJet is certified to ISO 9001, the standard for quality management, and to ISO 13485, the quality standard of the medical industry.</p>
+                            <p>Its printers work from sealed ink cartridges rather than loose metal powder, and the support material washes away in water: less waste, and safer to handle.</p>
+                        </div>
                     </div>
+                    <img width="242" height="114" src="{{BASE}}/static/images/ISO.png" alt="ISO 9001 and ISO 13485 certification" class="h-24 w-auto object-contain shrink-0">
                 </div>
             </section>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">See every design</a>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
-                            <img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
-                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
                 </div>
             </section>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
     <!-- ── Technology ──────────────────────────────────────────────────── -->
     <template x-if="view === 'technology'">
-        <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-zinc-50">
+        <main class="flex-1 overflow-y-auto fade-in bg-zinc-50 flex flex-col">
+            <div class="flex-1 p-8 md:p-24">
             <div class="max-w-6xl mx-auto flex flex-col md:flex-row gap-16 items-center">
                 <div class="md:w-1/2">
-                    <h1 class="text-5xl brand-font mb-8">NanoParticle Jetting™</h1>
+                    <h1 class="text-4xl md:text-5xl brand-font mb-8">NanoParticle Jetting™</h1>
                     <p class="text-zinc-600 leading-relaxed text-lg mb-8">Unlike traditional 3D printing, NPJ uses liquid dispersion. It prints metal and soluble support simultaneously, enabling internal voids and complex lattices.</p>
                     <div class="grid grid-cols-2 gap-8">
-                        <div><div class="text-3xl font-light mb-1">8μm</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Layer Thickness</div></div>
-                        <div><div class="text-3xl font-light mb-1">99.8%</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Metal Density</div></div>
+                        <!-- XJet's published figures: layers ~8±2 microns (Carmel Pro); metal density >98% (its metal systems) -->
+                        <div><div class="text-4xl font-light mb-1">~8 µm</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Layer Thickness</div></div>
+                        <div><div class="text-4xl font-light mb-1">&gt;98%</div><div class="text-[12px] uppercase tracking-widest text-zinc-400">Metal Density</div></div>
                     </div>
                 </div>
                 <div class="md:w-1/2 space-y-6">
                     <picture><source srcset="{{BASE}}/static/images/PrintHead.webp" type="image/webp"><img src="{{BASE}}/static/images/PrintHead.jpg" alt="An XJet NanoParticle Jetting print head" width="1280" height="629" class="rounded-sm shadow-2xl" loading="lazy" decoding="async" onerror="this.src='{{BASE}}/static/images/Ink.JPG'"></picture>
                     <figure class="flex items-center gap-5 bg-white rounded-xl border border-zinc-100 p-4">
                         <img width="430" height="681" src="{{BASE}}/static/images/Angel.JPG" alt="A figurine printed in metal with NanoParticle Jetting" class="w-24 h-24 object-contain" style="mix-blend-mode:multiply;" onerror="this.parentElement.style.display='none'">
-                        <figcaption class="text-[13px] text-zinc-600 leading-relaxed" x-text="'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'"></figcaption>
+                        <figcaption class="text-[14px] text-zinc-600 leading-relaxed" x-text="'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'"></figcaption>
+                    </figure>
+                    <figure class="flex items-center gap-5 bg-white rounded-xl border border-zinc-100 p-4">
+                        <img width="658" height="508" src="{{BASE}}/static/images/Ink.JPG" alt="Bottles of XJet NanoParticle Jetting metal and support materials" class="w-24 h-24 shrink-0 object-cover rounded-lg" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'">
+                        <figcaption class="text-[14px] text-zinc-600 leading-relaxed">The metal and the support material come as liquid inks in sealed cartridges — no loose powder to handle.</figcaption>
                     </figure>
                 </div>
             </div>
@@ -779,13 +870,15 @@
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
-                            <img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
-                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
                 </div>
             </section>
+            </div>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
@@ -795,14 +888,14 @@
             <section class="px-6 md:px-20 pt-14 md:pt-20 pb-10 text-center">
                 <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Materials &amp; Pricing</span>
                 <h1 class="text-4xl brand-font mb-4" x-text="materialsTitle"></h1>
-                <p class="text-zinc-600 text-[15px] max-w-2xl mx-auto leading-relaxed" x-text="materialsIntro"></p>
+                <p class="text-zinc-600 text-[16px] max-w-2xl mx-auto leading-relaxed" x-text="materialsIntro"></p>
             </section>
 
             <!-- Fashion metals: available to order at a fixed price -->
             <section class="px-6 md:px-20 pb-16 max-w-6xl mx-auto">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h3 class="brand-font text-2xl text-zinc-900">Available to order</h3>
-                    <p class="text-[13px] text-zinc-500">Production 7–10 business days · standard delivery free</p>
+                    <p class="text-[14px] text-zinc-500">Production 7–10 business days · standard delivery free</p>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <template x-for="m in materialsOf('fashion')" :key="m.id">
@@ -813,20 +906,20 @@
                             </div>
                             <div class="p-6 flex flex-col gap-3 flex-1">
                                 <div>
-                                    <h4 class="brand-font text-xl text-zinc-900" x-text="m.label"></h4>
-                                    <p class="text-[13px] text-zinc-500" x-text="copy(m.id).sub"></p>
+                                    <h4 class="brand-font text-2xl text-zinc-900" x-text="m.label"></h4>
+                                    <p class="text-[14px] text-zinc-500" x-text="copy(m.id).sub"></p>
                                 </div>
-                                <p class="text-[20px] brand-font text-zinc-900" x-text="materialPriceText(m.id)"></p>
-                                <p class="text-[13px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="charmPriceText(m.id)"></p>
-                                <dl class="text-[13px] text-zinc-700 space-y-2 leading-snug">
+                                <p class="flex flex-wrap items-baseline gap-x-2 text-zinc-900"><span x-show="materialPrice(m.id).before" class="text-[14px] text-zinc-600" x-text="materialPrice(m.id).before"></span><span class="brand-font text-2xl" x-text="materialPrice(m.id).figure"></span><span x-show="materialPrice(m.id).words" class="text-[14px] text-zinc-600" x-text="'· ' + materialPrice(m.id).words"></span></p>
+                                <p class="text-[14px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="charmPriceText(m.id)"></p>
+                                <dl class="text-[14px] text-zinc-700 space-y-2 leading-snug">
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Wear &amp; durability</dt><dd x-text="info(m.id).durability"></dd></div>
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Care</dt><dd x-text="info(m.id).care"></dd></div>
                                 </dl>
-                                <div class="mt-auto pt-3 flex items-center justify-between gap-3">
-                                    <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold" style="color:#146C43;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available to order</span>
-                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4" style="color:#8A6420;">Design in <span x-text="m.label"></span></button>
+                                <div class="mt-auto pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                                    <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap" style="color:#146C43;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available to order</span>
+                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 whitespace-nowrap" style="color:#8A6420;" x-text="'Design in ' + m.label.split(' ').pop().toLowerCase()">Design in</button>
                                 </div>
                             </div>
                         </article>
@@ -858,8 +951,8 @@
             </section>
 
             <section class="px-6 md:px-20 py-14 text-center">
-                <p class="text-[13px] text-zinc-500 mb-5">Unsure which metal suits you? <a :href="mailto('Which metal should I choose?')" class="underline underline-offset-2 hover:text-black">Ask our design team</a> — we reply within one business day.</p>
-                <button @click="resetAIFlow()" class="btn-gold px-10 py-4 text-xs uppercase tracking-[0.2em] stream-glow transition">Start Designing</button>
+                <p class="text-[14px] text-zinc-500 mb-5">Unsure which metal suits you? <a :href="mailto('Which metal should I choose?')" class="underline underline-offset-2 hover:text-black">Ask our design team</a> — we reply within one business day.</p>
+                <button @click="resetAIFlow()" class="btn-gold px-10 py-4 stream-glow transition">Start Designing</button>
             </section>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
@@ -870,24 +963,26 @@
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="block rounded-xl overflow-hidden border border-zinc-100 bg-white hover:border-zinc-300 transition">
-                            <img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="aspect-square w-full object-contain bg-zinc-50">
-                            <span class="block px-3 py-2.5 text-[13px] text-zinc-800 truncate" x-text="g.title"></span>
+                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 768px) 25vw, 50vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
                 </div>
             </section>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
     <!-- ── Legal & support pages (P2 plain-language drafts, pending legal review) ── -->
     <template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">
-        <main class="flex-1 overflow-y-auto fade-in p-8 md:p-24 bg-white">
+        <main class="flex-1 overflow-y-auto fade-in bg-white flex flex-col">
+            <div class="flex-1 p-8 md:p-24">
             <article class="max-w-3xl mx-auto">
                 <p class="text-[12px] uppercase tracking-[0.25em] font-semibold mb-3" style="color:#8A561B;">XJet Atelier</p>
 
                 <template x-if="view === 'shipping-returns'">
-                    <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
                         <h1 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h1>
                         <h3 class="text-lg font-semibold text-zinc-900">Timeline</h3>
                         <ul class="list-disc pl-5 space-y-1">
@@ -905,7 +1000,7 @@
                 </template>
 
                 <template x-if="view === 'terms'">
-                    <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
                         <h1 class="text-4xl brand-font text-zinc-900">Terms of Service</h1>
                         <h3 class="text-lg font-semibold text-zinc-900">The service</h3>
                         <p x-text="termsService"></p>
@@ -923,7 +1018,7 @@
                 </template>
 
                 <template x-if="view === 'privacy'">
-                    <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
                         <h1 class="text-4xl brand-font text-zinc-900">Privacy</h1>
                         <h3 class="text-lg font-semibold text-zinc-900">What we collect</h3>
                         <ul class="list-disc pl-5 space-y-1">
@@ -967,9 +1062,9 @@
                         <details class="text-[14px]">
                             <summary class="cursor-pointer font-semibold text-zinc-900">View technical cookie names</summary>
                             <div class="mt-3 space-y-2 text-zinc-600">
-                                <p><span class="font-semibold text-zinc-800">Atelier (essential):</span> the cookies <span class="font-mono text-[13px]">atelier_session</span> (sign-in) and <span class="font-mono text-[13px]">atelier_oauth</span> (only during a sign-in with Google or Apple); in your browser’s local storage, <span class="font-mono text-[13px]">p3_session</span>, <span class="font-mono text-[13px]">p3_profile</span>, <span class="font-mono text-[13px]">p3_state</span> and <span class="font-mono text-[13px]">atelier_consent</span>.</p>
-                                <p><span class="font-semibold text-zinc-800">Google Analytics 4:</span> <span class="font-mono text-[13px]">_ga</span> and <span class="font-mono text-[13px]">_ga_&lt;ID&gt;</span>.</p>
-                                <p><span class="font-semibold text-zinc-800">Microsoft Clarity:</span> <span class="font-mono text-[13px]">_clck</span> and <span class="font-mono text-[13px]">_clsk</span>.</p>
+                                <p><span class="font-semibold text-zinc-800">Atelier (essential):</span> the cookies <span class="font-mono text-[14px]">atelier_session</span> (sign-in) and <span class="font-mono text-[14px]">atelier_oauth</span> (only during a sign-in with Google or Apple); in your browser’s local storage, <span class="font-mono text-[14px]">p3_session</span>, <span class="font-mono text-[14px]">p3_profile</span>, <span class="font-mono text-[14px]">p3_state</span> and <span class="font-mono text-[14px]">atelier_consent</span>.</p>
+                                <p><span class="font-semibold text-zinc-800">Google Analytics 4:</span> <span class="font-mono text-[14px]">_ga</span> and <span class="font-mono text-[14px]">_ga_&lt;ID&gt;</span>.</p>
+                                <p><span class="font-semibold text-zinc-800">Microsoft Clarity:</span> <span class="font-mono text-[14px]">_clck</span> and <span class="font-mono text-[14px]">_clsk</span>.</p>
                             </div>
                         </details>
                         <h3 class="text-lg font-semibold text-zinc-900">Your rights</h3>
@@ -978,42 +1073,36 @@
                 </template>
 
                 <template x-if="view === 'contact'">
-                    <div class="space-y-6 text-[15px] leading-relaxed text-zinc-700">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
                         <h1 class="text-4xl brand-font text-zinc-900">Contact &amp; Support</h1>
                         <p>Our design team answers within one business day.</p>
                         <div class="rounded-xl p-6" style="background:#FBF7EF; border:1px solid #E8DCC4;">
                             <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A561B;">Email</p>
                             <a x-show="SUPPORT_EMAIL" :href="mailto('XJet Atelier — ' + (supportContext || 'a question'))" class="text-lg font-semibold text-zinc-900 underline underline-offset-4 hover:text-black" x-text="SUPPORT_EMAIL"></a>
                             <p x-show="!SUPPORT_EMAIL" class="text-[14px] text-zinc-700">The support address will be published here shortly.</p>
-                            <p class="text-[13px] text-zinc-500 mt-2">Include the name of your design or your Order ID so we can find it quickly. Never send your sign-in code by email.</p>
+                            <p class="text-[14px] text-zinc-500 mt-2">Include the name of your design or your Order ID so we can find it quickly. Never send your sign-in code by email.</p>
                             <a :href="mailto('XJet Atelier — ' + (supportContext || 'a question'), supportContext ? 'About: ' + supportContext + '\n\n' : '')" class="btn-gold inline-flex px-6 py-3 mt-4">Contact us</a>
                         </div>
                         <h3 class="text-lg font-semibold text-zinc-900">How can we help?</h3>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[14px]">
                             <a :href="mailto('Sizing help')" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
                                 <p class="font-semibold text-zinc-900 mb-1">Sizing</p>
-                                <p class="text-[13px] text-zinc-600 leading-snug" x-text="sizingHelp"></p></a>
+                                <p class="text-[14px] text-zinc-600 leading-snug" x-text="sizingHelp"></p></a>
                             <a :href="mailto('My order ' + (order?.ref || ''))" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
                                 <p class="font-semibold text-zinc-900 mb-1">My order</p>
-                                <p class="text-[13px] text-zinc-600 leading-snug">Questions about an order, its payment or delivery? Quote your Order ID (ORD-…) and we take it from there.</p></a>
+                                <p class="text-[14px] text-zinc-600 leading-snug">Questions about an order, its payment or delivery? Quote your Order ID (ORD-…) and we take it from there.</p></a>
                             <a :href="mailto('Something is not working')" class="block rounded-xl border border-zinc-100 p-5 hover:border-zinc-300 transition">
                                 <p class="font-semibold text-zinc-900 mb-1">Something's not working</p>
-                                <p class="text-[13px] text-zinc-600 leading-snug">A design or movie that won't load, a sign-in problem? Tell us what you were doing and the name of the design.</p></a>
+                                <p class="text-[14px] text-zinc-600 leading-snug">A design or movie that won't load, a sign-in problem? Tell us what you were doing and the name of the design.</p></a>
                         </div>
                         <h3 class="text-lg font-semibold text-zinc-900">Company</h3>
                         <p>XJet Atelier is a service of XJet Ltd., the developer of NanoParticle Jetting™ metal and ceramic 3D printing. <a href="https://xjet3d.com/" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">xjet3d.com</a></p>
                     </div>
                 </template>
 
-                <div class="mt-12 flex flex-wrap gap-x-6 gap-y-2 text-[12px] uppercase tracking-[0.15em] text-zinc-600">
-                    <a href="{{BASE}}/" @click="pageLink($event, 'home')" class="tap-lg hover:text-black transition">← Home</a>
-                    <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="tap-lg hover:text-black transition" x-show="view !== 'shipping-returns'">Shipping &amp; Returns</a>
-                    <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="tap-lg hover:text-black transition" x-show="view !== 'terms'">Terms</a>
-                    <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="tap-lg hover:text-black transition" x-show="view !== 'privacy'">Privacy</a>
-                    <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="tap-lg hover:text-black transition" x-show="view !== 'contact'">Contact</a>
-                    <button type="button" data-cookie-settings class="tap-lg hover:text-black transition uppercase tracking-[0.15em]">Cookie Settings</button>
-                </div>
             </article>
+            </div>
+            {{SITE_FOOTER}}
         </main>
     </template>
 
@@ -2652,30 +2741,35 @@
                         <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
                                     class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
-                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
+                                    :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#5F5F5F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
                         </template>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="aspect-square rounded-xl shimmer border border-zinc-100" aria-hidden="true"></div></template></template>
+                    <template x-if="galleryState === 'loading'"><template x-for="i in 4" :key="i"><div class="g-card" aria-hidden="true"><div class="h-11"></div><div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div></template></template>
                     <template x-for="g in galleryShown" :key="g.id">
-                        <div class="relative group">
-                        <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="block w-full relative aspect-square bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :aria-label="'Open ' + g.title">
-                            <img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 50vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="w-full h-full object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async">
-                            <span x-show="productsOn" x-cloak class="product-badge absolute top-2 left-2 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
-                            <span class="absolute inset-x-0 bottom-0 px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-zinc-800 bg-white/90 backdrop-blur-sm flex items-center justify-between gap-2"><span class="truncate" x-text="g.title"></span><span class="shrink-0 font-semibold" style="color:#8A6420;">Make it yours →</span></span>
-                        </a>
-                        <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
-                        <div class="metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11 z-[2] flex items-center gap-1.5 px-1 py-1 sm:px-1.5 rounded-full" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
-                            <button type="button" role="radio" class="metal-swatch rounded-full" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                        <div class="g-card group">
+                            <div class="g-over flex items-center h-11 pl-2.5">
+                                <span x-show="productsOn" x-cloak class="product-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
+                                <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
+                                        class="fav-heart is-plain ml-auto w-11 h-11 rounded-full flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
+                                    <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                                </button>
+                            </div>
+                            <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
+                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 42vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                                <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
+                            </a>
+                            <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
+                            <div class="g-over mt-auto flex items-center justify-between pr-1.5">
+                                <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                                </div>
+                                <span aria-hidden="true" class="shrink-0"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap pr-1.5" style="color:#8A6420;">Make it yours →</span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></span>
+                            </div>
                         </div>
-                        <button type="button" @click.stop="toggleFav(g)" :disabled="favBusy === g.design_id" :aria-pressed="isFav(g)" :aria-label="(isFav(g) ? 'Remove ' : 'Save ') + g.title + (isFav(g) ? ' from Favorites' : ' to Favorites')" :title="isFav(g) ? 'Remove from Favorites' : 'Save to Favorites'"
-                                class="fav-heart absolute top-2 right-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(g) ? 'is-fav' : ''">
-                            <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(g) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-                        </button>
-                    </div>
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery.</div>
                     <div x-show="galleryState === 'loaded' && gallery.length && !galleryShown.length" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500" x-text="'No ' + (galleryProduct ? productPlural(galleryProduct).toLowerCase() : wording.nouns) + ' in the gallery yet.'"></div>
@@ -2685,54 +2779,60 @@
         </div>
     </template>
 
-    <!-- Inspiration Gallery lightbox: a shared XJet design; "Make it yours" links the customer to it -->
+    <!-- Inspiration Gallery lightbox: a shared XJet design; "Make it yours" links the customer to it. The × closes it (so do
+         Escape, a click outside and Back); on a phone "Make it yours" stays at the foot of the sheet while the text scrolls. -->
     <template x-if="galleryItem">
         <div class="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" tabindex="-1" style="outline:none" x-init="$nextTick(() => trapEnter($el))" @keydown.tab.window="trapTab($event, $el)" @click.self="closeGallery('user')" @keydown.escape.window="closeGallery('user')" role="dialog" aria-modal="true" :aria-label="galleryItem.title">
-            <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
-                <div class="md:w-3/5 bg-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 gap-4 relative">
-                    <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-[0.14em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
+            <div class="relative bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row fade-in">
+                <button type="button" @click="closeGallery('user')" class="absolute top-2 right-2 md:top-3 md:right-3 z-[3] w-11 h-11 rounded-full bg-white flex items-center justify-center text-[#1A1A1A] hover:bg-[#FBF8F3] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]" style="border:1px solid #EEE7DA;" aria-label="Close" title="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+                <div class="md:w-3/5 bg-white md:border-r border-[#F1ECE3] flex flex-col items-center justify-center p-4 md:p-6 gap-3 relative">
+                    <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
                     <!-- Opens in the metal its card shows (the original by default); the swatches apply the metal filter to this preview only -->
                     <img :srcset="srcsetFor(galleryItem.image_url)" sizes="(min-width: 768px) 490px, 85vw" :src="thumb(galleryItem.image_url, 800)" width="1024" height="1024" fetchpriority="high" decoding="async" :alt="galleryAlt(galleryItem, galleryMetal)" class="gallery-shot object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
-                    <div class="flex flex-col items-center gap-2">
-                        <div class="flex flex-wrap items-center justify-center gap-2.5" role="radiogroup" aria-label="See it in another metal — preview only">
-                            <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip" :class="!galleryMetal ? 'is-on' : ''">Original</button>
-                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('stainless_steel')" :aria-checked="galleryMetal === 'stainless_steel'" :class="galleryMetal === 'stainless_steel' ? 'is-on' : ''" :style="'background:' + metalSwatch('stainless_steel')" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"></button>
-                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" :style="'background:' + metalSwatch('silver')" aria-label="Preview in Silver" title="Preview in Silver"></button>
-                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg rounded-full" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" :style="'background:' + metalSwatch('gold_18k_yellow')" aria-label="Preview in Gold" title="Preview in Gold"></button>
+                    <div class="flex flex-col items-center gap-1">
+                        <div class="flex flex-wrap items-center justify-center gap-1" role="radiogroup" aria-label="See it in another metal — preview only">
+                            <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip mr-1" :class="!galleryMetal ? 'is-on' : ''">Original</button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('stainless_steel')" :aria-checked="galleryMetal === 'stainless_steel'" :class="galleryMetal === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                         </div>
                         <p class="text-[12px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
                     </div>
                 </div>
-                <div class="md:w-2/5 p-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
+                <div class="md:w-2/5 px-7 pt-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
                     <span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
                     <div class="flex items-center justify-center md:justify-between gap-3">
                         <h3 class="brand-font text-2xl text-zinc-900" x-text="galleryItem.title"></h3>
                         <button type="button" @click="toggleFav(galleryItem)" :disabled="favBusy === galleryItem.design_id" :aria-pressed="isFav(galleryItem)" :aria-label="isFav(galleryItem) ? 'Remove from Favorites' : 'Save to Favorites'" :title="isFav(galleryItem) ? 'Remove from Favorites' : 'Save to Favorites'"
-                                class="fav-heart shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(galleryItem) ? 'is-fav' : ''" style="border:1px solid #E8DCC4;">
-                            <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(galleryItem) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                                class="fav-heart shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" :class="isFav(galleryItem) ? 'is-fav' : ''" style="border:1px solid #E8DCC4;">
+                            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(galleryItem) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
                         </button>
                     </div>
-                    <p x-show="!isOff(galleryItem)" class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>
-                    <p x-show="!isOff(galleryItem)" class="text-sm text-zinc-500 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
+                    <p x-show="!isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
                     <!-- Its product is switched OFF: the design stays viewable, read-only (app.js isOff) -->
-                    <p x-show="isOff(galleryItem)" class="text-sm text-zinc-500 leading-relaxed" role="status" data-unavailable>Currently unavailable for customization or ordering.</p>
+                    <p x-show="isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed" role="status" data-unavailable>Currently unavailable for customization or ordering.</p>
                     <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>
-                    <div class="flex flex-col gap-3 pt-1">
-                        <button x-show="!isOff(galleryItem)" @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 text-xs uppercase tracking-[0.2em] stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
-                        <div class="flex gap-3">
-                            <button @click="shareGallery(galleryItem)" :disabled="shareBusy" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em] inline-flex items-center justify-center gap-2" :title="canNativeShare ? 'Share this design' : 'Copy a link to this design'">
-                                <svg x-show="canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0-11-3.5 3.5M12 4l3.5 3.5M6 12v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6"/></svg>
-                                <svg x-show="!canNativeShare" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
-                                <span x-text="shareBusy ? 'Preparing…' : (canNativeShare ? 'Share' : (shareCopied ? 'Link copied' : 'Copy link'))"></span>
-                            </button>
-                            <button @click="closeGallery('user')" class="btn-outline flex-1 py-3 text-xs uppercase tracking-[0.2em]">Back to gallery</button>
-                        </div>
-                        <div x-show="shareUrl" x-cloak class="flex items-center gap-2 text-left">
-                            <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[12px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
-                            <span class="text-[12px] text-zinc-500 shrink-0">Copy this link</span>
-                        </div>
+                    <!-- Make it yours: below the text on wide screens; on a phone the sheet's last row, held at its foot -->
+                    <div x-show="!isOff(galleryItem)" class="order-last md:order-none max-md:sticky max-md:bottom-0 max-md:z-[2] max-md:-mx-7 max-md:px-4 max-md:pt-3 max-md:pb-4 max-md:bg-white max-md:border-t max-md:border-[#EEE7DA] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.06)] flex flex-col gap-2">
+                        <button x-show="!isOff(galleryItem)" @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
+                        <p x-show="!userSession" class="text-[12px] text-zinc-500 text-center md:text-left">Sign in or register first — we'll bring you straight back to this design.</p>
                     </div>
-                    <p x-show="!userSession && !isOff(galleryItem)" class="text-[12px] text-zinc-400">Sign in or register first — we'll bring you straight back to this design.</p>
+                    <!-- Share / Copy link and Back to gallery: one row of text buttons, each on one line -->
+                    <div class="flex items-center justify-center md:justify-start gap-6 max-md:pb-2">
+                        <button @click="shareGallery(galleryItem)" :disabled="shareBusy" class="h-11 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap text-[#1A1A1A] hover:text-[#8A6420] transition disabled:opacity-60" :title="canNativeShare ? 'Share this design' : 'Copy a link to this design'">
+                            <svg x-show="canNativeShare" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0-11-3.5 3.5M12 4l3.5 3.5M6 12v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6"/></svg>
+                            <svg x-show="!canNativeShare" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+                            <span x-text="shareBusy ? 'Preparing…' : (canNativeShare ? 'Share' : (shareCopied ? 'Link copied' : 'Copy link'))"></span>
+                        </button>
+                        <button @click="closeGallery('user')" class="h-11 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap text-[#1A1A1A] hover:text-[#8A6420] transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 12H5m6-6-6 6 6 6"/></svg>Back to gallery</button>
+                    </div>
+                    <div x-show="shareUrl" x-cloak class="flex items-center gap-2 text-left">
+                        <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[12px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
+                        <span class="text-[12px] text-zinc-500 shrink-0">Copy this link</span>
+                    </div>
                 </div>
             </div>
         </div>

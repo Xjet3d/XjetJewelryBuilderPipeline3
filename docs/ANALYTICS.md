@@ -90,7 +90,7 @@ Two layers, in Atelier's own look (warm ivory surface, beige hairline, Cinzel ti
 buttons, 6 px corners). The primary action wears Atelier's gold, the site's `btn-gold`: a warm gold gradient with dark
 text. The styles live in `consent.js` itself, so the quote page shows the same.
 
-- **The banner** (a card in the bottom-left corner; a sheet along the bottom on phones): *Your privacy matters* — what
+- **The banner** (a card in the bottom-right corner, over the hero's story and never over its buttons, since 2026-10-20; a sheet along the bottom on phones): *Your privacy matters* — what
   the site uses and why, in one paragraph, and a Privacy Policy link. It names no tool, cookie or retention period.
   **Accept all** (primary), **Reject optional** (beside it, the same size, outlined), **Manage preferences** (a quiet
   text action).

@@ -24,7 +24,7 @@ Only the public production site (Atelier) turns it on.
 | faq | `/faq` | Frequently Asked Questions |
 | materials | `/materials` | Real metal, one fixed price per … (follows the products) |
 | technology | `/technology` | NanoParticle Jetting™ |
-| designers | `/about` | The Inkjet Revolution |
+| designers | `/about` | The Makers Behind Atelier |
 | shipping-returns, terms, privacy, contact | `/shipping-returns`, `/terms`, `/privacy`, `/contact` | the page's name |
 | a gallery design | `/gallery/<name>` (below) | the design's name |
 

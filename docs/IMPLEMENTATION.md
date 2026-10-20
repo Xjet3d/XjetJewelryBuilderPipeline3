@@ -543,7 +543,10 @@ implementation of before is the reference: its tests are unchanged and must keep
   - Visual only: no request carries the metal (Make it yours sends only its request id), so there is no AI call and
     no change to the master design, the customer's material or any price. The swatches are shown whether or not
     charms are offered.
-  - Phones: 12 px dots (15 px from 640 px) with a larger tap area, clear of the badge, the ♥ and the title.
+  - Each swatch is a 44 × 44 button holding its dot: 16 px on a card (40 × 44 and 14 px on a card narrower than 210 px,
+    so three fit beside the arrow), 26 px in the dialog. Since the design review (2026-10-20) nothing sits on a card's
+    picture: the badge and the ♥ are the card's top row, the name (in full) and the swatches are below the picture, and
+    the card's link covers the whole card (`.g-card .g-link::after`) under its buttons.
 - The swatches and badges are plain elements, with no template nested in a card (the Alpine 3.13.3 clean-up rule
   above).
 - **Tests:** `tests/test_gallery_products.py`. It checks:

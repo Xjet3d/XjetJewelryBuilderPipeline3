@@ -280,8 +280,9 @@
     '.ac-bar,.ac-card{box-sizing:border-box;background:#FBF8F3;color:#2A2520;border:1px solid #E8DCC4;border-radius:10px;',
     'font:400 13.5px/1.6 ' + SANS + ';text-align:left;-webkit-font-smoothing:antialiased}',
     '.ac-bar *,.ac-card *{box-sizing:border-box}',
-    // the first layer: a card in the corner on wide screens, a sheet along the bottom on phones
-    '.ac-bar{position:fixed;left:24px;bottom:24px;z-index:2147483000;width:424px;max-width:calc(100vw - 48px);padding:22px 22px 12px;',
+    // the first layer: a card in the bottom-right corner on wide screens (over the hero's story, never over its buttons),
+    // a sheet along the bottom on phones
+    '.ac-bar{position:fixed;right:24px;bottom:24px;z-index:2147483000;width:424px;max-width:calc(100vw - 48px);padding:22px 22px 12px;',
     'box-shadow:0 18px 44px -18px rgba(58,46,18,.32),0 2px 8px rgba(58,46,18,.06);animation:ac-in .32s cubic-bezier(.2,.7,.2,1) both}',
     '.ac-bar .ac-title{margin:0 0 8px;padding:0;font:600 15px/1.35 ' + SERIF + ';letter-spacing:.06em;color:#1A1A1A;text-transform:none}',
     '.ac-bar p,.ac-card p{margin:0;padding:0;color:#4A443B;font-size:13.5px;line-height:1.6}',

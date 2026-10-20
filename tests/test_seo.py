@@ -311,7 +311,7 @@ async def test_a_design_page_is_headed_by_the_design_name(tmp_path):
 def test_every_sentence_the_server_writes_is_still_on_the_page():
     """The server writes a page's computed sentences (p3/sitepages.py Fallbacks) into the bindings that show them: each
     binding must still exist in web/index.html (a renamed getter would otherwise leave the server's text unused)."""
-    Source = (WebDir / "index.html").read_text(encoding="utf-8")
+    Source = (WebDir / "index.html").read_text(encoding="utf-8") + (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8")
     class Ctx:                                       # what Fallbacks reads: the catalog's metal names
         class Catalog:
             @staticmethod
@@ -373,8 +373,8 @@ async def test_the_materials_page_keeps_its_cards_room_until_the_catalog_answers
         assert Page.count('<div class="material-ph"></div>') == Fashion                        # not in the template the app keeps
         assert 'x-cloak x-show="!catalog"' not in Live                                           # visible from the first paint
         Css = (WebDir / "index.html").read_text(encoding="utf-8")
-        for Rule in (".material-ph { height: 436px; }", ".gold-ph { height: 240px; }",
-                     "@media (min-width: 1280px) { .material-ph { height: 444px; } .gold-ph { height: 232px; } }"):
+        for Rule in (".material-ph { height: 445px; }", ".gold-ph { height: 240px; }",               # re-measured 2026-10-20
+                     "@media (min-width: 1150px) { .material-ph { height: 464px; } }", "@media (min-width: 1280px) { .gold-ph { height: 232px; } }"):
             assert Rule in Css, Rule
         for Other in ("/", "/gallery", "/faq"):
             assert '<div class="material-ph"></div>' not in (await H.Client.get(Other)).text, Other
@@ -402,9 +402,10 @@ async def test_four_gallery_designs_close_about_materials_technology_and_faq(tmp
         Page = (WebDir / "index.html").read_text(encoding="utf-8")
         Js = (WebDir / "app.js").read_text(encoding="utf-8")
         assert Page.count('<template x-for="g in pageDesigns"') == 4
-        # room above the four (2026-10-18): FAQ and Technology end on content with no space of its own below it
+        # room above the four (2026-10-18): FAQ and Technology end on content with no space of its own below it; About
+        # too since 2026-10-20 (it ends on a tinted section)
         Strip = '<section x-show="pageDesigns.length" class="px-6 md:px-20 {}pb-16 max-w-6xl mx-auto w-full"'
-        assert Page.count(Strip.format("pt-14 ")) == 2 and Page.count(Strip.format("")) == 2
+        assert Page.count(Strip.format("pt-14 ")) == 3 and Page.count(Strip.format("")) == 1
         for View, Path_ in (("faq", "/faq"), ("technology", "/technology")):         # the page as served (x-cloak added)
             Live = _Live((await H.Client.get(Path_)).text, View)
             assert 'class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery"' in Live, View

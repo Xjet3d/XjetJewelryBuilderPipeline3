@@ -148,9 +148,13 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
                    Og: str = "", Mock: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
-    (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description. Mock False: the
+    (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description, "{{SITE_FOOTER}}"
+    the site's footer (web/partials/site-footer.html: one footer, at the end of every public page). Mock False: the
     parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
+    if "{{SITE_FOOTER}}" in Html:                 # the partial's own leading comment stays in the partial
+        Footer = re.sub(r"^\s*<!--.*?-->\s*", "", (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8"), count=1, flags=re.S)
+        Html = Html.replace("{{SITE_FOOTER}}", Footer.strip())
     if Mock is not None:
         Html = re.sub(r"<!--mock-->.*?<!--/mock-->", "", Html, flags=re.S) if not Mock else Html.replace("<!--mock-->", "").replace("<!--/mock-->", "")
     for Asset in ("app.js", "consent.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",

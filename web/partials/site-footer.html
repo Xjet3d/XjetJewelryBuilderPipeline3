@@ -1,0 +1,47 @@
+<!-- ── The site's footer, the same at the end of every public page: p3/app.py _VersionedPage puts it where a page says
+     {{SITE_FOOTER}}. Readable on its dark ground: text #A1A1AA (6.8:1), links #D4D4D8 (12:1), the column headings in
+     Atelier's gold #C9A96E (7.9:1). XJet's own white logo (web/images/xjet-logo-white.png), with its clearspace. No
+     address in the markup: the email link is built from the page's settings (Cloudflare rewrites written addresses). -->
+<footer class="bg-zinc-900 text-[#A1A1AA] px-6 sm:px-8 md:px-20 pt-12 md:pt-16 pb-8" data-site-footer>
+    <div class="max-w-6xl mx-auto">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-8 md:gap-10">
+            <div class="col-span-2 flex flex-col gap-4 md:pr-10">
+                <a href="{{BASE}}/" @click="pageLink($event, 'home')" class="inline-flex items-center self-start" aria-label="XJet Atelier — home">
+                    <img src="{{BASE}}/static/images/xjet-logo-white.png" width="270" height="96" alt="XJet" class="block h-6 w-auto" loading="lazy" decoding="async">
+                    <span class="block w-px h-5 bg-zinc-700 ml-6" aria-hidden="true"></span>
+                    <span class="brand-font uppercase text-[14px] tracking-[0.26em] text-[#E4E4E7] ml-4 leading-none">Atelier</span>
+                </a>
+                <p class="text-[14px] leading-relaxed max-w-sm" x-text="footerLine">Custom rings designed with AI, made in real metal with NanoParticle Jetting™.</p>
+                <a x-show="SUPPORT_EMAIL" x-cloak :href="mailto('XJet Atelier — a question')" class="f-link self-start underline underline-offset-4 decoration-zinc-600" x-text="SUPPORT_EMAIL"></a>
+            </div>
+            <nav aria-label="Explore" class="flex flex-col">
+                <p class="f-head">Explore</p>
+                <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="f-link">Inspiration Gallery</a>
+                <a href="{{BASE}}/materials" @click="pageLink($event, 'materials')" class="f-link">Materials &amp; Pricing</a>
+                <a href="{{BASE}}/#how-it-works" @click.prevent="scrollToHowItWorks()" class="f-link">How It Works</a>
+                <a href="{{BASE}}/technology" @click="pageLink($event, 'technology')" class="f-link">Technology</a>
+                <a href="{{BASE}}/about" @click="pageLink($event, 'designers')" class="f-link">About XJet</a>
+                <a href="{{BASE}}/faq" @click="pageLink($event, 'faq')" class="f-link">FAQ</a>
+            </nav>
+            <!-- Phones: Help over Legal in the second column; from 768 px each is a column of its own -->
+            <div class="flex flex-col gap-8 md:contents">
+                <nav aria-label="Help" class="flex flex-col">
+                    <p class="f-head">Help</p>
+                    <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="f-link">Contact &amp; Support</a>
+                    <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="f-link">Shipping &amp; Returns</a>
+                    <p class="text-[14px] leading-relaxed mt-2">We reply within one business day.</p>
+                </nav>
+                <nav aria-label="Legal" class="flex flex-col">
+                    <p class="f-head">Legal</p>
+                    <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="f-link">Terms of Service</a>
+                    <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="f-link">Privacy</a>
+                    <button type="button" data-cookie-settings class="f-link text-left">Cookie Settings</button>
+                </nav>
+            </div>
+        </div>
+        <div class="mt-10 md:mt-12 pt-5 border-t border-zinc-800 flex flex-col md:flex-row md:items-center md:justify-between gap-1 md:gap-6">
+            <p class="text-[14px]">© 2026 XJet Ltd. XJet Atelier is a service of XJet Ltd.</p>
+            <a href="https://xjet3d.com/" target="_blank" rel="noopener" class="f-link self-start md:self-auto underline underline-offset-4 decoration-zinc-600">xjet3d.com</a>
+        </div>
+    </div>
+</footer>

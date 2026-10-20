@@ -190,9 +190,10 @@ def test_the_customer_page_shows_a_paused_design_read_only_from_every_entry_poin
     assert "if (typeof s.available === 'boolean') g.available = s.available;" in Js       # fresh as the dialog opens
     assert "const g = this.galleryItem; if (!g || this.isOff(g)) return;" in Js
     assert "if (e.code === 'design_unavailable') {" in Js
-    assert ('<p x-show="isOff(galleryItem)" class="text-sm text-zinc-500 leading-relaxed" role="status" data-unavailable>'
+    assert ('<p x-show="isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed" role="status" data-unavailable>'
             'Currently unavailable for customization or ordering.</p>') in Page
     assert '<button x-show="!isOff(galleryItem)" @click="makeItYours()"' in Page
-    assert '<p x-show="!isOff(galleryItem)" class="brand-font text-xl leading-snug text-zinc-800">Love this design? Make it yours.</p>' in Page
+    assert '<div x-show="!isOff(galleryItem)" class="order-last md:order-none max-md:sticky max-md:bottom-0' in Page   # with its sign-in note
+    assert "Love this design? Make it yours." not in Page                  # one display heading: the design's name (2026-10-20)
     assert "x-text=\"isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'\"" in Page
     assert "x-text=\"l.unavailable ? 'Currently unavailable for customization or ordering' : 'Cannot be ordered yet'\"" in Page

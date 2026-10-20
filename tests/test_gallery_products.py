@@ -14,12 +14,14 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "a439290ade012fff9ff0e669506815e74491aea1cc4f9c7ffb192a22aa0bd40f"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "408d153d4db63cce1fba6befe9bada99a6f553eab5cb3e19acc9e3e16bc0078d"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)
 #   2026-10-12: the story's stage carries sc-stage from the first paint, so its room is kept before the scripts start (CLS)
 #   2026-10-17: the stage names its story (data-sc-design) and the story opens on its finished ring (startAt 'final': LCP)
+#   2026-10-20: design review — "by You" kept together, the type scale, the room under a header of either height (--hdr),
+#               the two buttons stacked where they do not fit side by side (768–1279 px)
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
@@ -62,9 +64,21 @@ async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatche
     assert re.findall(r'aria-label="Preview in ([^"]+)"', Box) == [L for _, L in Metals]
     assert re.findall(r"setGalleryMetal\('([a-z0-9_]*)'\)", Box) == ["", *[I for I, _ in Metals]]
     assert "metalFilter(galleryMetal)" in Box and "<template" not in Box.split(">", 1)[1]
-    # Phones: smaller dots in the lower-left corner, just above the title bar (clear of the badge and the heart)
-    assert "@media (min-width: 640px) { .metal-swatch { width: 15px; height: 15px; } }" in Page
-    assert "".join(Cards).count("metal-swatches absolute left-1.5 bottom-[38px] sm:left-2 sm:bottom-11") == 3
+    # The design review (2026-10-20): each swatch a 44 × 44 button holding its dot (16 px; 40 × 44 and 14 px on a narrow
+    # card, so three fit beside the arrow), the card's name in full, nothing on the picture — the badge and the heart in
+    # the card's top row, the swatches below the name; the whole card is the link (its ::after), under the buttons
+    assert (".metal-swatch { position: relative; display: inline-flex; align-items: center; justify-content: center; "
+            "width: 44px; height: 44px; flex: none;") in Page
+    assert "@container (max-width: 209.98px) { .g-name { font-size: 14px; } .metal-swatch { width: 40px; } .metal-swatch > span { width: 14px; height: 14px; } }" in Page
+    assert ".g-card .g-link::after { content: ''; position: absolute; inset: 0; z-index: 1;" in Page
+    for Card in Cards:
+        assert Card.count('class="g-card group"') == 1 and "truncate" not in Card and "absolute" not in Card
+        assert '<span class="g-name block px-2.5 pt-2" x-text="g.title"></span>' in Card
+        Link = Card.index("data-gallery-tile")
+        assert Card.index('class="product-badge') < Link and Card.index("toggleFav(g)") < Link < Card.index("pickCardMetal(g, ")
+        assert Card.count("<span :style=\"'background:' + metalSwatch(") == 3 and ":style=\"'background:' + metalSwatch" not in Card.replace("<span :style=\"'background:' + metalSwatch(", "")
+        assert "fav-heart is-plain ml-auto w-11 h-11" in Card                           # a 44 px heart
+    assert "metal-swatch metal-swatch-lg" in Box and ".metal-swatch.metal-swatch-lg > span { width: 26px; height: 26px; }" in Page
 
 
 async def test_the_metal_preview_is_visual_only(HG):

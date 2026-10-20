@@ -1322,16 +1322,23 @@ function p3App() {
         this.materialQuotes = out; this.materialQuotesState = 'loaded';
       } catch (_) { this.materialQuotesState = 'failed'; }
     },
-    materialPriceText(id) {
-      if (this.soleProduct === 'charm') return this.charmPriceText(id, '');            // charms only: the fixed price per size
+    // A Materials card's price: "$90 · any ring size" — the figure (in the display face) and its words; charms alone:
+    // "from $49 · by charm size". Whole dollars without cents.
+    materialPrice(id) {
+      if (this.soleProduct === 'charm') {                                             // charms only: the fixed price per size
+        const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
+        return prices.length ? { before: 'from', figure: this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true), words: 'by charm size' }
+                             : { before: '', figure: 'Price on request', words: '' };
+      }
       const q = this.materialQuotes[id];
-      if (this.materialQuotesState !== 'loaded' || !q) return this.materialQuotesState === 'failed' ? 'Price unavailable' : '…';
-      return q.pricing_status === 'available' ? this.money(q.unit_price, q.currency) + ' per ring, any size' : 'Price on request';
+      if (this.materialQuotesState !== 'loaded' || !q) return { before: '', figure: this.materialQuotesState === 'failed' ? 'Price unavailable' : '…', words: '' };
+      return q.pricing_status === 'available' ? { before: '', figure: this.money(q.unit_price, q.currency, true), words: 'any ring size' }
+                                              : { before: '', figure: 'Price on request', words: '' };
     },
     charmMaterial(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id); },
     charmPriceText(id, prefix = 'Charm: ') {
       const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
-      const text = prices.length ? 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency) + ' per charm, by size' : 'price on request';
+      const text = prices.length ? 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true) + ' per charm, by size' : 'price on request';
       return prefix ? prefix + text : text[0].toUpperCase() + text.slice(1);
     },
     // Support: one address everywhere, with the right context in the subject line
@@ -1437,7 +1444,7 @@ function p3App() {
       if (this.soleProduct === 'ring') return 'Bands, signets, statement and stackable rings' + tail;
       return this.productsText[0].toUpperCase() + this.productsText.slice(1) + tail;
     },
-    get footerLine() { return '© 2026 XJet Ltd. Custom ' + this.productsText + ' designed with AI, produced with NanoParticle Jetting™.'; },
+    get footerLine() { return 'Custom ' + this.productsText + ' designed with AI, made in real metal with NanoParticle Jetting™.'; },
     // The bag's price note names what is in the bag: ring sizes are US sizes, charm sizes millimeters
     get bagPriceNote() {
       const kinds = new Set((this.bagLines || []).map(l => l.product_type || 'ring'));
@@ -2059,8 +2066,10 @@ function p3App() {
       if (q.pricing_status !== 'available') return 'Price unavailable';
       return this.money(q.unit_price, q.currency);
     },
-    money(v, cur = 'USD') {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(v);
+    // whole: a whole amount without its cents ("$90", the Materials page); anything else keeps them ("$90.50")
+    money(v, cur = 'USD', whole = false) {
+      const bare = whole && Number.isInteger(Number(v)) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {};
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, ...bare }).format(v);
     },
     get bagButtonText() {
       if (!this.cust || this.quotePending) return 'Updating price…';

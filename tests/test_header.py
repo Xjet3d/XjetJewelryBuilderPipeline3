@@ -1,6 +1,7 @@
 """The header: a utility row (My Designs · ♥ Favorites · bag · account) above the main row (XJet Atelier · the
-pages · Start Designing) on the site's pages; one row on phones and on the Design screen. One grid, so every control
-exists once; Sign out lives in the account menu, not in the header."""
+pages · Start Designing) on the site's pages from 768 to 1279 px; one row on phones, on the Design screen and, from
+1280 px, on the site's pages (design review 2026-10-20). One grid, so every control exists once; Sign out lives in
+the account menu, not in the header. XJet is XJet's own logo file, never typed."""
 
 import re
 
@@ -32,6 +33,13 @@ async def test_one_grid_two_rows_on_the_site_one_row_on_phones_and_in_the_studio
     assert 'grid-template-areas: "brand nav util cta";' in Css                  # phones and the Design screen
     Wide = Css[Css.index("@media (min-width: 768px) {", Css.index(".site-header {")):]
     assert '.site-header:not(.is-studio) {' in Wide and 'grid-template-areas: "util util util" "brand nav cta";' in Wide
+    # from 1280 px one 72 px bar: the utility icons beside Start Designing; the hero's room follows the header (--hdr)
+    Bar1280 = Css[Css.index("@media (min-width: 1280px) {", Css.index(".site-header {")):]
+    assert 'grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "brand nav util cta"; }' in Bar1280[:400]
+    assert "@media (min-width: 768px) { :root { --hdr: 117px; } }" in Css and "@media (min-width: 1280px) { :root { --hdr: 74px; } }" in Css
+    assert "md:min-h-[calc(100vh_-_var(--hdr))]" in Index and "115px" not in Index
+    # the header's parts never shrink under their content (the logo picture would let ATELIER run under the icons)
+    assert ".site-header > .h-brand, .site-header > .h-util, .site-header > .h-cta { min-width: max-content; }" in Css
     # every control exists once (the menu panel below 1024 px is a list of its own)
     for Call in ("openPanel('designs')", "openPanel('favorites')", "openBag()", "toggleAccountPanel()", "resetAIFlow()"):
         assert Bar.count(Call) == 1, Call
@@ -50,8 +58,11 @@ async def test_the_utility_row_my_designs_favorites_bag_account(HG):
     Acct = Acct[:Acct.index("</button>")]
     for Piece in ('<circle cx="12" cy="8.2" r="3.6"/>', 'x-text="displayName"', '>·</span>', 'fill="#C9A96E"', 'x-text="quotaRemaining"', 'd="M19 9l-7 7-7-7"'):
         assert Piece in Acct, Piece
-    # signed out: Sign in in the account's place; no Sign out in the header any more
-    assert 'x-show="!userSession && !inStudio" @click="openRegModal()"' in Util and "<span>Sign in</span>" in Util
+    # signed out: Sign in in the account's place (its icon alone below 380 px, named for screen readers); no Sign out
+    assert 'x-show="!userSession && !inStudio" @click="openRegModal()" aria-label="Sign in"' in Util and '<span class="h-signin-text">Sign in</span>' in Util
+    # phones leave My Designs to the menu panel (it is there), so XJet Atelier and the icons fit from 320 px
+    assert "@click=\"openPanel('designs')\" class=\"tap nav-icon hidden md:inline-flex\"" in Util
+    assert "openPanel('designs')" in Nav[Nav.index('<div id="mobile-menu"'):]
     assert "logout()" not in Bar and not re.search(r">\s*Sign out\s*<", Bar) and "'Sign out'" not in Bar
 
 
@@ -62,6 +73,11 @@ async def test_the_main_row_brand_a_short_navigation_and_start_designing(HG):
     Main = _Part(Bar, "h-nav")
     Links = re.findall(r">([A-Za-z ]+)</(?:button|a)>", Main[:Main.index('<div id="about-menu"')])
     assert [L.strip() for L in Links] == ["How It Works", "Inspiration", "Materials"]
+    # one style for the four: capitals at 12 px — a button takes neither from around it, so both buttons say it themselves
+    Row = Main[:Main.index('<div id="about-menu"')]
+    assert 'text-[12px] uppercase tracking-[0.12em]' in Row
+    assert '<button @click="scrollToHowItWorks()" class="uppercase text-[12px] py-3 hover:text-black transition">How It Works</button>' in Row
+    assert 'class="inline-flex items-center gap-1.5 uppercase text-[12px] py-3 transition"' in Row
     # the pages are real links (their own URL; a plain click opens them in place)
     assert f'<a href="{H.Base}/gallery" @click="pageLink($event, \'inspiration\')"' in Main
     assert f'<a href="{H.Base}/materials" @click="pageLink($event, \'materials\')"' in Main
@@ -73,7 +89,12 @@ async def test_the_main_row_brand_a_short_navigation_and_start_designing(HG):
     Cta = _Part(Bar, "h-cta")
     assert 'x-show="!inStudio" @click="resetAIFlow()" class="btn-gold' in Cta and ">Start Designing</button>" in Cta
     assert 'x-show="inStudio" @click="navigateTo(\'home\')"' in Cta and ">Exit</button>" in Cta   # Exit only in the studio
-    assert "XJet Atelier — home" in _Part(Bar, "h-brand")
+    Brand = _Part(Bar, "h-brand")
+    assert "XJet Atelier — home" in Brand
+    # XJet: XJet's own logo file (never redrawn or typed), then ATELIER — on phones too
+    assert re.search(r'<img src="' + re.escape(H.Base) + r'/static/images/xjet-logo\.png\?v=\d+" width="270" height="96" alt="XJet"', Brand)
+    assert ">XJet</span>" not in Brand and "italic" not in Brand
+    assert re.search(r'<span class="h-word brand-font uppercase [^"]*">Atelier</span>', Brand) and "hidden md:inline" not in Brand
     # the menu panel (below 1024 px) still lists every page
     Menu = Nav[Nav.index('<div id="mobile-menu"'):]
     for View in ("inspiration", "materials", "technology", "faq", "designers", "contact"):

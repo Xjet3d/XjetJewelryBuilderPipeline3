@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 Web = Path(__file__).resolve().parents[1] / "web"
-Pages = ("index.html", "admin.html", "dev.html", "verify.html")
+Pages = ("index.html", "admin.html", "dev.html", "verify.html", "partials/site-footer.html")   # the footer: in every public page
 ThirdParty = ("cdn.tailwindcss.com", "unpkg.com", "jsdelivr.net", "googleapis.com", "gstatic.com", "cdnjs.cloudflare.com")
 
 
@@ -110,9 +110,10 @@ def test_built_stylesheet_covers_every_class_in_the_pages():
     Css = (Web / "vendor" / "tailwind.css").read_text(encoding="utf-8")
     Own = (Web / "styles.css").read_text(encoding="utf-8") + (Web / "showcase.css").read_text(encoding="utf-8")
     Missing = []
-    for Name in ("index.html", "admin.html", "dev.html"):
+    for Name in ("index.html", "admin.html", "dev.html", "partials/site-footer.html"):
         Html = (Web / Name).read_text(encoding="utf-8")
-        Inline = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", Html, re.S))
+        Styled = (Web / "index.html").read_text(encoding="utf-8") if Name.startswith("partials/") else Html   # a partial: its page's styles
+        Inline = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", Styled, re.S))
         for Tok in sorted(_Classes(Html)):
             if f".{_Esc(Tok)}" in Css or re.search(r"\." + re.escape(Tok) + r"(?![\w-])", Inline + Own):
                 continue
