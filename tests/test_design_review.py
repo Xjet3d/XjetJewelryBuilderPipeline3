@@ -127,6 +127,16 @@ def test_how_it_works_numerals_read_and_its_titles_are_h3():
         assert Kept in How, Kept
 
 
+def test_the_header_paints_at_its_final_height():
+    """Proto's lab (20 Oct): the header's parts for a signed-in visitor and for the Design screen painted before the
+    scripts started, so a phone header was 100 px tall for its first seconds, then 73 px (CLS). They wait for the
+    scripts now (x-cloak); what a signed-out visitor sees is in the first paint."""
+    for Part in ('<div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">',
+                 '<button type="button" x-show="userSession" x-cloak data-account-button',
+                 """<button x-show="inStudio" @click="navigateTo('home')" x-cloak class="tap-lg"""):
+        assert Part in Index, Part
+
+
 def test_headings_follow_each_other_in_order():
     """Lighthouse's heading-order check on proto (20 Oct): Materials and the legal and Contact pages had h3 straight
     under their h1. Their section headings are h2 now (the same look), Materials' metal names h3."""
