@@ -69,7 +69,10 @@ async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatche
     # the card's top row, the swatches below the name; the whole card is the link (its ::after), under the buttons
     assert (".metal-swatch { position: relative; display: inline-flex; align-items: center; justify-content: center; "
             "width: 44px; height: 44px; flex: none;") in Page
-    assert "@container (max-width: 209.98px) { .g-name { font-size: 14px; } .metal-swatch { width: 40px; } .metal-swatch > span { width: 14px; height: 14px; } }" in Page
+    assert "@media (max-width: 639.98px) { .g-name { font-size: 14px; } .g-card .metal-swatch { width: 40px; } .g-card .metal-swatch > span { width: 14px; height: 14px; } }" in Page
+    # by the viewport, never container queries: those were re-evaluated on every frame of the home page's story (TBT)
+    assert "@container" not in Page and "container-type" not in Page
+    assert ".g-card .metal-swatch { flex: 0 1 auto; min-width: 32px; }" in Page and 'class="g-grid-dialog grid' in Page
     assert ".g-card .g-link::after { content: ''; position: absolute; inset: 0; z-index: 1;" in Page
     for Card in Cards:
         assert Card.count('class="g-card group"') == 1 and "truncate" not in Card and "absolute" not in Card

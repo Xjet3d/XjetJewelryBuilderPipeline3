@@ -120,11 +120,22 @@ def test_how_it_works_numerals_read_and_its_titles_are_h3():
     with the same look; nothing else in How It Works changes."""
     S = Index.index('<section id="how-it-works"')
     How = Index[S:Index.index("</section>", S)]
-    assert ".step-numeral { color: #B08D57 !important; }" in Index and ".step-title { font-family: 'Inter', sans-serif; }" in Index
+    assert ".step-numeral { color: #B08D57 !important; }" in Index and ".step-title, .h-inter { font-family: 'Inter', sans-serif; }" in Index
     assert '<h3 class="step-title text-sm font-semibold text-zinc-900 mb-2" x-text="s.title"></h3>' in How and "<h4" not in How
     for Kept in ("Custom Jewelry Made Simple", "From idea to finished piece in four simple steps.", "Share Your Idea",
                  "Choose From Four", "Choose Your Details", "Add to Your Bag", "You see your design before anything is made."):
         assert Kept in How, Kept
+
+
+def test_headings_follow_each_other_in_order():
+    """Lighthouse's heading-order check on proto (20 Oct): Materials and the legal and Contact pages had h3 straight
+    under their h1. Their section headings are h2 now (the same look), Materials' metal names h3."""
+    Public = _Public(Index)
+    Legal = Public[Public.index("""<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""):]
+    assert '<h3 class="text-lg font-semibold' not in Legal and Legal.count('<h2 class="text-lg font-semibold text-zinc-900">') == 17
+    Materials = Public[Public.index("<template x-if=\"view === 'materials'\">"):Public.index("<!-- ── Legal & support pages")]
+    assert "<h4" not in Materials and Materials.count('<h2 class="brand-font text-2xl text-zinc-900">') == 3   # + the strip
+    assert '<h3 class="h-inter text-[14px] font-semibold text-zinc-900" x-text="m.label"></h3>' in Materials       # gold: Inter
 
 
 def test_gold_reads_on_dark_and_the_chips_on_cream():
