@@ -127,6 +127,25 @@ def test_how_it_works_numerals_read_and_its_titles_are_h3():
         assert Kept in How, Kept
 
 
+def test_a_cards_make_it_yours_starts_the_design():
+    """F2 as the approved proposal drew it: a card's "Make it yours" (the words, or the arrow on a narrow card) starts
+    the design directly — the dialog's button without the dialog: sign in first when needed, the design remembered and
+    opened right after; a design whose product is switched OFF opens read-only. The rest of the card opens the dialog."""
+    Cards = [M.start() for M in re.finditer(r'<div class="g-card group">', Index)]
+    assert len(Cards) == 3
+    for I in Cards:
+        Card = Index[I:Index.index("</template>", I)]
+        assert '<button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="\'Make it yours: \' + g.title"' in Card
+        assert 'data-gallery-tile class="g-link"' in Card                       # the card itself still opens the dialog
+        assert 'Make it yours<span aria-hidden="true"> →</span>' in Card       # the visible words are in its name
+    App = (WebDir / "app.js").read_text(encoding="utf-8")
+    Fn = App[App.index("    makeItYoursFromCard(g) {"):]
+    Fn = Fn[:Fn.index("\n    },")]
+    assert "if (this.isOff(g)) { this.openGallery(g); return; }" in Fn
+    assert "if (!this.userSession) { this._setPendingGallery(g.id); this.openRegModal(); return; }" in Fn     # sign-in first
+    assert "this.startFromGallery(g.id);" in Fn and "api(" not in Fn                                         # the dialog's start
+
+
 def test_the_header_paints_at_its_final_height():
     """Proto's lab (20 Oct): the header's parts for a signed-in visitor and for the Design screen painted before the
     scripts started, so a phone header was 100 px tall for its first seconds, then 73 px (CLS). They wait for the

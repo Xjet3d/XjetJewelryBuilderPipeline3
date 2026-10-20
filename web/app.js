@@ -811,6 +811,16 @@ function p3App() {
       }
       await this.startFromGallery(g.id);
     },
+    // A gallery card's own "Make it yours" (its words, or the arrow on a narrow card): the dialog's button without the
+    // dialog — sign in first when needed (the design is remembered and opened right after), then the Design screen on
+    // the shared design (nothing is copied, generated or charged). A design whose product is switched OFF opens
+    // read-only in its dialog, as its card does.
+    makeItYoursFromCard(g) {
+      if (!g || this.galleryBusy) return;
+      if (this.isOff(g)) { this.openGallery(g); return; }
+      if (!this.userSession) { this._setPendingGallery(g.id); this.openRegModal(); return; }
+      this.startFromGallery(g.id);
+    },
     // A design's own page (/gallery/<slug>, resolved by the server), or an old share link (#gallery=<id>): open that
     // design's preview straight away. The address stays the design's, so a reload or a copied address opens it again.
     _openSharedGallery() {
