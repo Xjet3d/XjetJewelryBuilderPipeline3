@@ -192,3 +192,62 @@ def test_an_unreadable_private_key_path_is_reported_not_swallowed(monkeypatch, t
     (tmp_path / "k.p8").write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n")
     monkeypatch.setenv("P3_APPLE_PRIVATE_KEY_PATH", str(tmp_path / "k.p8"))
     assert _ApplePrivateKey().startswith("-----BEGIN PRIVATE KEY-----")
+
+
+# ── the route as atelier serves it: under /JewelryB2C3, HTTPS at the proxy, Apple POSTing cross-site ─────────────────
+
+async def test_the_apple_round_trip_works_under_a_base_path_behind_an_https_proxy(tmp_path, monkeypatch):
+    monkeypatch.setenv("P3_PUBLIC_BASE_URL", "https://xjetatelier.xjet3d.com")                 # as on atelier's .env
+    from urllib.parse import parse_qs as Qs
+    from tests.conftest import Harness
+    from tests.test_auth import FakeIdp
+    H = Harness(tmp_path, AuthMode="modern", BasePath="/JewelryB2C3", PublicBaseUrl="https://xjetatelier.xjet3d.com")
+    H.Ctx.Oidc = {"apple": FakeIdp("apple")}
+    try:
+        # an https browser (a Secure cookie is not sent back over http), talking to the app through the proxy's headers
+        B = httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="https://xjetatelier.xjet3d.com/JewelryB2C3")
+        Tls = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "xjetatelier.xjet3d.com"}
+        Start = await B.get("/api/auth/apple/start", headers=Tls)
+        assert Start.status_code == 303
+        Cookie = next(C for C in Start.headers.get_list("set-cookie") if C.startswith("atelier_oauth="))
+        assert "SameSite=none" in Cookie and "Secure" in Cookie and "Path=/JewelryB2C3" in Cookie      # it must survive Apple's cross-site POST
+        Back = Qs(urlparse(Start.headers["location"]).query)
+        assert Back["redirect_uri"] == ["https://xjetatelier.xjet3d.com/JewelryB2C3/api/auth/apple/callback"]   # the URL Apple must have registered
+        # Apple answers with a form POST from its own origin; the cookie and the state bring the browser home
+        Done = await B.post("/api/auth/apple/callback", headers={**Tls, "Origin": "https://appleid.apple.com"},
+                            data={"code": "ok", "state": Back["state"][0]})
+        assert Done.status_code == 303 and urlparse(Done.headers["location"]).fragment == "auth=created"
+        assert any(C.startswith("atelier_session=") for C in Done.headers.get_list("set-cookie"))
+        # the same callback replayed: the state was single-use
+        Again = await B.post("/api/auth/apple/callback", headers={**Tls, "Origin": "https://appleid.apple.com"},
+                             data={"code": "ok", "state": Back["state"][0]})
+        assert urlparse(Again.headers["location"]).fragment == "auth=failed"
+        # a foreign site cannot use the exemption for anything else
+        Other = await B.post("/api/auth/logout", headers={**Tls, "Origin": "https://appleid.apple.com"})
+        assert Other.status_code == 403
+    finally:
+        await H.Close()
+
+
+async def test_cancelling_on_apples_page_or_posting_without_our_cookie_signs_nobody_in(tmp_path):
+    from tests.test_auth import Browser, FakeIdp
+    from tests.conftest import Harness
+    H = Harness(tmp_path, AuthMode="modern")
+    H.Ctx.Oidc = {"apple": FakeIdp("apple")}
+    Apple_Origin = {"Origin": "https://appleid.apple.com"}
+    try:
+        B = Browser(H)
+        Start = await B.get("/api/auth/apple/start")
+        State = parse_qs(urlparse(Start.headers["location"]).query)["state"][0]
+        Cancel = await B.post("/api/auth/apple/callback", headers=Apple_Origin, data={"error": "user_cancelled_authorize", "state": State})
+        assert urlparse(Cancel.headers["location"]).fragment == "auth=cancelled"
+        assert (await B.get("/api/token-status")).status_code == 401
+        Start = await B.get("/api/auth/apple/start")                                           # a callback arriving in another browser
+        State = parse_qs(urlparse(Start.headers["location"]).query)["state"][0]
+        Other = await Browser(H).post("/api/auth/apple/callback", headers=Apple_Origin, data={"code": "ok", "state": State})
+        assert urlparse(Other.headers["location"]).fragment == "auth=failed"
+        Denied = await B.post("/api/auth/apple/callback", headers=Apple_Origin, data={"code": "bad", "state": State})   # Apple refuses the code
+        assert urlparse(Denied.headers["location"]).fragment == "auth=failed"
+        assert (await B.get("/api/token-status")).status_code == 401
+    finally:
+        await H.Close()
