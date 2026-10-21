@@ -8,6 +8,6 @@ Root = Path(__file__).resolve().parents[1]
 
 def test_secret_key_certificate_and_backup_copies_are_ignored():
     Rules = {L.strip() for L in (Root / ".gitignore").read_text(encoding="utf-8").splitlines()}
-    for Rule in (".env", ".env.*", "*.bak", "*.bak-*", "*.secret", "backups/", "*.priv", "*.key", "*.pem", "*.p12", "*.pfx"):
+    for Rule in (".env", ".env.*", "*.bak", "*.bak-*", "*.secret", "backups/", "*.priv", "*.key", "*.pem", "*.p12", "*.pfx", "*.p8"):
         assert Rule in Rules, Rule
     assert "!.env.example" in Rules and "!.env.*.example" in Rules          # the documented templates stay in Git

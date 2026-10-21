@@ -18,6 +18,7 @@ backups/
 *.priv
 *.key
 *.pem
+*.p8
 *.p12
 *.pfx
 config/pricing_profile.local.json

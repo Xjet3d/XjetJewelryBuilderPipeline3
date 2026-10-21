@@ -4,6 +4,7 @@ Nothing here points at Pipeline 2. All runtime data lives under P3_DATA_DIR
 (default ./var inside this repository).
 """
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -133,7 +134,13 @@ def _ApplePrivateKey() -> str:
     if Inline:
         return Inline
     Path_ = os.environ.get("P3_APPLE_PRIVATE_KEY_PATH", "").strip()
-    return Path(Path_).read_text(encoding="utf-8").strip() if Path_ and Path(Path_).is_file() else ""
+    if not Path_:
+        return ""
+    try:
+        return Path(Path_).read_text(encoding="utf-8").strip()
+    except OSError:                                          # missing, a directory, or not readable by the service user
+        logging.getLogger("p3.settings").warning("P3_APPLE_PRIVATE_KEY_PATH cannot be read; Sign in with Apple stays off")
+        return ""
 
 
 def NormalizeBasePath(Raw: str | None) -> str:

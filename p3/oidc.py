@@ -161,8 +161,12 @@ def BuildProviders(S) -> dict:
     Out = {}
     if S.GoogleClientId and S.GoogleClientSecret:
         Out["google"] = GoogleProvider(S.GoogleClientId, S.GoogleClientSecret)
-    if S.AppleClientId and S.AppleTeamId and S.AppleKeyId and S.ApplePrivateKey:
+    Apple = {"P3_APPLE_CLIENT_ID": S.AppleClientId, "P3_APPLE_TEAM_ID": S.AppleTeamId, "P3_APPLE_KEY_ID": S.AppleKeyId,
+             "P3_APPLE_PRIVATE_KEY(_PATH)": S.ApplePrivateKey}
+    if all(Apple.values()):
         Out["apple"] = AppleProvider(S.AppleClientId, S.AppleTeamId, S.AppleKeyId, S.ApplePrivateKey)
+    elif any(Apple.values()):                                # half-configured: the button stays hidden, so say why (names only, never values)
+        Logger.warning("Sign in with Apple is not offered: missing %s", ", ".join(K for K, V in Apple.items() if not V))
     return Out
 
 

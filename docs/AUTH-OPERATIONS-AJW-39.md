@@ -83,6 +83,8 @@ Production refuses `legacy`, and refuses `modern` unless `P3_ADMIN_IDENTITY_ENFO
 
 ## 4. Google and Apple setup (not yet done: needs the XJet accounts)
 
+> **Apple:** the return URLs below depend on the host and `P3_BASE_PATH` (atelier today serves under `/JewelryB2C3/`). Use [APPLE-SIGNIN-AJW-41.md](APPLE-SIGNIN-AJW-41.md) §2–3 for the Apple values and the handoff.
+
 **Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application.**
 Authorized redirect URIs (exactly):
 - `https://xjetatelier.xjet3d.com/api/auth/google/callback`
