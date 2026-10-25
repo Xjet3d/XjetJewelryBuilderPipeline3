@@ -1650,6 +1650,8 @@ function p3App() {
     get canCustomize() { return this.canActOnSelection && !this.pendingBatch; },     // never while a refinement is made (R-18)
     readyCount(b) { return b ? b.candidates.filter(c => c.status === 'ready').length : 0; },
     retryableCount(b) { return b ? b.candidates.filter(c => c.status === 'failed' && c.retryable).length : 0; },
+    // "Retry missing · free" or "Try again · free" is on screen for this batch: the paid option stays hidden meanwhile
+    freeRetryOffered(b) { return !!b && ['partial', 'failed'].includes(b.status) && this.retryableCount(b) > 0; },
     // Past the 90-second limit and still coming: attached in the background, the customer goes on meanwhile (R-41)
     finishingCount(b) { return b ? b.candidates.filter(c => c.finishing).length : 0; },
     // Failed options last (R-07): the ready ones, and the ones still coming, lead the row
