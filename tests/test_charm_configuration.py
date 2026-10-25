@@ -10,8 +10,9 @@ from tests.conftest import Harness
 
 AdminKey = "charm-config-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-RingModels = ("nano-banana-pro", "nano-banana-pro-edit", "minimax-camera", "hi3d")
-CharmModels = ("nano-banana-pro-charm", "nano-banana-pro-edit-charm", "minimax-camera-charm", "hi3d-charm")
+RingModels = ("nano-banana-pro", "nano-banana-pro-edit-photo", "nano-banana-pro-edit", "minimax-camera", "hi3d")
+CharmModels = ("nano-banana-pro-charm", "nano-banana-pro-edit-photo-charm", "nano-banana-pro-edit-charm", "minimax-camera-charm",
+               "hi3d-charm")
 
 
 @pytest.fixture

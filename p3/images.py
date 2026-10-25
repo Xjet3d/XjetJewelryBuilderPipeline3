@@ -236,7 +236,10 @@ class ImageService:
         # The active admin configuration for this endpoint; its version is recorded on the batch so
         # all four requests use it even if a newer version is activated before they are submitted.
         DesignPrompt, Product = Conn.execute("SELECT prompt, product_type FROM designs WHERE id = ?", (DesignId,)).fetchone()
-        Version = self.Ctx.Models.ActiveFor(Endpoint, Product or Products.Ring)     # a charm never uses a ring configuration
+        # A charm never uses a ring configuration. A New Design from an uploaded photo has its own (R-51): the photo is
+        # inspiration for a new piece, never "the existing ring" of the refinement instructions.
+        Version = (self.Ctx.Models.ActivePhoto(Product or Products.Ring) if Kind == "initial" and RefPath
+                   else self.Ctx.Models.ActiveFor(Endpoint, Product or Products.Ring))
         Effective = Render(Version.Params["prompt"], {"user_text": PromptText or UserText, "design_prompt": DesignPrompt})
         T = Now()
         Conn.execute(

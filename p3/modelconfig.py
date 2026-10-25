@@ -93,6 +93,7 @@ class ModelSpec:
     Fixed: tuple = ()
     Notes: tuple = ()
     Product: str = "ring"          # the product this configuration is for: 'ring' or 'charm' (never both)
+    Flow: str = ""                 # "photo": a New Design from an uploaded photo — the edit endpoint, chosen by the batch, not the endpoint
 
     def Param(self, Name: str) -> Param | None:
         return next((P for P in self.Params if P.Name == Name), None)
@@ -295,16 +296,20 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         "nothing and costs no credit.", False,
         _AnyLlmParams),
     ModelSpec(
-        "nano-banana-pro", "fal-ai/nano-banana-pro", endpoints.ImageGenerate,
+        "nano-banana-pro", "Ring New Design — Text", endpoints.ImageGenerate,
         "Design images for a New Design without a reference image (four separate requests, one image each).", True,
         _ImageParams("1:1"), _ImageFixed),
     ModelSpec(
-        "nano-banana-pro-edit", "fal-ai/nano-banana-pro/edit", endpoints.ImageEdit,
-        "Refinements (from the selected image) and New Designs with an uploaded reference image (four separate "
-        "requests, one image each).", True,
+        "nano-banana-pro-edit-photo", "Ring New Design — Photo Reference", endpoints.ImageEdit,
+        "Design images for a New Design from an uploaded photo (four separate requests, one image each). The photo is "
+        "inspiration for a new ring, not a ring to edit.", True,
+        _ImageParams("auto"),
+        _ImageFixed + (Fixed("image_urls", "The customer's uploaded photo.", Runtime="image_url"),), Flow="photo"),
+    ModelSpec(
+        "nano-banana-pro-edit", "Ring Refinement", endpoints.ImageEdit,
+        "Refinements from the selected image (four separate requests, one image each).", True,
         _ImageParams("auto") + _VariationParams,
-        _ImageFixed + (Fixed("image_urls", "The image being edited: the selected design image for a refinement, or the "
-                                           "customer's uploaded reference image.", Runtime="image_url"),)),
+        _ImageFixed + (Fixed("image_urls", "The image being edited: the selected design image.", Runtime="image_url"),)),
     ModelSpec(
         "minimax-camera", "minimax/h3-max/camera-controls", endpoints.Movie,
         "The 360° movie in Customize, made from the customer's selected final image.", True,
@@ -323,16 +328,20 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         "creates nothing and costs no credit.", False,
         _AnyLlmParams, Product="charm"),
     ModelSpec(
-        "nano-banana-pro-charm", "fal-ai/nano-banana-pro · Charm", endpoints.ImageGenerate,
+        "nano-banana-pro-charm", "Charm New Design — Text", endpoints.ImageGenerate,
         "Charm design images for a New Design without a reference image (four separate requests, one image each).", True,
         _ImageParams("1:1"), _ImageFixed, Product="charm"),
     ModelSpec(
-        "nano-banana-pro-edit-charm", "fal-ai/nano-banana-pro/edit · Charm", endpoints.ImageEdit,
-        "Charm refinements (from the selected image) and new Charm designs from an uploaded reference image (four "
-        "separate requests, one image each).", True,
+        "nano-banana-pro-edit-photo-charm", "Charm New Design — Photo Reference", endpoints.ImageEdit,
+        "Charm design images for a New Design from an uploaded photo (four separate requests, one image each). The "
+        "photo is inspiration for a new charm, not a charm to edit.", True,
+        _ImageParams("auto"),
+        _ImageFixed + (Fixed("image_urls", "The customer's uploaded photo.", Runtime="image_url"),), Product="charm", Flow="photo"),
+    ModelSpec(
+        "nano-banana-pro-edit-charm", "Charm Refinement", endpoints.ImageEdit,
+        "Charm refinements from the selected image (four separate requests, one image each).", True,
         _ImageParams("auto") + _CharmVariationParams,
-        _ImageFixed + (Fixed("image_urls", "The image being edited: the selected charm image for a refinement, or the "
-                                           "customer's uploaded reference image.", Runtime="image_url"),), Product="charm"),
+        _ImageFixed + (Fixed("image_urls", "The image being edited: the selected charm image.", Runtime="image_url"),), Product="charm"),
     ModelSpec(
         "minimax-camera-charm", "minimax/h3-max/camera-controls · Charm", endpoints.Movie,
         "The 360° movie of a charm in Customize, made from the customer's selected final image.", True,
@@ -343,10 +352,13 @@ Models: dict[str, ModelSpec] = {S.Id: S for S in (
         _MeshParams, _MeshFixed, Product="charm"),
 )}
 
-# Ring models by endpoint — exactly the mapping of before (callers that know no product are ring callers)
-ByEndpoint = {S.Endpoint: S.Id for S in Models.values() if S.Product == "ring"}
+# Ring models by endpoint — exactly the mapping of before (callers that know no product are ring callers). The edit
+# endpoint means a refinement here: a New Design from a photo is chosen by its batch (PhotoModels), never by endpoint.
+ByEndpoint = {S.Endpoint: S.Id for S in Models.values() if S.Product == "ring" and not S.Flow}
 # Every model by (endpoint, product)
-ModelFor = {(S.Endpoint, S.Product): S.Id for S in Models.values()}
+ModelFor = {(S.Endpoint, S.Product): S.Id for S in Models.values() if not S.Flow}
+# The New Design from a photo configuration of each product, and the refinement configuration it started from
+PhotoModels = {S.Product: S.Id for S in Models.values() if S.Flow == "photo"}
 
 
 def ModelIdFor(Endpoint: str, Product: str = "ring") -> str:
@@ -609,8 +621,8 @@ class ModelConfigStore:
         for ModelId in Models:
             if self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
                 continue
-            if Models[ModelId].Product != "ring":
-                continue                                       # charms are seeded after the rings (from their active versions)
+            if Models[ModelId].Product != "ring" or Models[ModelId].Flow:
+                continue                                       # charms and photo flows are seeded after (from active versions)
             Seeds, Aliases = Seeds or SeedConfigs(), Aliases or LegacyAliases()
             Clean = Validate(ModelId, Seeds[ModelId])
             V = self._Insert(ModelId, Clean, "seed", "Initial version from config/generation.json and config/prompts")
@@ -618,17 +630,32 @@ class ModelConfigStore:
             self._Activate(ModelId, V.Id, "seed")
         self._SeedInternalDefaults()
         self._SeedCharms()
+        self._SeedPhoto()
 
     def _SeedCharms(self) -> None:
         """Charm models without a version get version 1: the ring model's active provider settings + the charm prompts.
         Nothing about the ring models changes."""
         for ModelId, Spec in Models.items():
-            if Spec.Product != "charm" or self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
+            if Spec.Product != "charm" or Spec.Flow or self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
                 continue
             Ring = self.Active(RingCounterpart[ModelId])
             V = self._Insert(ModelId, Validate(ModelId, CharmSeed(ModelId, Ring.Params)), "seed",
                              f"Initial Charm version: provider settings from the Ring configuration v{Ring.Number}, "
                              "Charm prompts from config/prompts/charm_*")
+            self._Activate(ModelId, V.Id, "seed")
+
+    def _SeedPhoto(self) -> None:
+        """A New Design from a photo got its own configuration on 2026-10-25 (R-51). Version 1 is a copy of the same
+        product's active refinement configuration — exactly what these designs were sent until then, without the
+        refinement directives — so the switch changes nothing by itself; the Admin edits it from there."""
+        for Product, ModelId in PhotoModels.items():
+            if self.Db.One("SELECT 1 AS x FROM model_config_active WHERE model = ?", (ModelId,)):
+                continue
+            Refine = self.Active(ModelIdFor(endpoints.ImageEdit, Product))
+            Spec = Models[ModelId]
+            V = self._Insert(ModelId, Validate(ModelId, {K: X for K, X in Refine.Params.items() if Spec.Param(K)}), "seed",
+                             f"Initial version: a copy of {Models[Refine.Model].Label} v{Refine.Number}, the instructions "
+                             "New Designs from a photo used until now")
             self._Activate(ModelId, V.Id, "seed")
 
     def _SeedInternalDefaults(self) -> None:
@@ -711,6 +738,10 @@ class ModelConfigStore:
     def ActiveFor(self, Endpoint: str, Product: str = "ring") -> Version:
         """The active configuration of this endpoint for this product (rings by default, as before)."""
         return self.Active(ModelIdFor(Endpoint, Product))
+
+    def ActivePhoto(self, Product: str = "ring") -> Version:
+        """The active New Design from a photo configuration of this product."""
+        return self.Active(PhotoModels[Product])
 
     def Supports(self, Product: str) -> bool:
         """Every pipeline endpoint (design images, refinement, movie, 3D) has a model for this product."""

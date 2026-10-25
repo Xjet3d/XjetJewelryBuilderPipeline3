@@ -713,10 +713,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 "pricing_profile_approved": bool(Ctx.Pricing.Profile and Ctx.Pricing.Profile["approved"]),
                 "unapproved_pricing_allowed": S.AllowUnapprovedPricing,
                 "daily_ai_spend_cap_usd": Credits.DailyCap(Ctx),
-                "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit",
-                                                                          "minimax-camera", "hi3d")},
-                "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-charm",
-                                                                                "minimax-camera-charm", "hi3d-charm")}}
+                "config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro", "nano-banana-pro-edit-photo",
+                                                                          "nano-banana-pro-edit", "minimax-camera", "hi3d")},
+                "charm_config_versions": {M: Ctx.Models.Active(M).Id for M in ("nano-banana-pro-charm", "nano-banana-pro-edit-photo-charm",
+                                                                                "nano-banana-pro-edit-charm", "minimax-camera-charm", "hi3d-charm")}}
 
     RegisterAdmin(App_, Ctx, lambda Name: _VersionedPage(Name, Base), Svc.Production3D, Ctx.AiPrices, Svc.Gallery,
                   Svc.Orders, Svc.Promos, HealthDetails=HealthDetails, Quotes=Svc.Quotes, Versions=Svc.Versions,

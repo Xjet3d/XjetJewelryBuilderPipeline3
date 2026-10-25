@@ -181,7 +181,8 @@ async def test_export_and_protection(HM):
     assert J.status_code == T.status_code == 200 and "attachment" in J.headers["content-disposition"]
     Data = J.json()
     assert [M["endpoint"] for M in Data["models"]] == ["fal-ai/any-llm", "fal-ai/nano-banana-pro", "fal-ai/nano-banana-pro/edit",
-                                                      "minimax/h3-max/camera-controls", "hitem3d/hi3d/v3.0/image-to-3d"]
+                                                      "fal-ai/nano-banana-pro/edit", "minimax/h3-max/camera-controls",
+                                                      "hitem3d/hi3d/v3.0/image-to-3d"]
     assert all(M["version"] and M["parameters"] is not None for M in Data["models"])
     assert "minimax/h3-max/camera-controls" in T.text and "camera_trajectory" in T.text and "fal-ai/any-llm" not in T.text
     assert "sync_mode=not sent" in T.text and "null" not in T.text.split("Set by the pipeline:")[-1]
