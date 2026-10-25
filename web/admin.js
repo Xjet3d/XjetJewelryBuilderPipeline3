@@ -225,7 +225,7 @@ function adminApp() {
     qf: null, cmdForm: null,                     // a quote request's Fulfillment state; a request to Fulfillment being written
     oOffset: 0, oTotal: 0, oLimit: 50, ordersView: 'orders',     // a page of orders (search and paging on the server)
     qiq: '', qiStatus: '', qiOffset: 0, qiTotal: 0, qiLimit: 50, qiLoading: false, qiMsg: '', quoteCounts: {},   // the quote inbox
-    quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qLinkCopied: false,   // a quote request
+    quoteId: '', qd: null, qdError: '', qdBusy: false, qForm: {}, qUnitTouched: false, qNote: '', qUpdate: '', qLinkCopied: false,   // a quote request
     qSnapshot: '',                               // the quote form as last loaded or sent: anything else is an unsent draft
     oStatusForm: { status: '', note: '', force: false }, oPay: { open: false, status: 'paid', note: '', ref: '' }, oNote: '',
     promos: [], promoMsg: '', promoErr: false, promoEdit: null,
@@ -714,7 +714,8 @@ function adminApp() {
     async markTest(Test) {
       if (!this.od || this.odBusy) return;
       const yes = await this.ask({ title: (Test ? 'Mark ' : 'Unmark ') + this.od.ref + ' as a test order?',
-        text: Test ? 'For an internal trial: Fulfillment will treat it as a Test order — it can be marked shipped and delivered, its customer is never e-mailed by Fulfillment’s milestones, and it is kept out of the figures. Possible only before the order is sent to Production, and never for a paid order or a customer’s order.'
+        text: Test ? (this.od.test_marking?.internal === false ? 'Its customer is not internal: mark it only if it is a QA order placed from a customer account — a real customer’s order must stay real. ' : '')
+                   + 'For an internal trial: Fulfillment will treat it as a Test order — it can be marked shipped and delivered, its customer is never e-mailed by Fulfillment’s milestones, and it is kept out of the figures. Possible only before the order is sent to Production, and never for a paid order.'
                    : 'It becomes a normal order again: during the pilot Fulfillment will stop it at Packed. Possible only before it is sent to Production.',
         confirmLabel: Test ? 'Mark as test order' : 'Unmark', input: { label: 'Reason (kept in the order history)', required: true } });
       if (!yes) return;
@@ -935,6 +936,28 @@ function adminApp() {
       try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/offer`, f); this.qResetForm(); this.notify('Quote sent to ' + this.qd.email_to); }
       catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
     },
+    // R-48: the customer's update (proactive, for exceptions) and a 3D model for the price — each only by an Admin's click
+    async sendQuoteUpdate() {
+      if (!this.qd || this.qUpdate.trim().length < 10) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/update`, { message: this.qUpdate }); this.qUpdate = ''; this.notify('Update sent to ' + this.qd.email_to); }
+      catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
+    },
+    async qGenerate3d() {
+      if (!this.qd || this.qdBusy) return;
+      const size = this.qForm.size ?? (this.isCharm(this.qd) ? this.qd.charm_size : this.qd.ring_size);
+      const ok = await this.ask({ title: 'Generate a 3D model for ' + this.qd.ref + '?',
+        text: `This is a ${this.mode === 'mock' ? 'mock (free, simulated)' : 'PAID live'} Hi3D call for ${this.qd.title} (${this.qd.ring_id || 'the quoted option'}). Its weight then gives the price suggestion here, once it is measured (a few minutes).`,
+        confirmLabel: this.mode === 'mock' ? 'Generate (mock)' : 'Generate — paid call', danger: this.mode !== 'mock' });
+      if (!ok) return;
+      this.qdBusy = true; this.qdError = '';
+      try {
+        await this.api('POST', '/api/admin/sessions/' + encodeURIComponent(this.qd.design_id) + '/3d',
+          { production_size: size, material_id: this.qd.material_id, candidate_id: this.qd.candidate_id });
+        this.notify('3D model requested — the price suggestion appears once it is measured.');
+        await this.loadQuote(true);
+      } catch (e) { this.qdError = e.message; } finally { this.qdBusy = false; }
+    },
     async addQuoteNote() {
       if (!this.qd || !this.qNote.trim()) return;
       this.qdBusy = true; this.qdError = '';
@@ -962,10 +985,11 @@ function adminApp() {
     },
     qEventTitle(e) {
       const d = e.data || {};
-      return ({ created: 'Request received', note: 'Note', offer_sent: d.revised ? 'Revised quote sent' : 'Quote sent', approved: 'Approved by the customer',
+      return ({ created: 'Request received', note: 'Note', update_sent: 'Update for the customer', offer_sent: d.revised ? 'Revised quote sent' : 'Quote sent', approved: 'Approved by the customer',
                 rejected: 'Declined by the customer', status: 'Status changed', staff_notified: 'Team notified', staff_notify_failed: 'Team notification failed',
-                email: d.type === 'offer' ? 'Quote email' : 'Confirmation email', email_failed: d.type === 'offer' ? 'Quote email failed' : 'Confirmation email failed',
-                email_skipped: (d.type === 'offer' ? 'Quote email' : 'Confirmation email') + ' not sent — test request' })[e.kind] || e.kind;
+                email: ({ offer: 'Quote email', update: 'Update email' })[d.type] || 'Confirmation email',
+                email_failed: (({ offer: 'Quote email', update: 'Update email' })[d.type] || 'Confirmation email') + ' failed',
+                email_skipped: (({ offer: 'Quote email', update: 'Update email' })[d.type] || 'Confirmation email') + ' not sent — test request' })[e.kind] || e.kind;
     },
     qEventDetail(e) {
       const d = e.data || {}, m = v => this.money(v);
@@ -973,6 +997,7 @@ function adminApp() {
         case 'created': return [d.quantity ? '×' + d.quantity : '', d.message ? '“' + d.message + '”' : '',
                                 d.earlier ? 'made before the quote history existed: its emails were not recorded' : ''].filter(Boolean).join(' · ');
         case 'note': return d.note || '';
+        case 'update_sent': return (d.message || '') + (d.to ? ' · to ' + d.to : '');
         case 'offer_sent': return `v${d.version}: ${m(d.unit_price)} × ${d.quantity} = ${m(d.total)} · ${d.size_label || ''} · valid until ${d.valid_until}` + (d.weight_g ? ` · ${d.weight_g} g` : '') + (d.price_per_g ? ` × ${m(d.price_per_g)} per g` : '') + ' · to ' + (d.to || '');
         case 'approved': return 'order ' + (d.order_ref || '') + (d.total != null ? ' · ' + m(d.total) : '') + (d.shipping_method ? ' · ' + d.shipping_method : '') + (d.note ? ' · “' + d.note + '”' : '');
         case 'rejected': return d.note ? '“' + d.note + '”' : '';

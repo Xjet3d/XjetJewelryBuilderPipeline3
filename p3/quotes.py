@@ -46,6 +46,16 @@ def _Today() -> date:
     return datetime.now(timezone.utc).date()
 
 
+def _AddBusinessDays(Start: date, N: int) -> date:
+    """N business days (Monday to Friday) after Start."""
+    D = Start
+    while N > 0:
+        D += timedelta(days=1)
+        if D.weekday() < 5:
+            N -= 1
+    return D
+
+
 def _QuoteNo(Ref: str) -> int:
     M = re.fullmatch(r"(?:Q-)?(\d+)", (Ref or "").strip().upper())
     return int(M.group(1)) if M else -1
@@ -110,7 +120,7 @@ class QuoteDesk:
         PerG = (Book.Row(R["material_id"]) or {}).get("price_per_g")
         Asked = R.get("charm_size") if Charm else R.get("ring_size")
         Out = {"available": False, "price_per_g": PerG, "density_g_cm3": Mat.DensityGCm3 if Mat else None,
-               "weight_g": None, "unit_price": None, "size": Asked, "basis": None, "warning": None}
+               "weight_g": None, "unit_price": None, "size": Asked, "basis": None, "warning": None, "has_model": False}
         Rows = Db.All("SELECT s.id, s.candidate_id, s.production_size, r.measurement_json FROM session_3d s "
                       "JOIN raw_geometry r ON r.mesh_id = s.mesh_id WHERE s.design_id = ? AND r.status = 'measured' "
                       "AND s.status IN ('measured', 'needs_review') ORDER BY (s.candidate_id = ?) DESC, s.updated_at DESC",
@@ -134,7 +144,7 @@ class QuoteDesk:
                 continue
             Weight = round(Vol / 1000.0 * Mat.DensityGCm3, 2)
             Ref = RingIds.CandidateRef(Db, S["candidate_id"])
-            Out.update({"weight_g": Weight, "volume_mm3": round(Vol, 1), "size": Size, "model_ring_id": Ref,
+            Out.update({"has_model": True, "weight_g": Weight, "volume_mm3": round(Vol, 1), "size": Size, "model_ring_id": Ref,
                         "same_option": S["candidate_id"] == R["candidate_id"], "session_3d_id": S["id"],
                         "unit_price": round(Weight * PerG, 2) if PerG else None, "available": bool(PerG),
                         "basis": f"3D model of {Ref or 'this design'} at {self._SizeLabel(R, Size)}: {Vol:,.0f} mm³ × "
@@ -146,9 +156,21 @@ class QuoteDesk:
             elif not M.get("closed_heuristic", True):
                 Out["warning"] = "The 3D volume check suggests the mesh may not be closed: check the weight."
             return Out
-        Out["warning"] = ("This design has no 3D model yet: enter the weight, or generate a 3D model on the session page "
-                          "(a paid Hi3D call)." + ("" if PerG else f" No price $/g is set for {R['material_label']} either."))
+        Out["warning"] = ("This design has no 3D model yet: enter the weight, or generate a 3D model (a paid Hi3D call)."
+                          + ("" if PerG else f" No price $/g is set for {R['material_label']} either."))
         return Out
+
+    def Due(self, R: dict, History: list) -> dict:
+        """The promise to the customer (R-48): every request reviewed by a person within one business day, the quote
+        within three (business days Monday to Friday, from the request's date in UTC). Reviewed: anything an Admin did
+        in the history — a note, an update, a 3D model, the quote."""
+        Start = datetime.fromisoformat(R["created_at"]).astimezone(timezone.utc).date()
+        Review, Quote = _AddBusinessDays(Start, 1), _AddBusinessDays(Start, 3)
+        Open, Today = R["status"] in QuoteOpen, _Today()
+        Reviewed = any(E["by"] not in ("customer", "system") for E in History)
+        Waiting = Open and not R.get("offer_json")
+        return {"review_by": Review.isoformat(), "quote_by": Quote.isoformat(), "reviewed": Reviewed,
+                "review_overdue": Open and not Reviewed and Today > Review, "quote_overdue": Waiting and Today > Quote}
 
     def SuggestedReply(self, R: dict) -> str:
         """The reply the Admin starts from: no numbers in it — the quote box of the email carries those, so editing the
@@ -190,7 +212,7 @@ class QuoteDesk:
                 "mail_mode": getattr(self.Mailer, "Mode", None),
                 "offer": Offer and {K: V for K, V in Offer.items() if K != "link_hash"},
                 "offer_expired": bool(Offer and Offer.get("valid_until") and date.fromisoformat(Offer["valid_until"]) < _Today()),
-                "history": History, "suggestion": Sug, "suggested_reply": self.SuggestedReply(R),
+                "history": History, "suggestion": Sug, "suggested_reply": self.SuggestedReply(R), "due": self.Due(R, History),
                 "defaults": {"size": Size, "quantity": R["quantity"],
                              "valid_until": (_Today() + timedelta(days=DefaultValidDays)).isoformat()},
                 "sizes": [float(S) for S in (self.Ctx.Products.CharmSizes if Charm else self.Ctx.Catalog.RingSizes)],
@@ -207,6 +229,39 @@ class QuoteDesk:
             raise HttpError(400, "note_required", "Write the note first.")
         QuoteEvent(self.Ctx.Db, R["id"], "note", {"note": Note}, By)
         self.Ctx.Db.Execute("UPDATE quote_requests SET updated_at = ? WHERE id = ?", (Now(), R["id"]))
+        return self.AdminDetail(R["id"])
+
+    def SendUpdate(self, RequestId: str, Message: str, By: str, SendMail=None) -> dict:
+        """An update for the customer while their quote takes longer than promised, or anything else they should know
+        (R-48: proactive updates for exceptions): the Admin's own words, emailed and kept in the history. Never a price —
+        the quote itself carries that."""
+        R = self._Row(RequestId)
+        if R["status"] not in QuoteOpen:
+            raise HttpError(409, "quote_decided", "This quote request is already decided or closed.")
+        Message = str(Message or "").strip()[:3000]
+        if len(Message) < 10:
+            raise HttpError(400, "message_required", "Write the update first.")
+        To = (json.loads(R["customer_json"]).get("email") or "").strip()
+        QuoteEvent(self.Ctx.Db, R["id"], "update_sent", {"message": Message, "to": To}, By)
+        self.Ctx.Db.Execute("UPDATE quote_requests SET updated_at = ? WHERE id = ?", (Now(), R["id"]))
+        if self.Mailer is None:
+            QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "update", "to": To, "error": "no mail delivery"}, "system")
+            return self.AdminDetail(R["id"])
+        from p3.mail import QuoteUpdateEmail
+        Subject, Body = QuoteUpdateEmail(self.Orders.QuoteRequestJson(R), Message)
+        Mode = getattr(self.Mailer, "Mode", None)
+
+        def Send():
+            from p3.testrecords import ReservedEmail
+            if ReservedEmail(To):                                # a synthetic request: the customer is never emailed (p3/testrecords.py)
+                QuoteEvent(self.Ctx.Db, R["id"], "email_skipped", {"type": "update", "to": To, "reason": "test request: reserved test domain"}, "system")
+                return
+            try:
+                self.Mailer.Send(To, Subject, Body)
+                QuoteEvent(self.Ctx.Db, R["id"], "email", {"type": "update", "to": To, "delivery": Mode}, "system")
+            except Exception as E:  # noqa: BLE001 — the update stays in the history; the Admin sees that the email failed
+                QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "update", "to": To, "error": str(E)[:200]}, "system")
+        (SendMail or (lambda Fn: Fn()))(Send)
         return self.AdminDetail(R["id"])
 
     def SendOffer(self, RequestId: str, Body: dict, By: str, Origin: str, SendMail=None) -> dict:

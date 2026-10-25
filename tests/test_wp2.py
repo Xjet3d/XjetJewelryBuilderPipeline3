@@ -1,0 +1,129 @@
+"""Work Package 2 (2026-10-26), server side: a bag line's own quantity (R-20), a confirmed ring size kept for the design
+(R-21), a charm's size in Checkout (R-02), the Checkout note (R-45), the order email's View Your Order button, pictures and
+next steps (R-43), developer tools and the older sign-in left out of a page where they are off (R-34), and a gold quote's
+due dates and the customer's update (R-48)."""
+
+import re
+from datetime import date
+
+import pytest
+
+from tests.conftest import Harness, OfferCharmSizes
+from tests.test_orders import Address, Admin, AdminKey, Customer, _InBag, _Order
+
+
+@pytest.fixture
+async def HW(tmp_path):
+    Obj = Harness(tmp_path, AdminKey=AdminKey)
+    yield Obj
+    await Obj.Close()
+
+
+async def test_a_bag_line_quantity_changes_its_total_and_the_bag_total(HW):
+    H = HW
+    _Did, _Cand, Bag = await _InBag(H, Size=7, Qty=1)
+    L = Bag["lines"][0]
+    R = await H.Client.patch(f"/api/bag/{L['id']}", json={"quantity": 3})
+    assert R.status_code == 200, R.text
+    New = R.json()["lines"][0]
+    assert New["quantity"] == 3 and New["unit_price"] == L["unit_price"] and New["line_total"] == pytest.approx(3 * L["unit_price"])
+    assert R.json()["totals"]["USD"] == pytest.approx(3 * L["unit_price"])
+    for Bad in (0, 11, "2", True, None):
+        assert (await H.Client.patch(f"/api/bag/{L['id']}", json={"quantity": Bad})).status_code == 400, Bad
+    Other = {"X-Access-Token": H.Ctx.Accounts.IssueToken("other")[0]}
+    assert (await H.Client.patch(f"/api/bag/{L['id']}", json={"quantity": 2}, headers=Other)).status_code == 404
+    Q = (await H.Client.post("/api/checkout/quote", json={})).json()                   # Checkout charges the new quantity
+    assert Q["lines"][0]["quantity"] == 3 and Q["count"] == 3
+
+
+async def test_a_confirmed_ring_size_is_remembered_for_the_design(HW):
+    H = HW
+    B = await H.NewDesign("Twisted rope band")
+    A, Second = B["candidates"][0], B["candidates"][1]
+    C1 = (await H.Client.post(f"/api/designs/{B['design_id']}/customize", json={"candidate_id": A["id"]})).json()
+    assert C1["ring_size"] == 10 and C1["size_confirmed"] is False                     # US 10 is only suggested
+    C1 = (await H.Client.patch(f"/api/customizations/{C1['id']}", json={"ring_size": 7})).json()
+    assert C1["size_confirmed"] is True
+    Again = (await H.Client.post(f"/api/designs/{B['design_id']}/customize", json={"candidate_id": A["id"]})).json()
+    assert Again["id"] == C1["id"] and Again["ring_size"] == 7 and Again["size_confirmed"] is True   # back to Customize: kept
+    C2 = (await H.Client.post(f"/api/designs/{B['design_id']}/customize", json={"candidate_id": Second["id"]})).json()
+    assert C2["ring_size"] == 7 and C2["size_confirmed"] is True                       # another option of the design: the same size
+    C2 = (await H.Client.patch(f"/api/customizations/{C2['id']}", json={"ring_size": 8.5})).json()
+    assert C2["ring_size"] == 8.5 and C2["size_confirmed"] is True                     # still the customer's to change
+    Other = await H.NewDesign("A signet with a hexagon face")
+    C3 = (await H.Client.post(f"/api/designs/{Other['design_id']}/customize", json={"candidate_id": Other["candidates"][0]["id"]})).json()
+    assert C3["ring_size"] == 10 and C3["size_confirmed"] is False                     # another design: suggested again
+
+
+async def test_checkout_names_a_charm_by_its_size(HW):
+    H = HW
+    await OfferCharmSizes(H, AdminKey)
+    assert (await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)).status_code == 200
+    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
+    B = await H.NewDesign("A crescent moon charm", product="charm")
+    C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
+    await H.Idle()
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.post("/api/bag", json={"customization_id": C["id"]})
+    Info = (await H.Client.get("/api/checkout")).json()
+    assert Info["quote"]["lines"][0]["size_label"] == "20 mm"
+    assert (await H.Client.post("/api/checkout/quote", json={})).json()["lines"][0]["size_label"] == "20 mm"
+
+
+async def test_the_checkout_note_and_the_order_email(HW):
+    H = HW
+    await _InBag(H, Size=7, Qty=2)
+    R = await H.Client.post("/api/orders", json=_Order(customer_note="  A gift — please no price inside.  "))
+    assert R.status_code == 200, R.text
+    O = R.json()
+    A = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()
+    assert A["notes"] == "Customer's note: A gift — please no price inside."
+    assert "notes" not in O                                                             # the customer's view has no team notes
+    Mail = H.App.state.Mailer.List()[0]["html"]
+    # R-43: the confirmation page's three next steps, a picture of each piece, View Your Order (My Account: no order data in it)
+    assert "What happens next" in Mail and "Design review." in Mail and "printed to order in real metal" in Mail and "tracked." in Mail
+    assert 'href="http://p3.test/#account"' in Mail and "View Your Order" in Mail
+    assert re.search(r'<img src="http://p3\.test/thumb/[^"]+\?w=320&amp;f=jpg" width="64" height="64"', Mail)
+    assert "token" not in Mail and O["id"] not in Mail
+
+
+async def test_developer_tools_and_the_older_sign_in_are_left_out_where_they_are_off(tmp_path):
+    Off = Harness(tmp_path / "off", NoDevTools=True, AuthMode="dual")
+    try:
+        Page = (await Off.Client.get("/")).text
+        for Gone in ("P3_ADMIN_KEY", "fal.ai", "Minimax", "Hitem3D", "Developer access", "Enter sign-in code", "<!--dev-->", "<!--legacy-->"):
+            assert Gone not in Page, Gone
+        assert "Sign in to start designing" in Page                                          # the sign-in itself is there
+    finally:
+        await Off.Close()
+    On = Harness(tmp_path / "on")                                                            # developer tools on, the older sign-in mode
+    try:
+        Page = (await On.Client.get("/")).text
+        assert "Developer access" in Page and "Enter sign-in code" in Page and "<!--dev-->" not in Page
+    finally:
+        await On.Close()
+
+
+async def test_a_gold_quote_has_its_due_dates_and_the_customer_can_be_sent_an_update(tmp_path):
+    from tests.test_quotes import Admin as QAdmin, AdminKey as QKey, _Request
+    H = Harness(tmp_path, AdminKey=QKey)
+    try:
+        _B, Q = await _Request(H)
+        D = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}", headers=QAdmin)).json()
+        Due = D["due"]
+        assert Due["review_by"] < Due["quote_by"] and not Due["reviewed"] and not Due["review_overdue"] and not Due["quote_overdue"]
+        assert date.fromisoformat(Due["review_by"]).weekday() < 5 and date.fromisoformat(Due["quote_by"]).weekday() < 5
+        assert D["suggestion"]["has_model"] is False
+        Url = f"/api/admin/quote-requests/{Q['id']}/update"
+        assert (await H.Client.post(Url, json={"message": "short"}, headers=QAdmin)).status_code == 400
+        R = await H.Client.post(Url, json={"message": "Hello Dana,\n\nYour ring needs a closer look; we expect to send your quote by Friday."},
+                                headers=QAdmin)
+        assert R.status_code == 200, R.text
+        D = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}", headers=QAdmin)).json()
+        assert D["due"]["reviewed"] and D["status"] == "new"                                # an update is no quote
+        assert any(E["kind"] == "update_sent" and "closer look" in E["data"]["message"] for E in D["history"])
+        assert any(E["kind"] == "email" and E["data"].get("type") == "update" for E in D["history"])
+        Mail = next(M for M in H.App.state.Mailer.List(50) if M["subject"].startswith("An update on your quote request"))
+        assert Mail["to"] == "dana@atelier-customer.co.il" and "closer look" in Mail["html"] and Q["ref"] in Mail["subject"]
+    finally:
+        await H.Close()

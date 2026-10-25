@@ -314,7 +314,7 @@ def StaffQuoteEmail(Request: dict) -> tuple[str, str]:
            asks for a price: <strong>{_Esc(Request['title'])}</strong> ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')})
            in {_Esc(Request['material_label'])}, {_Esc(_Size(Request))}, ×{_Esc(Request['quantity'])}.</p>
         {('<p style="margin:0 0 12px;">Note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
-        <p style="margin:0;font-size:12px;color:#8F8F8F;">The customer was promised an answer within one business day. Open the Admin → Orders → Quote requests.</p>"""))
+        <p style="margin:0;font-size:12px;color:#8F8F8F;">The customer was promised a review within one business day and the quote within three business days. Open the Admin → Orders → Quote requests.</p>"""))
 
 
 def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
@@ -337,6 +337,17 @@ def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
         <p style="margin:12px 0 0;text-align:center;{_Font}font-size:13px;"><a href="{_Esc(Decline)}" target="_blank" style="color:#B4443A;">Decline the quote</a></p>
         <p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">Delivery is chosen when you approve: Standard delivery is free, Express is $45.
            Prices in US dollars; import duties or VAT, where charged, are paid by the recipient. {ContactLine(Request['ref'])}</p>"""))
+
+
+def QuoteUpdateEmail(Request: dict, Message: str) -> tuple[str, str]:
+    """An update from the team on a quote request (R-48: proactive updates for exceptions): their words and the
+    reference. No price — the quote itself carries that."""
+    Msg = "".join(f'<p style="margin:0 0 14px;">{_Esc(P).replace(chr(10), "<br>")}</p>'
+                  for P in (Message or "").split("\n\n") if P.strip())
+    return (f"An update on your quote request {Request['ref']} — {Request['title']}",
+            _Layout(f"About your quote request {_Esc(Request['ref'])}", f"""\
+        {Msg}
+        <p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
 
 
 def StaffQuoteDecisionEmail(Request: dict, Decision: str, Note: str = "") -> tuple[str, str]:
@@ -367,8 +378,9 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
         <p style="margin:0 0 16px;">Thank you for your interest in <strong>{_Esc(Request['title'])}</strong>
            ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')}) in <strong>{_Esc(Request['material_label'])}</strong>, {_Esc(Size)}, ×{_Esc(Request['quantity'])}.</p>
-        <p style="margin:0 0 16px;">Gold pieces are quoted individually. A specialist will email you the quote within one business day
-           with a price and the next steps. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
+        <p style="margin:0 0 16px;">Gold pieces are quoted individually. We review every request within one business day and aim to
+           email you the quote, with a price and the next steps, within three business days; if your design needs longer, we will
+           let you know. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
         {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
         <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
 

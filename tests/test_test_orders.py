@@ -1,6 +1,6 @@
-"""An explicit Test order (the owner's decision of 2026-10-16, item 6): an Admin marks an internal order Test — never an
-address alone — with a reason kept in its history, before it is sent to Production and only while it is unpaid; a
-customer's order can never be made Test. Fulfillment then receives `order.test` (it may be shipped and delivered like
+"""An explicit Test order (the owner's decision of 2026-10-16, item 6): an Admin marks an order Test — never an address
+alone — with a reason kept in its history, before it is sent to Production and only while it is unpaid; since R-47
+(2026-10-26) a QA order placed from a customer account too, the Admin warned that its customer is not internal. Fulfillment then receives `order.test` (it may be shipped and delivered like
 any Test order); the order is kept out of the dashboard's figures; Fulfillment's milestones never e-mail its customer;
 the customer's own view shows nothing of the marking."""
 
@@ -33,7 +33,7 @@ async def test_an_internal_order_is_test_only_once_an_admin_marks_it_and_fulfill
     try:
         Did, O = await _Internal(H, "t-1")
         A = await _Admin(H, O["id"])
-        assert A["test"] is False and A["test_marked"] is None and A["test_marking"] == {"possible": True, "why": None}    # an internal address alone is not Test
+        assert A["test"] is False and A["test_marked"] is None and A["test_marking"] == {"possible": True, "why": None, "internal": True}    # an internal address alone is not Test
         R = await _Mark(H, O["id"], True, Reason="")
         assert R.status_code == 400 and R.json()["error"]["code"] == "reason_required"
         R = await _Mark(H, O["id"], True)
@@ -68,14 +68,17 @@ async def test_an_internal_order_is_test_only_once_an_admin_marks_it_and_fulfill
         await H.Close()
 
 
-async def test_a_customer_order_or_a_paid_one_is_never_made_test(tmp_path):
+async def test_a_qa_order_from_a_customer_account_can_be_marked_with_a_reason_a_paid_one_never(tmp_path):
     H = _On(tmp_path)
     try:
-        _Did, Real = await _Internal(H, "t-real", Who=Customer)                                             # a customer: dana@atelier-customer.co.il
-        A = await _Admin(H, Real["id"])
-        assert A["test_marking"]["possible"] is False and "not internal" in A["test_marking"]["why"]
-        R = await _Mark(H, Real["id"], True)
-        assert R.status_code == 409 and R.json()["error"]["code"] == "test_marking_not_allowed" and (await _Admin(H, Real["id"]))["test"] is False
+        _Did, Qa = await _Internal(H, "t-real", Who=Customer)                                               # a customer account: dana@atelier-customer.co.il
+        A = await _Admin(H, Qa["id"])
+        assert A["test_marking"] == {"possible": True, "why": None, "internal": False}                     # the Admin is warned (R-47)
+        assert (await _Mark(H, Qa["id"], True, Reason="")).status_code == 400                               # never without a reason
+        R = await _Mark(H, Qa["id"], True, Reason="QA run from a customer account (R-47)")
+        assert R.status_code == 200 and R.json()["test"] is True and R.json()["test_marked"]["reason"] == "QA run from a customer account (R-47)"
+        Ev = H.Ctx.Db.One("SELECT kind, by FROM order_events WHERE order_id = ? ORDER BY id DESC LIMIT 1", (Qa["id"],))
+        assert Ev["kind"] == "test_marked" and Ev["by"]
         _Did, Paid = await _Internal(H, "t-paid")
         assert (await H.Client.post(f"/api/admin/orders/{Paid['id']}/payment", json={"status": "paid", "note": "transfer"}, headers=Admin)).status_code == 200
         R = await _Mark(H, Paid["id"], True)

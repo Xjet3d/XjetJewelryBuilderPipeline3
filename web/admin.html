@@ -1776,6 +1776,12 @@
               <span class="badge" :class="quoteStatusClass(qd.status)" x-text="quoteStatusLabel(qd.status)"></span>
             </div>
             <p class="text-sm text-zinc-600" x-text="'Received ' + dateTime(qd.created_at)"></p>
+            <p x-show="qd.due && qd.can_send" class="text-[12px] text-zinc-600 flex flex-wrap items-center gap-2" title="The promise to the customer: reviewed by a person within one business day, the quote within three (business days Monday to Friday)">
+              <span x-text="'Review by ' + qd.due?.review_by + (qd.due?.reviewed ? ' · reviewed' : '')"></span>
+              <span x-show="qd.due?.review_overdue" class="badge bg-amber-100 text-amber-800">review overdue</span>
+              <span x-show="!qd.offer" x-text="'· Quote by ' + qd.due?.quote_by"></span>
+              <span x-show="qd.due?.quote_overdue" class="badge bg-amber-100 text-amber-800">quote overdue — email the customer an update</span>
+            </p>
           </div>
           <label class="text-[12px] text-zinc-500 flex items-center gap-2">Status
             <select class="inp !w-auto !py-1.5 !text-[12px]" :value="qd.status" @change="setQuoteDetailStatus($event.target.value)" :disabled="qdBusy || qd.status === 'approved'" aria-label="Request status">
@@ -1839,6 +1845,7 @@
           <p x-show="qd.suggestion.weight_g == null && qd.suggestion.price_per_g != null" x-text="qd.material_label + ': ' + money(qd.suggestion.price_per_g) + ' per g (Admin → Settings → Pricing & Materials)'"></p>
           <p x-show="qd.suggestion.warning" class="text-amber-700" x-text="qd.suggestion.warning"></p>
           <button x-show="qd.suggestion.unit_price != null && qd.can_send" class="btn2 !py-1" @click="qUseSuggestion()">Use the suggestion</button>
+          <button x-show="!qd.suggestion.has_model && qd.can_send" class="btn2 !py-1" :disabled="qdBusy" @click="qGenerate3d()" x-text="mode === 'mock' ? 'Generate a 3D model (mock)…' : 'Generate a 3D model — paid Hi3D call…'"></button>
         </div>
         <template x-if="qd.can_send">
         <div class="space-y-4">
@@ -1871,6 +1878,16 @@
           <p x-show="qd.status === 'approved'">Approved by the customer <span x-text="dateTime(qd.decision?.at)"></span> · order <a class="underline font-mono" :href="'#/orders/' + encodeURIComponent(qd.order?.id || '')" x-text="qd.order?.ref"></a></p>
           <p x-show="qd.status === 'rejected'">Declined by the customer <span x-text="dateTime(qd.decision?.at)"></span></p>
           <p x-show="qd.decision?.note" class="text-zinc-700" x-text="'Their note: ' + (qd.decision?.note || '')"></p>
+        </div>
+      </section>
+
+      <section x-show="qd.can_send" class="card p-6 space-y-3" aria-label="Update the customer">
+        <p class="lbl">Email the customer an update</p>
+        <p class="text-[12px] text-zinc-500">When the quote will take longer than promised, or anything else they should know. No price — the quote carries that. Kept in the history.</p>
+        <textarea class="inp" rows="4" x-model="qUpdate" placeholder="Hello …, your design needs a closer look at its details; we expect to send your quote by …"></textarea>
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="btn2" :disabled="qdBusy || qUpdate.trim().length < 10" @click="sendQuoteUpdate()">Send the update</button>
+          <span class="text-[12px] text-zinc-500" x-text="'To ' + qd.email_to"></span>
         </div>
       </section>
 
@@ -2020,6 +2037,7 @@
               <span x-show="od.test" class="badge border border-dashed border-zinc-400 bg-white text-zinc-700" :title="od.test_marked ? ('Marked Test by ' + (od.test_marked.by || 'an Admin') + ', ' + dateTime(od.test_marked.at) + ' — ' + (od.test_marked.reason || '') + '. Fulfillment ships it like any Test order; its customer is never e-mailed by Fulfillment’s milestones; kept out of the figures.') : 'A synthetic test order (its customer is at a reserved test domain): Atelier sends its customer no email and keeps it out of the dashboard’s figures; Fulfillment marks it Test'" x-text="od.test_marked ? 'Test order (marked)' : 'Test order'"></span>
               <button x-show="od.test_marking?.possible && !od.test_marked" class="underline text-[12px] text-zinc-600 hover:text-black" :disabled="odBusy" @click="markTest(true)" title="For an internal trial: Fulfillment then ships it like a Test order (real orders stop at Packed during the pilot)">Mark as test order…</button>
               <button x-show="od.test_marking?.possible && od.test_marked" class="underline text-[12px] text-zinc-600 hover:text-black" :disabled="odBusy" @click="markTest(false)">Unmark test order…</button>
+              <span x-show="od.test_marking && !od.test_marking.possible && od.test_marking.why && !od.test" class="text-[12px] text-zinc-500" x-text="'Cannot be marked Test: ' + (od.test_marking?.why || '')"></span>
             </div>
             <p class="text-sm text-zinc-600"><span x-text="dateTime(od.created_at)"></span> · <a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(od.owner_account_id)" x-text="(od.customer.first_name + ' ' + od.customer.last_name).trim()"></a> · <span x-text="od.customer.email"></span> · <span x-text="od.customer.phone"></span></p>
             <p x-show="od.quote" class="text-[13px] text-zinc-600">From quote request <a class="underline font-mono" :href="'#/orders/quote/' + encodeURIComponent(od.quote?.id || '')" x-text="od.quote?.ref"></a></p>

@@ -147,18 +147,21 @@ def AdminBuild() -> str:
 
 
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
-                   Og: str = "", Mock: bool | None = None) -> str:
+                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
     (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description, "{{SITE_FOOTER}}"
     the site's footer (web/partials/site-footer.html: one footer, at the end of every public page). Mock False: the
-    parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out."""
+    parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out. Dev False: the developer
+    tools between <!--dev--> and <!--/dev--> (R-34: no internal tool, key name or vendor in a customer's page);
+    Legacy False: the six-letter-code dialog between <!--legacy--> and <!--/legacy-->."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     if "{{SITE_FOOTER}}" in Html:                 # the partial's own leading comment stays in the partial
         Footer = re.sub(r"^\s*<!--.*?-->\s*", "", (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8"), count=1, flags=re.S)
         Html = Html.replace("{{SITE_FOOTER}}", Footer.strip())
-    if Mock is not None:
-        Html = re.sub(r"<!--mock-->.*?<!--/mock-->", "", Html, flags=re.S) if not Mock else Html.replace("<!--mock-->", "").replace("<!--/mock-->", "")
+    for Tag, On in (("mock", Mock), ("dev", Dev), ("legacy", Legacy)):
+        if On is not None:
+            Html = re.sub(f"<!--{Tag}-->.*?<!--/{Tag}-->", "", Html, flags=re.S) if not On else Html.replace(f"<!--{Tag}-->", "").replace(f"<!--/{Tag}-->", "")
     for Asset in ("app.js", "consent.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
                   "vendor/three.min.js", "vendor/STLLoader.js", "vendor/OrbitControls.js"):
         Path_ = WebDir / Asset
@@ -467,7 +470,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 Logger.exception("The homepage story could not be put in the page")
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
-        Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock")
+        Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
+                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration") and not Flow:

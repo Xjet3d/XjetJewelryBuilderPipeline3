@@ -1094,7 +1094,9 @@ class OrderService:
         return Out
 
     def TestMarking(self, O: dict) -> dict:
-        """Whether an Admin may mark this order Test (or unmark it) now, and why not (the owner's decision of 2026-10-16)."""
+        """Whether an Admin may mark this order Test (or unmark it) now, and why not (the owner's decision of 2026-10-16).
+        internal: the customer is at an internal domain (P3_TEST_ORDER_DOMAINS); since R-47 (2026-10-26) an Admin may mark
+        a QA order placed from a customer account too, with the reason documented — the Admin is warned first."""
         Email = (json.loads(O["customer_json"] or "{}").get("email") or "").strip().lower()
         Domain = Email.rsplit("@", 1)[1] if "@" in Email else ""
         if ReservedEmail(Email):
@@ -1103,10 +1105,7 @@ class OrderService:
             return {"possible": False, "why": "it was sent to Production: Fulfillment classified it at the hand-over"}
         if O["payment_status"] == "paid":
             return {"possible": False, "why": "it is paid: a paid order is a real sale"}
-        if Domain not in tuple(self.Ctx.Settings.TestOrderDomains or ()):
-            return {"possible": False, "why": "its customer is not internal (" + (", ".join("@" + D for D in self.Ctx.Settings.TestOrderDomains) or "no internal domain is set")
-                    + "): a customer's order is always real"}
-        return {"possible": True, "why": None}
+        return {"possible": True, "why": None, "internal": Domain in tuple(self.Ctx.Settings.TestOrderDomains or ())}
 
     def _SentToProduction(self, OrderId: str) -> bool:
         Db = self.Ctx.Db
@@ -1116,11 +1115,12 @@ class OrderService:
         return False
 
     def MarkTest(self, OrderId: str, Test: bool, By: str, Reason: str) -> dict:
-        """An Admin marks an internal order Test — or unmarks it — so a trial can run through Fulfillment to Shipped and
-        Delivered without the real-order rule (the owner's decision of 2026-10-16). Explicit, with a reason, recorded in
-        the order's history; never from an address alone; only before the order is sent to Production (Fulfillment
-        classifies it once, at the hand-over); only an unpaid order of an internal customer (P3_TEST_ORDER_DOMAINS). A
-        Test order is kept out of the figures and Fulfillment's milestones never e-mail its customer."""
+        """An Admin marks an order Test — or unmarks it — so a trial can run through Fulfillment to Shipped and Delivered
+        without the real-order rule (the owner's decision of 2026-10-16). Explicit, with a reason, recorded in the order's
+        history with the Admin who did it; never from an address alone; only before the order is sent to Production
+        (Fulfillment classifies it once, at the hand-over); only an unpaid order. Since R-47 (2026-10-26) that includes a
+        QA order placed from a customer account, not only one of an internal customer (P3_TEST_ORDER_DOMAINS). A Test
+        order is kept out of the figures and Fulfillment's milestones never e-mail its customer."""
         Reason = " ".join(str(Reason or "").split())[:300]
         if len(Reason) < 5:
             raise HttpError(400, "reason_required", "Say why the order is " + ("marked Test" if Test else "no longer Test") + " (kept in its history).")

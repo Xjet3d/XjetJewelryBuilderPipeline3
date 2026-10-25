@@ -859,6 +859,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Origin = Ctx.Settings.PublicBaseUrl or PublicOrigin(request)
         return Quotes.SendOffer(RequestId, Body_, Who.Id, Origin, Background.add_task)
 
+    @App_.post("/api/admin/quote-requests/{RequestId}/update")
+    async def AdminQuoteUpdate(RequestId: str, Background: BackgroundTasks, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """Email the customer an update on their request (R-48): the Admin's words, kept in the history."""
+        Who = Admin(authorization)
+        return Quotes.SendUpdate(RequestId, str(Body_.get("message") or ""), Who.Id, Background.add_task)
+
     @App_.post("/api/admin/quote-requests/{RequestId}/note")
     async def AdminQuoteNote(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)

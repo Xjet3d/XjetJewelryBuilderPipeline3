@@ -1561,7 +1561,7 @@
     </template>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         Customize — selected image + Minimax movie · material groups · size · price · bag
+         Customize — selected image + 360° movie · material groups · size · price · bag
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'review' && cust">
         <main class="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden fade-in">
@@ -2339,7 +2339,8 @@
         </main>
     </template>
 
-    <!-- ── Developer AI-mode control (internal: shown only after the developer key is verified) ── -->
+    <!--dev--><!-- ── Developer tools (R-34): the server leaves this whole block out of the page where developer tools
+         are off (production); elsewhere they show only after the developer key is verified ── -->
     <div x-show="view === 'home' && devMode" x-cloak class="fixed left-4 bottom-4 z-[90] w-[300px] rounded-xl shadow-2xl border bg-white p-4 text-[12px]"
          style="border-color:#DCDCDC;" role="region" aria-label="Developer AI mode">
         <div class="flex items-center justify-between mb-2">
@@ -2394,7 +2395,7 @@
                 <button @click="switchAiMode('live')" :disabled="devBusy || liveConfirmText.trim() !== devMode?.live_confirmation" class="btn-outline flex-1 py-2.5" style="color:#A1261D !important; border-color:#A1261D !important;">Switch to Live</button>
             </div>
         </div>
-    </div>
+    </div><!--/dev-->
 
     <!-- ── Account menu — a dropdown under the header's account button (also opened from the composer's balance line).
          Who is signed in, their generations, their sign-in code, their orders, My Designs and Favorites, and Sign out
@@ -2663,7 +2664,8 @@
                     <button type="button" x-show="regInfo" @click="regSwitch('signin')" class="btn-outline w-full py-3.5 text-[12px] uppercase tracking-[0.2em]">Back to sign in</button>
                 </div>
 
-                <!-- Servers still in the older mode keep the earlier dialog -->
+                <!--legacy--><!-- Servers still in the older mode keep the earlier dialog; elsewhere the server leaves this
+                     block out of the page (R-34) -->
                 <div x-show="legacyAuth">
                 <!-- Header -->
                 <div class="mb-6 text-center">
@@ -2742,7 +2744,7 @@
                     Enter sign-in code
                     <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                 </button>
-                </div>
+                </div><!--/legacy-->
 
                 <!-- Discovery is not gated: the gallery, materials and the process are open to everyone -->
                 <p class="text-center text-[13px] text-zinc-500 mt-6 pt-5 border-t border-zinc-100">
