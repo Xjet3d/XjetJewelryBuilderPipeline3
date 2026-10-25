@@ -302,11 +302,11 @@
             const playable = !v.canPlayType || v.canPlayType('video/mp4; codecs="avc1.64001F"') !== '';
             v.onerror = () => { if (!fellBack && playable && !sm && S.movie_url) { fellBack = true; v.src = S.movie_url; v.load(); } };
             if (playable) v.src = S.clip_url ? S.clip_url.replace('w=720', sm ? 'w=480' : 'w=720') : S.movie_url;
-            const shown = [['Silver', (S.metals || []).find(m => m.id === 'silver')], ['18K Yellow Gold', (S.metals || []).find(m => m.id === 'gold_18k_yellow')]].filter(x => x[1]);
+            const shown = [['Sterling Silver', (S.metals || []).find(m => m.id === 'silver')], ['18K Yellow Gold', (S.metals || []).find(m => m.id === 'gold_18k_yellow')]].filter(x => x[1]);
             X.metals.innerHTML = '';
             chips = shown.map(([label, m]) => { const c = document.createElement('span'); c.className = 'sc-metal'; c.innerHTML = `<i style="background:${m.swatch}"></i>`; c.append(label); X.metals.appendChild(c); return c; });
             X.title.textContent = S.title;
-            stage.setAttribute('aria-label', `${S.title}, designed with XJet Atelier: an idea, four possibilities, one chosen and refined, seen from every angle and in Silver and Yellow Gold`);
+            stage.setAttribute('aria-label', `${S.title}, designed with XJet Atelier: an idea, four possibilities, one chosen and refined, seen from every angle and in Sterling Silver and Yellow Gold`);
         }
         function preload() {
             const imgs = finalFirst ? [X.silver, X.gold] : [...X.opts.map(o => o.querySelector('img')), X.orig, X.ref];

@@ -109,7 +109,7 @@ async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):
         assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
         Cat = (await Browser.get("/api/catalog")).json()
     assert Cat["products"]["preview"] is True
-    assert [M["label"] for M in Cat["products"]["charm"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold Vermeil"]
+    assert [M["label"] for M in Cat["products"]["charm"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
 
 
 async def test_promo_messages_are_product_neutral(HC5):
@@ -120,7 +120,7 @@ async def test_promo_messages_are_product_neutral(HC5):
     # A ring in the bag: the material restriction speaks of pieces, not rings
     await RingOrder(H)
     Ring = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
-    assert Ring == {"code": "promo_not_applicable", "message": "This promo code applies to Vermeil pieces only."}
+    assert Ring == {"code": "promo_not_applicable", "message": "This promo code applies to 14K Gold over Stainless Steel pieces only."}
     # … and the same message for a charm
     await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
     await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)

@@ -8,7 +8,7 @@ A charm's customer price depends on its material AND its size. Per material a ch
 Weight = 3D volume × the material's sintered density: a property of the material, the same for a ring and a
 charm (Admin → Pricing · materials). Every price and cost here is the charm's own.
 
-The materials: Stainless Steel, Sterling Silver and 14K Gold Vermeil at a fixed price per size; gold through
+The materials: Stainless Steel, Sterling Silver and 14K Gold over Stainless Steel at a fixed price per size; gold through
 the quote flow, exactly like a gold ring (no fixed price). Every save is a new version ("charms-v<N>": who,
 when, note). The table starts empty — no charm price is invented — so every charm is "Price unavailable"
 until an Admin sets its prices.
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS charm_price_lists (
 """
 FixedPriceMaterials = ("stainless_steel", "silver", "vermeil")
 # How a charm's material reads to the customer (rings keep the catalog's labels)
-Labels = {"stainless_steel": "Stainless Steel", "silver": "Sterling Silver", "vermeil": "14K Gold Vermeil"}
+Labels = {"stainless_steel": "Stainless Steel", "silver": "Sterling Silver", "vermeil": "14K Gold over Stainless Steel"}
 
 
 class CharmPriceError(ValueError):

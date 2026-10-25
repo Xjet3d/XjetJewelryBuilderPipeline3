@@ -722,7 +722,7 @@
             <p class="lbl mb-1">By ring size — every measured Hi3D model scaled to the size (exact arithmetic), averaged</p>
             <p class="text-[12px] text-zinc-500 mb-2" x-text="dash.geometry.measured + ' 3D part' + (dash.geometry.measured === 1 ? '' : 's') + ' (results) from ' + dash.geometry.models_created + ' Hi3D model' + (dash.geometry.models_created === 1 ? '' : 's') + ' created · ' + dash.geometry.models_measured + ' measured · ' + dash.geometry.models_used + ' used in these averages' + (dash.geometry.models_measured > dash.geometry.models_used ? ' (' + (dash.geometry.models_measured - dash.geometry.models_used) + ' left out: no round bore or open mesh)' : '')"></p>
             <table class="w-full !text-xs">
-              <thead><tr><th>Ring size</th><th class="text-right" title="Hi3D models used for this row">Models</th><th class="text-right">Avg volume</th><th class="text-right">Silver</th><th class="text-right">Vermeil</th><th class="text-right">Stainless Steel</th></tr></thead>
+              <thead><tr><th>Ring size</th><th class="text-right" title="Hi3D models used for this row">Models</th><th class="text-right">Avg volume</th><th class="text-right">Sterling Silver</th><th class="text-right">14K Gold over Stainless Steel</th><th class="text-right">Stainless Steel</th></tr></thead>
               <tbody>
                 <template x-for="r in dash.geometry.by_size" :key="r.size"><tr>
                   <td x-text="'US ' + r.size"></td>

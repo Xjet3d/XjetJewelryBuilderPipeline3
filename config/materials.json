@@ -15,13 +15,13 @@
       "ramp": ["#101214", "#2C3034", "#4C5157", "#6B7177", "#8A9096", "#A6ACB2", "#C0C6CB", "#DCE0E3", "#EEF0F2"]
     },
     {
-      "id": "silver", "group": "fashion", "label": "Silver",
+      "id": "silver", "group": "fashion", "label": "Sterling Silver",
       "cpp_metal": "Sterling Silver 925", "density_g_cm3": 10.36, "requires_plating": false,
       "swatch": "#C8C8C5", "tint": "grayscale(0.85) brightness(1.08) contrast(0.94)",
       "ramp": ["#15171A", "#3E4246", "#6B7075", "#949A9F", "#B8BDC1", "#D3D7DA", "#E7EAEC", "#F5F6F7", "#FFFFFF"]
     },
     {
-      "id": "vermeil", "group": "fashion", "label": "Vermeil",
+      "id": "vermeil", "group": "fashion", "label": "14K Gold over Stainless Steel",
       "cpp_metal": "14K Gold Vermeil", "density_g_cm3": 10.36, "requires_plating": true,
       "swatch": "#CC9A33", "tint": "sepia(0.72) hue-rotate(-3deg) saturate(1.45) brightness(1.08) contrast(1.08)",
       "ramp": ["#2A1B08", "#5B4015", "#886424", "#B08533", "#CDA145", "#DFBA67", "#EDD094", "#F6E6C0", "#FFFFFF"]

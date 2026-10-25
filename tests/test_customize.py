@@ -159,7 +159,7 @@ async def test_catalog_groups_and_default():
     Cat = LoadCatalog().ToJson()
     assert Cat["default_material_id"] == "silver"
     Groups = {G["id"]: G for G in Cat["groups"]}
-    assert [M["label"] for M in Groups["fashion"]["materials"]] == ["Stainless Steel", "Silver", "Vermeil"]
+    assert [M["label"] for M in Groups["fashion"]["materials"]] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     assert Groups["fashion"]["purchasable"] and not Groups["luxury"]["purchasable"]
     assert all("Gold" in M["label"] for M in Groups["luxury"]["materials"])
 

@@ -78,7 +78,7 @@ async def test_the_production_page_lists_the_lines_sent_with_fulfillment_s_side_
         R = (await H.Client.get("/api/admin/production", headers=Admin)).json()
         X = R["rows"][0]
         assert X["stage"] == "attention" and X["attention"]["kind_label"] == "Revised STL needed" and X["build"]["display_no"] == "B-0001" and X["latest_note"]["text"].startswith("Surface")
-        assert [S["id"] for S in R["stages"]] == ["attention"] and R["materials"] == [{"id": "silver", "label": "Silver"}] and R["products"] == ["ring"]
+        assert [S["id"] for S in R["stages"]] == ["attention"] and R["materials"] == [{"id": "silver", "label": "Sterling Silver"}] and R["products"] == ["ring"]
         assert (await H.Client.get("/api/admin/production?attention=1", headers=Admin)).json()["total"] == 1
         assert (await H.Client.get("/api/admin/production?stage=planned", headers=Admin)).json()["total"] == 0
         assert (await H.Client.get("/api/admin/production?build=b-0001", headers=Admin)).json()["total"] == 1

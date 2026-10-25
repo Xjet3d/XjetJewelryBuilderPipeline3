@@ -497,7 +497,7 @@
                 <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh_-_var(--hdr))] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
                     <div class="w-full md:w-[min(100%,700px,calc(100vh_-_var(--hdr)_-_80px))]" data-testid="hero-showcase">
                         <!-- sc-stage from the first paint: the story's room is kept before the scripts start (nothing below moves) -->
-                        <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Silver and Yellow Gold"
+                        <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Sterling Silver and Yellow Gold"
                              data-sc-design="aurora-mesh" x-init="$nextTick(() => window.P3Showcase && !$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' }))"></div>
                     </div>
                     <div class="md:hidden w-full px-2">
@@ -539,7 +539,7 @@
                             <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                                 <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
                                 <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
@@ -607,9 +607,9 @@
                     <template x-for="t in [
                         {icon:'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', label:'Real Metal Production', sub:'Crafted in actual metal, never plastic.'},
                         {icon:'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z', label:'Four Designs Per Idea', sub:'Every idea becomes four options to choose from.'},
-                        {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ' + wording.noun + ' from every angle.'},
+                        {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ring from every angle.'},
                         {icon:'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', label:'Made by XJet', sub:'Produced with XJet industrial NanoJetting™ printers.'}
-                    ]" :key="t.label">
+                    ].filter(t => t.label !== '360° Preview' || wording.ring)" :key="t.label">
                         <div>
                             <div class="w-11 h-11 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE">
                                 <svg class="w-5 h-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="t.icon"/></svg>
@@ -643,7 +643,7 @@
 
             <section class="py-28 px-8 text-center bg-zinc-900 text-white">
                 <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#C9A96E">Your Design.</span></h2>
-                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-base leading-relaxed">Start with a description or an image. Choose from four designs, refine your favourite and preview it in 360°.</p>
+                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-base leading-relaxed" x-text="'Start with a description or an image. Choose from four designs and refine your favorite' + (!wording.ring ? '.' : wording.charm ? '; rings come with a 360° preview.' : ', then preview it in 360°.')">Start with a description or an image. Choose from four designs and refine your favorite; rings come with a 360° preview.</p>
                 <button @click="resetAIFlow()" class="btn-gold px-12 py-5 stream-glow transition">Start Designing</button>
             </section>
 
@@ -688,7 +688,7 @@
                         <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                             <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                                 <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                 <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                             </div>
                             <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
@@ -933,7 +933,7 @@
                                 </dl>
                                 <div class="mt-auto pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                                     <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap" style="color:#146C43;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available to order</span>
-                                    <button @click="resetAIFlow()" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 whitespace-nowrap py-3 -my-3" style="color:#8A6420;" x-text="'Design in ' + m.label.split(' ').pop().toLowerCase()">Design in</button>
+                                    <button @click="resetAIFlow()" class="text-[12px] text-left uppercase tracking-widest font-semibold underline underline-offset-4 py-3 -my-3" style="color:#8A6420;" x-text="'Design in ' + m.label">Design in</button>
                                 </div>
                             </div>
                         </article>
@@ -1019,13 +1019,13 @@
                         <h2 class="text-lg font-semibold text-zinc-900">The service</h2>
                         <p x-text="termsService"></p>
                         <h2 class="text-lg font-semibold text-zinc-900">Your access</h2>
-                        <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
+                        <p>You sign in with your email address and a password, or with Google. Keep your sign-in details private: anyone who uses them can use your account and its credits and create designs. A six-letter sign-in code from an earlier version of the site only moves that account to the new sign-in. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Your content</h2>
-                        <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the licence needed to generate, store, display and produce your design and to improve the service.</p>
+                        <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Orders</h2>
                         <p x-text="termsOrders"></p>
                         <h2 class="text-lg font-semibold text-zinc-900">Preview accuracy</h2>
-                        <p>The images and movie are AI renderings. Metal colour is a visual preview; reflections and fine surface detail on a finished piece may differ.</p>
+                        <p>The images, and for rings the 360° movie, are AI renderings. Metal color is a visual preview; reflections and fine surface detail on a finished piece may differ.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Liability</h2>
                         <p>To the extent permitted by law, XJet's liability for an order is limited to the price paid for it. Nothing here limits rights you have as a consumer under applicable law.</p>
                     </div>
@@ -1596,7 +1596,7 @@
                                              :style="currentGroup === g.id ? 'background-color:' + (currentMaterial?.swatch || '#ccc') : (g.id === 'luxury' ? 'background:linear-gradient(135deg,#FFD700 0%,#B8860B 100%)' : 'background:linear-gradient(135deg,#C8C8C5 0%,#6E7377 100%)')"></div>
                                         <div class="flex-1">
                                             <div class="text-sm font-semibold text-zinc-800" x-text="g.id === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></div>
-                                            <div class="text-[12px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterialLabel : (g.id === 'fashion' ? (custIsCharm ? 'Stainless Steel · Sterling Silver · 14K Gold Vermeil' : 'Stainless Steel · Silver · Vermeil') : 'Gold options — preview only')"></div>
+                                            <div class="text-[13px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterialLabel : (g.id === 'fashion' ? 'Stainless Steel · Sterling Silver · 14K Gold over Stainless Steel' : 'Gold options — preview only')"></div>
                                         </div>
                                         <span x-show="!g.purchasable" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B; border:1px solid #E8DCC4;">Preview only</span>
                                         <svg :class="groupOpen[g.id] ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -2791,7 +2791,7 @@
                             <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                                 <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
                                 <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
@@ -2822,7 +2822,7 @@
                         <div class="flex flex-wrap items-center justify-center gap-1" role="radiogroup" aria-label="See it in another metal — preview only">
                             <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip mr-1" :class="!galleryMetal ? 'is-on' : ''">Original</button>
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('stainless_steel')" :aria-checked="galleryMetal === 'stainless_steel'" :class="galleryMetal === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                         </div>
                         <p class="text-[13px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
@@ -2837,7 +2837,7 @@
                             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" :fill="isFav(galleryItem) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
                         </button>
                     </div>
-                    <p x-show="!isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size and watch it in 360°.</p>
+                    <p x-show="!isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed" x-text="'Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size' + (isCharm(galleryItem) ? '.' : ' and watch it in 360°.')">Inspired by this look? Start here and make it your own — see all four options behind it, refine the one you love, then choose your metal and size.</p>
                     <!-- Its product is switched OFF: the design stays viewable, read-only (app.js isOff) -->
                     <p x-show="isOff(galleryItem)" class="text-base text-zinc-600 leading-relaxed" role="status" data-unavailable>Currently unavailable for customization or ordering.</p>
                     <p x-show="galleryError" class="text-sm text-red-600" x-text="galleryError"></p>

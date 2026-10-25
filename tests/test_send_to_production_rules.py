@@ -124,7 +124,7 @@ async def test_tron_s_orders_get_their_true_verdict_and_a_valid_stl_is_never_req
         assert Seen[("ORD-10001", A)] == ("ready", "sent", False, "In Production")
         assert Seen[("ORD-10002", A)] == ("ready", "order_completed", False, "STL ready · Order completed — production disabled")
         assert Seen[("ORD-10003", B)] == ("needs_preparation", "not_enabled", False,
-                                          "STL not yet prepared at US 7 · Silver — the 3D model exists · Production hand-over restricted by the pilot allowlist")
+                                          "STL not yet prepared at US 7 · Sterling Silver — the 3D model exists · Production hand-over restricted by the pilot allowlist")
         assert Seen[("ORD-10004", C)] == ("ready_unlinked", "not_enabled", False,
                                           "STL ready — not yet linked to this line · Production hand-over restricted by the pilot allowlist")
         assert Seen[("ORD-10005", C)][:2] == ("ready_unlinked", "not_enabled") and Seen[("ORD-10005", B)][:2] == ("needs_preparation", "not_enabled")

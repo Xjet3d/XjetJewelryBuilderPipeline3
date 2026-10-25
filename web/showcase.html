@@ -124,7 +124,7 @@
             const li = h => { const l = document.createElement('li'); l.innerHTML = h; notes.appendChild(l); };
             li('This is the homepage hero’s showcase on its own, with review tools — the same engine and the same story.');
             li(`<b>${esc(S.title)}</b> from the Inspiration Gallery: its own prompt, its first four options, the one chosen, `
-               + (S.refine ? `the refinement “${esc(S.refine.text)}”, ` : '') + 'its real 360° movie (its last two seconds, as a small clip), then Silver and 18K Yellow Gold at the same angle and scale, and the finished ring in gold with its name. Nothing is generated or charged.');
+               + (S.refine ? `the refinement “${esc(S.refine.text)}”, ` : '') + 'its real 360° movie (its last two seconds, as a small clip), then Sterling Silver and 18K Yellow Gold at the same angle and scale, and the finished ring in gold with its name. Nothing is generated or charged.');
             li(`About ${(D.total / 1000).toFixed(1)} s, muted, loops. It stops while it is off screen or the tab is hidden; visitors who prefer reduced motion see the finished ring, still.`);
             li('Choose another gallery design above, switch the preview to <b>Phone</b>, or open this page on a phone. The beats under the stage jump straight to a moment; <b>Storyboard</b> shows all seven at once.');
             if (still) showBoard();
@@ -153,7 +153,7 @@
             fr(C[2], quad(true));
             fr(C[3], `<div class="pair"><img src="${thumb(S.options[S.picked], 320)}" alt=""><img src="${thumb(S.refine ? S.refine.image_url : S.options[S.picked], 320)}" alt=""></div>`, S.refine ? `<p class="sub">✦ ${esc(S.refine.text)}</p>` : '');
             fr(C[4], `<img src="${S.poster_url}" alt="">`);
-            fr(C[5], `<div class="pair"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${silver}"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${gold}"></div>`, '<p class="sub">Silver · 18K Yellow Gold</p>');
+            fr(C[5], `<div class="pair"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${silver}"><img src="${thumb(S.still_url, 320)}" alt="" style="filter:${gold}"></div>`, '<p class="sub">Sterling Silver · 18K Yellow Gold</p>');
             fr('The finished ring', `<img src="${thumb(S.still_url, 800)}" alt="" style="filter:${gold}">`, `<p class="nm">${esc(S.title)}</p><p class="sub">Designed with XJet Atelier</p>`);
         }
         $('still').addEventListener('click', () => { still = true; showBoard(); });

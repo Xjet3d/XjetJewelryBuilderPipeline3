@@ -265,7 +265,7 @@ async def test_structured_data_says_only_what_is_true(tmp_path):
         assert Home[0]["contactPoint"]["email"] == "help@example.com" and Home[1]["url"] == "https://atelier.example.com/"
         Faq = (await H.Client.get("/faq")).text
         [Data] = _JsonLd(Faq)
-        assert Data["@type"] == "FAQPage" and len(Data["mainEntity"]) == 10
+        assert Data["@type"] == "FAQPage" and len(Data["mainEntity"]) == 11      # 2026-10-26: How do credits work? (R-15)
         Live = _Live(Faq, "faq")
         for Q in Data["mainEntity"]:                                    # exactly what the page shows
             assert html.escape(Q["name"], quote=True) in Live and html.escape(Q["acceptedAnswer"]["text"], quote=True) in Live

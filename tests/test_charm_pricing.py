@@ -56,7 +56,7 @@ async def test_charm_prices_start_empty_and_never_fall_back_to_ring_prices(HP):
     assert T["version"] == "charms-v1" and T["sizes"] == [15.0, 20.0, 25.0, 30.0]
     assert [R["id"] for R in T["rows"]][:3] == ["stainless_steel", "silver", "vermeil"]
     assert {R["id"]: R["label"] for R in T["rows"]}["silver"] == "Sterling Silver"
-    assert {R["id"]: R["label"] for R in T["rows"]}["vermeil"] == "14K Gold Vermeil"
+    assert {R["id"]: R["label"] for R in T["rows"]}["vermeil"] == "14K Gold over Stainless Steel"
     assert all(R["fixed_prices"] == {} and R["price_per_g"] is None and R["cost_per_g"] is None for R in T["rows"])
     assert [R["fixed_price_allowed"] for R in T["rows"]] == [True, True, True] + [False] * (len(T["rows"]) - 3)
     # The ring price of silver exists — and is never a charm's price
@@ -153,7 +153,7 @@ async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     assert (C["product_type"], C["ring_size"], C["charm_size"], C["material_id"], C["material_label"]) == \
         ("charm", None, None, "silver", "Sterling Silver")
     assert C["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
-    assert [M["label"] for M in C["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold Vermeil"]
+    assert [M["label"] for M in C["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     assert all(not M["purchasable"] for M in C["materials"][3:])                      # gold: the quote flow
     R = await H.Client.patch(f"/api/customizations/{C['id']}", json={"ring_size": 7})
     assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_size"
@@ -178,7 +178,7 @@ async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):
     assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).status_code == 200
     Bag = (await H.Client.get("/api/bag")).json()
     assert [(L["product_type"], L["ring_id"], L["size_label"], L["material_label"], L["unit_price"]) for L in Bag["lines"]] == [
-        ("ring", "R-1001-A", "US 7", "Silver", 200.0), ("charm", "C-1001-A", "20 mm", "Sterling Silver", 145.0)]
+        ("ring", "R-1001-A", "US 7", "Sterling Silver", 200.0), ("charm", "C-1001-A", "20 mm", "Sterling Silver", 145.0)]
     assert Bag["totals"] == {"USD": 345.0} and Bag["checkout_available"] is True
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "mixed"})).json()

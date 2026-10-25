@@ -161,7 +161,7 @@ async def test_a_line_whose_stl_or_picture_is_not_its_own_is_never_sent_and_the_
         await _Model(H, Did, 8, "silver")                                         # another size
         assert "its STL is for US 8, the line is US 7" in await Problem(Sid=_Results(H, Did, "silver", 8)[0]["id"])
         await _Model(H, Did, 7, "vermeil")                                        # another material
-        assert "its STL is recorded for Vermeil, the line is Silver" in await Problem(Sid=_Results(H, Did, "vermeil", 7)[0]["id"])
+        assert "its STL is recorded for 14K Gold over Stainless Steel, the line is Sterling Silver" in await Problem(Sid=_Results(H, Did, "vermeil", 7)[0]["id"])
         Other = Db.One("SELECT c.id FROM candidates c JOIN batches b ON b.id = c.batch_id WHERE b.design_id = ? AND c.id != ? LIMIT 1",
                        (Did, L["candidate_id"]))["id"]
         assert any(P.startswith("its picture is not of the ordered option") for P in await Problem(Image=Img.replace(L["candidate_id"], Other)))

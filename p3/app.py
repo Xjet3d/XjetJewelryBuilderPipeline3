@@ -500,11 +500,15 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Html
 
     def PageDescription() -> str:
-        """The page's meta description names only the products customers can design (Admin → Settings → Products)."""
-        Names = [Products.Plurals[P].lower() for P in Ctx.Products.AvailableProducts()]
+        """The page's meta description names only the products customers can design (Admin → Settings → Products). Only
+        rings come with a 360° movie (R-05)."""
+        On = Ctx.Products.AvailableProducts()
+        Names = [Products.Plurals[P].lower() for P in On]
         What = " and ".join(Names) if len(Names) <= 2 else ", ".join(Names[:-1]) + " and " + Names[-1]
-        return (f"Design custom {What or 'jewelry'} with AI at XJet Atelier. Describe your vision, choose from four designs, "
-                "refine it, and preview it in a 360° movie.")
+        Movie = ("" if Products.Ring not in On else ", and preview it in a 360° movie." if len(On) == 1
+                 else "; rings come with a 360° movie.")
+        return (f"Design custom {What or 'jewelry'} with AI at XJet Atelier. Describe your vision, choose from four designs"
+                + (Movie and ", refine it" + Movie or " and refine it."))
 
     @App_.get("/", include_in_schema=False)
     async def Index(request: Request):
@@ -625,7 +629,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Noun = "charm" if Found.get("product_type") == Products.Charm else "ring"
         Off = Found.get("available") is False                     # its product is paused: the page stays, read-only
         DescriptionText = (f"{Found['title']} — a {Noun} designed with XJet Atelier, from the Inspiration Gallery. "
-                           + (Products.UnavailableText if Off else "See it in 360°, choose your metal and make it yours."))
+                           + (Products.UnavailableText if Off else "See it in 360°, choose your metal and make it yours." if Noun == "ring"
+                              else "Choose your metal and size and make it yours."))
         Description = html.escape(DescriptionText, quote=True)
         Block = SitePages.CrawlerBlock(f"<h1>{Title}</h1><p>{html.escape(DescriptionText, quote=False)}</p>"   # the picture: square, 800 x 800
                                        f'<img src="{Image}" alt="{Title} — custom {Noun} design from the XJet Atelier Inspiration Gallery" width="800" height="800" loading="lazy">'

@@ -14,7 +14,7 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "408d153d4db63cce1fba6befe9bada99a6f553eab5cb3e19acc9e3e16bc0078d"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "019623d28c6ee909cfd2fa43c70b140bb29b86687486b3ba8093329a7fe93bf8"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)
@@ -22,7 +22,8 @@ HeroSha256 = "408d153d4db63cce1fba6befe9bada99a6f553eab5cb3e19acc9e3e16bc0078d" 
 #   2026-10-17: the stage names its story (data-sc-design) and the story opens on its finished ring (startAt 'final': LCP)
 #   2026-10-20: design review — "by You" kept together, the type scale, the room under a header of either height (--hdr),
 #               the two buttons stacked where they do not fit side by side (768–1279 px)
-Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Silver"), ("gold_18k_yellow", "Gold")]
+#   2026-10-26: the stage's label says Sterling Silver (R-14)
+Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Sterling Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
 

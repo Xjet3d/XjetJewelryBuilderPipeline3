@@ -101,7 +101,7 @@ async def test_an_accepted_correction_is_reused_for_another_material_explicitly_
         Rev2 = Out["revision"]["id"]
         assert Out["reused_from"] == P1["id"] and Out["bore_fix"]["status"] == "accepted" and Out["bore_fix"]["reused_from"] == P1["id"]
         F2 = H.Ctx.Db.One("SELECT * FROM bore_fixes WHERE id = ?", (Out["bore_fix"]["id"],))
-        assert F2["session_3d_id"] == SF["result_id"] and F2["decided_by"] and "reused the correction accepted for Silver" in F2["decision_note"]
+        assert F2["session_3d_id"] == SF["result_id"] and F2["decided_by"] and "reused the correction accepted for Sterling Silver" in F2["decision_note"]
         assert F2["file_sha256"] == P1["file_sha256"] and F2["file_path"] == P1["file_path"]
         Row2 = H.Ctx.Db.One("SELECT * FROM session_3d WHERE id = ?", (Rev2,))
         assert (Row2["material_id"], Row2["status"]) == ("vermeil", "measured")

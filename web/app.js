@@ -71,9 +71,9 @@ async function copyText(text) {
 const MATERIAL_COPY = {
   stainless_steel: { sub: 'Durable brushed steel', desc: 'Durable, hypoallergenic stainless steel with a cool brushed finish. Everyday strength at an accessible price.' },
   silver:          { sub: 'Sterling Silver 925', desc: 'Classic 92.5% pure silver, digitally jetted for a crisp mirror finish and exceptional detail resolution.' },
-  vermeil:         { sub: 'Sterling silver · thick 14K gold plating', desc: 'Sterling silver core with thick 14K gold plating. Luxury look and feel at an accessible price point.' },
+  vermeil:         { sub: 'Stainless steel · 14K gold plating', desc: 'Stainless steel core with 14K gold plating. Luxury look and feel at an accessible price point.' },
   gold_10k_yellow: { desc: '41.7% pure gold — hardest gold alloy, ideal for everyday fine jewelry.' },
-  gold_10k_rose:   { desc: 'Warm blush tone with 41.7% gold content — the most durable gold colour.' },
+  gold_10k_rose:   { desc: 'Warm blush tone with 41.7% gold content — the most durable gold color.' },
   gold_14k_yellow: { desc: '58.3% pure gold — perfect balance of purity and strength for fine jewelry.' },
   gold_14k_rose:   { desc: 'A warm blush alloy of gold and copper delivering a romantic tone that flatters every skin tone.' },
   gold_18k_yellow: { desc: '75% pure gold — a rich, warm yellow prized for heirloom fine jewelry.' },
@@ -82,20 +82,20 @@ const MATERIAL_COPY = {
 
 // Materials page: what each metal looks like, how it wears, how to care for it (wording may be refined later).
 const MATERIAL_INFO = {
-  stainless_steel: { appearance: 'Cool, light grey metal with a soft sheen.', finish: 'Brushed matte as standard; a polished finish on request.',
+  stainless_steel: { appearance: 'Cool, light gray metal with a soft sheen.', finish: 'Brushed matte as standard; a polished finish on request.',
                      durability: 'Very hard and scratch-resistant, hypoallergenic, does not tarnish — the most carefree metal for everyday wear.',
                      care: 'Wipe with a soft cloth. Fine for water, sport and daily wear.' },
   silver:          { appearance: 'Bright white precious metal with a classic, cool shine.', finish: 'Mirror polish.',
                      durability: 'A soft precious metal: it picks up fine marks over time and can tarnish slowly, but polishes back to new easily.',
                      care: 'Store dry, polish with a silver cloth; take it off for swimming and chlorinated water.' },
-  vermeil:         { appearance: 'The warm colour of 14K gold over a sterling silver core.', finish: 'Polished, with a thick 14K gold plating.',
+  vermeil:         { appearance: 'The warm color of 14K gold over a stainless steel core.', finish: 'Polished, with 14K gold plating.',
                      durability: 'The look of gold at a fraction of the price; the plating wears gradually with heavy daily use and can be renewed.',
                      care: 'Take it off for swimming, sport and showering; keep away from perfume and lotion.' },
   gold_10k_yellow: { appearance: 'Soft, pale yellow — 41.7% gold.', durability: 'The hardest and most wear-resistant gold alloy.' },
-  gold_14k_yellow: { appearance: 'Warm classic yellow — 58.3% gold.', durability: 'The everyday fine-jewelry standard: rich colour, good hardness.' },
-  gold_18k_yellow: { appearance: 'Deep, rich yellow — 75% gold.', durability: 'The most precious colour; a little softer, for pieces worn with care.' },
+  gold_14k_yellow: { appearance: 'Warm classic yellow — 58.3% gold.', durability: 'The everyday fine-jewelry standard: rich color, good hardness.' },
+  gold_18k_yellow: { appearance: 'Deep, rich yellow — 75% gold.', durability: 'The most precious color; a little softer, for pieces worn with care.' },
   gold_10k_rose:   { appearance: 'Warm blush with a copper note — 41.7% gold.', durability: 'The most durable rose alloy.' },
-  gold_14k_rose:   { appearance: 'Romantic pink-gold — 58.3% gold.', durability: 'Rich colour with everyday hardness.' },
+  gold_14k_rose:   { appearance: 'Romantic pink-gold — 58.3% gold.', durability: 'Rich color with everyday hardness.' },
   gold_18k_rose:   { appearance: 'Soft, luxurious rose — 75% gold.', durability: 'Precious and warm; worn with care.' },
 };
 
@@ -1487,14 +1487,15 @@ function p3App() {
       const fixed = r && c ? 'Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size.'
                   : c ? 'Prices in US dollars, per charm, fixed for the material and size.'
                   : 'Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.';
-      return fixed + ' Each ' + this.wording.noun + ' is made to order; the final weight is measured at production. Vermeil is sterling silver with a thick 14K gold plating.';
+      return fixed + ' Each ' + this.wording.noun + ' is made to order, and its price does not change with its final weight. 14K Gold over Stainless Steel is stainless steel plated with 14K gold.';
     },
-    get goldIntro() { return 'Solid gold ' + this.wording.nouns + ' are priced per piece. Design your ' + this.wording.noun + ', choose a gold option in Customize and send a quote request — a specialist replies within one business day with a price and the next steps. Nothing is ordered or charged until you confirm.'; },
+    get goldIntro() { return 'Solid gold ' + this.wording.nouns + ' are priced per piece. Design your ' + this.wording.noun + ', choose a gold option in Customize and send a quote request. We confirm it right away, review it within one business day and aim to send your price within three business days; if your design needs longer, we tell you. Nothing is ordered or charged until you confirm.'; },
     get termsService() {
       const list = this.productsList, names = list.map(p => this.productLabel(p).toLowerCase()), plurals = list.map(p => this.productPlural(p).toLowerCase());
       const idea = names.length ? names.map(n => 'a ' + n).join(' or ') : 'a piece of jewelry';
       const supports = plurals.length > 1 ? plurals.join(' and ') : plurals.length === 1 ? plurals[0] + ' only' : 'no products at the moment';
-      return 'XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for ' + idea + ', generates four design options and a 360° preview with AI, and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
+      const movie = this.wording.ring ? (this.wording.charm ? ' with AI (and a 360° preview movie for rings)' : ' and a 360° preview movie with AI') : ' with AI';
+      return 'XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for ' + idea + ', generates four design options' + movie + ', and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
     },
     get termsOrders() {
       const r = this.wording.ring, c = this.wording.charm;
@@ -1504,7 +1505,7 @@ function p3App() {
     get sizingHelp() {
       const r = this.wording.ring, c = this.wording.charm;
       const ring = 'Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.';
-      const charm = 'A charm size is its total height in millimetres, including the loop — ask us if you are unsure which size suits you.';
+      const charm = 'A charm size is its total height in millimeters, including the loop — ask us if you are unsure which size suits you.';
       return [r ? ring : '', c ? charm : ''].filter(Boolean).join(' ') || 'Ask us anything about sizes and a specialist will help.';
     },
     // The bag's and an order's wording: "ring" when every line is a ring, "charm" — or "piece(s)" for a mix
@@ -1538,8 +1539,12 @@ function p3App() {
     scrollToSize() { document.getElementById(this.custIsCharm ? 'charm-size-heading' : 'ring-size-heading')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); },
 
     get composerMode() { return this.design ? 'refine' : 'create'; },
+    // Touch screens have no Ctrl+V to paste with: the paste hint is for keyboards only (R-22)
+    get touchOnly() {
+      try { return window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch { return false; }
+    },
     get composerPlaceholder() {
-      if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ' + this.newNoun + '… or paste an image (Ctrl+V)';
+      if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ' + this.newNoun + (this.touchOnly ? '…' : '… or paste an image (Ctrl+V)');
       return this.canActOnSelection ? 'Describe how to refine the selected design…' : 'Select one of the designs above to refine it…';
     },
     get canSend() {
@@ -1664,8 +1669,8 @@ function p3App() {
     },
     get resultsHeading() {
       const b = this.viewBatch, n = b?.desired_count || 4, ready = this.readyCount(b), refine = b?.kind === 'refine';
-      if (ready < n) return `${ready} of ${n} ${refine ? 'refinements' : 'designs'} ready — select your favourite`;
-      return refine ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite';
+      if (ready < n) return `${ready} of ${n} ${refine ? 'refinements' : 'designs'} ready — select your favorite`;
+      return refine ? 'Here are four refinements — select your favorite' : 'Here are your four designs — select your favorite';
     },
     partialText(b) {
       const f = this.finishingCount(b), x = b ? b.candidates.filter(c => c.status === 'failed').length : 0;

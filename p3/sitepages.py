@@ -20,6 +20,7 @@ import re
 
 from p3 import media as Media
 from p3 import products as Products
+from p3.accounts.local import DefaultMaxGenerations
 
 IndexKey = "site_indexing"                    # Admin → Settings → System → Search engines (product_settings)
 VerificationKey = "google_site_verification"   # the content of Search Console's <meta name="google-site-verification">
@@ -91,15 +92,25 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
              "Fashion jewelry pieces are priced per piece by material and size." if C else
              "Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.")
     Ring = "Ring sizes are US sizes (see the size guide on the Customize screen)"
-    Charm = "charm size is its total height in millimetres, including the loop at the top"
+    Charm = "charm size is its total height in millimeters, including the loop at the top"
     Usd = "Yes — all prices are in US dollars." + (f" {Ring}; a {Charm}." if R and C else f" {Ring}." if R else
                                                   f" A {Charm}." if C else "")
+    Preview = ("Yes. You choose from four designs and can refine your favorite before adding it to your bag; rings also "
+               "come with a 360° movie preview." if R and C else
+               "Yes. You choose from four designs, refine your favorite and preview your ring in a 360° movie before adding "
+               "it to your bag." if R else
+               f"Yes. You choose from four designs and can refine your favorite before adding the {W['noun']} to your bag.")
+    Movie = " and each 360° movie of a ring" if R and C else " and each 360° movie" if R else ""
+    Credits = (f"Each new design and each refinement you ask for uses one credit, as does each extra option you request{Movie}. "
+               "The cost is shown before you confirm. If a request can’t deliver all four designs, its credit comes back, "
+               "and retrying the missing ones is free. Choosing a design, its metal and its size is free. "
+               f"A new account starts with {DefaultMaxGenerations} credits.")
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
             ("Do I need design experience?", "None at all. Just describe what you want in plain language or upload a "
              "reference photo. Our AI creates four designs for you to choose from."),
-            ("Can I see the design before I buy?", "Yes. You choose from four designs, refine your favourite as many "
-             f"times as you like, and preview the selected {W['noun']} in a 360° movie before adding it to your bag."),
+            ("Can I see the design before I buy?", Preview),
+            ("How do credits work?", Credits),
             ("How is the price calculated?", Price),
             ("How long does production take?", "Design happens the same day. Production takes 7–10 business days. "
              "Shipping adds about 5 business days with Express or up to 14 with free Standard delivery."),
@@ -144,8 +155,8 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                 f"Answers about designing {W['text']} with AI at XJet Atelier: what you can create, the metals, how "
                 "prices work, production in 7–10 business days and delivery."),
         "materials": ("Materials & Pricing — Real Metal, Fixed Prices · XJet Atelier",
-                      f"The metals XJet Atelier prints in: {Metals} at a fixed price per {W['noun']}, and solid gold "
-                      "quoted individually — appearance, finish, durability and care for each."),
+                      f"The metals XJet Atelier prints in — {Metals} — at a fixed price per {W['noun']}, and solid gold "
+                      "by quote: appearance, finish, wear and care."),        # ≤ 200 characters with the longer names (R-04)
         "technology": ("NanoParticle Jetting™ — How XJet Prints in Metal · XJet Atelier",
                        "XJet's NanoParticle Jetting™ prints metal from a liquid ink in layers of about 8 microns, with "
                        f"soluble support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
@@ -201,11 +212,12 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                  if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.")
         return {"materialsTitle": "Real metal, one fixed price per " + W["noun"],
                 "materialsIntro": f"Every {W['noun']} is printed to order in the metal you choose. {How} Gold is quoted individually.",
-                "materialsNote": f"{Fixed} Each {W['noun']} is made to order; the final weight is measured at production. "
-                                 "Vermeil is sterling silver with a thick 14K gold plating.",
+                "materialsNote": f"{Fixed} Each {W['noun']} is made to order, and its price does not change with its final "
+                                 "weight. 14K Gold over Stainless Steel is stainless steel plated with 14K gold.",
                 "goldIntro": f"Solid gold {W['nouns']} are priced per piece. Design your {W['noun']}, choose a gold option in "
-                             "Customize and send a quote request — a specialist replies within one business day with a price "
-                             "and the next steps. Nothing is ordered or charged until you confirm."}
+                             "Customize and send a quote request. We confirm it right away, review it within one business day "
+                             "and aim to send your price within three business days; if your design needs longer, we tell you. "
+                             "Nothing is ordered or charged until you confirm."}
     if View == "technology":
         return {"'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'":
                 f"Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier {W['noun']}."}
@@ -222,8 +234,9 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                     Products.Plurals[Visible[0]].lower() + " only" if Visible else "no products at the moment")
         Fixed = ("fixed per piece and material (a charm’s price also depends on its size)" if R and C else
                  "fixed per charm, material and size" if C else "fixed per ring and material")
+        Movie = (" with AI (and a 360° preview movie for rings)" if C else " and a 360° preview movie with AI") if R else " with AI"
         return {"termsService": f"XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for {Idea}, generates "
-                                "four design options and a 360° preview with AI, and lets you configure the metal and size of the "
+                                f"four design options{Movie}, and lets you configure the metal and size of the "
                                 f"design you choose. The current release supports {Supports}.",
                 "termsOrders": f"Prices are in US dollars and are {Fixed}. An order is a reservation until our team has reviewed "
                                "the design for production feasibility and confirmed it to you; payment is arranged after you "
@@ -232,7 +245,7 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
     if View == "contact":
         Ring = ("Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or "
                 "send us your finger circumference in mm.")
-        Charm = "A charm size is its total height in millimetres, including the loop — ask us if you are unsure which size suits you."
+        Charm = "A charm size is its total height in millimeters, including the loop — ask us if you are unsure which size suits you."
         return {"sizingHelp": " ".join(X for X in (Ring if R else "", Charm if C else "") if X)
                 or "Ask us anything about sizes and a specialist will help."}
     return {}

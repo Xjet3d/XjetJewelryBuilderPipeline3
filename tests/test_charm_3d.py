@@ -51,7 +51,7 @@ async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
     D = await Session(H, Did)
     assert (D["three_d_defaults"]["customer_size"], D["three_d_defaults"]["production_size"]) == (25.0, 25.0)
     assert D["catalog"]["charm_sizes"] == [15.0, 20.0, 25.0, 30.0] and "ring_sizes" not in D["catalog"]
-    assert [M["label"] for M in D["catalog"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold Vermeil"]
+    assert [M["label"] for M in D["catalog"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)
     assert R.status_code == 200, R.text
     assert (R.json()["production_size"], R.json()["size_source"], R.json()["material_id"]) == (25.0, "customer", "silver")

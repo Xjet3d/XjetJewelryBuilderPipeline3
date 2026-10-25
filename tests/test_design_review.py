@@ -175,12 +175,12 @@ def test_gold_reads_on_dark_and_the_chips_on_cream():
 
 def test_materials_prices_are_whole_dollars_and_links_stay_on_one_line():
     """F17: "$90 · any ring size" — the figure in the display face, the words in Inter, no cents on a whole amount;
-    "Design in steel" never wraps."""
+    "Design in Stainless Steel": the material's full name (R-04, R-14), so the link may wrap on a narrow card."""
     App = (WebDir / "app.js").read_text(encoding="utf-8")
     assert "const bare = whole && Number.isInteger(Number(v)) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {};" in App
     assert "{ before: '', figure: this.money(q.unit_price, q.currency, true), words: 'any ring size' }" in App
     assert '<span class="brand-font text-2xl" x-text="materialPrice(m.id).figure"></span>' in Index
-    assert "x-text=\"'Design in ' + m.label.split(' ').pop().toLowerCase()\"" in Index and "materialPriceText" not in Index + App
+    assert "x-text=\"'Design in ' + m.label\"" in Index and "materialPriceText" not in Index + App
 
 
 async def test_materials_loading_cards_follow_the_products_on_offer(tmp_path):

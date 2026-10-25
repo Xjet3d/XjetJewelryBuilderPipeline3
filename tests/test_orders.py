@@ -95,9 +95,9 @@ async def test_place_order_snapshots_everything_clears_the_bag_and_emails(HO):
     assert O["payment_status"] == "pending" and O["payment_provider"] is None and "not available yet" in O["payment_message"]
     assert O["count"] == 3 and len(O["lines"]) == 2
     L1, L2 = O["lines"]
-    assert (L1["title"], L1["ring_id"], L1["material_label"], L1["ring_size"], L1["quantity"]) == (L1["title"], "R-1001-A", "Silver", 7, 2)
+    assert (L1["title"], L1["ring_id"], L1["material_label"], L1["ring_size"], L1["quantity"]) == (L1["title"], "R-1001-A", "Sterling Silver", 7, 2)
     assert L1["unit_price"] == Unit and L1["line_total"] == pytest.approx(2 * Unit) and L1["image_url"] == Cand["image_url"]
-    assert L2["ring_id"] == "R-1002-A" and L2["material_label"] == "Vermeil" and L2["unit_price"] == Unit2
+    assert L2["ring_id"] == "R-1002-A" and L2["material_label"] == "14K Gold over Stainless Steel" and L2["unit_price"] == Unit2
     assert O["subtotal"] == pytest.approx(2 * Unit + Unit2) and O["shipping"] == 0 and O["discount"] == 0
     assert O["total"] == pytest.approx(O["subtotal"]) and O["currency"] == "USD"
     assert O["address_lines"] == ["Dana Levi", "12 Rothschild Blvd", "Apt 4", "Tel Aviv 6688112", "Israel"]
@@ -286,7 +286,7 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     R = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
     from p3.production3d import SlugPart
     Name = SlugPart((await H.Client.get(f"/api/admin/sessions/{Did}", headers=Admin)).json()["session"]["title"])
-    assert f'filename="{Name}_R-1001-A_ORD-10001_Silver_US10.stl"' in R.headers["content-disposition"]   # the ORDERED size and material
+    assert f'filename="{Name}_R-1001-A_ORD-10001_Sterling-Silver_US10.stl"' in R.headers["content-disposition"]   # the ORDERED size and material
     Bad = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath).replace("ORD-10001", "../evil"))
     assert "evil" not in Bad.headers.get("content-disposition", "") and Bad.status_code == 200    # never trusted
     # Dashboard: orders are counted (mock excluded by default, so none here) and gallery stats know orders
