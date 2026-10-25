@@ -992,7 +992,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Images._OwnedBatch(Who, BatchId)["design_id"]), request)
-        return Svc.Images.RetryFailed(Who, BatchId)
+        return await Svc.Images.RetryFailed(Who, BatchId)
 
     @App_.post("/api/candidates/{CandidateId}/retry")
     async def RetryCandidate(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):

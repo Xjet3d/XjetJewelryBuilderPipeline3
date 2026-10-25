@@ -21,6 +21,7 @@ const STEPS = {
   refine_requested: ['Refine request', 'bg-zinc-100 text-zinc-600'],
   refined: ['Refined', 'bg-violet-100 text-violet-700'],
   option_requested: ['Another option', 'bg-zinc-100 text-zinc-600'],
+  option_recovered: ['Recovered late', 'bg-blue-50 text-blue-700'],
   prompt_check: ['Prompt check', 'bg-zinc-100 text-zinc-600'],
   option_selected: ['Option selected', 'bg-zinc-100 text-zinc-600'],
   customize_opened: ['Customize', 'bg-amber-100 text-amber-800'],
@@ -2617,7 +2618,8 @@ function adminApp() {
                       gallery: 'is in the gallery', split: 'was split off by ' + (d.by || 'the admin') }[d.reason] || 'is a master';
         return 'Refinement of ' + (d.source_ring_id || 'the selected image') + ' into this new design — the original ' + why + ', so it stays as it was';
       }
-      if (e.kind === 'option_requested') return 'Generate another option: ' + (d.options || []).join(', ') + (d.after?.length ? ' (had failed: ' + d.after.join(', ') + ')' : '');
+      if (e.kind === 'option_requested') return (d.free ? 'Retry missing (free): ' : 'Generate another option: ') + (d.options || []).join(', ') + (d.after?.length ? ' (had failed: ' + d.after.join(', ') + ')' : '');
+      if (e.kind === 'option_recovered') return 'Finished after the 90-second limit and added without a new request: ' + (d.options || []).join(', ');
       if (e.kind === 'admin_refinement_split') return `Refinement “${d.text || ''}” moved into its own design ${d.new_ring_id || ''} (${d.new_title || ''}) by ${d.by || 'admin'}`;
       if (e.kind === 'admin_movie_chosen') return 'The movie shown for this image was chosen by ' + (d.by || 'admin');
       if (e.kind === 'admin_movie_requested') return 'A new 360° movie was requested by ' + (d.by || 'admin') + (d.config_version ? ' (' + d.config_version + ')' : '');

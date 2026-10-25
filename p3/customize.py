@@ -51,9 +51,12 @@ class CustomizeService:
 
     # ── proceed ──────────────────────────────────────────────────────────
     def Proceed(self, Who: Principal, DesignId: str, CandidateId: str) -> dict:
-        """Lock in the selected candidate for Customize and start (or reuse) its movie."""
+        """Lock in the selected candidate for Customize and start (or reuse) its movie — not while a refinement of the
+        design is being made (R-18)."""
         D = self.Images.RequireDesign(Who, DesignId)
         self.Images.RequireReadyCandidate(DesignId, CandidateId)
+        if self.Images.RefinementRunning(DesignId):
+            raise HttpError(409, "refinement_running", "Wait for the refinement to finish.")
         Db = self.Ctx.Db
         Charm = (D.get("product_type") or Products.Ring) == Products.Charm
         self._SetSelection(Who, D, CandidateId)

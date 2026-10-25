@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from p3 import charmprices as CharmPrices
 from p3 import ringids as RingIds
+from p3 import morevariations as MoreVariations
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
 from p3.products import CharmSizeLabel
@@ -394,7 +395,9 @@ def Timeline(Ctx: Context, DesignId: str, Owner: str | None = None, Use: dict | 
         Cs = Db.All("SELECT status, updated_at FROM candidates WHERE batch_id = ?", (Bt["id"],))
         Ready = [X for X in Cs if X["status"] == "ready"]
         Items.append({"at": Bt["created_at"], "kind": "refine_requested" if Bt["kind"] == "refine" else "generate_requested",
-                      "text": Bt["user_text"], **_Reference(Ctx, D, Bt, Refs)})
+                      "text": Bt["user_text"], **_Reference(Ctx, D, Bt, Refs),
+                      # the customer asked for more variations: made from the fixed instruction (p3/morevariations.py)
+                      **({"status": "more variations"} if MoreVariations.WasUsed(Bt["effective_prompt"]) else {})})
         if Ready or all(X["status"] == "failed" for X in Cs):
             Items.append({"at": _Max(*[X["updated_at"] for X in Cs]),
                           "kind": "refined" if Bt["kind"] == "refine" else "generated",

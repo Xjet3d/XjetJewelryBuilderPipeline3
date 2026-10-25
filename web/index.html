@@ -1193,57 +1193,62 @@
                                                 <span x-text="waitStatus"></span>
                                             </div>
                                             <p class="mt-3 text-[12px]" style="color:#6F6F6F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
+                                            <!-- Past the 90-second limit with nothing ready yet: the images are still coming, in the background (R-41) -->
+                                            <p x-show="finishingCount(waitBatch)" class="mt-1 max-w-[500px] text-[12px]" style="color:#6F6F6F;">This is taking longer than usual. You can leave this page — your designs will be waiting in My Designs.</p>
                                         </div>
                                     </template>
 
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
                                     <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" class="text-[15px] sm:text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
-                                       x-text="viewBatch?.kind === 'refine' ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite'"></p>
+                                       x-text="resultsHeading"></p>
 
+                                    <!-- Options still finishing (attached in the background) or missing: "Retry missing" is free — it fetches a
+                                         finished image first and asks for a new one only when there is none (R-07, R-41) -->
                                     <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
-                                        <span class="flex-1" x-text="readyCount(viewBatch) + ' of ' + viewBatch?.desired_count + ' designs are ready — some options could not be created.'"></span>
-                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold" style="color:#8A561B;">Retry missing</button>
+                                        <span class="flex-1" x-text="partialText(viewBatch)"></span>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap" style="color:#8A561B;">Retry missing · free</button>
                                     </div>
                                     <div x-show="viewBatch?.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
                                         <!-- Every option refused under the AI model's content rules: the same description would be refused again, so the
                                              customer is asked for a different one — no paid retry is offered (the server refuses one too) -->
                                         <span class="flex-1" x-text="failedBatchText(viewBatch)">None of the designs could be created.</span>
-                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold">Try again</button>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap">Try again · free</button>
                                         <button x-show="policyRefused(viewBatch) && viewBatch?.kind !== 'refine'" @click="startNew()" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap">Start a new design</button>
                                     </div>
 
                                     <!-- Four candidates: a 2×2 grid from 640 px up; on a phone one large option at a time, swipe to compare -->
                                     <div class="cand-row flex sm:grid sm:grid-cols-2 gap-3 sm:gap-4 w-full mx-auto overflow-x-auto sm:overflow-visible snap-x snap-mandatory -mx-4 px-4 sm:mx-auto sm:px-0 sm:max-w-[min(640px,max(320px,calc(100dvh_-_300px)))]"
                                          style="scroll-padding:0 16px;" x-ref="candRow" @scroll.passive="candScroll($event)">
-                                        <template x-for="c in (viewBatch?.candidates || [])" :key="c.id">
+                                        <template x-for="(c, i) in orderedCandidates(viewBatch)" :key="c.id">
                                             <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200 snap-center shrink-0 w-[78vw] max-w-[360px] sm:w-auto sm:max-w-none"
                                                  :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
-                                                 @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (c.slot + 1) + (c.id === selectedId ? ' (selected)' : '')">
+                                                 @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (i + 1) + (c.id === selectedId ? ' (selected)' : '')">
                                                 <template x-if="c.status === 'ready'">
-                                                    <img width="800" height="800" :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :src="thumb(c.image_url, 800)" :alt="'Design option ' + (c.slot + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
+                                                    <img width="800" height="800" :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :src="thumb(c.image_url, 800)" :alt="'Design option ' + (i + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
                                                 </template>
                                                 <template x-if="c.status === 'pending' || c.status === 'generating'">
-                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[12px]" style="color:#6F6F6F;">
+                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-[12px]" style="color:#6F6F6F;">
                                                         <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
-                                                        <span x-text="'Design ' + (c.slot + 1)"></span>
+                                                        <span x-text="c.finishing ? 'Still finishing…' : 'Design ' + (i + 1)"></span>
+                                                        <span x-show="c.finishing" class="max-w-[220px]">It appears here when it’s ready — you can continue meanwhile.</span>
                                                     </div>
                                                 </template>
                                                 <!-- An option that could not be made (the model returned no image, or it ran out of time): a quiet
-                                                     state, never the provider's words; "Generate another option" is the customer's explicit request — never offered
-                                                     for a content refusal, which the same words get again -->
+                                                     state, never the provider's words; "Generate another option" is the customer's explicit request for a new
+                                                     image, at its cost — never offered for a content refusal, which the same words get again -->
                                                 <template x-if="c.status === 'failed'">
                                                     <div class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-4 text-center" style="background:#FAFAF8;">
                                                         <span class="text-[13px] font-medium" style="color:#1A1A1A;" x-text="c.error || 'This option couldn\'t be generated.'"></span>
                                                         <span x-show="readyCount(viewBatch)" class="text-[12px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
-                                                        <button x-show="c.retryable" @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]">Generate another option</button>
+                                                        <button x-show="c.retryable" @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]" x-text="'Generate another option · ' + creditsLabel('option')">Generate another option</button>
                                                     </div>
                                                 </template>
                                                 <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Selected</span>
-                                                <span x-show="c.status === 'ready' && c.id !== selectedId" class="sm:hidden absolute left-2 top-2 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-[0.12em] rounded-md bg-white/90 text-zinc-700" style="border:1px solid #E5E5E5;" x-text="'Option ' + (c.slot + 1) + ' · tap to select'"></span>
+                                                <span x-show="c.status === 'ready' && c.id !== selectedId" class="sm:hidden absolute left-2 top-2 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-[0.12em] rounded-md bg-white/90 text-zinc-700" style="border:1px solid #E5E5E5;" x-text="'Option ' + (i + 1) + ' · tap to select'"></span>
                                                 <button x-show="c.status === 'ready'" @click.stop="openPreview('image', c.image_url, c)"
                                                         class="absolute top-2 right-2 p-2 rounded-lg bg-white/85 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
-                                                        style="border-color:#DCDCDC;" title="Enlarge image" :aria-label="'Enlarge design ' + (c.slot + 1)">
+                                                        style="border-color:#DCDCDC;" title="Enlarge image" :aria-label="'Enlarge design ' + (i + 1)">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                                                 </button>
                                             </div>
@@ -1253,7 +1258,7 @@
                                     <!-- Phone: which option is in view, and a dot per option (tap a dot to jump) -->
                                     <div class="sm:hidden flex items-center justify-center gap-3 -mt-1" x-show="(viewBatch?.candidates || []).length > 1">
                                         <div class="flex items-center gap-2" role="group" aria-label="Options">
-                                            <template x-for="(c, i) in (viewBatch?.candidates || [])" :key="'dot' + c.id">
+                                            <template x-for="(c, i) in orderedCandidates(viewBatch)" :key="'dot' + c.id">
                                                 <button type="button" @click="scrollCand(i)" class="tap w-2.5 h-2.5 rounded-full transition" :class="i === candIndex ? 'scale-125' : 'opacity-40'" :style="'background:' + (c.id === selectedId ? '#8A6420' : '#1A1A1A')" :aria-label="'Show option ' + (i + 1)"></button>
                                             </template>
                                         </div>
@@ -1328,7 +1333,7 @@
                                     <img width="320" height="320" :src="thumb(selectedCandidate?.image_url, 320)" alt="" class="w-11 h-11 rounded-lg object-cover shrink-0 bg-white" style="border:1px solid #E8DDD0;">
                                     <div class="flex-1 min-w-0 leading-tight">
                                         <p class="text-[12px] uppercase tracking-[0.14em] font-semibold" style="color:#8A6420;">Refining this design</p>
-                                        <p class="text-[13px] font-medium truncate" style="color:#3A2E12;" x-text="design?.title + ' · option ' + ((selectedCandidate?.slot ?? 0) + 1)"></p>
+                                        <p class="text-[13px] font-medium truncate" style="color:#3A2E12;" x-text="design?.title + ' · option ' + optionNumber(selectedCandidate)"></p>
                                     </div>
                                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="color:#8A6420;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.931-8.931z"/></svg>
                                 </div>
@@ -1340,15 +1345,18 @@
                                         <svg class="w-[18px] h-[18px] sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M4.5 19.5h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5h-15A1.5 1.5 0 003 6v12a1.5 1.5 0 001.5 1.5z"/><circle cx="8.25" cy="8.25" r="1.25"/></svg>
                                     </button>
                                     <input type="file" x-ref="uploader" class="hidden" @change="handleUpload($event)" accept="image/png,image/jpeg,image/webp">
-                                    <img width="320" height="320" x-show="design && selectedCandidate" :src="thumb(selectedCandidate?.image_url, 320)" alt="" class="sm:hidden w-9 h-9 rounded-lg object-cover shrink-0 bg-white" style="border:1px solid #E8DDD0;" :title="'Refining option ' + ((selectedCandidate?.slot ?? 0) + 1)">
+                                    <img width="320" height="320" x-show="design && selectedCandidate" :src="thumb(selectedCandidate?.image_url, 320)" alt="" class="sm:hidden w-9 h-9 rounded-lg object-cover shrink-0 bg-white" style="border:1px solid #E8DDD0;" :title="'Refining option ' + optionNumber(selectedCandidate)">
                                     <textarea id="p3-composer-input" x-ref="composer" x-model="userInput" @keydown.enter="handleEnterKey($event)"
                                               x-effect="userInput; $el.style.height='auto'; if (userInput && userInput.length) $el.style.height=Math.min($el.scrollHeight, 200)+'px'"
                                               :placeholder="composerPlaceholder" rows="1" :disabled="submitting"
                                               class="flex-1 self-center bg-transparent resize-none overflow-y-auto focus:outline-none text-[13px] sm:text-[15px] font-normal leading-normal"
                                               style="color:#2A2A2A; caret-color:#C9A96E; max-height:200px;"></textarea>
+                                    <!-- The request's cost, shown before it is sent (R-07) -->
+                                    <span x-show="canSend" class="shrink-0 text-[12px] whitespace-nowrap" style="color:#6F6F6F;" x-text="creditsLabel(composerMode === 'refine' ? 'refinement' : 'design')"></span>
                                     <button @click="sendComposer()" :disabled="!canSend"
                                             class="tap shrink-0 rounded-full flex items-center justify-center disabled:opacity-40 transition w-9 h-9 sm:w-11 sm:h-11 bg-[#1A1A1A] hover:bg-black"
-                                            :title="composerMode === 'refine' ? 'Create four refinements' : 'Create four designs'" aria-label="Send">
+                                            :title="(composerMode === 'refine' ? 'Create four refinements · ' + creditsLabel('refinement') : 'Create four designs · ' + creditsLabel('design'))"
+                                            :aria-label="'Send · ' + creditsLabel(composerMode === 'refine' ? 'refinement' : 'design')">
                                         <svg class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#FFFFFF;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
                                     </button>
                                 </div>
@@ -1379,12 +1387,16 @@
                                         <svg class="w-[18px] h-[18px] mr-2 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                                         Start a New Design
                                     </button>
-                                    <button @click="proceed()" :disabled="!canActOnSelection" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight" :title="canActOnSelection ? '' : 'Select one of the four options first'">
-                                        <span class="sm:hidden" x-text="canActOnSelection ? 'Customize option ' + ((selectedCandidate?.slot ?? 0) + 1) : 'Select an option to continue'"></span>
-                                        <span class="hidden sm:inline" x-text="'Customize Your ' + designLabel"></span>
+                                    <!-- Never while a refinement of the design is being made (R-18): the server refuses it too -->
+                                    <button @click="proceed()" :disabled="!canCustomize" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight" :title="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? '' : 'Select one of the four options first'">
+                                        <span class="sm:hidden" x-text="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? 'Customize option ' + optionNumber(selectedCandidate) : 'Select an option to continue'"></span>
+                                        <span class="hidden sm:inline" x-text="pendingBatch ? 'Wait for the refinement to finish' : 'Customize Your ' + designLabel"></span>
                                         <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                                     </button>
                                 </div>
+                                <!-- Opening Customize makes the option's 360° movie, unless it has one already (R-07: the cost before the click) -->
+                                <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-center text-[12px]" style="color:#6F6F6F;"
+                                   x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
                                 <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
                                 <p x-show="actionError" class="text-center text-[13px]" style="color:#A1261D;" x-text="actionError"></p>
                             </div>
@@ -1543,7 +1555,7 @@
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
                             <span class="text-[12px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
                             <span class="text-[12px]" style="color:#777;" x-text="cust?.movie?.error"></span>
-                            <button @click="retryMovie()" class="btn-outline px-4 py-1.5">Retry Movie</button>
+                            <button @click="retryMovie()" class="btn-outline px-4 py-1.5" x-text="'Retry Movie · ' + creditsLabel('movie')">Retry Movie</button>
                         </div>
                     </div>
                     <button
@@ -2360,7 +2372,7 @@
                                  :style="{ width: (quotaMax ? Math.round(100 * quotaRemaining / quotaMax) : 0) + '%', background: quotaRemaining === 0 ? '#B4443A' : 'linear-gradient(90deg,#C1995A,#8A561B)' }"></div>
                         </div>
                         <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">
-                            <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for (whatever it generates), one per extra option you request and one per 360° movie. Selecting, materials, sizes and a reused movie are free; nothing is charged for a request that fails.</span>
+                            <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for, one per extra option you request and one per 360° movie. If a request can’t deliver all four designs, its credit comes back, and retrying the missing ones is free. Selecting, materials, sizes and a reused movie are free.</span>
                             <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. Contact us to extend your allowance.</span>
                         </div>
                     </div>
@@ -2881,7 +2893,7 @@
                 <!-- Thumbnails of the four options; the selected one is always marked -->
                 <div x-show="previewSiblings.length > 1" class="shrink-0 flex items-center gap-2" role="tablist" aria-label="Design options">
                     <template x-for="c in previewSiblings" :key="c.id">
-                        <button @click="previewShow(c)" role="tab" :aria-selected="c.id === previewCandidate?.id" :aria-label="'Show design ' + (c.slot + 1) + (c.id === selectedId ? ' (selected)' : '')"
+                        <button @click="previewShow(c)" role="tab" :aria-selected="c.id === previewCandidate?.id" :aria-label="'Show design ' + optionNumber(c) + (c.id === selectedId ? ' (selected)' : '')"
                                 class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-white border-2 transition"
                                 :class="c.id === previewCandidate?.id ? 'border-zinc-900' : 'border-zinc-200 hover:border-zinc-400'">
                             <img width="320" height="320" :src="thumb(c.image_url, 320)" alt="" class="w-full h-full object-contain">

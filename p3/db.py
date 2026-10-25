@@ -558,6 +558,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     error_code           TEXT,
     movie_id             TEXT,                     -- the movie the Admin chose to show for this image (else its newest)
     credit_ref           TEXT,                     -- the credit action this slot belongs to: its batch, or a retry action (p3/credits.py)
+    recovering_since     TEXT,                     -- past the 90-second limit and still asked for in the background (p3/images.py)
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL,
     UNIQUE (batch_id, slot)
@@ -846,6 +847,9 @@ class Database:
                     # Credits per action (2026-10-07): every slot belongs to its batch's request unless retried later
                     Conn.execute("ALTER TABLE candidates ADD COLUMN credit_ref TEXT")
                     Conn.execute("UPDATE candidates SET credit_ref = batch_id WHERE credit_ref IS NULL")
+                if CandCols and "recovering_since" not in CandCols:
+                    # Late-result recovery (2026-10-25): an image past the 90-second limit is still asked for
+                    Conn.execute("ALTER TABLE candidates ADD COLUMN recovering_since TEXT")
                 if MCols and "made_by_admin" not in MCols:
                     # A movie the Admin asked for ("Make a new movie"): outside the one-live-movie rule, no allowance charge
                     Conn.execute("ALTER TABLE movies ADD COLUMN made_by_admin TEXT")

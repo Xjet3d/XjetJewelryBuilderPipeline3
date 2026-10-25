@@ -7,28 +7,44 @@ Semantics (spec sections 3, 4.2, 4.3, 7.1):
   * refinement uses the SELECTED candidate's image as the reference for all four
     slots with the same instruction (refinement images A-D each add their own variation directive) — never text-only as a fallback;
   * exact-duplicate outputs within a batch are retried a bounded number of times;
+  * a slot still running at the 90-second limit is finished in the background: its request is asked for the image
+    for up to 10 minutes more, never resubmitted (R-41); the free "Retry missing" asks fal for an earlier request's
+    image before paying for a new one;
   * async results only ever write their own candidate row — never the design's
     selection — so late results cannot overwrite a different design.
 """
 
 import logging
 import secrets
+from datetime import datetime, timezone
 
 from p3 import assets
 from p3 import products as Products
+from p3 import morevariations as MoreVariations
 from p3.accounts import Principal, UsageImage
 from p3 import credits as Credits
 from p3.context import Context, HttpError
 from p3.db import NewId, Now
 from p3.naming import NameForPrompt, NameForVariation
 from p3.providers import endpoints
+from p3.providers.base import ProviderError, TransientProviderError
 from p3.modelconfig import BuildRequest, Render, SlotDirective, WithDirective
-from p3.runner import DownloadWithRetry, FailureFor, PollUntilDone
+from p3.runner import DownloadWithRetry, FailureFor, JobTimeout, PollUntilDone
 
 Logger = logging.getLogger("p3.images")
 
 MinTextLength = 3
 MaxTextLength = 2000
+
+# A slot past images.request_timeout_s (90 s) is "Still finishing" (recovering_since): outside the queue for new requests,
+# its request is asked again every RecoveryPollFactor poll intervals (10 s on the server) until images.recovery_window_s
+# (10 minutes) has passed, and its image is attached when it arrives — never a new request (R-41, 2026-10-25).
+RecoveryPollFactor = 5
+
+# Failures whose request may still have produced an image (it ran out of time, fal could not be reached, the file could
+# not be fetched): "Retry missing" asks fal for that image before anything new is paid for. Every other failure is known
+# to have ended without a usable image.
+OutcomeUnknown = {"timeout", "provider_unreachable", "download_failed", "internal_error"}
 
 
 def ValidateText(Text: str, What: str) -> str:
@@ -71,9 +87,12 @@ def BatchStatus(Candidates: list[dict], DesiredCount: int) -> str:
     States = [C["status"] for C in Candidates]
     if len(States) == DesiredCount and all(S == "ready" for S in States):
         return "complete"
-    if any(S in ("pending", "generating") for S in States):
+    Ready = "ready" in States
+    # A slot still finishing after the 90-second limit holds the batch only while nothing is ready: once an image is in,
+    # the customer goes on with the ready ones while the late one is attached in the background
+    if any(C["status"] in ("pending", "generating") and not (Ready and C.get("recovering_since")) for C in Candidates):
         return "generating" if any(S != "pending" for S in States) else "queued"
-    if any(S == "ready" for S in States):
+    if Ready:
         return "partial"
     return "failed"
 
@@ -148,6 +167,9 @@ class ImageService:
             raise HttpError(409, "reference_unavailable",
                             "The selected image could not be loaded for refinement. "
                             "Please pick another image or try again.")
+        # "Make more variations" and the like (R-50 follow-up): four variations of the selected design from the fixed
+        # instruction; the customer's own words stay the batch's text (the studio's bubble, the Admin's journey)
+        PromptText = MoreVariations.Instruction(D.get("product_type") or Products.Ring) if MoreVariations.IsMoreVariations(Instruction) else None
         Units = Credits.Reserve(self.Ctx, Who, Credits.Refinement, 1)          # one credit for the refinement request
         try:
             BatchId = NewId("bat")
@@ -163,7 +185,7 @@ class ImageService:
                                  (Target, Who.AccountId, ForkTitle, D["prompt"], ClientRequestId, T, T,
                                   self.Ctx.Provider.Name, DesignId, ParentCandidateId, D.get("product_type") or Products.Ring))
                 self._InsertBatch(Conn, BatchId, Target, "refine", ParentCandidateId, Instruction,
-                                  Parent["asset_path"], None if Fork else ClientRequestId)
+                                  Parent["asset_path"], None if Fork else ClientRequestId, PromptText)
                 Conn.execute("UPDATE designs SET updated_at = ? WHERE id = ?", (T, Target))
                 if Fork:
                     Conn.execute("UPDATE gallery_uses SET last_active_at = ? WHERE design_id = ? AND owner_account_id = ?",
@@ -207,14 +229,15 @@ class ImageService:
             return "movie"
         return None
 
-    def _InsertBatch(self, Conn, BatchId, DesignId, Kind, ParentId, UserText, RefPath, ClientRequestId):
+    def _InsertBatch(self, Conn, BatchId, DesignId, Kind, ParentId, UserText, RefPath, ClientRequestId, PromptText=None):
+        """PromptText: what the prompt carries in place of the customer's words (the "more variations" instruction)."""
         Img = self.Ctx.Gen.Images
         Endpoint = endpoints.ImageEdit if RefPath else endpoints.ImageGenerate
         # The active admin configuration for this endpoint; its version is recorded on the batch so
         # all four requests use it even if a newer version is activated before they are submitted.
         DesignPrompt, Product = Conn.execute("SELECT prompt, product_type FROM designs WHERE id = ?", (DesignId,)).fetchone()
         Version = self.Ctx.Models.ActiveFor(Endpoint, Product or Products.Ring)     # a charm never uses a ring configuration
-        Effective = Render(Version.Params["prompt"], {"user_text": UserText, "design_prompt": DesignPrompt})
+        Effective = Render(Version.Params["prompt"], {"user_text": PromptText or UserText, "design_prompt": DesignPrompt})
         T = Now()
         Conn.execute(
             "INSERT INTO batches (id, design_id, kind, parent_candidate_id, user_text, effective_prompt, "
@@ -235,6 +258,8 @@ class ImageService:
 
     # ── retry ────────────────────────────────────────────────────────────
     def RetryCandidate(self, Who: Principal, CandidateId: str) -> dict:
+        """"Generate another option": a new image the customer asks for in place of a failed one — 1 credit, a new
+        request with a new seed."""
         Cand, Batch = self._OwnedCandidate(Who, CandidateId)
         if Cand["status"] != "failed":
             raise HttpError(409, "not_failed", "Only a failed image can be retried.")
@@ -246,82 +271,153 @@ class ImageService:
         self.Ctx.Runner.Spawn(f"cand:{CandidateId}", self._Drive(CandidateId))
         return self.GetBatch(Batch["id"])
 
-    def RetryFailed(self, Who: Principal, BatchId: str) -> dict:
+    async def RetryFailed(self, Who: Principal, BatchId: str) -> dict:
+        """"Retry missing" (and "Try again"): free (T-10, 2026-10-25) — the request's own credit covers its missing
+        options, so nothing is reserved, and a request whose credit was restored is never charged again. An option
+        whose request may still have produced an image (OutcomeUnknown) gets that image: fal is asked for it, and a
+        request still running is waited for ("Still finishing"); only an option whose request ended without an image
+        gets a new one. A content refusal is never asked again."""
+        Db = self.Ctx.Db
         Batch = self._OwnedBatch(Who, BatchId)
-        Failed = self.Ctx.Db.All("SELECT id, slot, error_code FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
+        Failed = Db.All("SELECT * FROM candidates WHERE batch_id = ? AND status = 'failed'", (BatchId,))
         Retry = [C for C in Failed if C["error_code"] not in NotRetryable]     # a content refusal is never asked again
         if Failed and not Retry:
             raise HttpError(409, "not_retryable", PolicyRetryText)
         if Retry:
-            Credits.Reserve(self.Ctx, Who, Credits.Option, 1)                   # one click, one credit, however many slots
-            self._RecordRetry(Who, Batch, Retry)
-        Action = Credits.ActionId()
+            self._RecordRetry(Who, Batch, Retry, Free=True)
         for C in Retry:
-            self._ResetForRetry(C["id"], Action)
+            Earlier = await self._EarlierRequest(Batch, C) if C["error_code"] in OutcomeUnknown else None
+            if Earlier:                     # its image is there, or still coming: the same request, nothing new is paid for
+                Db.Update("candidates", C["id"], status="generating", error=None, error_code=None,
+                          recovering_since=Now() if Earlier == "running" else None)
+            else:
+                self._ResetForRetry(C["id"], C["credit_ref"] or Batch["id"])
             self.Ctx.Runner.Spawn(f"cand:{C['id']}", self._Drive(C["id"]))
         return self.GetBatch(Batch["id"])
 
-    def _RecordRetry(self, Who: Principal, Batch: dict, Cands: list[dict]) -> None:
-        """The customer's "Generate another option" / "Try again" in the session's Journey: which options were asked for
-        again and why each had failed, so every paid request shows on the Admin's session page."""
+    async def _EarlierRequest(self, Batch: dict, Cand: dict) -> str | None:
+        """What became of the slot's earlier request: "completed" (an image to fetch), "running" (still coming, or fal
+        cannot be reached just now — waited for rather than paid for again) or None (it ended without an image)."""
+        RequestId = Cand["provider_request_id"]
+        if not RequestId or not self.Ctx.Provider.Owns(RequestId):
+            return None
+        try:
+            St = await self.Ctx.Provider.Status(Batch["endpoint"], RequestId)
+        except TransientProviderError:
+            return "running"
+        except ProviderError:
+            return None
+        if St.State == "completed":
+            return None if St.Error else "completed"
+        return "running"
+
+    def _RecordRetry(self, Who: Principal, Batch: dict, Cands: list[dict], Free: bool = False) -> None:
+        """The customer's "Generate another option" (1 credit) or "Retry missing" / "Try again" (free) in the session's
+        Journey: which options were asked for again and why each had failed, so every second request shows on the
+        Admin's session page."""
         from p3 import ringids as RingIds, sessions as Sessions
         Refs = RingIds.CandidateRefs(self.Ctx.Db, [Batch["design_id"]])
         Sessions.Record(self.Ctx, Who.AccountId, "option_requested", Batch["design_id"],
                         options=[Refs.get(C["id"]) or f"option {C['slot'] + 1}" for C in Cands],
-                        after=sorted({C["error_code"] or "failed" for C in Cands}))
+                        after=sorted({C["error_code"] or "failed" for C in Cands}), **({"free": True} if Free else {}))
 
     def _ResetForRetry(self, CandidateId: str, CreditRef: str) -> None:
-        self.Ctx.Db.Update("candidates", CandidateId, status="pending", provider_request_id=None,
+        self.Ctx.Db.Update("candidates", CandidateId, status="pending", provider_request_id=None, recovering_since=None,
                            error=None, error_code=None, duplicate_retries=0, seed=_NewSeed(), credit_ref=CreditRef)
 
     # ── background driver ────────────────────────────────────────────────
     async def _Drive(self, CandidateId: str) -> None:
-        """One slot: submit once, wait up to images.request_timeout_s (90 s) from the submission, store the image.
-        A slot that fails or runs out of time is shown as unavailable; it is never re-requested on its own (the
-        customer's "Generate another option" is the only second request), so nothing is paid for twice unseen. The
-        request's one credit, reserved when it was created, is charged once any of its images is stored and released
-        when every one of them failed."""
-        Ctx = self.Ctx
-        Db = Ctx.Db
-        S = Ctx.Settings
-        async with Ctx.Semaphore():
+        """One slot: submit once and wait up to images.request_timeout_s (90 s) from the submission for its image. A
+        slot still running then is "Still finishing" (recovering_since): outside the queue for new requests, the same
+        request is asked again until images.recovery_window_s (10 minutes) has passed, and its image is attached when
+        it arrives; only then does the slot fail (R-41). A failed slot is never re-requested by the app on its own: the
+        customer's "Retry missing" (free) and "Generate another option" (1 credit) are the only second requests, so
+        nothing is paid for twice unseen. The request's credit, reserved when it was created, is settled once every
+        one of its slots has finished (credits.SettleAction)."""
+        Db = self.Ctx.Db
+        async with self.Ctx.Semaphore():
             Cand = Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
             if Cand is None or Cand["status"] in ("ready", "failed"):
                 return
             Batch = Db.One("SELECT * FROM batches WHERE id = ?", (Cand["batch_id"],))
             Owner = Db.One("SELECT owner_account_id FROM designs WHERE id = ?", (Batch["design_id"],))["owner_account_id"]
-            Kind, Ref = Credits.KindOfCandidate(Cand, Batch), Cand.get("credit_ref") or Batch["id"]
-            try:
-                RequestId = Cand["provider_request_id"]
-                if not RequestId:
-                    Arguments = await self._Arguments(Batch, Cand)
-                    Est = Credits.CheckSpendCap(Ctx, Batch["endpoint"], None)       # the day's cap, before anything is paid
-                    try:
-                        RequestId = await Ctx.Provider.Submit(Batch["endpoint"], Arguments)
-                        Db.Update("candidates", CandidateId, status="generating",
-                                  provider_request_id=RequestId, attempts=Cand["attempts"] + 1)
-                        Credits.RecordUsage(Ctx, Owner, UsageImage, CandidateId, Batch["endpoint"])
-                    finally:
-                        Credits.SubmitDone(Ctx, Est)
-                Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
-                                             Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
-                                             S.MaxTransientPollErrors)
-                Images = Result.get("images") or []
-                if not Images or not Images[0].get("url"):
-                    raise assets.AssetError("Provider returned no image")
-                Data = await DownloadWithRetry(Ctx.Provider, Images[0]["url"],
-                                               S.MaxTransientPollErrors, S.PollIntervalS)
-                Ext = assets.ValidateImage(Data)
-                await self._StoreUnlessDuplicate(Batch, Cand, Data, Ext)
-                Credits.SettleAction(Ctx, Owner, Kind, Ref)       # the request is charged once it has delivered an image
-            except Exception as E:
-                # The provider's own words stay here (the Admin's session page and the log); the customer gets
-                # CustomerError(Code). A timed-out slot keeps its request id: its outcome is unknown, so it is
-                # never resubmitted by the app.
-                Message, Code = FailureFor(E)
-                Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
-                Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
-                Credits.SettleAction(Ctx, Owner, Kind, Ref)       # released only when every slot of the request failed
+            # A slot that was finishing when the server restarted, or that "Retry missing" found still running, goes
+            # straight back to its recovery
+            Late = Cand["provider_request_id"] if Cand["recovering_since"] else await self._Generate(Batch, Cand, Owner)
+        if Late:
+            await self._Recover(Batch, Cand, Owner, Late)
+        self._Settle(Batch, CandidateId, Owner)
+
+    async def _Generate(self, Batch: dict, Cand: dict, Owner: str) -> str | None:
+        """Submit (unless the slot has its request already) and wait up to the 90-second limit. Returns the request id
+        when the limit passed with the request still running; None once the slot is ready or failed."""
+        Ctx, Db, S = self.Ctx, self.Ctx.Db, self.Ctx.Settings
+        RequestId = Cand["provider_request_id"]
+        try:
+            if not RequestId:
+                Arguments = await self._Arguments(Batch, Cand)
+                Est = Credits.CheckSpendCap(Ctx, Batch["endpoint"], None)       # the day's cap, before anything is paid
+                try:
+                    RequestId = await Ctx.Provider.Submit(Batch["endpoint"], Arguments)
+                    Db.Update("candidates", Cand["id"], status="generating",
+                              provider_request_id=RequestId, attempts=Cand["attempts"] + 1)
+                    Credits.RecordUsage(Ctx, Owner, UsageImage, Cand["id"], Batch["endpoint"])
+                finally:
+                    Credits.SubmitDone(Ctx, Est)
+            Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
+                                         Ctx.Gen.Images.RequestTimeoutS, S.PollIntervalS,
+                                         S.MaxTransientPollErrors)
+            await self._Deliver(Batch, Cand, Result)
+        except JobTimeout:
+            return RequestId
+        except Exception as E:
+            self._Failed(Cand["id"], E)
+        return None
+
+    async def _Recover(self, Batch: dict, Cand: dict, Owner: str, RequestId: str) -> None:
+        """Past the 90-second limit: the same request is asked every RecoveryPollFactor poll intervals until the
+        recovery window, counted from recovering_since, has passed (one last look after a restart) — never a new
+        request. Its image is attached when it arrives, and the Admin's journey shows it as recovered late."""
+        Ctx, Db, S = self.Ctx, self.Ctx.Db, self.Ctx.Settings
+        Since = Cand["recovering_since"]
+        if not Since:
+            Since = Now()
+            Db.Update("candidates", Cand["id"], recovering_since=Since)
+        Elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(Since)).total_seconds()
+        Interval = S.PollIntervalS * RecoveryPollFactor
+        try:
+            Result = await PollUntilDone(Ctx.Provider, Batch["endpoint"], RequestId,
+                                         max(Ctx.Gen.Images.RecoveryWindowS - Elapsed, Interval / 2), Interval,
+                                         S.MaxTransientPollErrors)
+            await self._Deliver(Batch, Cand, Result)
+        except Exception as E:
+            self._Failed(Cand["id"], E)
+            return
+        if Db.One("SELECT status FROM candidates WHERE id = ?", (Cand["id"],))["status"] == "ready":
+            from p3 import ringids as RingIds, sessions as Sessions
+            Ref = RingIds.CandidateRefs(Db, [Batch["design_id"]]).get(Cand["id"]) or f"option {Cand['slot'] + 1}"
+            Sessions.Record(Ctx, Owner, "option_recovered", Batch["design_id"], options=[Ref])
+
+    async def _Deliver(self, Batch: dict, Cand: dict, Result: dict) -> None:
+        S = self.Ctx.Settings
+        Images = Result.get("images") or []
+        if not Images or not Images[0].get("url"):
+            raise assets.AssetError("Provider returned no image")
+        Data = await DownloadWithRetry(self.Ctx.Provider, Images[0]["url"], S.MaxTransientPollErrors, S.PollIntervalS)
+        Ext = assets.ValidateImage(Data)
+        await self._StoreUnlessDuplicate(Batch, Cand, Data, Ext)
+
+    def _Failed(self, CandidateId: str, E: Exception) -> None:
+        # The provider's own words stay here (the Admin's session page and the log); the customer gets
+        # CustomerError(Code). A slot that ran out of time keeps its request id: "Retry missing" asks fal for it first.
+        Message, Code = FailureFor(E)
+        Logger.warning("Candidate %s failed (%s): %s", CandidateId, Code, E)
+        self.Ctx.Db.Update("candidates", CandidateId, status="failed", error=Message, error_code=Code)
+
+    def _Settle(self, Batch: dict, CandidateId: str, Owner: str) -> None:
+        """The slot is over: its request's credit is settled once every slot of the request is (credits.SettleAction)."""
+        Cand = self.Ctx.Db.One("SELECT * FROM candidates WHERE id = ?", (CandidateId,))
+        Credits.SettleAction(self.Ctx, Owner, Credits.KindOfCandidate(Cand, Batch), Cand.get("credit_ref") or Batch["id"])
 
     async def _Arguments(self, Batch: dict, Cand: dict) -> dict:
         """Provider arguments from the configuration version recorded on the batch (the prompt was
@@ -376,7 +472,8 @@ class ImageService:
 
     # ── restart reconciliation ───────────────────────────────────────────
     def Reconcile(self) -> dict:
-        """Resume polling for submitted requests; mark never-confirmed ones interrupted.
+        """Resume polling for submitted requests (a slot that was still finishing goes back to its recovery, for what
+        is left of its window); mark never-confirmed ones interrupted.
 
         A candidate without a provider request id may or may not have been
         submitted before the crash, so it is NOT resubmitted automatically
@@ -443,20 +540,46 @@ class ImageService:
         B = self.Ctx.Db.One("SELECT id FROM batches WHERE design_id = ? ORDER BY created_at LIMIT 1", (DesignId,))
         return self.GetBatch(B["id"])
 
-    def CandidateJson(self, C: dict) -> dict:
+    def CandidateJson(self, C: dict, MovieCredits: int = 0) -> dict:
         """The customer's view of a slot. `error` is the app's own sentence for the failure (CustomerError); the
-        provider's text and the request id are for the Admin only (sessions.AccountActivity)."""
+        provider's text and the request id are for the Admin only (sessions.AccountActivity). `finishing`: past the
+        90-second limit and still coming; `movie_credits`: what Customize would charge for this image's 360° movie."""
         return {"id": C["id"], "batch_id": C["batch_id"], "slot": C["slot"], "status": C["status"],
+                "finishing": C["status"] == "generating" and bool(C.get("recovering_since")),
                 "image_url": self.Ctx.AssetUrl(C["asset_path"]) if C["status"] == "ready" else None,
                 "error": CustomerError(C["error_code"]) if C["status"] == "failed" else None, "error_code": C["error_code"],
-                "retryable": C["status"] == "failed" and C["error_code"] not in NotRetryable}
+                "retryable": C["status"] == "failed" and C["error_code"] not in NotRetryable, "movie_credits": MovieCredits}
+
+    def _MovieCredits(self, B: dict, Cands: list[dict]) -> dict:
+        """The credits opening Customize costs for each ready image (R-07): its 360° movie, unless the product's movies
+        are off or the image has one made or being made already, which is reused for free (movies.Ensure)."""
+        Ready = [C["id"] for C in Cands if C["status"] == "ready"]
+        if not Ready or not Products.MovieAvailable(self.Ctx, Products.Of(self.Ctx.Db, B["design_id"])):
+            return {}
+        Have = {R["candidate_id"] for R in self.Ctx.Db.All(
+            "SELECT DISTINCT m.candidate_id FROM movies m JOIN candidates c ON c.id = m.candidate_id "
+            "WHERE c.batch_id = ? AND m.status IN ('queued', 'running', 'ready')", (B["id"],))}
+        Cost = Credits.Cost(self.Ctx, Credits.Movie)
+        return {Id: Cost for Id in Ready if Id not in Have}
 
     def GetBatch(self, BatchId: str) -> dict:
         B = self.Ctx.Db.One("SELECT * FROM batches WHERE id = ?", (BatchId,))
         Cands = self.Ctx.Db.All("SELECT * FROM candidates WHERE batch_id = ? ORDER BY slot", (BatchId,))
+        Movie = self._MovieCredits(B, Cands)
         return {"id": B["id"], "design_id": B["design_id"], "kind": B["kind"],
                 "parent_candidate_id": B["parent_candidate_id"], "user_text": B["user_text"],
                 "reference_url": self.Ctx.AssetUrl(B["reference_asset"]),
                 "desired_count": B["desired_count"], "config_version": B["config_version"],
                 "status": BatchStatus(Cands, B["desired_count"]), "created_at": B["created_at"],
-                "candidates": [self.CandidateJson(C) for C in Cands]}
+                "candidates": [self.CandidateJson(C, Movie.get(C["id"], 0)) for C in Cands]}
+
+    def RefinementRunning(self, DesignId: str) -> bool:
+        """A refinement of this design is still being made (the studio shows its waiting screen): Customize waits,
+        or a paid movie would start for an option the customer is about to replace (R-18)."""
+        Db = self.Ctx.Db
+        for B in Db.All("SELECT id, desired_count FROM batches WHERE design_id = ? AND kind = 'refine' AND id IN "
+                        "(SELECT batch_id FROM candidates WHERE status IN ('pending', 'generating'))", (DesignId,)):
+            Cands = Db.All("SELECT status, recovering_since FROM candidates WHERE batch_id = ?", (B["id"],))
+            if BatchStatus(Cands, B["desired_count"]) in ("queued", "generating"):
+                return True
+        return False

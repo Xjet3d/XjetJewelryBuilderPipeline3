@@ -1,9 +1,10 @@
 """Credits (p3/credits.py): a credit is a customer-triggered action, not an output file — 1 per design request (its
 four images), 1 per refinement request, 1 per explicitly requested additional option, 1 per 360° movie, 0 per 3D
-model; selecting, materials, sizes and a reused movie are free. Reserved before the action starts (so parallel
-requests cannot overspend), charged once it delivers, released when every image of it fails; never charged for the
-Admin's own work; a duplicate image is a failed option, never re-requested on its own; every submission is recorded
-with its estimated cost; the daily AI spend cap; the request limits."""
+model; selecting, materials, sizes and a reused movie are free. Reserved when the action starts (so parallel
+requests cannot overspend), kept once all four images are in and restored when one cannot be delivered (T-10,
+2026-10-25); "Retry missing" is free and never charges again; never charged for the Admin's own work; a duplicate
+image is a failed option, never re-requested on its own; every submission is recorded with its estimated cost; the
+daily AI spend cap; the request limits."""
 
 import pytest
 
@@ -57,39 +58,54 @@ async def test_a_design_request_is_one_credit_and_parallel_requests_cannot_overs
         await H.Close()
 
 
-async def test_a_request_is_charged_once_whatever_its_images_do_and_released_when_all_fail(tmp_path):
+async def test_a_request_keeps_its_credit_only_when_complete_and_retry_missing_is_free(tmp_path):
+    """T-10 (owner decision of 2026-10-25): the credit is taken when the request starts, kept when all four images are
+    in, restored when one cannot be delivered; "Retry missing" is free and a request whose credit was restored is never
+    charged again; "Generate another option" is a new image the customer asks for, at 1 credit."""
     H = Harness(tmp_path)
     try:
+        H.Provider.LatencyS = 3.0                                             # hold the request in flight
+        R = await H.Client.post("/api/designs", data={"prompt": "Band zero"})
+        S = await Status(H)
+        assert (S["used"], S["reserved"], S["remaining"]) == (0, 1, 99)     # taken at the start
+        H.Provider.LatencyS = 0.0
+        await H.Idle()
+        S = await Status(H)
+        assert (S["used"], S["reserved"], S["remaining"]) == (1, 0, 99)     # all four in: kept
+        assert (await H.Client.get(f"/api/batches/{R.json()['id']}")).json()["status"] == "complete"
+        # Three of four cannot be delivered (two failures and a duplicate): the credit comes back
         H.Provider.Script(endpoints.ImageGenerate, "fail", "fail", "duplicate", "duplicate")
         Batch = await H.NewDesign("Band")
         assert sorted(C["status"] for C in Batch["candidates"]) == ["failed", "failed", "failed", "ready"] and Batch["status"] == "partial"
         assert [C["error_code"] for C in Batch["candidates"]].count("duplicate_output") == 1
-        assert len(H.Provider.Submissions) == 4                              # no automatic (paid) re-request of anything
+        assert len(H.Provider.Submissions) == 8                              # no automatic (paid) re-request of anything
         S = await Status(H)
-        assert (S["used"], S["reserved"], S["remaining"]) == (1, 0, 99)     # the request delivered an image: one credit
-        # "Generate another option" for the three failed slots: one click, one credit, however many slots
-        H.Provider.LatencyS = 3.0                                             # hold the retried slots in flight
+        assert (S["used"], S["reserved"], S["remaining"]) == (1, 0, 99)
+        # "Retry missing" for the three: free — nothing is reserved, and the completed request is not charged again
+        H.Provider.LatencyS = 3.0
         R = await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")
         assert R.status_code == 200, R.text
         S = await Status(H)
-        assert (S["used"], S["reserved"]) == (1, 1)
+        assert (S["used"], S["reserved"]) == (1, 0)
         H.Provider.LatencyS = 0.0
         await H.Idle()
+        assert (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["status"] == "complete"
         S = await Status(H)
-        assert (S["used"], S["reserved"]) == (2, 0) and len(H.Provider.Submissions) == 7
-        # A single option retried on its own is one credit too
+        assert (S["used"], S["reserved"]) == (1, 0) and len(H.Provider.Submissions) == 11
+        # "Generate another option" in place of a failed option: 1 credit (the request itself was restored)
         H.Provider.Script(endpoints.ImageGenerate, "fail")
         B2 = await H.NewDesign("Band two")
         Failed = next(C for C in B2["candidates"] if C["status"] == "failed")
+        assert (await Status(H))["used"] == 1
         assert (await H.Client.post(f"/api/candidates/{Failed['id']}/retry")).status_code == 200
         await H.Idle()
-        assert (await Status(H))["used"] == 4                                 # request + option
-        # A request whose every image fails is released, not charged
+        assert (await Status(H))["used"] == 2                                 # the option, not the request
+        # A request whose every image fails is restored too
         H.Provider.Script(endpoints.ImageGenerate, "fail", "fail", "fail", "fail")
         B3 = await H.NewDesign("Band three")
         assert all(C["status"] == "failed" for C in B3["candidates"])
         S = await Status(H)
-        assert (S["used"], S["reserved"], S["remaining"]) == (4, 0, 96)
+        assert (S["used"], S["reserved"], S["remaining"]) == (2, 0, 98)
     finally:
         await H.Close()
 
@@ -140,7 +156,7 @@ async def test_the_daily_spend_cap_stops_paid_submissions(tmp_path):
         Stopped = next(C for C in Batch["candidates"] if C["error_code"] == "spend_cap_reached")
         assert Stopped["error"] == "AI generation is paused for today. Please try again tomorrow." and Stopped["retryable"]
         S = await Status(H)
-        assert (S["used"], S["reserved"]) == (1, 0)                          # the request delivered three images: one credit
+        assert (S["used"], S["reserved"]) == (0, 0)                          # three images of four: the credit comes back
         Full = (await H.Client.get("/api/admin/health", headers=Admin)).json()
         assert Full["ai_spend_today_usd"] == pytest.approx(0.45) and Full["daily_ai_spend_cap_usd"] == 0.5
         Cr = (await H.Client.get("/api/admin/credits", headers=Admin)).json()
@@ -180,6 +196,15 @@ async def test_reservations_are_rebuilt_from_the_job_tables_at_startup(tmp_path)
         H.Provider.LatencyS = 3.0
         await H.Client.post("/api/designs", data={"prompt": "Band"})
         assert Credits.Rebuild(H.Ctx) == {H.Who.AccountId: 1}                             # one pending request: one credit
+        H.Provider.LatencyS = 0.0
+        await H.Idle()
+        # A free "Retry missing" after its request was settled holds nothing
+        H.Provider.Script(endpoints.ImageGenerate, "fail")
+        Batch = await H.NewDesign("Band two")
+        H.Provider.LatencyS = 3.0
+        assert (await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")).status_code == 200
+        assert Credits.Rebuild(H.Ctx) == {}
+        assert (await Status(H))["remaining"] == 99
         H.Provider.LatencyS = 0.0
         await H.Idle()
     finally:

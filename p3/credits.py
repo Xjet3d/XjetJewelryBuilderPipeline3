@@ -7,11 +7,14 @@ movie, 0 for a 3D model (Hi3D is XJet's production cost, never the customer's). 
 material or the size and reusing an existing movie cost nothing. Ten credits are, for example, four design requests,
 two refinements and four movies.
 
-A credit is RESERVED before the work is created — atomically against the allowance, so parallel requests can never
-overspend it — and CHARGED when the action delivers (its first ready image; a finished movie). An action whose every
-image fails, times out or comes out a duplicate releases its reservation: the customer pays for what they get.
-Reservations are rebuilt from the job tables at every start, so a crash cannot strand them. Work the Admin asks for
-("Make a new movie", 3D models) is recorded as internal usage and never charged to a customer.
+A credit is RESERVED when the work starts — atomically against the allowance, so parallel requests can never overspend
+it; the customer's balance shows it as spent at once — and SETTLED when the work is over (T-10, owner decision of
+2026-10-25). An image request (a design, a refinement, an additional option) keeps its credit once every one of its
+images is in, also when the late-result recovery completed it, and its credit is RESTORED when one of them cannot be
+delivered (it failed, came out a duplicate or was refused under the content rules). A movie is charged when it
+finishes. Each request is settled once, so an image that arrives after a restore — the free "Retry missing" — never
+charges again. Reservations are rebuilt from the job tables at every start, so a crash cannot strand them. Work the
+Admin asks for ("Make a new movie", 3D models) is recorded as internal usage and never charged to a customer.
 
 Every provider submission is recorded as usage with its estimated list-price cost (p3/aipricing.py); the day's
 estimated live spend — the recorded events plus the submissions in flight — is checked against
@@ -77,14 +80,13 @@ def KindOfCandidate(Cand: dict, Batch: dict) -> str:
 
 
 def SettleAction(Ctx: Context, AccountId: str | None, Kind: str, CreditRef: str) -> None:
-    """A slot of the action finished: the action is charged once it has delivered an image (whatever the other
-    slots do later) and released once every slot has finished without one. Settle() is idempotent per reference."""
+    """A slot of the action finished. Once every slot has (a slot still finishing after the 90-second limit has not),
+    the action keeps its credit when all of them delivered an image and the credit is restored when one did not.
+    Settle() is once per reference: a later image never charges again."""
     Rows = Ctx.Db.All("SELECT status FROM candidates WHERE credit_ref = ?", (CreditRef,))
     Statuses = [R["status"] for R in Rows]
-    if "ready" in Statuses:
-        Settle(Ctx, AccountId, Kind, CreditRef, True)
-    elif Statuses and all(St in ("ready", "failed") for St in Statuses):
-        Settle(Ctx, AccountId, Kind, CreditRef, False)
+    if Statuses and all(St in ("ready", "failed") for St in Statuses):
+        Settle(Ctx, AccountId, Kind, CreditRef, all(St == "ready" for St in Statuses))
 
 
 def Cost(Ctx: Context, Kind: str, Count: int = 1) -> int:
@@ -115,13 +117,17 @@ def Settle(Ctx: Context, AccountId: str | None, Kind: str, RefId: str, Charged: 
 
 def Rebuild(Ctx: Context) -> dict:
     """Reservations from the job tables (after the startup reconciliation): every pending or generating customer
-    image and every queued or running customer movie holds its credits; nothing else does."""
+    image of a request not yet settled and every queued or running customer movie holds its credits; nothing else does
+    (a free "Retry missing" after its request was settled holds none)."""
     Reserved: dict[str, int] = defaultdict(int)
     Db = Ctx.Db
-    for R in Db.All("SELECT DISTINCT COALESCE(c.credit_ref, b.id) AS ref, b.id AS batch_id, b.kind, d.owner_account_id AS acct "
-                    "FROM candidates c JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id "
-                    "WHERE c.status IN ('pending', 'generating')"):
-        Reserved[R["acct"]] += Cost(Ctx, Option if R["ref"] != R["batch_id"] else KindOfBatch(R["kind"]))
+    Rows = Db.All("SELECT DISTINCT COALESCE(c.credit_ref, b.id) AS ref, b.id AS batch_id, b.kind, d.owner_account_id AS acct "
+                  "FROM candidates c JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id "
+                  "WHERE c.status IN ('pending', 'generating')")
+    Settled = Ctx.Accounts.SettledRefs({R["ref"] for R in Rows})
+    for R in Rows:
+        if R["ref"] not in Settled:
+            Reserved[R["acct"]] += Cost(Ctx, Option if R["ref"] != R["batch_id"] else KindOfBatch(R["kind"]))
     for R in Db.All("SELECT COALESCE(m.requested_by, d.owner_account_id) AS acct FROM movies m "
                     "JOIN candidates c ON c.id = m.candidate_id JOIN batches b ON b.id = c.batch_id "
                     "JOIN designs d ON d.id = b.design_id "

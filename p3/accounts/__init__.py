@@ -95,6 +95,9 @@ class AccountProvider(Protocol):
     def Release(self, AccountId: str, Units: int) -> None:
         """Give reserved credits back (the work was never created)."""
 
+    def SettledRefs(self, RefIds) -> set[str]:
+        """Which of these pieces of work are settled already (charged or released): they hold no reservation."""
+
     def RebuildReservations(self, Reserved: dict) -> None:
         """Set every account's reservation from {account_id: units} (the job tables at startup); others to 0."""
 

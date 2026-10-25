@@ -153,6 +153,9 @@ function p3App() {
     get legacyAuth() { return this.authCfg.mode === 'legacy'; },
     quotaUsed: 0, quotaMax: 10,
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
+    tariff: { design: 1, refinement: 1, option: 1, movie: 1 },       // the server's (Admin → Credits), from token-status
+    // What a paid action costs, as its button says (R-07)
+    creditsLabel(kind) { const n = this.tariff?.[kind] ?? 1; return n ? n + (n === 1 ? ' credit' : ' credits') : 'free'; },
     get token() { return (this.userSession && this.userSession.token) || ''; },
     get displayName() {
       if (!this.userSession) return '';
@@ -1182,8 +1185,11 @@ function p3App() {
       let Q = null;
       try { Q = await this.api('GET', '/api/token-status'); } catch (_) { Q = null; }
       if (!Q || !this.userSession) return;
-      this.quotaUsed = Q.used; this.quotaMax = Q.max;
-      Object.assign(this.userSession, { quotaUsed: Q.used, quotaMax: Q.max });
+      // A credit counts from the moment its request starts (reserved) and comes back if the request cannot deliver
+      const used = Q.used + (Q.reserved || 0);
+      this.quotaUsed = used; this.quotaMax = Q.max;
+      if (Q.tariff) this.tariff = Q.tariff;
+      Object.assign(this.userSession, { quotaUsed: used, quotaMax: Q.max });
       if (Q.name) this.userSession.name = Q.name;
       if (Q.email) this.userSession.email = Q.email;
       if (!this.userSession.session) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(this.userSession)); } catch (_) {} }
@@ -1575,7 +1581,7 @@ function p3App() {
         this.openedFromList = false; this.candIndex = 0;
         this.userInput = ''; this.clearUpload();
         await this.openDesign(batch.design_id);
-        this.loadDesigns();
+        this.loadDesigns(); this._refreshQuota();
       } catch (e) {
         this.measure('design_generation_failed', { product_type: product, kind: 'new', reason: this.failReason(e) });
         this.composeError = e.message;          // prompt and reference are kept for retry
@@ -1641,8 +1647,30 @@ function p3App() {
       return null;
     },
     get canActOnSelection() { return this.selectedCandidate?.status === 'ready'; },
+    get canCustomize() { return this.canActOnSelection && !this.pendingBatch; },     // never while a refinement is made (R-18)
     readyCount(b) { return b ? b.candidates.filter(c => c.status === 'ready').length : 0; },
     retryableCount(b) { return b ? b.candidates.filter(c => c.status === 'failed' && c.retryable).length : 0; },
+    // Past the 90-second limit and still coming: attached in the background, the customer goes on meanwhile (R-41)
+    finishingCount(b) { return b ? b.candidates.filter(c => c.finishing).length : 0; },
+    // Failed options last (R-07): the ready ones, and the ones still coming, lead the row
+    orderedCandidates(b) { const cs = b?.candidates || []; return [...cs.filter(c => c.status !== 'failed'), ...cs.filter(c => c.status === 'failed')]; },
+    // An option's number as the studio shows it: its place in that row
+    optionNumber(c) {
+      if (!c) return 1;
+      const i = this.orderedCandidates(this.design?.batches.find(b => b.id === c.batch_id)).findIndex(x => x.id === c.id);
+      return i >= 0 ? i + 1 : c.slot + 1;
+    },
+    get resultsHeading() {
+      const b = this.viewBatch, n = b?.desired_count || 4, ready = this.readyCount(b), refine = b?.kind === 'refine';
+      if (ready < n) return `${ready} of ${n} ${refine ? 'refinements' : 'designs'} ready — select your favourite`;
+      return refine ? 'Here are four refinements — select your favourite' : 'Here are your four designs — select your favourite';
+    },
+    partialText(b) {
+      const f = this.finishingCount(b), x = b ? b.candidates.filter(c => c.status === 'failed').length : 0;
+      const coming = f === 1 ? 'One option is still finishing — it appears here when it’s ready.' : `${f} options are still finishing — they appear here when they’re ready.`;
+      const missing = x === 1 ? 'One option could not be created.' : `${x} options could not be created.`;
+      return [f && coming, x && missing].filter(Boolean).join(' ');
+    },
     // Every option refused under the AI model's content rules: the same words would be refused again, so the customer is
     // asked for different ones and never offered a paid retry (the server refuses one too)
     policyRefused(b) { return !!b && b.status === 'failed' && b.candidates.every(c => c.error_code === 'content_policy'); },
@@ -1684,21 +1712,25 @@ function p3App() {
     ensurePolling() {
       if (this._poll) return;
       const designId = this.design?.id;
+      let quiet = 0;
       const tick = async () => {
         if (!this.design || this.design.id !== designId) { this.stopPolling(); return; }
         if (document.hidden) return;                       // a background tab asks nothing; the next tick after it returns does
-        const active = this.design.batches.filter(b => this.anyActive(b));
+        const active = this.design.batches.filter(b => this.anyActive(b) || this.finishingCount(b));
         if (!active.length) { this.stopPolling(); return; }
+        if (!active.some(b => this.anyActive(b)) && ++quiet % 4) return;   // only "still finishing" left: every 6 s
         for (const b of active) {
           try {
             const fresh = await this.api('GET', `/api/batches/${b.id}`);
             // Stale-result guard: only apply to the design this poll belongs to.
             if (!this.design || this.design.id !== designId || fresh.design_id !== designId) return;
             const idx = this.design.batches.findIndex(x => x.id === fresh.id);
-            const wasActive = idx >= 0 && this.anyActive(this.design.batches[idx]);
+            const before = idx >= 0 ? this.design.batches[idx] : null, wasActive = !!before && this.anyActive(before);
             if (idx >= 0) this.design.batches.splice(idx, 1, fresh);
             if (wasActive && !this.anyActive(fresh)) this.measureBatch(fresh);
-            this.onBatchUpdated(fresh);
+            // Only a change is acted on: a batch still finishing is asked again and again for minutes
+            if (!before || before.status !== fresh.status || this.readyCount(before) !== this.readyCount(fresh)
+                || this.finishingCount(before) !== this.finishingCount(fresh)) this.onBatchUpdated(fresh);
           } catch (e) { /* transient: next tick retries the same read */ }
         }
       };
@@ -1755,7 +1787,7 @@ function p3App() {
         const b = await this.api('POST', `/api/candidates/${c.id}/retry`);
         this.measure('design_generation_started', { product_type: this.design?.product_type || 'ring', kind: 'retry' });
         this.replaceBatch(b);
-        this.ensurePolling();
+        this.ensurePolling(); this._refreshQuota();
       } catch (e) { this.actionError = e.message; }
     },
     async retryBatch(b) {
@@ -1797,7 +1829,7 @@ function p3App() {
           this.userInput = '';
           await this.openDesign(b.design_id);
           this.openedFromList = false;           // just typed: the refinement's prompt echo shows
-          this.loadDesigns();
+          this.loadDesigns(); this._refreshQuota();
           if (own && this.design?.title) this.showToast(`Saved as a new design “${this.design.title}” — “${was}” stays as it is`, { ms: 7000 });
           return;
         }
@@ -1805,7 +1837,7 @@ function p3App() {
         this.openedFromList = false; this.candIndex = 0;
         this.pendingRefineBatchId = b.id;      // keep the current grid until the new batch is ready
         this.userInput = '';
-        this.ensurePolling();
+        this.ensurePolling(); this._refreshQuota();
       } catch (e) {
         this.measure('design_generation_failed', { product_type: product, kind: 'refine', reason: this.failReason(e) });
         this.composeError = e.message;         // e.g. reference_unavailable — no text-only fallback
@@ -1930,6 +1962,7 @@ function p3App() {
     // ── customize ─────────────────────────────────────────────────────
     async proceed() {
       if (!this.canActOnSelection) { this.actionError = 'Select one of the designs to customize it.'; return; }
+      if (this.pendingBatch) { this.actionError = 'Wait for the refinement to finish.'; return; }
       this.actionError = '';
       const designId = this.design.id, candidateId = this.selectedId;
       // Show the selected image immediately; the server returns the authoritative customization.
@@ -1942,6 +1975,7 @@ function p3App() {
       this.measure('customize_opened', { product_type: this.design?.product_type || 'ring', source: this.design?.shared ? 'gallery' : 'results' });
       try {
         const c = await this.api('POST', `/api/designs/${designId}/customize`, { candidate_id: candidateId });
+        this._refreshQuota();                                         // its movie's credit, when one was started
         if (this.design?.id !== designId || this.cust?.candidate_id !== candidateId) return;
         this.showCustomization(c);
       } catch (e) {
@@ -1991,6 +2025,7 @@ function p3App() {
       this.custError = '';
       try {
         const m = await this.api('POST', `/api/candidates/${this.cust.candidate_id}/movie`);
+        this._refreshQuota();
         if (this.cust?.id === custId) {
           this.cust.movie = m; this.mediaTab = 'movie'; this.pollCustomization();
           if (['queued', 'running'].includes(m?.status)) this.measure('movie_generation_started', { product_type: this.cust.product_type || 'ring', retry: true });

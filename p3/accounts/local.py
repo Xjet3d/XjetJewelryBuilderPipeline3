@@ -229,6 +229,14 @@ class LocalAccountProvider:
         self.Db.Execute("UPDATE accounts SET tokens_reserved = MAX(0, tokens_reserved - ?) WHERE account_id = ?",
                         (int(Units), AccountId))
 
+    def SettledRefs(self, RefIds) -> set[str]:
+        Ids = sorted(set(RefIds))
+        if not Ids:
+            return set()
+        Marks = ",".join("?" * len(Ids))
+        return {R["ref_id"] for R in self.Db.All(
+            f"SELECT DISTINCT ref_id FROM usage_events WHERE kind = 'generation' AND ref_id IN ({Marks})", tuple(Ids))}
+
     def RebuildReservations(self, Reserved: dict) -> None:
         with self.Db.Transaction() as Conn:
             Conn.execute("UPDATE accounts SET tokens_reserved = 0")

@@ -262,32 +262,125 @@ async def test_a_slot_the_model_returns_no_image_for_is_unavailable_with_no_auto
     assert next(C for C in After["candidates"] if C["id"] == Failed[0]["id"])["status"] == "ready"
 
 
-async def test_a_slot_still_unresolved_after_the_deadline_times_out_without_a_second_request(H):
-    """Each slot has images.request_timeout_s (90 s) from its submission. A slot still running then is marked
-    timed out — only that slot, with the generic sentence — and its provider request is left alone: its outcome
-    is unknown, so the app never resubmits it (that could pay twice). The customer can ask for another option."""
+def _Faster(H, TimeoutS=0.3, WindowS=5.0):
+    """The shipped 90-second limit and 10-minute recovery window, at test speed."""
     from dataclasses import replace
+    H.Ctx.Gen = replace(H.Ctx.Gen, Images=replace(H.Ctx.Gen.Images, RequestTimeoutS=TimeoutS, RecoveryWindowS=WindowS))
+
+
+async def _Until(H, BatchId, Check, Tries=600):
+    for _ in range(Tries):
+        B = (await H.Client.get(f"/api/batches/{BatchId}")).json()
+        if Check(B):
+            return B
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"batch {BatchId} never reached the expected state: {B}")
+
+
+async def test_a_slot_past_the_limit_is_finished_in_the_background_without_a_second_request(tmp_path):
+    """R-41: a slot still running at images.request_timeout_s (90 s) is "Still finishing", not failed. The customer goes
+    on with the three ready options while the same request is asked again in the background (images.recovery_window_s,
+    10 minutes) and its image is attached when it arrives: no second request, and the credit — taken at the start — is
+    kept once all four are in. The Admin's journey shows the late one."""
     from p3.config import LoadGenerationConfig
-    assert LoadGenerationConfig().Images.RequestTimeoutS == 90                              # the shipped deadline
-    H.Ctx.Gen = replace(H.Ctx.Gen, Images=replace(H.Ctx.Gen.Images, RequestTimeoutS=0.3))   # the same rule, faster
+    Shipped = LoadGenerationConfig().Images
+    assert (Shipped.RequestTimeoutS, Shipped.RecoveryWindowS) == (90, 600)                  # the shipped limit and window
+    Key = "late-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        _Faster(H)
+        H.Provider.Script(endpoints.ImageGenerate, "hang")
+        R = await H.Client.post("/api/designs", data={"prompt": "Band"})
+        Batch = await _Until(H, R.json()["id"], lambda B: any(C["finishing"] for C in B["candidates"]))
+        Late = next(C for C in Batch["candidates"] if C["finishing"])
+        Ready = [C for C in Batch["candidates"] if C["status"] == "ready"]
+        assert Batch["status"] == "partial" and Late["status"] == "generating" and not Late["retryable"] and len(Ready) == 3
+        S = (await H.Client.get("/api/token-status")).json()
+        assert (S["used"], S["reserved"]) == (0, 1)                                          # still held, not settled
+        # The ready ones work meanwhile: choosing one and Customize (its movie: 1 credit)
+        assert (await H.Client.put(f"/api/designs/{Batch['design_id']}/selection", json={"candidate_id": Ready[0]["id"]})).status_code == 200
+        await H.Proceed(Batch["design_id"], Ready[0]["id"])
+        Row = H.Ctx.Db.One("SELECT provider_request_id, recovering_since FROM candidates WHERE id = ?", (Late["id"],))
+        assert Row["recovering_since"]
+        H.Provider.Requests[Row["provider_request_id"]]["outcome"] = "ok"                     # fal finishes it, late
+        await H.Idle()
+        After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
+        assert After["status"] == "complete" and not any(C["finishing"] for C in After["candidates"])
+        assert len(H.Provider.SubmissionsFor(endpoints.ImageGenerate)) == N                   # no second request
+        S = (await H.Client.get("/api/token-status")).json()
+        assert (S["used"], S["reserved"]) == (2, 0)                                          # the design and the movie
+        D = (await H.Client.get(f"/api/admin/sessions/{Batch['design_id']}", headers={"Authorization": f"Bearer {Key}"})).json()
+        Refs = {C["id"]: C["ring_id"] for B in D["design"]["batches"] for C in B["candidates"]}
+        assert [E["data"]["options"] for E in D["timeline"] if E["kind"] == "option_recovered"] == [[Refs[Late["id"]]]]
+    finally:
+        await H.Close()
+
+
+async def test_a_slot_still_missing_after_the_window_fails_and_retry_missing_fetches_it_for_free(H):
+    """After the recovery window the slot fails (timeout) and the request's credit comes back. "Retry missing" is free:
+    it asks fal for that request's image first — here finished meanwhile — and attaches it without a new request, and
+    the request is not charged again."""
+    _Faster(H, WindowS=0.3)
     H.Provider.Script(endpoints.ImageGenerate, "hang")
     Batch = await H.NewDesign("Band")
     Failed = [C for C in Batch["candidates"] if C["status"] == "failed"]
-    assert Batch["status"] == "partial" and len(Failed) == 1 and sum(C["status"] == "ready" for C in Batch["candidates"]) == 3
-    assert Failed[0]["error_code"] == "timeout" and Failed[0]["error"] == Generic and Failed[0]["retryable"]
-    assert len(H.Provider.Submissions) == N                                                   # no second request
+    assert Batch["status"] == "partial" and len(Failed) == 1 and Failed[0]["error_code"] == "timeout"
+    assert Failed[0]["error"] == Generic and Failed[0]["retryable"] and not Failed[0]["finishing"]
+    S = (await H.Client.get("/api/token-status")).json()
+    assert (S["used"], S["reserved"]) == (0, 0)                                              # three of four: restored
     Row = H.Ctx.Db.One("SELECT provider_request_id, attempts, error FROM candidates WHERE id = ?", (Failed[0]["id"],))
-    assert Row["provider_request_id"] in H.Provider.Requests and Row["attempts"] == 1          # the request is kept, for the Admin
-    assert "took too long" in Row["error"]                                                    # the Admin's reason
+    assert Row["provider_request_id"] in H.Provider.Requests and Row["attempts"] == 1 and "took too long" in Row["error"]
+    H.Provider.Requests[Row["provider_request_id"]]["outcome"] = "ok"                         # it finished after all
+    assert (await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")).status_code == 200
     await H.Idle()
-    assert len(H.Provider.Submissions) == N
-    await _Usable(H, Batch)
-    # Only the customer's explicit request makes a second one (a new seed; the old request is not reused)
-    H.Provider.Requests[Row["provider_request_id"]]["outcome"] = "ok"                         # even if it finished meanwhile
-    assert (await H.Client.post(f"/api/candidates/{Failed[0]['id']}/retry")).status_code == 200
+    After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
+    assert After["status"] == "complete" and len(H.Provider.Submissions) == N                 # fetched, not bought again
+    assert H.Ctx.Db.One("SELECT attempts FROM candidates WHERE id = ?", (Failed[0]["id"],))["attempts"] == 1
+    S = (await H.Client.get("/api/token-status")).json()
+    assert (S["used"], S["reserved"]) == (0, 0)                                              # never charged again
+
+
+async def test_retry_missing_waits_for_a_request_fal_is_still_working_on(H):
+    """"Retry missing" on a slot whose request is still running at fal: the slot is "Still finishing" again — the same
+    request, waited for in the background — and nothing new is submitted."""
+    _Faster(H, WindowS=0.3)
+    H.Provider.Script(endpoints.ImageGenerate, "hang")
+    Batch = await H.NewDesign("Band")
+    Failed = next(C for C in Batch["candidates"] if C["status"] == "failed")
+    _Faster(H, WindowS=5.0)
+    R = await H.Client.post(f"/api/batches/{Batch['id']}/retry-failed")
+    assert R.status_code == 200
+    Again = next(C for C in R.json()["candidates"] if C["id"] == Failed["id"])
+    assert Again["status"] == "generating" and Again["finishing"] and R.json()["status"] == "partial"
+    Row = H.Ctx.Db.One("SELECT provider_request_id FROM candidates WHERE id = ?", (Failed["id"],))
+    H.Provider.Requests[Row["provider_request_id"]]["outcome"] = "ok"
     await H.Idle()
-    assert len(H.Provider.SubmissionsFor(endpoints.ImageGenerate)) == N + 1
     assert (await H.Client.get(f"/api/batches/{Batch['id']}")).json()["status"] == "complete"
+    assert len(H.Provider.Submissions) == N
+
+
+async def test_a_restart_during_the_recovery_resumes_it(tmp_path):
+    """A slot that was still finishing when the server stopped goes back to its recovery at the start, for what is left
+    of its window, and its request still holds the credit until it is settled."""
+    from p3 import credits as Credits
+    Provider = MockProvider(LatencyS=0.0, RenderVideo=False)
+    Provider.Script(endpoints.ImageGenerate, "hang")
+    First = Harness(tmp_path, Provider=Provider)
+    _Faster(First, WindowS=60)
+    R = await First.Client.post("/api/designs", data={"prompt": "Band"})
+    await _Until(First, R.json()["id"], lambda B: any(C["finishing"] for C in B["candidates"]))
+    await First.Close()                                   # simulated crash: the recovery dies with it
+    for Req in Provider.Requests.values():
+        Req["outcome"] = "ok"                             # fal finished it while we were down
+    Second = Harness(tmp_path, Provider=Provider)
+    try:
+        assert Credits.Rebuild(Second.Ctx) == {First.Who.AccountId: 1}
+        assert Second.Svc.Reconcile()["candidates"] == {"resumed": 1, "interrupted": 0}
+        await Second.Idle()
+        B = (await Second.Client.get(f"/api/batches/{R.json()['id']}", headers={"X-Access-Token": First.Token})).json()
+        assert B["status"] == "complete" and len(Provider.Submissions) == N
+    finally:
+        await Second.Close()
 
 
 async def test_no_provider_error_text_reaches_the_customer(tmp_path):
@@ -371,6 +464,60 @@ async def test_restart_resumes_submitted_and_interrupts_unconfirmed(tmp_path):
     assert Rows[N - 1]["error_code"] == "interrupted"
     assert len(Provider.Submissions) == N                 # nothing was resubmitted automatically
     await Second.Close()
+
+
+async def test_customize_waits_while_a_refinement_of_the_design_is_made(H):
+    """R-18: no Customize — and no paid movie — for an option while a refinement of the same design is being made."""
+    First = await H.NewDesign("Band")
+    Sel = First["candidates"][0]["id"]
+    await H.Client.put(f"/api/designs/{First['design_id']}/selection", json={"candidate_id": Sel})
+    H.Provider.LatencyS = 3.0
+    R = await H.Client.post(f"/api/designs/{First['design_id']}/batches", json={"parent_candidate_id": Sel, "instruction": "Thinner band"})
+    assert R.status_code == 200
+    C = await H.Client.post(f"/api/designs/{First['design_id']}/customize", json={"candidate_id": Sel})
+    assert C.status_code == 409 and C.json()["error"]["code"] == "refinement_running"
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM movies")["n"] == 0                      # nothing started, nothing paid
+    H.Provider.LatencyS = 0.0
+    await H.Idle()
+    await H.Proceed(First["design_id"], Sel)                                               # once it is in, as before
+
+
+async def test_each_ready_option_says_what_customize_costs(H):
+    """R-07: before the click, each ready option carries what opening Customize costs — its 360° movie, 1 credit — and
+    nothing once it has a movie, which is reused."""
+    Batch = await H.NewDesign("Band")
+    assert [C["movie_credits"] for C in Batch["candidates"]] == [1] * N
+    await H.Proceed(Batch["design_id"], Batch["candidates"][0]["id"])
+    await H.Idle()
+    After = (await H.Client.get(f"/api/batches/{Batch['id']}")).json()
+    assert [C["movie_credits"] for C in After["candidates"]] == [0] + [1] * (N - 1)
+
+
+async def test_a_request_for_more_variations_is_made_from_the_fixed_instruction(tmp_path):
+    """R-50 follow-up: "make more variations" and the like, in English or Hebrew, become four variations of the selected
+    design from one fixed instruction (fix 1's one-ring rule still follows it); the customer's words stay the batch's
+    text, and the Admin's journey marks the request. Anything else is an ordinary refinement."""
+    from p3 import morevariations as MoreVariations
+    Key = "variations-admin-key"
+    H = Harness(tmp_path, AdminKey=Key)
+    try:
+        First = await H.NewDesign("Signet ring with a hexagon face")
+        Sel = First["candidates"][0]["id"]
+        Asked = ["Make more variations please", "עוד אפשרויות בבקשה", "Make more variations with a thinner band"]
+        for Text in Asked:
+            R = await H.Client.post(f"/api/designs/{First['design_id']}/batches", json={"parent_candidate_id": Sel, "instruction": Text})
+            assert R.status_code == 200 and R.json()["user_text"] == Text
+            await H.Idle()
+        Subs = H.Provider.SubmissionsFor(endpoints.ImageEdit)
+        assert len(Subs) == 3 * N
+        Fixed = MoreVariations.Instruction("ring") + "\n\n"
+        assert all(S[1]["prompt"].startswith(Fixed) for S in Subs[:2 * N])
+        assert all(S[1]["prompt"].startswith(Asked[2] + "\n\n") for S in Subs[2 * N:])        # an ordinary refinement
+        D = (await H.Client.get(f"/api/admin/sessions/{First['design_id']}", headers={"Authorization": f"Bearer {Key}"})).json()
+        Steps = [(E.get("text"), E.get("status")) for E in D["timeline"] if E["kind"] == "refine_requested"]
+        assert Steps == [(Asked[0], "more variations"), (Asked[1], "more variations"), (Asked[2], None)]
+    finally:
+        await H.Close()
 
 
 def test_asset_paths_cannot_escape_root(tmp_path):
