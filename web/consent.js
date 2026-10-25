@@ -293,13 +293,13 @@
     '.ac-bar .ac-btn,.ac-card .ac-btn{-webkit-appearance:none;appearance:none;margin:0;display:inline-flex;align-items:center;',
     'justify-content:center;min-height:44px;padding:0 18px;border:1px solid #B48A4C;border-radius:6px;',
     'background:linear-gradient(90deg,#C9A96E 0%,#B08040 100%);color:#1A1A1A;box-shadow:0 4px 12px rgba(138,86,27,.22);',
-    'font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;text-align:center;cursor:pointer;',
+    'font:600 13px/1.2 ' + SANS + ';letter-spacing:.1em;text-transform:uppercase;text-align:center;cursor:pointer;',   // board J: 13 px
     'transition:background-color .2s,border-color .2s,color .2s,filter .2s}',
     '.ac-bar .ac-btn:hover,.ac-card .ac-btn:hover{filter:brightness(1.06)}',
     '.ac-bar .ac-soft,.ac-card .ac-soft{background:transparent;color:#2A2520;border-color:#9C8A6C;box-shadow:none}',
     '.ac-bar .ac-soft:hover,.ac-card .ac-soft:hover{background:#F2EBDD;border-color:#7E6D52;color:#1A1A1A;filter:none}',
     '.ac-bar .ac-quiet,.ac-card .ac-quiet{-webkit-appearance:none;appearance:none;margin:0;padding:10px 0;min-height:40px;border:0;',
-    'background:none;color:#8A6420;font:600 11.5px/1.2 ' + SANS + ';letter-spacing:.14em;text-transform:uppercase;cursor:pointer;',
+    'background:none;color:#8A6420;font:600 13px/1.2 ' + SANS + ';letter-spacing:.1em;text-transform:uppercase;cursor:pointer;',
     'text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}',
     '.ac-bar .ac-quiet:hover,.ac-card .ac-quiet:hover{color:#5E430F}',
     '.ac-bar .ac-quiet{margin-top:4px}',
@@ -341,7 +341,7 @@
     '@media (max-width:640px){',
     '.ac-bar{left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;max-width:none;padding:18px 16px 8px}',
     '.ac-bar p{font-size:13px}',
-    '.ac-bar .ac-row .ac-btn{padding:0 10px;font-size:11px;letter-spacing:.08em}',      // both labels on one line from 360 px
+    '.ac-bar .ac-row .ac-btn{padding:0 8px;font-size:12.5px;letter-spacing:.04em}',    // both labels on one line from 360 px
     '.ac-bar .ac-quiet{display:block;margin:4px auto 0}',
     '.ac-shade{align-items:flex-end;padding:0}',
     '.ac-card{max-width:none;max-height:92vh;max-height:92dvh;border-radius:12px 12px 0 0;border-bottom:0}',

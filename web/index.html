@@ -109,7 +109,7 @@
         @media (min-width: 1300px) { .g-grid-dialog .g-cue-word { display: none; } .g-grid-dialog .g-cue-arrow { display: inline-flex; } }
         .g-card [role="radiogroup"] { min-width: 0; }
         .g-card .metal-swatch { flex: 0 1 auto; min-width: 32px; }
-        @media (max-width: 639.98px) { .g-name { font-size: 14px; } .g-card .metal-swatch { width: 40px; } .g-card .metal-swatch > span { width: 14px; height: 14px; } }
+        @media (max-width: 639.98px) { .g-name { font-size: 15px; } .g-card .metal-swatch { width: 40px; } .g-card .metal-swatch > span { width: 14px; height: 14px; } }
         /* a card's loading square: the card's own shape (top row, picture, name and swatch row) */
         .g-ph-foot { height: 74px; }
         @media (max-width: 639.98px) { .g-ph-foot { height: 71px; } }
@@ -222,7 +222,12 @@
         .fld.bad { border-color: #C0392B; }
         .fld:disabled { background: #F6F6F6; color: #6F6F6F; }
         .flbl { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: #6F6F6F; margin-bottom: 6px; font-weight: 600; }
-        .ferr { font-size: 12px; color: #A1261D; margin-top: 5px; }
+        /* Errors (board J, R-13): 14 px with an alert icon, never color alone. .err-line: the same for a message outside a form */
+        .ferr, .err-line { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; line-height: 1.45; color: #A1261D; }
+        .ferr { margin-top: 5px; }
+        .ferr::before, .err-line::before { content: ''; flex: 0 0 16px; height: 16px; margin-top: 2px; background: currentColor;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M8 4.6v4M8 11.2v.1'/%3E%3C/svg%3E") center / contain no-repeat;
+                    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M8 4.6v4M8 11.2v.1'/%3E%3C/svg%3E") center / contain no-repeat; }
 
         /* ── Header (nav.site-header): one grid in three arrangements, so every control exists once.
            Phones: one row — menu + XJet Atelier · the utility icons and the account.
@@ -319,15 +324,15 @@
 
         <!-- Main navigation (from 1024 px; below that it is in the menu) · the Design screen's steps -->
         <div class="h-nav flex items-center justify-center min-w-0">
-            <!-- the four in one style: capitals, 12 px (a button takes neither the case nor the size from around it) -->
-            <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-8 2xl:gap-11 whitespace-nowrap text-[12px] uppercase tracking-[0.12em] font-medium text-zinc-600">
-                <button @click="scrollToHowItWorks()" class="uppercase text-[12px] py-3 hover:text-black transition">How It Works</button>
+            <!-- the four in one style: capitals, 13 px (board J; a button takes neither the case nor the size from around it) -->
+            <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-8 2xl:gap-11 whitespace-nowrap text-[13px] uppercase tracking-[0.12em] font-medium text-zinc-600">
+                <button @click="scrollToHowItWorks()" class="uppercase text-[13px] py-3 hover:text-black transition">How It Works</button>
                 <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="py-3" :class="view === 'inspiration' ? 'text-black' : 'hover:text-black transition'">Inspiration</a>
                 <a href="{{BASE}}/materials" @click="pageLink($event, 'materials')" class="py-3" :class="view === 'materials' ? 'text-black' : 'hover:text-black transition'">Materials</a>
                 <!-- About: the informational pages, gathered in one small menu -->
                 <div class="relative" @click.outside="aboutOpen = false" @keydown.escape="aboutOpen = false">
                     <button type="button" @click="aboutOpen = !aboutOpen" :aria-expanded="aboutOpen" aria-haspopup="menu" aria-controls="about-menu"
-                            class="inline-flex items-center gap-1.5 uppercase text-[12px] py-3 transition" :class="aboutOpen || ['designers','technology','faq','contact'].includes(view) ? 'text-black' : 'hover:text-black'">
+                            class="inline-flex items-center gap-1.5 uppercase text-[13px] py-3 transition" :class="aboutOpen || ['designers','technology','faq','contact'].includes(view) ? 'text-black' : 'hover:text-black'">
                         About
                         <svg class="w-3 h-3 transition-transform" :class="aboutOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                     </button>
@@ -659,7 +664,7 @@
                     <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
                         <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
-                                    class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
+                                    class="tap min-h-[40px] px-4 py-2 rounded-full text-[13px] uppercase tracking-[0.14em] font-semibold transition"
                                     :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#5F5F5F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
                         </template>
                     </div>
@@ -934,7 +939,7 @@
                         </article>
                     </template>
                 </div>
-                <p class="text-[12px] text-zinc-500 mt-6 leading-relaxed" x-text="materialsNote"></p>
+                <p class="text-[14px] text-zinc-600 mt-6 leading-relaxed" x-text="materialsNote"></p>
             </section>
 
             <!-- Gold: by request until gold pricing is enabled -->
@@ -2762,7 +2767,7 @@
                     <div class="inline-flex rounded-full p-1" style="background:#F4EFE6;">
                         <template x-for="f in galleryFilters" :key="'gf' + f[0]">
                             <button type="button" @click="galleryProduct = f[0]" :aria-pressed="galleryProduct === f[0]"
-                                    class="px-4 py-1.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-semibold transition"
+                                    class="tap min-h-[40px] px-4 py-2 rounded-full text-[13px] uppercase tracking-[0.14em] font-semibold transition"
                                     :class="galleryProduct === f[0] ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#5F5F5F] hover:text-[#1A1A1A]'" x-text="f[1]"></button>
                         </template>
                     </div>
@@ -2820,7 +2825,7 @@
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" aria-label="Preview in Silver" title="Preview in Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                         </div>
-                        <p class="text-[12px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
+                        <p class="text-[13px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
                     </div>
                 </div>
                 <div class="md:w-2/5 px-7 pt-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">
@@ -2839,7 +2844,7 @@
                     <!-- Make it yours: below the text on wide screens; on a phone the sheet's last row, held at its foot -->
                     <div x-show="!isOff(galleryItem)" class="order-last md:order-none max-md:sticky max-md:bottom-0 max-md:z-[2] max-md:-mx-7 max-md:px-4 max-md:pt-3 max-md:pb-4 max-md:bg-white max-md:border-t max-md:border-[#EEE7DA] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.06)] flex flex-col gap-2">
                         <button x-show="!isOff(galleryItem)" @click="makeItYours()" :disabled="galleryBusy" class="btn-gold py-4 stream-glow transition" x-text="galleryBusy ? 'Opening your design…' : 'Make it yours'"></button>
-                        <p x-show="!userSession" class="text-[12px] text-zinc-500 text-center md:text-left">Sign in or register first — we'll bring you straight back to this design.</p>
+                        <p x-show="!userSession" class="text-[13px] text-zinc-500 text-center md:text-left">Sign in or register first — we'll bring you straight back to this design.</p>
                     </div>
                     <!-- Share / Copy link and Back to gallery: one row of text buttons, each on one line -->
                     <div class="flex items-center justify-center md:justify-start gap-6 max-md:pb-2">
@@ -2852,8 +2857,8 @@
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 12H5m6-6-6 6 6 6"/></svg>Back to gallery</button>
                     </div>
                     <div x-show="shareUrl" x-cloak class="flex items-center gap-2 text-left">
-                        <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[12px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
-                        <span class="text-[12px] text-zinc-500 shrink-0">Copy this link</span>
+                        <input type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()" class="flex-1 min-w-0 text-[13px] px-2.5 py-2 rounded-lg bg-white" style="border:1px solid #DCDCDC; color:#1A1A1A;" aria-label="Share link">
+                        <span class="text-[13px] text-zinc-500 shrink-0">Copy this link</span>
                     </div>
                 </div>
             </div>

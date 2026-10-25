@@ -73,11 +73,11 @@ async def test_the_main_row_brand_a_short_navigation_and_start_designing(HG):
     Main = _Part(Bar, "h-nav")
     Links = re.findall(r">([A-Za-z ]+)</(?:button|a)>", Main[:Main.index('<div id="about-menu"')])
     assert [L.strip() for L in Links] == ["How It Works", "Inspiration", "Materials"]
-    # one style for the four: capitals at 12 px — a button takes neither from around it, so both buttons say it themselves
+    # one style for the four: capitals at 13 px (board J) — a button takes neither from around it, so both buttons say it themselves
     Row = Main[:Main.index('<div id="about-menu"')]
-    assert 'text-[12px] uppercase tracking-[0.12em]' in Row
-    assert '<button @click="scrollToHowItWorks()" class="uppercase text-[12px] py-3 hover:text-black transition">How It Works</button>' in Row
-    assert 'class="inline-flex items-center gap-1.5 uppercase text-[12px] py-3 transition"' in Row
+    assert 'text-[13px] uppercase tracking-[0.12em]' in Row
+    assert '<button @click="scrollToHowItWorks()" class="uppercase text-[13px] py-3 hover:text-black transition">How It Works</button>' in Row
+    assert 'class="inline-flex items-center gap-1.5 uppercase text-[13px] py-3 transition"' in Row
     # the pages are real links (their own URL; a plain click opens them in place)
     assert f'<a href="{H.Base}/gallery" @click="pageLink($event, \'inspiration\')"' in Main
     assert f'<a href="{H.Base}/materials" @click="pageLink($event, \'materials\')"' in Main
