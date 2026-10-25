@@ -521,6 +521,7 @@ CREATE TABLE IF NOT EXISTS {Name} (
     quantity          INTEGER NOT NULL DEFAULT 1,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
+    size_confirmed_at TEXT,                      -- rings: when the customer chose ring_size (R-21); NULL = suggested
     UNIQUE (owner_account_id, design_id, candidate_id)
 );
 """
@@ -679,6 +680,12 @@ def _InstallTestOrders(Conn) -> None:
     for Col in ("test_marked_at TEXT", "test_marked_by TEXT", "test_reason TEXT"):
         if Col.split()[0] not in Have:
             Conn.execute(f"ALTER TABLE orders ADD COLUMN {Col}")
+
+
+def _InstallSizeConfirmed(Conn) -> None:
+    """A ring size the customer chose is remembered as confirmed (R-21, 2026-10-26): an additive column, old code ignores it."""
+    if "size_confirmed_at" not in _Columns(Conn, "customizations"):
+        Conn.execute("ALTER TABLE customizations ADD COLUMN size_confirmed_at TEXT")
 
 
 def _InstallVersions(Conn) -> None:
@@ -893,6 +900,7 @@ class Database:
                     ringids.Install(Conn)                 # item IDs: R-1042 … for rings, C-1001 … for charms
                     _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
                     _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
+                    _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 

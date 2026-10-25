@@ -1533,23 +1533,34 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
                 </div>
-                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff">
-                    <button @click="mediaTab = 'image'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition"
+                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff" role="group" aria-label="Show the image or the movie">
+                    <button @click="mediaTab = 'image'" :aria-pressed="mediaTab === 'image'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition"
                             :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
-                    <button @click="mediaTab = 'movie'" class="px-3 py-1 rounded-full text-[12px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
+                    <button @click="mediaTab = 'movie'" :aria-pressed="mediaTab === 'movie'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
                             :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">
                         Movie
                         <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
                     </button>
                 </div>
 
-                <div class="flex-1 relative overflow-hidden" style="min-height:320px;">
+                <!-- Tablets get a larger stage (R-36: the movie was 288 px wide below 1024 px) -->
+                <div class="flex-1 relative overflow-hidden min-h-[320px] sm:min-h-[480px] md:min-h-[560px] lg:min-h-[320px]">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
                         <img x-show="movieOff || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
                         <template x-if="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'">
-                            <video :src="cust?.movie.movie_url" :poster="poster(cust?.movie.movie_url)" preload="auto" autoplay loop muted playsinline class="max-w-full max-h-full object-contain" :style="{ filter: tint }"></video>
+                            <!-- Plays and loops as before; a tap (or the button) pauses it, and with reduced motion it waits for Play -->
+                            <video x-ref="custMovie" :src="cust?.movie.movie_url" :poster="cust?.image_url" preload="auto" :autoplay="!reducedMotion" loop muted playsinline
+                                   x-init="moviePaused = reducedMotion" @play="moviePaused = false" @pause="moviePaused = true" @click="toggleMovie()"
+                                   class="max-w-full max-h-full object-contain cursor-pointer" :style="{ filter: tint }"></video>
                         </template>
                     </div>
+                    <button x-show="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'" @click="toggleMovie()"
+                            class="tap absolute bottom-3 left-3 z-10 min-h-[40px] px-3 rounded-lg bg-white/85 backdrop-blur border transition hover:bg-white text-[13px] text-[#3F3F46] inline-flex items-center gap-1.5"
+                            style="border-color:#DCDCDC;" :aria-label="moviePaused ? 'Play the movie' : 'Pause the movie'">
+                        <svg x-show="!moviePaused" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>
+                        <svg x-show="moviePaused" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                        <span x-text="moviePaused ? 'Play' : 'Pause'"></span>
+                    </button>
                     <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
                     <div x-show="!movieOff && mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
                         <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
@@ -1560,7 +1571,7 @@
                     <div x-show="!movieOff && mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
                             <span class="text-[12px] uppercase tracking-widest" style="color:#c03030;">Movie generation failed</span>
-                            <span class="text-[12px]" style="color:#777;" x-text="cust?.movie?.error"></span>
+                            <span class="text-[14px]" style="color:#6F6F6F;" x-text="cust?.movie?.error"></span>
                             <button @click="retryMovie()" class="btn-outline px-4 py-1.5" x-text="'Retry Movie · ' + creditsLabel('movie')">Retry Movie</button>
                         </div>
                     </div>
@@ -1575,7 +1586,7 @@
                 <div class="flex flex-col items-center gap-1 py-3 shrink-0">
                     <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-widest" x-text="design?.title"></p>
                     <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterialLabel"></p>
-                    <p class="text-[12px] text-zinc-400">Metal colour is a visual preview of the same design.</p>
+                    <p class="text-[13px] text-zinc-500">Metal color is a visual preview of the same design.</p>
                 </div>
             </div>
 
@@ -1610,7 +1621,7 @@
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
                                                 <div>
                                                     <div class="text-sm font-semibold text-zinc-800" x-text="matName(m)"></div>
-                                                    <div class="text-[12px] text-zinc-500" x-text="copy(m.id).sub"></div>
+                                                    <div class="text-[13px] text-zinc-500" x-text="copy(m.id).sub"></div>
                                                 </div>
                                             </button>
                                         </template>
@@ -1622,7 +1633,7 @@
                                                     :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm p-2 flex flex-col items-center gap-1.5 transition text-center">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="'background-color:' + m.swatch"></div>
-                                                <div class="text-[12px] font-medium text-zinc-700 leading-tight" x-text="m.label"></div>
+                                                <div class="text-[13px] font-medium text-zinc-700 leading-tight" x-text="m.label"></div>
                                             </button>
                                         </template>
                                     </div>
@@ -1636,8 +1647,8 @@
                          customer confirms it or picks another. -->
                     <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
                         <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h3>
-                        <p class="text-[12px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
-                        <p class="text-[12px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
+                        <p class="text-[13px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
+                        <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
                         <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
                             <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
                                 <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
@@ -1645,12 +1656,12 @@
                                         :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
                                         class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
                                     <span x-text="s.label"></span>
-                                    <span class="text-[11px] mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
+                                    <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
                                           x-text="isLuxury ? 'Quote' : (s.unit_price != null ? money(s.unit_price) : 'Unavailable')"></span>
                                 </button>
                             </template>
                         </div>
-                        <p class="text-[12px] text-zinc-500 mt-2">
+                        <p class="text-[14px] text-zinc-600 mt-2">
                             <span x-show="sizeConfirmed && cust?.charm_size != null">Your size: <strong class="text-zinc-700" x-text="cust?.size_label"></strong> · the price depends on the size</span>
                             <span x-show="!sizeConfirmed">Confirm a size to add this charm to your bag.</span>
                         </p>
@@ -1660,9 +1671,9 @@
                     <div id="ring-size-heading" x-show="!custIsCharm">
                         <div class="flex items-center justify-between mb-1">
                             <h3 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h3>
-                            <button @click="showSizeGuide = true" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
+                            <button @click="openSizeGuide()" aria-haspopup="dialog" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
                         </div>
-                        <p class="text-[12px] text-zinc-500 mb-3" x-show="!sizeConfirmed && cust?.ring_size != null">Suggested: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> — tap it to confirm, or choose another size.</p>
+                        <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && cust?.ring_size != null">Suggested: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> — tap it to confirm, or choose another size.</p>
                         <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Ring size (US)">
                             <template x-for="size in (catalog?.ring_sizes.values || [])" :key="size">
                                 <button @click="setSize(size)" role="radio" :aria-checked="sizeConfirmed && cust?.ring_size == size" :aria-label="'US ' + size + (sizeIsSuggested(size) ? ' (suggested)' : '')"
@@ -1671,7 +1682,7 @@
                                         class="w-11 h-11 border text-[13px] font-medium transition rounded-sm" x-text="size"></button>
                             </template>
                         </div>
-                        <p class="text-[12px] text-zinc-500 mt-2">
+                        <p class="text-[14px] text-zinc-600 mt-2">
                             <span x-show="sizeConfirmed && cust?.ring_size != null">Your size: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> · the size does not change the price</span>
                             <span x-show="!sizeConfirmed && cust?.ring_size != null">Not sure? Open the size guide — tap any row to pick that size — or <a :href="mailto('Sizing help' + (design?.title ? ' — ' + design.title : ''))" class="underline underline-offset-2 hover:text-black">ask us</a>.</span>
                             <span x-show="cust?.ring_size == null">Choose your size to add this ring to your bag.</span>
@@ -1692,14 +1703,14 @@
                                   :class="priceAvailable ? 'text-3xl text-zinc-900' : 'text-2xl text-zinc-500'" x-text="priceText"></span>
                             <span x-show="priceAvailable" class="text-[12px] text-zinc-500 uppercase tracking-widest">Per piece</span>
                         </div>
-                        <p x-show="priceAvailable && !custIsCharm" class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
-                            Fixed price for <span x-text="currentMaterial?.label"></span>, any size. The final weight is measured when your ring is made.
+                        <p x-show="priceAvailable && !custIsCharm" class="text-[14px] text-zinc-600 mt-1.5 leading-snug">
+                            Fixed price for <span x-text="currentMaterial?.label"></span>, any size.
                         </p>
-                        <p x-show="priceAvailable && custIsCharm" x-cloak class="text-[12px] text-zinc-500 mt-1.5 leading-snug">
-                            Fixed price for <span x-text="currentMaterialLabel"></span> at <span x-text="cust?.size_label"></span>. The final weight is measured when your charm is made.
+                        <p x-show="priceAvailable && custIsCharm" x-cloak class="text-[14px] text-zinc-600 mt-1.5 leading-snug">
+                            Fixed price for <span x-text="currentMaterialLabel"></span> at <span x-text="cust?.size_label"></span>.
                         </p>
-                        <p x-show="isLuxury" class="text-[12px] text-zinc-500 mt-1.5" x-text="custIsCharm ? 'Gold charms are quoted individually — request a quote below.' : 'Gold rings are quoted individually — request a quote below.'"></p>
-                        <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[12px] text-zinc-500 mt-1.5"
+                        <p x-show="isLuxury" class="text-[14px] text-zinc-600 mt-1.5" x-text="custIsCharm ? 'Gold charms are quoted individually — request a quote below.' : 'Gold rings are quoted individually — request a quote below.'"></p>
+                        <p x-show="!isLuxury && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[14px] text-zinc-600 mt-1.5"
                            x-text="custIsCharm ? 'The price for this size and material is not available right now.' : 'The price for this material is not available right now.'"></p>
                         <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
                     </div>
@@ -1708,26 +1719,26 @@
                     <div class="flex items-center justify-between">
                         <span class="text-[14px] uppercase tracking-widest text-zinc-500">Quantity</span>
                         <div class="flex items-center gap-3">
-                            <button @click="setQuantity(-1)" class="tap w-8 h-8 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-sm leading-none" aria-label="Decrease quantity">−</button>
-                            <span class="text-sm font-medium text-zinc-800 w-4 text-center" x-text="cust?.quantity || 1"></span>
-                            <button @click="setQuantity(1)" class="tap w-8 h-8 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-sm leading-none" aria-label="Increase quantity">+</button>
+                            <button @click="setQuantity(-1)" class="tap w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none" aria-label="Decrease quantity">−</button>
+                            <span class="text-sm font-medium text-zinc-800 w-4 text-center" x-text="cust?.quantity || 1" aria-live="polite"></span>
+                            <button @click="setQuantity(1)" class="tap w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none" aria-label="Increase quantity">+</button>
                         </div>
                     </div>
-                    <p x-show="cust?.line_total != null && cust?.quantity > 1" class="text-[12px] text-zinc-500 -mt-3 text-right" x-text="'Total ' + money(cust?.line_total || 0, cust?.quote?.currency)"></p>
+                    <p x-show="cust?.line_total != null && cust?.quantity > 1" class="text-[14px] text-zinc-600 -mt-3 text-right" x-text="'Total ' + money(cust?.line_total || 0, cust?.quote?.currency)"></p>
 
                     <!-- Bag actions · Gold is quoted individually: "Request a quote" instead of the fixed-price path -->
                     <div class="space-y-3 lg:sticky lg:bottom-0 lg:bg-white lg:pt-3 lg:-mx-2 lg:px-2">
                         <!-- Compact summary so the decision is always in view: price · size · metal -->
-                        <p x-show="!isLuxury" class="text-[13px] text-zinc-700 text-center"><span class="font-semibold text-zinc-900" x-text="priceText"></span> · <span x-text="custIsCharm ? (cust?.size_label || 'size?') : (cust?.ring_size != null ? 'US ' + cust.ring_size : 'size?')"></span> · <span x-text="currentMaterialLabel"></span> · ×<span x-text="cust?.quantity || 1"></span></p>
+                        <p x-show="!isLuxury" class="text-[13px] text-zinc-700 text-center"><span class="font-semibold text-zinc-900" x-text="purchaseSummary"></span><span x-show="custIsCharm" x-text="' · ' + currentMaterialLabel"></span></p>
                         <button x-show="!isLuxury" @click="addToBag()" :disabled="!cust?.can_add_to_bag || quotePending" class="btn-black w-full py-4 shadow-lg disabled:hover:bg-black" :class="!sizeConfirmed && cust?.can_add_to_bag ? '!bg-zinc-700' : ''">
                             <span x-text="bagButtonText"></span>
                             <svg x-show="canAddToBag" class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                         </button>
                         <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold w-full py-4 shadow-lg">Request a quote</button>
-                        <p x-show="isLuxury" x-cloak class="text-[12px] text-zinc-500 text-center leading-snug" x-text="(custIsCharm ? 'Gold charms' : 'Gold rings') + ' are quoted individually. Send us your request and a specialist replies within one business day with a price and the next steps.'"></p>
-                        <p x-show="!isLuxury && !cust?.can_add_to_bag && bagBlockedText" class="text-[12px] text-zinc-500 text-center" x-text="bagBlockedText"></p>
-                        <p x-show="bagMessage" class="text-[12px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
-                        <p x-show="custError" class="text-[12px] text-center" style="color:#A1261D;" x-text="custError"></p>
+                        <p x-show="isLuxury" x-cloak class="text-[14px] text-zinc-600 text-center leading-snug" x-text="(custIsCharm ? 'Gold charms' : 'Gold rings') + ' are quoted individually. Send us your request: we confirm it right away, review it within one business day and aim to send your price within three business days.'"></p>
+                        <p x-show="!isLuxury && !cust?.can_add_to_bag && bagBlockedText" class="text-[14px] text-zinc-600 text-center" x-text="bagBlockedText"></p>
+                        <p x-show="bagMessage" class="text-[14px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
+                        <p x-show="custError" class="err-line justify-center text-center" role="alert" x-text="custError"></p>
                     </div>
                     <!-- Below the sticky summary: the bag so far and the other ways on -->
                     <div class="space-y-3">
@@ -1738,13 +1749,13 @@
                                 <span class="text-[12px] uppercase tracking-widest text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
                             </div>
                             <template x-for="l in bagLines" :key="l.id">
-                                <div class="flex items-center gap-2 px-3 py-2.5 text-[12px]">
+                                <div class="flex items-center gap-2 px-3 py-2.5 text-[13px]">
                                     <div class="flex-1 min-w-0 leading-tight">
                                         <span class="text-zinc-700 font-medium" x-text="l.material_label"></span>
                                         <span class="text-zinc-500"> · <span x-text="lineSize(l)"></span> · ×<span x-text="l.quantity"></span></span>
                                     </div>
                                     <span class="shrink-0 text-zinc-600" x-text="money(l.line_total, l.currency)"></span>
-                                    <button @click="removeLine(l)" class="shrink-0 w-5 h-5 flex items-center justify-center text-zinc-400 hover:text-red-500 transition text-lg leading-none" title="Remove" aria-label="Remove item">×</button>
+                                    <button @click="removeLine(l)" class="shrink-0 w-11 h-11 -my-3 -mr-2 flex items-center justify-center text-zinc-400 hover:text-red-500 transition text-lg leading-none" title="Remove" :aria-label="'Remove ' + (l.title || 'item') + ' from the bag'">×</button>
                                 </div>
                             </template>
                         </div>
@@ -1753,7 +1764,7 @@
                             View Bag
                             <span class="ml-1 px-1.5 py-0.5 bg-white text-black text-[12px] font-bold rounded-sm" x-text="bagCount"></span>
                         </button>
-                        <button @click="startNew(); navigateTo('ai-studio')" class="w-full border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition text-zinc-600">+ Start Another Design</button>
+                        <button @click="startNew(); navigateTo('ai-studio')" class="w-full min-h-[44px] border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition text-zinc-600">+ Start Another Design</button>
                     </div>
 
                     <div class="space-y-2 text-[12px] text-zinc-500 uppercase tracking-widest pb-4">
@@ -1765,26 +1776,28 @@
                 </div>
             </div>
 
-            <!-- Phone: the purchase summary stays in reach at the bottom — "$200 · US 10 · Silver · Add to Bag" -->
+            <!-- Phone: the purchase summary stays in reach at the bottom — a ring "$200.00 · US 10 · Sterling Silver", a charm
+                 "14 mm Charm · ×2 · $218.00": the size and the total for the chosen quantity (R-01, R-19) -->
             <div class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200 px-4 py-3 flex items-center justify-between gap-3" x-show="!showSizeGuide && !quoteReq.open && !previewOpen">
                 <div class="min-w-0 leading-tight">
                     <p class="text-[14px] font-semibold text-zinc-900 truncate" x-text="purchaseSummary"></p>
-                    <p class="text-[12px] text-zinc-500" x-text="isLuxury ? 'Quoted individually' : (sizeConfirmed ? 'Fixed price, any size' : 'Confirm your size to continue')"></p>
+                    <p class="text-[13px] text-zinc-500" x-text="purchaseSubline"></p>
                 </div>
-                <button x-show="!isLuxury" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
-                <button x-show="isLuxury" @click="openQuoteRequest()" class="btn-gold shrink-0 px-4 py-3 !text-[12px]">Request a quote</button>
+                <button x-show="!isLuxury" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 min-h-[44px] px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
+                <button x-show="isLuxury" @click="openQuoteRequest()" class="btn-gold shrink-0 min-h-[44px] px-4 py-3 !text-[12px]">Request a quote</button>
             </div>
 
             <!-- Size Guide Modal (P2) -->
             <div x-show="showSizeGuide" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-                 @click.self="showSizeGuide = false" @keydown.escape.window="showSizeGuide = false">
-                <div class="bg-white max-w-2xl w-full rounded-sm shadow-2xl flex flex-col max-h-[90vh]">
+                 @click.self="closeSizeGuide()" @keydown.escape.window="showSizeGuide && closeSizeGuide()">
+                <div id="size-guide" role="dialog" aria-modal="true" aria-labelledby="size-guide-title" @keydown="trapFocus($event, 'size-guide')"
+                     class="bg-white max-w-2xl w-full rounded-sm shadow-2xl flex flex-col max-h-[90vh]">
                     <div class="px-7 py-5 border-b border-zinc-100 flex items-center justify-between shrink-0">
                         <div>
-                            <h3 class="text-lg brand-font">Ring Size Guide</h3>
-                            <p class="text-[12px] text-zinc-500 mt-0.5">Choose how to measure your ring size</p>
+                            <h3 id="size-guide-title" class="text-lg brand-font">Ring Size Guide</h3>
+                            <p class="text-[13px] text-zinc-500 mt-0.5">Choose how to measure your ring size</p>
                         </div>
-                        <button @click="showSizeGuide = false" class="text-zinc-400 hover:text-black text-2xl leading-none" aria-label="Close size guide">&times;</button>
+                        <button id="size-guide-close" @click="closeSizeGuide()" class="w-11 h-11 -mr-3 flex items-center justify-center text-zinc-500 hover:text-black text-2xl leading-none" aria-label="Close size guide">&times;</button>
                     </div>
                     <div class="flex-1 overflow-y-auto">
                         <template x-for="kind in ['ring', 'finger']" :key="kind">
@@ -1809,8 +1822,9 @@
                                     <tbody>
                                         <template x-for="row in sizeGuideRows(kind)" :key="row.us">
                                             <tr class="border-b border-zinc-50 hover:bg-zinc-50 cursor-pointer transition" :class="cust?.ring_size == row.us ? 'bg-zinc-100 font-semibold' : ''" @click="pickGuideSize(row.us)">
-                                                <td class="py-2 font-mono text-zinc-700" x-text="row.m"></td>
-                                                <td class="py-2 text-zinc-700" x-text="row.us"></td>
+                                                <td class="py-1 font-mono text-zinc-700" x-text="row.m"></td>
+                                                <td class="py-1"><button type="button" @click.stop="pickGuideSize(row.us)" :aria-pressed="cust?.ring_size == row.us" :aria-label="'Choose US size ' + row.us"
+                                                        class="min-h-[38px] min-w-[44px] -ml-2 px-2 rounded text-left text-zinc-700 hover:bg-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-black" x-text="row.us"></button></td>
                                                 <td class="py-2 text-zinc-500" x-text="row.uk"></td>
                                                 <td class="py-2 text-zinc-500" x-text="row.de"></td>
                                             </tr>
@@ -1819,10 +1833,10 @@
                                 </table>
                             </div>
                         </template>
-                        <p class="text-[12px] text-zinc-500 px-7 py-4">Tip: Measure at the end of the day when fingers are slightly larger. Tap any row to select that size.</p>
+                        <p class="text-[13px] text-zinc-500 px-7 py-4">Tip: Measure at the end of the day when fingers are slightly larger. Tap any row, or a US size, to select that size.</p>
                     </div>
                     <div class="px-7 py-4 border-t border-zinc-100 shrink-0">
-                        <button @click="showSizeGuide = false" class="w-full bg-black text-white py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-800 transition">Close Guide</button>
+                        <button @click="closeSizeGuide()" class="w-full min-h-[44px] bg-black text-white py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-800 transition">Close Guide</button>
                     </div>
                 </div>
             </div>

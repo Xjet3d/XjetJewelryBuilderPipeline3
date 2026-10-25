@@ -197,13 +197,14 @@ function p3App() {
     aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
     _returnFocus: null,                // element to focus again when a modal closes
+    _sizeGuideReturn: null,            // the same for the size guide
 
     // ── rings and charms: offered only while the catalog lists them (charms visible to this browser) ──
     newProduct: 'ring',                // what a new design will be (Design screen; Ring by default; kept through sign-in)
     galleryProduct: '',                // Inspiration Gallery filter: '' all · 'ring' · 'charm'
 
     // ── customize ────────────────────────────────────────────────────
-    cust: null, custError: '', mediaTab: 'movie', quotePending: false, bagMessage: '',
+    cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '',
     lastMaterialByGroup: { fashion: 'silver', luxury: null },
     groupOpen: { fashion: true, luxury: false },
     showSizeGuide: false,
@@ -1993,8 +1994,9 @@ function p3App() {
     showCustomization(c, { history = 'push' } = {}) {
       const same = this.cust?.id && this.cust.id === c.id;
       this.cust = c;
-      // A ring opens on a suggested size until the customer confirms it; a charm has no suggestion — its size was chosen
-      if (!same) this.sizeConfirmed = this.isCharm(c) && c.charm_size != null;
+      // A ring opens on a suggested size until the customer confirms it — once confirmed, the server remembers it for
+      // the design (R-21); a charm has no suggestion — its size was chosen
+      if (!same) this.sizeConfirmed = this.isCharm(c) ? c.charm_size != null : !!c.size_confirmed;
       this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.groupOfMaterial(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
@@ -2041,6 +2043,13 @@ function p3App() {
     },
 
     get movieOff() { return !!this.cust && this.cust.movie_available === false; },   // the product's movie switch is OFF: the still image only
+    // Reduced motion (the visitor's system setting): the Customize movie waits for Play instead of starting by itself
+    get reducedMotion() { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } },
+    toggleMovie() {
+      const v = this.$refs.custMovie;
+      if (!v) return;
+      if (v.paused) v.play().catch(() => {}); else v.pause();
+    },
     get movieStatus() { return this.cust?.movie?.status || null; },
     get movieBusy() { return this.movieStatus === 'queued' || this.movieStatus === 'running'; },
     get movieFailed() { return this.movieStatus === 'failed' || this.movieStatus === 'interrupted'; },
@@ -2111,7 +2120,7 @@ function p3App() {
     get isLuxury() { return this.currentGroup === 'luxury'; },
     get priceAvailable() { return !this.isLuxury && this.cust?.quote?.pricing_status === 'available'; },
     get priceText() {
-      if (this.isLuxury) return 'Price unavailable';
+      if (this.isLuxury) return 'Price on request';                                   // gold: quoted individually (R-22)
       if (this.custIsCharm && this.cust?.charm_size == null) return 'Choose a size';     // a charm's price depends on its size
       const q = this.cust?.quote;
       if (!q) return '—';
@@ -2155,10 +2164,24 @@ function p3App() {
       const s = this.suggestedCharmSize(), o = (this.cust?.charm_sizes || []).find(x => x.size == s);
       return o ? o.label.replace(' · Recommended', '') : (s != null ? s + ' mm' : '');
     },
-    // Sticky purchase summary (Customize): "$200 · US 10 · Silver"
+    // The price the purchase summary shows: the total for the quantity chosen ("×2 · $218.00"), never the unit price alone
+    get purchaseTotalText() {
+      const q = this.cust?.quote;
+      if (this.isLuxury || !q || q.pricing_status !== 'available' || (this.custIsCharm && this.cust?.charm_size == null)) return this.priceText;
+      const n = this.cust?.quantity || 1;
+      return (n > 1 ? '×' + n + ' · ' : '') + this.money(this.cust?.line_total ?? q.unit_price * n, q.currency);
+    },
+    // Sticky purchase summary (Customize): a ring "$200.00 · US 10 · Sterling Silver"; a charm "14 mm Charm · $109.00"
     get purchaseSummary() {
-      const size = this.custIsCharm ? (this.cust?.size_label || 'Size?') : (this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Size?');
-      return [this.priceText, size, this.currentMaterialLabel || ''].filter(Boolean).join(' · ');
+      if (this.custIsCharm) return (this.cust?.size_label ? this.cust.size_label + ' Charm' : 'Charm') + ' · ' + this.purchaseTotalText;
+      const size = this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Choose a size';
+      return [this.purchaseTotalText, size, this.currentMaterialLabel || ''].filter(Boolean).join(' · ');
+    },
+    // The summary's second line: what the price means — never the price again
+    get purchaseSubline() {
+      if (this.isLuxury) return 'Quoted individually';
+      if (!this.sizeConfirmed) return 'Confirm your size to continue';
+      return this.custIsCharm ? (this.currentMaterialLabel || '') : 'Fixed price, any size';
     },
     sizeGuideRows(kind) {
       const mm = { 4: '14.9', 4.5: '15.3', 5: '15.7', 5.5: '16.1', 6: '16.5', 6.5: '16.9', 7: '17.3', 7.5: '17.7', 8: '18.1',
@@ -2171,7 +2194,17 @@ function p3App() {
                    8.5: '18.5', 9: '19', 9.5: '19.5', 10: '19.75', 10.5: '20.25', 11: '20.5', 11.5: '21', 12: '21.5' };
       return (this.catalog?.ring_sizes.values || []).map(us => ({ us, m: (kind === 'ring' ? mm : circ)[us], uk: uk[us], de: de[us] }));
     },
-    pickGuideSize(us) { this.setSize(us); this.showSizeGuide = false; },
+    pickGuideSize(us) { this.setSize(us); this.closeSizeGuide(); },
+    // The size guide is a dialog (R-26): focus moves into it, Tab stays inside, closing returns focus to its button
+    openSizeGuide() {
+      this._sizeGuideReturn = document.activeElement; this.showSizeGuide = true;
+      this.$nextTick(() => document.getElementById('size-guide-close')?.focus());
+    },
+    closeSizeGuide() {
+      this.showSizeGuide = false;
+      const el = this._sizeGuideReturn; this._sizeGuideReturn = null;
+      if (el?.isConnected) this.$nextTick(() => el.focus());
+    },
 
     async addToBag() {
       if (!this.cust?.can_add_to_bag) return;

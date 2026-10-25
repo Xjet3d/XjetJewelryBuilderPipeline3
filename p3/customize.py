@@ -64,11 +64,15 @@ class CustomizeService:
                           (Who.AccountId, DesignId, CandidateId))
         if Existing is None:
             T = Now()
-            # A ring opens on US 10; a charm opens without a size (its price depends on the size the customer picks)
+            # A ring opens on the size the customer already chose for this design (on another of its options: R-21),
+            # otherwise on US 10; a charm opens without a size (its price depends on the size the customer picks)
+            Known = None if Charm else Db.One("SELECT ring_size FROM customizations WHERE owner_account_id = ? AND design_id = ? "
+                                              "AND size_confirmed_at IS NOT NULL AND ring_size IS NOT NULL "
+                                              "ORDER BY size_confirmed_at DESC LIMIT 1", (Who.AccountId, DesignId))
             Db.Execute("INSERT OR IGNORE INTO customizations (id, owner_account_id, design_id, candidate_id, material_id, "
-                       "ring_size, quantity, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                       "ring_size, quantity, created_at, updated_at, size_confirmed_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                        (NewId("cus"), Who.AccountId, DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId,
-                        None if Charm else DefaultRingSize, 1, T, T))
+                        None if Charm else (Known["ring_size"] if Known else DefaultRingSize), 1, T, T, T if Known else None))
         if Products.MovieAvailable(self.Ctx, D.get("product_type") or Products.Ring):
             self.Movies.Ensure(Who, CandidateId)                # the product's movie switch is ON: start or reuse its movie
         Row = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
@@ -109,7 +113,9 @@ class CustomizeService:
                 raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
             Fields["quantity"] = Qty
         if Fields:
-            self.Ctx.Db.Update("customizations", CustomizationId, **Fields)
+            # A ring size the customer picks, the suggested one included, is their confirmed size (R-21)
+            Confirmed = {"size_confirmed_at": Now() if Fields["ring_size"] is not None else None} if "ring_size" in Fields else {}
+            self.Ctx.Db.Update("customizations", CustomizationId, **Fields, **Confirmed)
             Priced = (Products.Charm, Fields.get("charm_size", Row["charm_size"])) if Charm else ()
             Sessions.Record(self.Ctx, Who.AccountId, "customization_changed", Row["design_id"],
                             customization_id=Row["id"], **Fields, **({"product_type": Products.Charm} if Charm else {}),
@@ -153,6 +159,7 @@ class CustomizeService:
             "id": Row["id"], "design_id": Row["design_id"], "candidate_id": Row["candidate_id"],
             "image_url": self.Ctx.AssetUrl(Cand["asset_path"]),
             "material_id": Row["material_id"], "ring_size": Row["ring_size"], "quantity": Row["quantity"],
+            "size_confirmed": Row.get("charm_size") is not None if Product == Products.Charm else Row.get("size_confirmed_at") is not None,
             "quote": Quote.ToJson(),
             "line_total": round(Quote.unit_price * Row["quantity"], 2) if Quote.IsAvailable else None,
             "can_add_to_bag": CanAdd, "add_to_bag_blocked_reason": Reason,
