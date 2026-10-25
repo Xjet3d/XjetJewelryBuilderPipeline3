@@ -224,6 +224,19 @@ class CustomizeService:
                         unit_price=Quote.unit_price, currency=Quote.currency, pricing_version=Quote.pricing_version)
         return self.Bag(Who, Visible)
 
+    def SetBagQuantity(self, Who: Principal, LineId: str, Quantity, Visible: tuple | None = None) -> dict:
+        """A bag line's quantity, changed in the bag (R-20): 1 to MaxQuantity at the line's own price; its total and the
+        bag's follow."""
+        if not isinstance(Quantity, int) or isinstance(Quantity, bool) or not 1 <= Quantity <= MaxQuantity:
+            raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
+        Line = self.Ctx.Db.One("SELECT design_id, quantity FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId))
+        if Line is None:
+            raise HttpError(404, "bag_line_not_found", "Bag line not found.")
+        if Line["quantity"] != Quantity:
+            self.Ctx.Db.Execute("UPDATE bag_lines SET quantity = ? WHERE id = ? AND owner_account_id = ?", (Quantity, LineId, Who.AccountId))
+            Sessions.Record(self.Ctx, Who.AccountId, "bag_quantity_changed", Line["design_id"], line_id=LineId, quantity=Quantity)
+        return self.Bag(Who, Visible)
+
     def RemoveFromBag(self, Who: Principal, LineId: str, Visible: tuple | None = None) -> dict:
         Line = self.Ctx.Db.One("SELECT design_id FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId))
         if Line:

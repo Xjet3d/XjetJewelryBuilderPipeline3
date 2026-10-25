@@ -29,6 +29,7 @@ const STEPS = {
   movie: ['360° movie', 'bg-purple-100 text-purple-700'],
   bag_added: ['Added to Bag', 'bg-emerald-100 text-emerald-800'],
   bag_removed: ['Removed from Bag', 'bg-zinc-200 text-zinc-600'],
+  bag_quantity_changed: ['Changed quantity in Bag', 'bg-zinc-100 text-zinc-600'],
   bag_viewed: ['Viewed Bag', 'bg-zinc-100 text-zinc-600'],
   checkout_clicked: ['Checkout Clicked', 'bg-emerald-600 text-white'],
   design_opened: ['Reopened', 'bg-zinc-100 text-zinc-600'],

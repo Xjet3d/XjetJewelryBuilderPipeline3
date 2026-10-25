@@ -1901,24 +1901,31 @@
                 </div>
                 <div class="space-y-4 mb-8">
                     <template x-for="l in bagLines" :key="l.id">
-                        <div class="border border-zinc-100 rounded-sm p-5 sm:p-6 flex gap-4 sm:gap-5">
-                            <div class="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100">
+                        <div class="border border-zinc-100 rounded-sm p-4 sm:p-6 flex gap-4 sm:gap-5">
+                            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100">
                                 <img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }">
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-base font-medium text-zinc-900 truncate" x-text="l.title"></p>
-                                <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
-                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span> · Qty <span x-text="l.quantity"></span></p>
+                                <p class="text-[13px] text-zinc-500 mt-0.5 whitespace-nowrap truncate"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
+                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
                                 <div class="flex flex-wrap gap-1.5 mt-2">
                                     <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
                                     <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
                                     <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;" x-text="l.unavailable ? 'Currently unavailable for customization or ordering' : 'Cannot be ordered yet'">Cannot be ordered yet</span>
                                 </div>
-                                <button @click="removeLine(l)" class="tap-lg mt-3 text-[12px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
-                            </div>
-                            <div class="text-right shrink-0">
-                                <p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p>
-                                <p class="text-[12px] text-zinc-500 mt-1" x-text="money(l.unit_price, l.currency) + ' each'"></p>
+                                <div class="mt-3 flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-2" role="group" :aria-label="'Quantity of ' + l.title">
+                                        <button type="button" @click="setLineQuantity(l, -1)" :disabled="l.quantity <= 1 || !!bagBusy" class="w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none disabled:opacity-40" aria-label="Decrease quantity">−</button>
+                                        <span class="text-sm font-medium text-zinc-800 w-5 text-center" x-text="l.quantity" aria-live="polite"></span>
+                                        <button type="button" @click="setLineQuantity(l, 1)" :disabled="l.quantity >= 10 || !!bagBusy" class="w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none disabled:opacity-40" aria-label="Increase quantity">+</button>
+                                    </div>
+                                    <div class="text-right whitespace-nowrap">
+                                        <p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p>
+                                        <p class="text-[13px] text-zinc-500" x-text="money(l.unit_price, l.currency) + ' each'"></p>
+                                    </div>
+                                </div>
+                                <button @click="removeLine(l)" class="mt-1 min-h-[44px] text-[13px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
                             </div>
                         </div>
                     </template>
@@ -1928,14 +1935,14 @@
                     <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
                         <div class="flex justify-between font-semibold text-base pt-3 border-t border-zinc-100 brand-font"><span>Subtotal</span><span x-text="money(total, cur)"></span></div>
                     </template>
-                    <p class="text-[12px] text-zinc-500 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
+                    <p class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
                 </div>
                 <div x-show="bagLines.length > 0" class="flex flex-col sm:flex-row gap-3">
-                    <button @click="continueFromBag()" class="flex-1 border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
+                    <button @click="continueFromBag()" class="flex-1 min-h-[44px] border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
                     <button @click="startCheckout()" :disabled="!bag?.checkout_available || co.busy" class="flex-1 btn-gold py-3.5 stream-glow" x-text="co.busy ? 'Opening checkout…' : 'Checkout'"></button>
                 </div>
                 <p x-show="bag && !bag.checkout_available && bagLines.length" class="mt-3 text-[13px] text-center" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
-                <p x-show="co.error && view === 'checkout'" class="mt-3 text-[13px] text-center" style="color:#A1261D;" x-text="co.error"></p>
+                <p x-show="co.error && view === 'checkout'" class="err-line justify-center text-center mt-3" role="alert" x-text="co.error"></p>
             </div>
         </main>
     </template>
@@ -1945,15 +1952,15 @@
          totals and validation; known profile details pre-fill but never overwrite what was typed.
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'order'">
-        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white" @input="_saveCoDraft()" @change="_saveCoDraft()">
             <div class="max-w-5xl mx-auto px-6 pt-8 pb-36 lg:grid lg:grid-cols-[1fr_360px] lg:gap-12 lg:items-start">
                 <div class="min-w-0">
-                    <ol class="flex items-center gap-2 sm:gap-3 text-[12px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
+                    <ol class="flex items-center gap-2 sm:gap-3 text-[13px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
                         <template x-for="(s, i) in checkoutSteps" :key="s[0]">
                             <li class="flex items-center gap-2 sm:gap-3">
                                 <button type="button" @click="coGoTo(s[0])" :disabled="i > coStepIndex" class="flex items-center gap-2 disabled:cursor-default"
                                         :class="i === coStepIndex ? 'text-zinc-900 font-semibold' : i < coStepIndex ? 'text-zinc-700' : 'text-zinc-400'" :aria-current="i === coStepIndex ? 'step' : null">
-                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-semibold"
+                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[13px] font-semibold"
                                           :class="i < coStepIndex ? 'bg-zinc-900 text-white' : i === coStepIndex ? 'text-white' : 'bg-zinc-100 text-zinc-500'"
                                           :style="i === coStepIndex ? 'background:#8A6420' : ''" x-text="i < coStepIndex ? '✓' : i + 1"></span>
                                     <span class="hidden sm:inline" x-text="s[1]"></span>
@@ -1965,12 +1972,12 @@
 
                     <!-- Step 1 · details -->
                     <section x-show="co.step === 'details'" class="space-y-5" aria-labelledby="co-h-details">
-                        <div><h2 id="co-h-details" class="text-2xl brand-font">Your details</h2><p class="text-[13px] text-zinc-500 mt-1">We use these only for this order and to reach you about it.</p></div>
+                        <div><h2 id="co-h-details" class="text-2xl brand-font">Your details</h2><p class="text-[13px] text-zinc-500 mt-1">We use these only for this order and to reach you about it. All four are required.</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div><label class="flbl" for="co-first">First name</label><input id="co-first" class="fld" :class="coProblem('first_name') ? 'bad' : ''" x-model="co.customer.first_name" autocomplete="given-name" @keydown.enter="coNext()"><p class="ferr" x-show="coProblem('first_name')" x-text="coProblem('first_name')"></p></div>
-                            <div><label class="flbl" for="co-last">Last name</label><input id="co-last" class="fld" :class="coProblem('last_name') ? 'bad' : ''" x-model="co.customer.last_name" autocomplete="family-name" @keydown.enter="coNext()"><p class="ferr" x-show="coProblem('last_name')" x-text="coProblem('last_name')"></p></div>
-                            <div><label class="flbl" for="co-email">Email</label><input id="co-email" type="email" class="fld" :class="coProblem('email') ? 'bad' : ''" x-model="co.customer.email" autocomplete="email" inputmode="email" @keydown.enter="coNext()"><p class="ferr" x-show="coProblem('email')" x-text="coProblem('email')"></p></div>
-                            <div><label class="flbl" for="co-phone">Phone</label><input id="co-phone" type="tel" class="fld" :class="coProblem('phone') ? 'bad' : ''" x-model="co.customer.phone" autocomplete="tel" inputmode="tel" placeholder="+1 555 000 0000" @keydown.enter="coNext()"><p class="ferr" x-show="coProblem('phone')" x-text="coProblem('phone')"></p></div>
+                            <div><label class="flbl" for="co-first">First name</label><input id="co-first" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('first_name') ? 'true' : null" :aria-describedby="coProblem('first_name') ? 'co-first-err' : null" :class="coProblem('first_name') ? 'bad' : ''" x-model="co.customer.first_name" autocomplete="given-name" @keydown.enter="coNext()"><p id="co-first-err" class="ferr" x-show="coProblem('first_name')" x-text="coProblem('first_name')"></p></div>
+                            <div><label class="flbl" for="co-last">Last name</label><input id="co-last" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('last_name') ? 'true' : null" :aria-describedby="coProblem('last_name') ? 'co-last-err' : null" :class="coProblem('last_name') ? 'bad' : ''" x-model="co.customer.last_name" autocomplete="family-name" @keydown.enter="coNext()"><p id="co-last-err" class="ferr" x-show="coProblem('last_name')" x-text="coProblem('last_name')"></p></div>
+                            <div><label class="flbl" for="co-email">Email</label><input id="co-email" type="email" class="fld" aria-required="true" :aria-invalid="coProblem('email') ? 'true' : null" :aria-describedby="coProblem('email') ? 'co-email-err' : null" :class="coProblem('email') ? 'bad' : ''" x-model="co.customer.email" autocomplete="email" inputmode="email" @keydown.enter="coNext()"><p id="co-email-err" class="ferr" x-show="coProblem('email')" x-text="coProblem('email')"></p></div>
+                            <div><label class="flbl" for="co-phone">Phone <span class="normal-case tracking-normal font-normal text-zinc-500">(with the country code)</span></label><input id="co-phone" type="tel" class="fld" aria-required="true" :aria-invalid="coProblem('phone') ? 'true' : null" :aria-describedby="coProblem('phone') ? 'co-phone-err' : null" :class="coProblem('phone') ? 'bad' : ''" x-model="co.customer.phone" autocomplete="tel" inputmode="tel" placeholder="+1 555 000 0000" @keydown.enter="coNext()"><p id="co-phone-err" class="ferr" x-show="coProblem('phone')" x-text="coProblem('phone')"></p></div>
                         </div>
                     </section>
 
@@ -1978,16 +1985,16 @@
                     <section x-show="co.step === 'shipping'" class="space-y-6" aria-labelledby="co-h-ship">
                         <div><h2 id="co-h-ship" class="text-2xl brand-font">Shipping address</h2><p class="text-[13px] text-zinc-500 mt-1">We ship worldwide. Import duties or VAT, where charged, are paid by the recipient.</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div class="sm:col-span-2"><label class="flbl" for="co-recipient">Recipient</label><input id="co-recipient" class="fld" :class="coProblem('recipient') ? 'bad' : ''" x-model="co.address.recipient" autocomplete="shipping name"><p class="ferr" x-show="coProblem('recipient')" x-text="coProblem('recipient')"></p></div>
-                            <div class="sm:col-span-2"><label class="flbl" for="co-line1">Street address</label><input id="co-line1" class="fld" :class="coProblem('line1') ? 'bad' : ''" x-model="co.address.line1" autocomplete="shipping address-line1"><p class="ferr" x-show="coProblem('line1')" x-text="coProblem('line1')"></p></div>
-                            <div class="sm:col-span-2"><label class="flbl" for="co-line2">Apartment, suite, floor <span class="normal-case tracking-normal font-normal text-zinc-400">(optional)</span></label><input id="co-line2" class="fld" x-model="co.address.line2" autocomplete="shipping address-line2"></div>
-                            <div><label class="flbl" for="co-city">City</label><input id="co-city" class="fld" :class="coProblem('city') ? 'bad' : ''" x-model="co.address.city" autocomplete="shipping address-level2"><p class="ferr" x-show="coProblem('city')" x-text="coProblem('city')"></p></div>
-                            <div><label class="flbl" for="co-region"><span x-text="coRegionLabel"></span> <span x-show="!coRegionRequired" class="normal-case tracking-normal font-normal text-zinc-400">(optional)</span></label><input id="co-region" class="fld" :class="coProblem('region') ? 'bad' : ''" x-model="co.address.region" autocomplete="shipping address-level1"><p class="ferr" x-show="coProblem('region')" x-text="coProblem('region')"></p></div>
-                            <div x-show="!coNoPostal"><label class="flbl" for="co-postal" x-text="coPostalLabel"></label><input id="co-postal" class="fld" :class="coProblem('postal_code') ? 'bad' : ''" x-model="co.address.postal_code" autocomplete="shipping postal-code"><p class="ferr" x-show="coProblem('postal_code')" x-text="coProblem('postal_code')"></p></div>
+                            <div class="sm:col-span-2"><label class="flbl" for="co-recipient">Recipient</label><input id="co-recipient" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('recipient') ? 'true' : null" :aria-describedby="coProblem('recipient') ? 'co-recipient-err' : null" :class="coProblem('recipient') ? 'bad' : ''" x-model="co.address.recipient" @input="co.recipientEdited = true" autocomplete="shipping name"><p id="co-recipient-err" class="ferr" x-show="coProblem('recipient')" x-text="coProblem('recipient')"></p></div>
+                            <div class="sm:col-span-2"><label class="flbl" for="co-line1">Street address</label><input id="co-line1" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('line1') ? 'true' : null" :aria-describedby="coProblem('line1') ? 'co-line1-err' : null" :class="coProblem('line1') ? 'bad' : ''" x-model="co.address.line1" autocomplete="shipping address-line1"><p id="co-line1-err" class="ferr" x-show="coProblem('line1')" x-text="coProblem('line1')"></p></div>
+                            <div class="sm:col-span-2"><label class="flbl" for="co-line2">Apartment, suite, floor <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label><input id="co-line2" class="fld" dir="auto" x-model="co.address.line2" autocomplete="shipping address-line2"></div>
+                            <div><label class="flbl" for="co-city">City</label><input id="co-city" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('city') ? 'true' : null" :aria-describedby="coProblem('city') ? 'co-city-err' : null" :class="coProblem('city') ? 'bad' : ''" x-model="co.address.city" autocomplete="shipping address-level2"><p id="co-city-err" class="ferr" x-show="coProblem('city')" x-text="coProblem('city')"></p></div>
+                            <div><label class="flbl" for="co-region"><span x-text="coRegionLabel">State / province / region</span> <span x-show="!coRegionRequired" class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label><input id="co-region" class="fld" dir="auto" :aria-label="coRegionLabel + (coRegionRequired ? '' : ' (optional)')" :aria-required="coRegionRequired ? 'true' : null" :aria-invalid="coProblem('region') ? 'true' : null" :aria-describedby="coProblem('region') ? 'co-region-err' : null" :class="coProblem('region') ? 'bad' : ''" x-model="co.address.region" autocomplete="shipping address-level1"><p id="co-region-err" class="ferr" x-show="coProblem('region')" x-text="coProblem('region')"></p></div>
+                            <div x-show="!coNoPostal"><label class="flbl" for="co-postal" x-text="coPostalLabel">Postal code</label><input id="co-postal" class="fld" :aria-required="coNoPostal ? null : 'true'" :aria-invalid="coProblem('postal_code') ? 'true' : null" :aria-describedby="coProblem('postal_code') ? 'co-postal-err' : null" :class="coProblem('postal_code') ? 'bad' : ''" x-model="co.address.postal_code" autocomplete="shipping postal-code"><p id="co-postal-err" class="ferr" x-show="coProblem('postal_code')" x-text="coProblem('postal_code')"></p></div>
                             <div><label class="flbl" for="co-country">Country</label>
-                                <select id="co-country" class="fld" :class="coProblem('country') ? 'bad' : ''" x-model="co.address.country" autocomplete="shipping country">
+                                <select id="co-country" class="fld" aria-required="true" :aria-invalid="coProblem('country') ? 'true' : null" :aria-describedby="coProblem('country') ? 'co-country-err' : null" :class="coProblem('country') ? 'bad' : ''" x-model="co.address.country" autocomplete="shipping country">
                                     <template x-for="c in (checkout?.countries || [])" :key="c.code"><option :value="c.code" x-text="c.name"></option></template>
-                                </select><p class="ferr" x-show="coProblem('country')" x-text="coProblem('country')"></p></div>
+                                </select><p id="co-country-err" class="ferr" x-show="coProblem('country')" x-text="coProblem('country')"></p></div>
                         </div>
                         <!-- A validation service suggested a correction: the customer decides; nothing is replaced silently -->
                         <div x-show="co.addrCheck?.status === 'corrected' && co.addrCheck?.suggestion" class="rounded-xl p-5" style="background:#FBF7EF; border:1px solid #E8DCC4;">
@@ -2004,7 +2011,7 @@
                                 <template x-for="s in (checkout?.shipping_options || [])" :key="s.id">
                                     <button type="button" @click="setShipping(s.id)" class="text-left border rounded-lg px-4 py-3 transition" :class="co.shipping_method === s.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'" role="radio" :aria-checked="co.shipping_method === s.id">
                                         <div class="flex items-baseline justify-between gap-3"><span class="text-sm font-semibold text-zinc-900" x-text="s.label"></span><span class="text-sm text-zinc-800" x-text="s.price ? money(s.price) : 'Free'"></span></div>
-                                        <p class="text-[12px] text-zinc-500 mt-0.5" x-text="s.eta + ' · ' + s.detail.split(' · ').slice(1).join(' · ')"></p>
+                                        <p class="text-[14px] text-zinc-600 mt-0.5" x-text="s.eta + ' · ' + s.detail.split(' · ').slice(1).join(' · ')"></p>
                                     </button>
                                 </template>
                             </div>
@@ -2015,9 +2022,9 @@
                     <section x-show="co.step === 'review'" class="space-y-6" aria-labelledby="co-h-review">
                         <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; place order</h2><p class="text-[13px] text-zinc-500 mt-1" x-text="'Check everything, then place your order. ' + bagReserved + ' and our team confirms the design for production before anything is made.'"></p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
+                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black" aria-label="Edit your details">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.customer.first_name + ' ' + co.customer.last_name"></p><p class="text-zinc-600" x-text="co.customer.email"></p><p class="text-zinc-600" x-text="co.customer.phone"></p></div>
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Ships to</p><button @click="coGoTo('shipping')" class="text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black">Edit</button></div>
+                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Ships to</p><button @click="coGoTo('shipping')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black" aria-label="Edit the shipping address">Edit</button></div>
                                 <p class="text-zinc-900" x-text="co.address.recipient"></p>
                                 <p class="text-zinc-600" x-text="[co.address.line1, co.address.line2].filter(Boolean).join(', ')"></p>
                                 <p class="text-zinc-600" x-text="[co.address.city, co.address.region, co.address.postal_code].filter(Boolean).join(' ') + ' · ' + (coCountry?.name || co.address.country)"></p>
@@ -2030,8 +2037,12 @@
                                 <button x-show="!coQuote?.promo" @click="applyPromo()" :disabled="co.busy || !co.promo_input.trim()" class="btn-black px-5 shrink-0">Apply</button>
                                 <button x-show="coQuote?.promo" @click="removePromo()" class="btn-outline px-5 shrink-0">Remove</button>
                             </div>
-                            <p x-show="coQuote?.promo" class="text-[12px] mt-1.5" style="color:#146C43;" x-text="coQuote?.promo ? coQuote.promo.code + ' applied — ' + coQuote.promo.label + ' (−' + money(coQuote.discount, coQuote.currency) + ')' : ''"></p>
-                            <p x-show="coQuote?.promo_error" class="ferr" x-text="coQuote?.promo_error?.message"></p>
+                            <p x-show="coQuote?.promo" class="text-[14px] mt-1.5" style="color:#146C43;" x-text="coQuote?.promo ? coQuote.promo.code + ' applied — ' + coQuote.promo.label + ' (−' + money(coQuote.discount, coQuote.currency) + ')' : ''"></p>
+                            <p x-show="coQuote?.promo_error" class="ferr" role="alert" x-text="coQuote?.promo_error?.message"></p>
+                        </div>
+                        <div>
+                            <label class="flbl" for="co-note">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
+                            <textarea id="co-note" class="fld" dir="auto" rows="3" maxlength="1000" x-model="co.note" placeholder="A gift note, a date you need it by…"></textarea>
                         </div>
                         <div class="rounded-xl p-5" :style="checkout?.payment?.available ? 'border:1px solid #E4E4E7;' : 'background:#FBF7EF; border:1px solid #E8DCC4;'">
                             <p class="flbl">Payment</p>
@@ -2039,19 +2050,20 @@
                                 <div class="text-[13px] text-zinc-700 leading-relaxed">
                                     <p class="font-semibold text-zinc-900 mb-1">Payment is arranged after you place the order</p>
                                     <p x-text="'Online payment is not available yet. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + ' and we contact you to arrange payment before production starts.'"></p>
-                                    <p class="text-[12px] text-zinc-500 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
+                                    <p class="text-[14px] text-zinc-600 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
                                 </div>
                             </template>
                             <template x-if="checkout?.payment?.available"><p class="text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
                         </div>
-                        <label class="flex items-start gap-3 text-[13px] text-zinc-700 cursor-pointer" :class="coProblem('terms_accepted') ? 'text-red-700' : ''">
-                            <input type="checkbox" x-model="co.terms" class="mt-0.5 w-4 h-4 shrink-0" style="accent-color:#8A561B;">
+                        <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer" :class="coProblem('terms_accepted') ? 'text-red-700' : ''">
+                            <input id="co-terms" type="checkbox" x-model="co.terms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;"
+                                   aria-required="true" :aria-invalid="coProblem('terms_accepted') ? 'true' : null" :aria-describedby="coProblem('terms_accepted') ? 'co-terms-err' : null">
                             <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> <span x-text="'and understand that each ' + bagKind + ' is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.'"></span></span>
                         </label>
-                        <p class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
-                        <p class="text-[12px] text-zinc-500">Questions before you order? <a :href="mailto('Question before ordering' + (coQuote?.lines?.[0]?.ring_id ? ' — ' + coQuote.lines[0].ring_id : ''))" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
+                        <p id="co-terms-err" class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
+                        <p class="text-[13px] text-zinc-500">Questions before you order? <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
                     </section>
-                    <p x-show="co.error" class="mt-4 text-[13px]" style="color:#A1261D;" role="alert" x-text="co.error"></p>
+                    <p x-show="co.error" class="err-line mt-4" role="alert" x-text="co.error"></p>
                 </div>
 
                 <aside class="mt-10 lg:mt-0 lg:sticky lg:top-6 border border-zinc-100 rounded-xl p-5 bg-zinc-50/50" aria-label="Order summary">
@@ -2060,7 +2072,7 @@
                         <template x-for="l in (coQuote?.lines || [])" :key="l.bag_line_id">
                             <li class="py-3 flex gap-3">
                                 <div class="w-14 h-14 bg-white rounded overflow-hidden shrink-0 border border-zinc-100 flex items-center justify-center"><img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }"></div>
-                                <div class="flex-1 min-w-0 text-[12px]">
+                                <div class="flex-1 min-w-0 text-[13px]">
                                     <p class="text-[13px] font-medium text-zinc-900 truncate" x-text="l.title"></p>
                                     <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
                                     <p class="text-zinc-500"><span x-text="l.quantity"></span> × <span x-text="money(l.unit_price, l.currency)"></span></p>
@@ -2075,7 +2087,7 @@
                         <div x-show="coQuote?.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (coQuote?.promo?.code || '')"></span><span x-text="'−' + money(coQuote?.discount || 0, coQuote?.currency)"></span></div>
                         <div class="flex justify-between"><span class="text-zinc-500" x-text="coShipping?.label || 'Delivery'"></span><span x-text="coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'Free'"></span></div>
                         <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(coQuote?.total || 0, coQuote?.currency)"></span></div>
-                        <p class="text-[12px] text-zinc-500 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <p class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
                     </div>
                 </aside>
             </div>
@@ -2769,7 +2781,7 @@
              @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title" data-clarity-mask="true">
             <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-7 fade-in max-h-[92vh] overflow-y-auto">
                 <div class="flex items-start justify-between gap-4 mb-4">
-                    <div><p class="text-[12px] uppercase tracking-[0.25em] text-zinc-400 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
+                    <div><p class="text-[13px] uppercase tracking-[0.25em] text-zinc-500 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
                     <button @click="closeQuoteRequest()" class="tap-lg p-1 text-[#6F6F6F] hover:text-[#555]" aria-label="Close">✕</button>
                 </div>
                 <template x-if="!quoteReq.done">
@@ -2779,28 +2791,28 @@
                             <div class="text-[13px] leading-snug"><p class="font-medium text-zinc-900" x-text="design?.title"></p><p class="text-zinc-600"><span x-text="currentMaterialLabel"></span> · <span x-text="custIsCharm ? (cust?.size_label || 'size to be confirmed') : (cust?.ring_size != null ? 'US ' + cust.ring_size : 'size to be confirmed')"></span></p></div>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><label class="flbl" for="qr-first">First name</label><input id="qr-first" class="fld" :class="quoteReq.problems.first_name ? 'bad' : ''" x-model="quoteReq.customer.first_name" autocomplete="given-name"><p class="ferr" x-show="quoteReq.problems.first_name" x-text="quoteReq.problems.first_name"></p></div>
-                            <div><label class="flbl" for="qr-last">Last name</label><input id="qr-last" class="fld" :class="quoteReq.problems.last_name ? 'bad' : ''" x-model="quoteReq.customer.last_name" autocomplete="family-name"><p class="ferr" x-show="quoteReq.problems.last_name" x-text="quoteReq.problems.last_name"></p></div>
-                            <div><label class="flbl" for="qr-email">Email</label><input id="qr-email" type="email" class="fld" :class="quoteReq.problems.email ? 'bad' : ''" x-model="quoteReq.customer.email" autocomplete="email"><p class="ferr" x-show="quoteReq.problems.email" x-text="quoteReq.problems.email"></p></div>
-                            <div><label class="flbl" for="qr-phone">Phone</label><input id="qr-phone" type="tel" class="fld" :class="quoteReq.problems.phone ? 'bad' : ''" x-model="quoteReq.customer.phone" autocomplete="tel" placeholder="+1 555 000 0000"><p class="ferr" x-show="quoteReq.problems.phone" x-text="quoteReq.problems.phone"></p></div>
+                            <div><label class="flbl" for="qr-first">First name</label><input id="qr-first" class="fld" dir="auto" :aria-invalid="quoteReq.problems.first_name ? 'true' : null" :aria-describedby="quoteReq.problems.first_name ? 'qr-first-err' : null" :class="quoteReq.problems.first_name ? 'bad' : ''" x-model="quoteReq.customer.first_name" autocomplete="given-name"><p id="qr-first-err" class="ferr" x-show="quoteReq.problems.first_name" x-text="quoteReq.problems.first_name"></p></div>
+                            <div><label class="flbl" for="qr-last">Last name</label><input id="qr-last" class="fld" dir="auto" :aria-invalid="quoteReq.problems.last_name ? 'true' : null" :aria-describedby="quoteReq.problems.last_name ? 'qr-last-err' : null" :class="quoteReq.problems.last_name ? 'bad' : ''" x-model="quoteReq.customer.last_name" autocomplete="family-name"><p id="qr-last-err" class="ferr" x-show="quoteReq.problems.last_name" x-text="quoteReq.problems.last_name"></p></div>
+                            <div><label class="flbl" for="qr-email">Email</label><input id="qr-email" type="email" class="fld" :aria-invalid="quoteReq.problems.email ? 'true' : null" :aria-describedby="quoteReq.problems.email ? 'qr-email-err' : null" :class="quoteReq.problems.email ? 'bad' : ''" x-model="quoteReq.customer.email" autocomplete="email"><p id="qr-email-err" class="ferr" x-show="quoteReq.problems.email" x-text="quoteReq.problems.email"></p></div>
+                            <div><label class="flbl" for="qr-phone">Phone</label><input id="qr-phone" type="tel" class="fld" :aria-invalid="quoteReq.problems.phone ? 'true' : null" :aria-describedby="quoteReq.problems.phone ? 'qr-phone-err' : null" :class="quoteReq.problems.phone ? 'bad' : ''" x-model="quoteReq.customer.phone" autocomplete="tel" placeholder="+1 555 000 0000"><p id="qr-phone-err" class="ferr" x-show="quoteReq.problems.phone" x-text="quoteReq.problems.phone"></p></div>
                         </div>
-                        <div class="grid grid-cols-[110px_1fr] gap-3">
-                            <div><label class="flbl" for="qr-qty">Quantity</label><input id="qr-qty" type="number" min="1" max="10" class="fld" x-model.number="quoteReq.quantity"></div>
-                            <div><label class="flbl" for="qr-msg">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-400">(optional)</span></label><input id="qr-msg" class="fld" x-model="quoteReq.message" placeholder="Engraving, a date, a gift…" maxlength="1000"></div>
-                        </div>
+                        <div class="w-[110px]"><label class="flbl" for="qr-qty">Quantity</label><input id="qr-qty" type="number" min="1" max="10" class="fld" :aria-invalid="quoteReq.problems.quantity ? 'true' : null" :aria-describedby="quoteReq.problems.quantity ? 'qr-qty-err' : null" x-model.number="quoteReq.quantity"></div>
+                        <p id="qr-qty-err" class="ferr -mt-2" x-show="quoteReq.problems.quantity" x-text="quoteReq.problems.quantity"></p>
+                        <div><label class="flbl" for="qr-msg">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
+                            <textarea id="qr-msg" class="fld" dir="auto" rows="3" x-model="quoteReq.message" placeholder="Engraving, a date, a gift…" maxlength="1000"></textarea></div>
                         <p x-show="quoteReq.error" class="ferr" role="alert" x-text="quoteReq.error"></p>
                         <div class="flex gap-3 pt-1">
                             <button @click="closeQuoteRequest()" class="btn-outline flex-1 py-3">Cancel</button>
                             <button @click="sendQuoteRequest()" :disabled="quoteReq.busy" class="btn-gold flex-1 py-3" x-text="quoteReq.busy ? 'Sending…' : 'Send request'"></button>
                         </div>
-                        <p class="text-[12px] text-zinc-400 text-center" x-text="(quoteReq.customer.email ? 'We will email the quote to ' + quoteReq.customer.email + ' within one business day.' : 'We reply within one business day.') + ' Nothing is ordered or charged.'"></p>
+                        <p class="text-[14px] text-zinc-600 text-center leading-snug" x-text="'We confirm your request right away, review it within one business day and aim to email your quote' + (quoteReq.customer.email ? ' to ' + quoteReq.customer.email : '') + ' within three business days. Nothing is ordered or charged.'"></p>
                     </div>
                 </template>
                 <template x-if="quoteReq.done">
                     <div class="text-center py-4">
                         <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-6 h-6" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                         <h4 class="brand-font text-xl text-zinc-900 mb-2">Request <span class="font-mono" x-text="quoteReq.done.ref"></span> received</h4>
-                        <p class="text-[13px] text-zinc-600 leading-relaxed"><span x-text="emailText(quoteReq.done.email_status, quoteReq.done.customer.email)"></span> <span x-text="'A specialist will email the quote to ' + quoteReq.done.customer.email + ' within one business day; you can approve or decline it from that email.'"></span></p>
+                        <p class="text-[13px] text-zinc-600 leading-relaxed"><span x-text="emailText(quoteReq.done.email_status, quoteReq.done.customer.email)"></span> <span x-text="'A specialist reviews it within one business day and aims to email the quote to ' + quoteReq.done.customer.email + ' within three business days; if your design needs longer, we tell you. You can approve or decline the quote from that email.'"></span></p>
                         <button @click="closeQuoteRequest()" class="btn-black mt-6 px-8 py-3">Done</button>
                     </div>
                 </template>

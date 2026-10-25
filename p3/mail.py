@@ -196,18 +196,49 @@ def _Size(L: dict) -> str:
     return f"{float(Value):g} mm" if _IsCharm(L) else f"US {float(Value):g}"
 
 
-def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
-    """Order received: what, where, totals, payment status, what happens next. Every customer value
-    is escaped; nothing about production cost or 3D pricing is ever in it."""
+def _Made(Order: dict) -> str:
+    """The second next step, as the confirmation page says it: "Your ring is printed to order in real metal — …"."""
+    Kinds = {"charm" if _IsCharm(L) else "ring" for L in Order.get("lines") or []} or {"ring"}
+    Count = sum(int(L.get("quantity") or 1) for L in Order.get("lines") or []) or 1
+    Noun = ("pieces" if Count > 1 else "piece") if len(Kinds) > 1 else Kinds.pop() + ("s" if Count > 1 else "")
+    return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — 7–10 business days."
+
+
+def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") -> tuple[str, str]:
+    """Order received: what (with a picture of each piece), where, totals, payment status, the three next steps of the
+    confirmation page and a View Your Order button to My Account, where the customer signs in — the link carries no
+    order data (R-43). Origin: the public site (scheme and host) the pictures come from; without it they are left out.
+    Every customer value is escaped; nothing about production cost or 3D pricing is ever in it."""
+    from p3.media import ThumbUrl
     C = Order["customer"]
+
+    def Picture(L: dict) -> str:
+        Url = ThumbUrl(L.get("image_url"), 320, "jpg") if Origin and L.get("image_url") else None
+        if not Url:
+            return ""
+        return (f'<td width="76" valign="top" style="padding:8px 12px 8px 0;border-bottom:1px solid #EDE8DF;">'
+                f'<img src="{_Esc(Origin.rstrip("/") + Url)}" width="64" height="64" alt="{_Esc(L["title"])}" '
+                f'style="display:block;width:64px;height:64px;border:1px solid #EDE8DF;border-radius:6px;background:#FFFFFF;"></td>')
     Rows = "".join(f"""
-          <tr>
+          <tr>{Picture(L)}
             <td style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;">
               <strong>{_Esc(L['title'])}</strong><br>
-              <span style="color:#6F6F6F;font-size:12px;">{_Esc(_IdLabel(L))} {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}</span>
+              <span style="color:#6F6F6F;font-size:13px;">{_Esc(_IdLabel(L))} {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}</span>
             </td>
             <td align="right" style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;white-space:nowrap;">{_Esc(_Money(L['line_total'], L['currency']))}</td>
           </tr>""" for L in Order["lines"])
+    Steps = [("Design review.", "Our team checks the design for production feasibility and confirms the order to you (about 2 "
+                                "business days). Until then your order is a reservation."),
+             ("Production.", _Made(Order)),
+             ("Shipping.", f"{Order.get('shipping_label') or 'Delivery'}, {Order.get('shipping_eta') or ''}, tracked.")]
+    Next = "".join(f"""
+          <tr><td valign="top" width="22" style="padding:4px 0;{_Font}font-size:14px;font-weight:700;color:#1A1A1A;">{N}.</td>
+              <td style="padding:4px 0;{_Font}font-size:14px;line-height:1.6;color:#3F3F46;"><strong style="color:#1A1A1A;">{_Esc(T)}</strong> {_Esc(D)}</td></tr>"""
+                   for N, (T, D) in enumerate(Steps, start=1))
+    Button = (_Button(_Esc(AccountUrl), "View Your Order")
+              + '<p style="margin:6px 0 0;text-align:center;font-size:13px;color:#6F6F6F;">Sign in to see your order and how it is going.</p>'
+              ) if AccountUrl else ""
+
     Totals = [("Subtotal", Order["subtotal"])]
     if Order.get("discount"):
         Totals.append((f"Promo {Order.get('promo_code') or ''}", -Order["discount"]))
@@ -238,6 +269,10 @@ def OrderConfirmationEmail(Order: dict) -> tuple[str, str]:
             </td>
           </tr>
         </table>
+        <p style="margin:28px 0 6px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">What happens next</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Next}
+        </table>
+        <div style="margin:24px 0 0;">{Button}</div>
         <p style="margin:28px 0 0;font-size:12px;color:#8F8F8F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
            {ContactLine(Order['ref'])}</p>"""))
 

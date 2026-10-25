@@ -1069,6 +1069,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         _CustomizationOnOffer(Who, str(Body_.get("customization_id") or ""), request)
         return RingOnly(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.VisibleProducts(Ctx, request)), request)
 
+    @App_.patch("/api/bag/{LineId}")
+    async def SetBagQuantity(LineId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        return RingOnly(Svc.Customize.SetBagQuantity(Tok(x_access_token), LineId, Body_.get("quantity"),
+                                                     Products.VisibleProducts(Ctx, request)), request)
+
     @App_.delete("/api/bag/{LineId}")
     async def RemoveFromBag(LineId: str, request: Request, x_access_token: str | None = Header(None)):
         return RingOnly(Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId, Products.VisibleProducts(Ctx, request)), request)
@@ -1090,7 +1095,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/orders")
     async def PlaceOrder(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request)), request)
+        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request),
+                                          Origin=S.PublicBaseUrl or PublicOrigin(request)), request)
 
     @App_.get("/api/orders")
     async def MyOrders(request: Request, x_access_token: str | None = Header(None)):
@@ -1114,7 +1120,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def QuoteApprove(request: Request, Background: BackgroundTasks):
         Ctx.RateLimiter.Hit("quote:ip", ClientIp(request))
         Form_ = {K: str(V) for K, V in (await request.form()).items()}
-        return _QuoteHtml(Svc.Quotes.Approve(Form_.get("token", ""), Form_, Background.add_task))
+        return _QuoteHtml(Svc.Quotes.Approve(Form_.get("token", ""), Form_, Background.add_task,
+                                             Origin=S.PublicBaseUrl or PublicOrigin(request)))
 
     @App_.post("/quote/reject", include_in_schema=False)
     async def QuoteReject(request: Request):

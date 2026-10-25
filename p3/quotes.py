@@ -413,7 +413,7 @@ class QuoteDesk:
     def _Product(R: dict) -> str:
         return R.get("product_type") or Products.Ring
 
-    def Approve(self, Token: str, Form: dict, SendMail=None) -> tuple[str, int]:
+    def Approve(self, Token: str, Form: dict, SendMail=None, Origin: str = "") -> tuple[str, int]:
         """The customer approves: the address and the terms; the quote becomes an order at the quoted price."""
         R, State = self._ByToken(Token)
         if R is None or State != "current" or R["status"] not in QuoteOpen:
@@ -435,7 +435,7 @@ class QuoteDesk:
         if Problems:
             return self.Page(Token, "approve", Problems, F)
         try:
-            Order = self.Orders.CreateFromQuote(R, Offer, Address, Method, Note, SendMail)
+            Order = self.Orders.CreateFromQuote(R, Offer, Address, Method, Note, SendMail, Origin)
         except HttpError as E:
             return self.Page(Token, "approve", getattr(E, "Problems", None) or [{"field": "", "message": E.Message}], F)
         Db, T = self.Ctx.Db, Now()

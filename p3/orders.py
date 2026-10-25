@@ -152,6 +152,7 @@ class OrderService:
                         "image_url": self.Ctx.AssetUrl(L["asset_path"]), "material_id": L["material_id"],
                         "material_label": CharmPrices.MaterialLabel(self.Ctx, Product, L["material_id"]), "ring_size": L["ring_size"],
                         "product_type": Product, "charm_size": L.get("charm_size"),
+                        "size_label": Products.SizeLabel(Product, L["ring_size"], L.get("charm_size")),   # R-02: "14 mm" in Checkout
                         "quantity": L["quantity"], "unit_price": Unit, "currency": Q.currency if Q else L["currency"],
                         "pricing_version": Q.pricing_version if Q else None,
                         "line_total": round(Unit * L["quantity"], 2) if Unit is not None else None,
@@ -213,7 +214,7 @@ class OrderService:
                 "validation": {**Result, "provider": self.Validator.Name if self.Validator.Name != "none" else None}}
 
     # ── place an order ───────────────────────────────────────────────────
-    def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None) -> dict:
+    def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None, Origin: str = "") -> dict:
         Db = self.Ctx.Db
         Rid = (Body.get("client_request_id") or "").strip() or None
         if Rid:
@@ -249,6 +250,8 @@ class OrderService:
         if Status not in ("unverified", "verified", "corrected", "failed"):
             Status = "unverified"
         OrderId, T = NewId("ord"), Now()
+        # The customer's note from Checkout ("Anything we should know?", R-45): kept on the order, as a quote's is
+        Note = str(Body.get("customer_note") or "").strip()[:1000]
         Promo = Q["promo"]
         PromoSnapshot = {**{K: Promo[K] for K in ("code", "kind", "value", "discount", "label")}, "original_amount": Q["subtotal"],
                          "final_amount": round(Q["subtotal"] - Promo["discount"], 2)} if Promo else None
@@ -258,14 +261,14 @@ class OrderService:
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
-                         "terms_version, terms_accepted_at, client_request_id, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         "terms_version, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (OrderId, Who.AccountId, "new", "pending", Dumps(Customer),
                           Dumps({**Address, "validation": {K: V for K, V in Validation.items() if K != "suggestion"},
                                  "suggestion": Validation.get("suggestion")}),
                           Status, Method, Q["currency"], Q["subtotal"], Q["discount"], Q["shipping"], Q["total"],
                           Promo["code"] if Promo else None, Dumps(PromoSnapshot) if PromoSnapshot else None,
-                          TermsVersion, T, Rid, T, T))
+                          TermsVersion, T, Rid, f"Customer's note: {Note}" if Note else None, T, T))
             for N, L in enumerate(Q["lines"], start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
@@ -301,14 +304,18 @@ class OrderService:
                             **Size, quantity=L["quantity"], unit_price=L["unit_price"],
                             line_total=L["line_total"], currency=L["currency"], promo=Promo["code"] if Promo else None)
         Out = self.Get(Who, OrderId)
-        self._Email(Out, SendMail)
+        self._Email(Out, SendMail, Origin)
         return Out
 
-    def _Email(self, Order: dict, SendMail) -> None:
+    def _Email(self, Order: dict, SendMail, Origin: str = "") -> None:
+        """Origin: the public site the customer ordered on (P3_PUBLIC_BASE_URL first): the email's pictures and its View Your
+        Order button (My Account) point there."""
         if self.Mailer is None or not Order["customer"]["email"]:
             return
         from p3.mail import OrderConfirmationEmail, StaffOrderEmail
-        Subject, Body = OrderConfirmationEmail(Order)
+        Origin = (self.Ctx.Settings.PublicBaseUrl or Origin or "").rstrip("/")
+        Account = f"{Origin}{self.Ctx.Settings.BasePath or ''}/#account" if Origin else ""
+        Subject, Body = OrderConfirmationEmail(Order, Origin, Account)
         To = Order["customer"]["email"]
         Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
         Test = ReservedEmail(To)
@@ -1266,7 +1273,8 @@ class OrderService:
             QuoteEvent(self.Ctx.Db, RequestId, "status", {"from": R["status"], "to": Status}, By)
         return self.QuoteRequestJson(self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (RequestId,)))
 
-    def CreateFromQuote(self, Q: dict, Offer: dict, AddressRaw: dict, Method: str, Note: str = "", SendMail=None) -> dict:
+    def CreateFromQuote(self, Q: dict, Offer: dict, AddressRaw: dict, Method: str, Note: str = "", SendMail=None,
+                        Origin: str = "") -> dict:
         """An approved quote becomes an order: the quoted piece at the quoted price (one line), the customer of the
         request, the address and the terms given on approval. One order per quote (a repeated approval returns it);
         payment as for every order — never faked."""
@@ -1342,7 +1350,7 @@ class OrderService:
                         candidate_id=Q["candidate_id"], ring_id=Q["ring_id"], material_id=Q["material_id"], **Sizes, quantity=Qty,
                         unit_price=Unit, line_total=Line["line_total"], currency=Line["currency"], from_quote=Ref)
         Out = self._OrderJson(OrderId)
-        self._Email(Out, SendMail)
+        self._Email(Out, SendMail, Origin)
         return Out
 
     def _OrderJson(self, OrderId: str) -> dict:

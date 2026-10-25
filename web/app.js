@@ -24,6 +24,7 @@ let PAUSED_STORY = null;
 // Studio screens: Design · Customize · Bag ('checkout', historical name) · Checkout steps ('order') · Confirmation
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout', 'order', 'confirmation'];
 const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
+const CO_DRAFT_KEY = 'p3_co_draft';               // the checkout draft (sessionStorage: this tab only, R-25)
 const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal_code', 'country'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact'];
@@ -220,7 +221,9 @@ function p3App() {
     co: { step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
-          problems: {}, addrCheck: null, useSuggested: false, requestId: '' },
+          problems: {}, addrCheck: null, useSuggested: false, requestId: '',
+          note: '',                    // "Anything we should know?" (R-45): the order's customer note
+          recipientEdited: false },    // the customer typed the Recipient: step 1's name no longer fills it (R-42)
     quoteReq: { open: false, busy: false, error: '', done: null, message: '', quantity: 1, problems: {},
                 customer: { first_name: '', last_name: '', email: '', phone: '' } },
 
@@ -1246,7 +1249,9 @@ function p3App() {
       this.order = null; this.orders = []; this.checkout = null; this.coQuote = null;
       this.co = { ...this.co, step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
                   address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
-                  promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '' };
+                  promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '',
+                  note: '', recipientEdited: false };
+      this._clearCoDraft();
       this.persist({ designId: null, view: 'home' });
       this.navigateTo('home', { history: 'replace' });         // the journey's steps need a sign-in again
     },
@@ -1540,7 +1545,8 @@ function p3App() {
       return f ? this.gallery.filter(g => (g.product_type || 'ring') === f) : this.gallery;
     },
     // Lines of the bag, checkout and orders: "US 7" for a ring (as before), "20 mm" for a charm
-    lineSize(l) { return this.isCharm(l) ? (l.size_label || 'size to be confirmed') : 'US ' + l.ring_size; },
+    // A charm's size as the line names it ("14 mm"); a line without the label still shows its size (R-02)
+    lineSize(l) { return this.isCharm(l) ? (l.size_label || (l.charm_size != null ? l.charm_size + ' mm' : 'size to be confirmed')) : 'US ' + l.ring_size; },
     lineIdLabel(l) { return this.isCharm(l) ? 'Charm ID' : 'Ring ID'; },
     orderCountText(o) {
       const p = o.product_types || ['ring'], noun = p.length > 1 ? 'piece' : (p[0] === 'charm' ? 'charm' : 'ring');
@@ -2251,6 +2257,16 @@ function p3App() {
       try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); this.showToast('Removed from your bag'); }
       catch (e) { this.custError = e.message; }
     },
+    // The Bag's quantity steppers (R-20): 1 to 10 per line; the server answers with the bag, totals recalculated
+    bagBusy: '',
+    async setLineQuantity(l, delta) {
+      const q = Math.min(10, Math.max(1, (l.quantity || 1) + delta));
+      if (q === l.quantity || this.bagBusy) return;
+      this.bagBusy = l.id; this.co.error = '';
+      try { this.bag = await this.api('PATCH', `/api/bag/${l.id}`, { quantity: q }); }
+      catch (e) { this.co.error = e.message; }
+      finally { this.bagBusy = ''; }
+    },
     goToCheckout() { this.navigateTo('checkout'); },
 
     // ── checkout: Bag → details → shipping → review & pay → confirmation ──
@@ -2277,6 +2293,41 @@ function p3App() {
     get coCanPlace() { return !!this.coQuote?.ok && this.co.terms === true && !this.co.busy && !this.coQuote?.promo_error; },
     coProblem(field) { return this.co.problems[field] || ''; },
     _setProblems(list) { this.co.problems = Object.fromEntries((list || []).map(p => [p.field, p.message])); },
+    // The first field with a problem gets the focus; its message is tied to it with aria-describedby (R-24)
+    _focusProblem() {
+      const ids = { first_name: 'co-first', last_name: 'co-last', email: 'co-email', phone: 'co-phone', recipient: 'co-recipient',
+                    line1: 'co-line1', city: 'co-city', region: 'co-region', postal_code: 'co-postal', country: 'co-country',
+                    terms_accepted: 'co-terms' };
+      const id = Object.keys(this.co.problems).map(f => ids[f]).find(Boolean);
+      if (id) this.$nextTick(() => document.getElementById(id)?.focus());
+    },
+    // ── The checkout draft (R-25): what the customer typed stays in this tab — between steps, through the Bag and a
+    // reload — until the order is placed or they sign out. Never the promo code or the Terms tick.
+    _saveCoDraft() {
+      if (!this.userSession) return;
+      const c = this.co;
+      try { sessionStorage.setItem(CO_DRAFT_KEY, JSON.stringify({ customer: c.customer, address: c.address, note: c.note,
+                                                                   shipping_method: c.shipping_method, recipientEdited: c.recipientEdited })); } catch (_) {}
+    },
+    _restoreCoDraft() {
+      const c = this.co;
+      if (CUSTOMER_FIELDS.some(k => c.customer[k]) || ADDRESS_FIELDS.some(k => k !== 'country' && c.address[k])) return;   // already typed here
+      let d = null;
+      try { d = JSON.parse(sessionStorage.getItem(CO_DRAFT_KEY) || 'null'); } catch (_) {}
+      if (!d) return;
+      for (const k of CUSTOMER_FIELDS) if (typeof d.customer?.[k] === 'string') c.customer[k] = d.customer[k];
+      for (const k of ADDRESS_FIELDS) if (typeof d.address?.[k] === 'string' && d.address[k]) c.address[k] = d.address[k];
+      c.note = typeof d.note === 'string' ? d.note : ''; c.recipientEdited = !!d.recipientEdited;
+      if ((this.checkout?.shipping_options || []).some(s => s.id === d.shipping_method)) c.shipping_method = d.shipping_method;
+    },
+    _clearCoDraft() { try { sessionStorage.removeItem(CO_DRAFT_KEY); } catch (_) {} },
+    // The question link before ordering names the whole bag (R-32): one piece by its ID, more by their number
+    get coQuestionSubject() {
+      const lines = this.coQuote?.lines || [], n = lines.reduce((s, l) => s + (l.quantity || 0), 0);
+      const ids = [...new Set(lines.map(l => l.ring_id).filter(Boolean))];
+      return 'Question before ordering' + (n === 1 && ids.length ? ' — ' + ids[0]
+                                         : n > 1 ? ' — ' + n + ' pieces' + (ids.length ? ' (' + ids.join(', ') + ')' : '') : '');
+    },
     _scrollTop() { window.scrollTo({ top: 0 }); document.querySelector('main')?.scrollTo?.({ top: 0 }); },
     // resumed: checkout reopened at its address (F5, a link, Forward) — not a new start, so nothing is counted again
     async startCheckout({ history = 'push', resumed = false } = {}) {
@@ -2286,9 +2337,11 @@ function p3App() {
       try {
         const info = await this.api('GET', '/api/checkout');
         this.checkout = info; this.coQuote = info.quote;
+        this._restoreCoDraft();                                       // what was typed before a reload comes first
         const c = this.co.customer, p = info.customer || {};
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
         if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
+        if (this.co.shipping_method !== (info.quote?.shipping_method || 'standard')) this.coRequote();   // the draft's delivery
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
         this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
         this.navigateTo('order', { history });                       // Checkout's page view, then the event at its address
@@ -2314,8 +2367,10 @@ function p3App() {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) probs.push({ field: 'email', message: 'Please enter a valid email address.' });
       if (!/^\+?[0-9 ()./-]{7,24}$/.test(c.phone) || (c.phone.match(/\d/g) || []).length < 7) probs.push({ field: 'phone', message: 'Please enter a phone number we can reach you on (with the country code).' });
       this._setProblems(probs);
-      if (probs.length) return;
-      if (!this.co.address.recipient) this.co.address.recipient = `${c.first_name} ${c.last_name}`;
+      if (probs.length) { this._focusProblem(); return; }
+      // Step 1's name fills the Recipient until the customer types one of their own (R-42)
+      if (!this.co.recipientEdited) this.co.address.recipient = `${c.first_name} ${c.last_name}`;
+      this._saveCoDraft();
       this.co.step = 'shipping'; this.co.error = ''; this._scrollTop();
     },
     async coShippingNext() {
@@ -2323,7 +2378,7 @@ function p3App() {
       try {
         const v = await this.api('POST', '/api/checkout/address', { address: this.co.address });
         this._setProblems(v.problems);
-        if (v.problems.length) return;
+        if (v.problems.length) { this._focusProblem(); return; }
         this.co.addrCheck = v.validation; this.co.useSuggested = false;
         // A validation service suggested a correction: the customer decides, nothing is replaced silently.
         if (v.validation.status === 'corrected' && v.validation.suggestion) return;
@@ -2350,7 +2405,7 @@ function p3App() {
       if (this.coQuote?.promo) this.showToast(`Promo ${this.coQuote.promo.code} applied — ${this.coQuote.promo.label}`);
     },
     async removePromo() { this.co.promo_code = ''; this.co.promo_input = ''; await this.coRequote(); },
-    async setShipping(m) { this.co.shipping_method = m; if (this.view === 'order') await this.coRequote(); },
+    async setShipping(m) { this.co.shipping_method = m; this._saveCoDraft(); if (this.view === 'order') await this.coRequote(); },
     async placeOrder() {
       if (!this.coCanPlace) return;
       this.co.busy = true; this.co.error = ''; this.co.problems = {};
@@ -2359,8 +2414,10 @@ function p3App() {
           customer: this.co.customer, address: this.co.address, shipping_method: this.co.shipping_method,
           promo_code: this.co.promo_code || null, terms_accepted: this.co.terms === true,
           client_request_id: this.co.requestId, use_suggested_address: this.co.useSuggested,
+          customer_note: this.co.note.trim() || null,
         });
         this.order = o;
+        this.co.note = ''; this._clearCoDraft();                       // placed: the draft has done its job
         // An order placed, not a payment (none is taken online yet): GA4's "purchase" is kept for a payment received
         this.measure('order_created', { source: 'checkout', currency: o.currency, value: o.total, item_count: o.count });
         this.co.requestId = ''; this.co.promo_code = ''; this.co.promo_input = ''; this.co.terms = false; this.co.addrCheck = null;
@@ -2373,6 +2430,7 @@ function p3App() {
           this._setProblems(e.problems);
           const f = e.problems.map(p => p.field);
           this.co.step = f.some(x => CUSTOMER_FIELDS.includes(x)) ? 'details' : f.some(x => ADDRESS_FIELDS.includes(x) || x === 'shipping_method') ? 'shipping' : 'review';
+          this._focusProblem();
         }
         if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
       } finally { this.co.busy = false; }
@@ -2451,8 +2509,15 @@ function p3App() {
         this.quoteReq.done = r;
         this.measure('quote_requested', { product_type: this.cust?.product_type || 'ring', material_group: this.groupOfMaterial(this.cust?.material_id) || 'luxury' });
       } catch (e) {
-        this.quoteReq.error = e.message;
-        if (e.problems) this.quoteReq.problems = Object.fromEntries(e.problems.map(p => [p.field, p.message]));
+        // One message per problem (R-46): a field's under that field, which gets the focus; the line above the buttons
+        // only for a problem no field shows (quantity, material, size)
+        const shown = { first_name: 'qr-first', last_name: 'qr-last', email: 'qr-email', phone: 'qr-phone', quantity: 'qr-qty' };
+        const probs = e.problems || [];
+        this.quoteReq.problems = Object.fromEntries(probs.filter(p => shown[p.field]).map(p => [p.field, p.message]));
+        const other = probs.find(p => !shown[p.field]);
+        this.quoteReq.error = other ? other.message : probs.length ? '' : e.message;
+        const first = probs.map(p => shown[p.field]).find(Boolean);
+        if (first) this.$nextTick(() => document.getElementById(first)?.focus());
       } finally { this.quoteReq.busy = false; }
     },
   };

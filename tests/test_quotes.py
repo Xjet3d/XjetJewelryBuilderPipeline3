@@ -74,9 +74,9 @@ async def test_the_workspace_shows_every_detail_and_a_price_from_the_3d_model(tm
         Weight = round(Scaled(Raw, UsSizeToInnerDiameterMm(7))["volume_mm3"] / 1000 * 15.3, 2)
         assert S["available"] and S["size"] == 7 and S["weight_g"] == Weight and S["unit_price"] == pytest.approx(round(Weight * 400, 2))
         assert "g/cm³" in S["basis"] and S["same_option"]
-        # The customer page says where the quote will go
+        # The customer page says where the quote will go, and when (R-48: reviewed within one business day, the quote within three)
         Page = (await H.Client.get("/")).text
-        assert "'We will email the quote to ' + quoteReq.customer.email" in Page
+        assert "aim to email your quote' + (quoteReq.customer.email ? ' to ' + quoteReq.customer.email : '') + ' within three business days." in Page
     finally:
         await H.Close()
 
