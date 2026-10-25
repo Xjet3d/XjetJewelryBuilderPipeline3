@@ -1,11 +1,13 @@
 """The prompt check (p3/promptcheck.py): with its switch on for a product, the LLM reads every new design and
-refinement request before any paid image request. Off by default on every site; only instructions that ask for its
+refinement request before any paid image request, except a refinement that is only "more variations" (the model gets
+the fixed instruction, not those words). Off by default on every site; only instructions that ask for its
 decision can drive it; a stopped request creates nothing and costs no credit; no decision lets the request through;
 every check shows on the session page, the customer's activity and the any-llm page."""
 
 import pytest
 
 from p3 import assets
+from p3 import morevariations as MoreVariations
 from p3.config import CandidatesPerBatch as N
 from p3.providers import endpoints
 from p3.providers.mock import _RingImage
@@ -154,6 +156,31 @@ async def test_a_refinement_is_read_with_its_design_and_a_stopped_one_shows_on_t
     assert R.status_code == 200
     await H.Idle()
     assert Checks(H)[-1]["batch_id"] == R.json()["id"] and Checks(H)[-1]["kind"] == "refinement"
+
+
+async def test_a_request_for_more_variations_alone_is_not_checked(HP):
+    """Only the fixed instruction reaches the model for "Show me more variations", so the check is skipped (the charm
+    check refused those words on proto, 25 Oct). A request with anything more in it is checked as usual."""
+    H = HP
+    assert (await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)).status_code == 200
+    assert (await H.Client.put("/api/admin/prompt-check", json={"product": "charm", "on": True}, headers=Admin)).status_code == 200
+    First = await H.NewDesign("A small crescent moon", product="charm")
+    Option = First["candidates"][0]["id"]
+    Before = (await H.Client.get("/api/token-status")).json()
+    H.Provider.Script(endpoints.Llm, "reject")                                     # any check from here on refuses
+    R = await H.Client.post(f"/api/designs/{First['design_id']}/batches",
+                            json={"parent_candidate_id": Option, "instruction": "Show me more variations"})
+    assert R.status_code == 200 and R.json()["user_text"] == "Show me more variations"
+    await H.Idle()
+    assert len(H.Provider.SubmissionsFor(endpoints.Llm)) == 1 and len(Checks(H)) == 1            # the design's check only
+    Edits = H.Provider.SubmissionsFor(endpoints.ImageEdit)
+    assert len(Edits) == N and all(S[1]["prompt"].startswith(MoreVariations.Instruction("charm") + "\n\n") for S in Edits)
+    After = (await H.Client.get("/api/token-status")).json()
+    assert After["used"] - Before["used"] == 1 and After["reserved"] == 0                         # one credit, as any refinement
+    R = await H.Client.post(f"/api/designs/{First['design_id']}/batches",
+                            json={"parent_candidate_id": Option, "instruction": "Show me more variations in gold"})
+    assert R.status_code == 422 and R.json()["error"]["code"] == "prompt_rejected"
+    assert len(H.Provider.SubmissionsFor(endpoints.Llm)) == 2 and Checks(H)[-1]["text"] == "Show me more variations in gold"
 
 
 async def test_a_reference_image_is_named_to_the_check_and_a_repeat_is_not_checked_again(HP):

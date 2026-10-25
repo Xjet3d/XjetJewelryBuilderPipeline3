@@ -3,7 +3,8 @@
 Admin → Settings → AI models & prompts → any-llm (rings) / any-llm · Charm: one switch per product, OFF by default
 (product setting "prompt_check"), so a site runs it only where an Admin turned it on. With it on, every new design and
 every refinement is first sent to fal-ai/any-llm with the product's active instructions, which answer with one JSON
-object: is_jewelry, is_feasible, reason_for_rejection, refined_prompt.
+object: is_jewelry, is_feasible, reason_for_rejection, refined_prompt. The one exception is a refinement that is only
+"more variations" (p3/morevariations.py): the model gets the fixed instruction, never those words, so it is not checked.
 
 - Both booleans true: accepted. The design is made exactly as before — the image requests use the customer's words;
   the rewrite (refined_prompt) is kept for the Admin only.

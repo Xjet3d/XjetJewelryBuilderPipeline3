@@ -68,6 +68,7 @@ from p3.payments import BuildPaymentProvider
 from p3.addressing import BuildValidator
 from p3.registration import PublicOrigin, RegistrationService, RenderVerifyPage
 from p3 import sessions as Sessions
+from p3 import morevariations as MoreVariations
 from p3 import promptcheck as PromptCheck
 from p3 import sitepages as SitePages
 from p3 import adminauth as AdminAuth
@@ -974,7 +975,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Ctx.RateLimiter.Start(request, Who)
         Visible, Instruction, RequestId = Products.VisibleProducts(Ctx, request), Body_.get("instruction", ""), Body_.get("client_request_id")
         Check = None
-        if any(PromptCheck.State(Ctx).values()) and not PromptCheck.Repeated(Ctx, Who, RequestId, DesignId):
+        # A request that is only "more variations" (the phrase list, nothing else in it) never reaches the model: the
+        # fixed instruction does, so it is not checked (the charm check refused these words, 25 Oct). Anything more
+        # in the request is an ordinary refinement and is checked as usual.
+        if (any(PromptCheck.State(Ctx).values()) and not MoreVariations.IsMoreVariations(Instruction)
+                and not PromptCheck.Repeated(Ctx, Who, RequestId, DesignId)):
             D = Svc.Images.RequireDesign(Who, DesignId, Visible)          # the design refined: its product and its words
             Check = await PromptCheck.Before(Ctx, Who, Instruction, D.get("product_type") or Products.Ring, Kind="refinement",
                                              Previous=D["prompt"], SourceDesignId=DesignId)
