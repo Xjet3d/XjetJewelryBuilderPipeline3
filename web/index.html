@@ -203,6 +203,12 @@
         /* Selected = a clear rectangular border (confirmed requirement), square corners. */
         .cand-card.is-selected, .cand-card.is-selected:hover { outline: 3px solid #1A1A1A; border-radius: 0 !important; }
         .shimmer { background: linear-gradient(100deg, #F1F1F1 30%, #FAFAFA 50%, #F1F1F1 70%); background-size: 300% 100%; animation: sh 1.4s infinite linear; }
+        /* The waiting drawing (R-23): each line draws in turn, the piece holds, then fades and starts again */
+        .ld-art .ld { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ld-draw 3.6s ease-in-out infinite; }
+        .ld-art .ld:nth-child(2) { animation-delay: .2s; } .ld-art .ld:nth-child(3) { animation-delay: .4s; }
+        .ld-art .ld:nth-child(4) { animation-delay: .6s; } .ld-art .ld:nth-child(5) { animation-delay: .8s; }
+        @keyframes ld-draw { 0% { stroke-dashoffset: 1; opacity: 1; } 45% { stroke-dashoffset: 0; } 85% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { .ld-art .ld { animation: none; stroke-dashoffset: 0; } }
         /* /materials before the catalog answers: the server's placeholder cards (p3/sitepages.py MaterialPlaceholders) at
            the cards' measured height below their picture, so nothing below them moves when the cards arrive (the fashion
            cards re-measured 2026-10-20 with the type scale: 375–430, 640–767, 820–834, 1024 and 1150–1600 px; .ph-charm:
@@ -256,6 +262,9 @@
             .site-header [data-account-button] { padding-left: .125rem; padding-right: .125rem; }
         }
         @media (max-width: 767.98px) { .site-header:not(.is-studio) > .h-cta { display: none; } }
+        /* The Design screen below 414 px: XJet's logo alone (its link keeps the name "XJet Atelier"), so the stepper,
+           the bag and Exit fit on one row without overlapping (R-03) */
+        @media (max-width: 413.98px) { .site-header.is-studio .h-word { display: none; } }
         @media (min-width: 768px) {
             .site-header { column-gap: 1rem; padding: 1rem 2rem; }
             .site-header:not(.is-studio) { padding-top: 0; padding-bottom: 0; grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1134,8 +1143,8 @@
                         <div class="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0 flex-1" role="tablist" aria-label="Design versions" x-show="design">
                             <span x-show="visibleBatches.length > 1" class="hidden sm:inline text-[12px] uppercase tracking-[0.14em] text-zinc-500 mr-2 shrink-0">Showing</span>
                             <template x-for="b in visibleBatches" :key="b.id">
-                                <button @click="viewBatchId = b.id" role="tab" :aria-selected="b.id === viewBatchId"
-                                        class="shrink-0 px-3 py-1.5 text-[12px] uppercase tracking-[0.1em] font-semibold transition border-b-2 -mb-[9px] pb-2.5"
+                                <button @click="viewBatchId = b.id; carouselToSelection()" role="tab" :aria-selected="b.id === viewBatchId"
+                                        class="shrink-0 px-3 py-1.5 text-[13px] uppercase tracking-[0.1em] font-semibold transition border-b-2 -mb-[9px] pb-2.5"
                                         :class="b.id === viewBatchId ? 'text-zinc-900 border-zinc-900' : 'text-zinc-500 border-transparent hover:text-zinc-800'"
                                         x-text="batchLabel(b)"></button>
                             </template>
@@ -1176,20 +1185,27 @@
                                         </div>
                                     </div>
 
-                                    <!-- Waiting screen (P2 atelier-loading movie) while a design or refinement is generated -->
+                                    <!-- Waiting screen while a design or refinement is generated -->
                                     <template x-if="waitVariant">
                                         <div class="w-full flex flex-col items-center text-center py-2 fade-in" role="status" aria-live="polite">
-                                            <!-- Crop the clip's baked-in black side bars (as in P2) -->
-                                            <!-- No clipping container around the video (a rounded overflow-hidden box can make the
-                                                 whole video layer render transparent on some graphics drivers). The still frame is a
-                                                 plain image underneath, so something always shows; the movie covers it when it plays. -->
+                                            <!-- The piece being made, drawn line by line (R-23): a plain band for a ring, a coin charm on its
+                                                 jump ring for a charm — metal only, never a stone. Still with reduced motion. -->
                                             <div class="relative w-full max-w-[560px]" style="aspect-ratio:1088/720;">
-                                                <img width="1152" height="720" src="{{BASE}}/static/images/atelier-loading-poster.jpg" alt="" aria-hidden="true"
-                                                     class="absolute inset-0 w-full h-full object-cover rounded-xl" style="object-position:73% 50%;">
-                                                <video src="{{BASE}}/static/videos/atelier-loading.mp4"
-                                                       autoplay muted loop playsinline preload="auto" disablepictureinpicture
-                                                       x-init="startLoadingMovie($el)"
-                                                       class="absolute inset-0 w-full h-full object-cover rounded-xl" style="object-position:73% 50%;"></video>
+                                                <svg x-show="!isCharm(design)" class="ld-art absolute inset-0 w-full h-full rounded-xl" viewBox="0 0 1088 720" aria-hidden="true"
+                                                     fill="none" stroke="#1F1F1F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="background:#DAD4C1;">
+                                                    <ellipse class="ld" pathLength="1" cx="544" cy="335" rx="190" ry="72"/>
+                                                    <ellipse class="ld" pathLength="1" cx="544" cy="335" rx="162" ry="58"/>
+                                                    <path class="ld" pathLength="1" d="M354 335V385A190 72 0 0 0 734 385V335"/>
+                                                    <path class="ld" pathLength="1" d="M397.8 360A162 58 0 0 1 690.2 360"/>
+                                                </svg>
+                                                <svg x-show="isCharm(design)" x-cloak class="ld-art absolute inset-0 w-full h-full rounded-xl" viewBox="0 0 1088 720" aria-hidden="true"
+                                                     fill="none" stroke="#1F1F1F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="background:#DAD4C1;">
+                                                    <circle class="ld" pathLength="1" cx="544" cy="205" r="26"/>
+                                                    <path class="ld" pathLength="1" d="M528 262C528 226 560 226 560 262"/>
+                                                    <circle class="ld" pathLength="1" cx="544" cy="400" r="140"/>
+                                                    <circle class="ld" pathLength="1" cx="544" cy="400" r="118"/>
+                                                    <path class="ld" pathLength="1" d="M544 470C474 424 474 352 520 352C534 352 544 362 544 374C544 362 554 352 568 352C614 352 614 424 544 470Z"/>
+                                                </svg>
                                             </div>
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
                                             <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
@@ -1197,9 +1213,9 @@
                                                 <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>
                                                 <span x-text="waitStatus"></span>
                                             </div>
-                                            <p class="mt-3 text-[12px]" style="color:#6F6F6F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
+                                            <p class="mt-3 text-[13px]" style="color:#6F6F6F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
                                             <!-- Past the 90-second limit with nothing ready yet: the images are still coming, in the background (R-41) -->
-                                            <p x-show="finishingCount(waitBatch)" class="mt-1 max-w-[500px] text-[12px]" style="color:#6F6F6F;">This is taking longer than usual. You can leave this page — your designs will be waiting in My Designs.</p>
+                                            <p x-show="finishingCount(waitBatch)" class="mt-1 max-w-[500px] text-[13px]" style="color:#6F6F6F;">This is taking longer than usual. You can leave this page — your designs will be waiting in My Designs.</p>
                                         </div>
                                     </template>
 
@@ -1211,16 +1227,18 @@
                                          finished image first and asks for a new one only when there is none (R-07, R-41) -->
                                     <div x-show="viewBatch?.status === 'partial'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
                                         <span class="flex-1" x-text="partialText(viewBatch)"></span>
-                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap" style="color:#8A561B;">Retry missing · free</button>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="tap-lg underline underline-offset-2 text-[13px] font-semibold whitespace-nowrap" style="color:#8A561B;">Retry missing · free</button>
                                     </div>
                                     <div x-show="viewBatch?.status === 'failed'" class="w-full px-4 py-2.5 rounded-xl flex items-center gap-2 text-[13px]" style="background:#FDECEC; border:1px solid #F1B7B7; color:#8A2424;">
                                         <!-- Every option refused under the AI model's content rules: the same description would be refused again, so the
                                              customer is asked for a different one — no paid retry is offered (the server refuses one too) -->
                                         <span class="flex-1" x-text="failedBatchText(viewBatch)">None of the designs could be created.</span>
-                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap">Try again · free</button>
-                                        <button x-show="policyRefused(viewBatch) && viewBatch?.kind !== 'refine'" @click="startNew()" class="underline underline-offset-2 text-[12px] font-semibold whitespace-nowrap">Start a new design</button>
+                                        <button x-show="retryableCount(viewBatch)" @click="retryBatch(viewBatch)" class="tap-lg underline underline-offset-2 text-[13px] font-semibold whitespace-nowrap">Try again · free</button>
+                                        <button x-show="policyRefused(viewBatch) && viewBatch?.kind !== 'refine'" @click="startNew()" class="tap-lg underline underline-offset-2 text-[13px] font-semibold whitespace-nowrap">Start a new design</button>
                                     </div>
 
+                                    <!-- Desktop (from 1024 px): the next step beside the four options, in view without scrolling (R-12) -->
+                                    <div class="lg:flex lg:items-start lg:justify-center lg:gap-8">
                                     <!-- Four candidates: a 2×2 grid from 640 px up; on a phone one large option at a time, swipe to compare -->
                                     <div class="cand-row flex sm:grid sm:grid-cols-2 gap-3 sm:gap-4 w-full mx-auto overflow-x-auto sm:overflow-visible snap-x snap-mandatory -mx-4 px-4 sm:mx-auto sm:px-0 sm:max-w-[min(640px,max(320px,calc(100dvh_-_300px)))]"
                                          style="scroll-padding:0 16px;" x-ref="candRow" @scroll.passive="candScroll($event)">
@@ -1232,7 +1250,7 @@
                                                     <img width="800" height="800" :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :src="thumb(c.image_url, 800)" :alt="'Design option ' + (i + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
                                                 </template>
                                                 <template x-if="c.status === 'pending' || c.status === 'generating'">
-                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-[12px]" style="color:#6F6F6F;">
+                                                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-[13px]" style="color:#6F6F6F;">
                                                         <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
                                                         <span x-text="c.finishing ? 'Still finishing…' : 'Design ' + (i + 1)"></span>
                                                         <span x-show="c.finishing" class="max-w-[220px]">It appears here when it’s ready — you can continue meanwhile.</span>
@@ -1245,8 +1263,8 @@
                                                 <template x-if="c.status === 'failed'">
                                                     <div class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-4 text-center" style="background:#FAFAF8;">
                                                         <span class="text-[13px] font-medium" style="color:#1A1A1A;" x-text="c.error || 'This option couldn\'t be generated.'"></span>
-                                                        <span x-show="readyCount(viewBatch)" class="text-[12px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
-                                                        <button x-show="c.retryable && !freeRetryOffered(viewBatch)" @click.stop="retrySlot(c)" class="btn-outline mt-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]" x-text="'Generate another option · ' + creditsLabel('option')">Generate another option</button>
+                                                        <span x-show="readyCount(viewBatch)" class="text-[13px]" style="color:#6F6F6F;">You can continue with the other designs.</span>
+                                                        <button x-show="c.retryable && !freeRetryOffered(viewBatch)" @click.stop="retrySlot(c)" class="btn-outline mt-2 min-h-[44px] px-3 py-1.5 text-[12px] uppercase tracking-[0.12em]" x-text="'Generate another option · ' + creditsLabel('option')">Generate another option</button>
                                                     </div>
                                                 </template>
                                                 <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
@@ -1260,6 +1278,20 @@
                                             </div>
                                         </template>
                                     </div>
+                                    <aside class="hidden lg:flex flex-col gap-3 w-[260px] shrink-0 pt-1" aria-label="Next step">
+                                        <h2 class="brand-font text-[26px] font-semibold tracking-[0.06em] leading-tight" style="color:#1A1A1A;" x-text="design?.title"></h2>
+                                        <p x-show="!selectedId" class="text-[14px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
+                                        <!-- Never while a refinement of the design is being made (R-18): the server refuses it too -->
+                                        <button @click="proceed()" :disabled="!canCustomize" class="btn-gold stream-glow w-full flex-col gap-1 px-3 py-3.5 leading-tight" :title="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? '' : 'Select one of the four options first'">
+                                            <span x-text="pendingBatch ? 'Wait for the refinement to finish' : 'Customize Your ' + designLabel"></span>
+                                            <span x-show="!pendingBatch && canActOnSelection" class="text-[12px] font-medium tracking-[0.06em]" x-text="selectionLabel"></span>
+                                        </button>
+                                        <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-[13px]" style="color:#6F6F6F;"
+                                           x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
+                                        <button @click="startNew()" class="btn-outline w-full min-h-[44px] px-3 py-3 leading-tight">Start a New Design</button>
+                                        <p class="text-[13px]" style="color:#6F6F6F;">Or describe a change below to refine the selected design.</p>
+                                    </aside>
+                                    </div>
 
                                     <!-- Phone: which option is in view, and a dot per option (tap a dot to jump) -->
                                     <div class="sm:hidden flex items-center justify-center gap-3 -mt-1" x-show="(viewBatch?.candidates || []).length > 1">
@@ -1268,9 +1300,9 @@
                                                 <button type="button" @click="scrollCand(i)" class="tap w-2.5 h-2.5 rounded-full transition" :class="i === candIndex ? 'scale-125' : 'opacity-40'" :style="'background:' + (c.id === selectedId ? '#8A6420' : '#1A1A1A')" :aria-label="'Show option ' + (i + 1)"></button>
                                             </template>
                                         </div>
-                                        <span class="text-[12px] text-zinc-600" x-text="'Option ' + (candIndex + 1) + ' of ' + (viewBatch?.candidates || []).length + ' · swipe to compare'"></span>
+                                        <span class="text-[13px] text-zinc-600" x-text="'Option ' + (candIndex + 1) + ' of ' + (viewBatch?.candidates || []).length + ' · swipe to compare'"></span>
                                     </div>
-                                    <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
+                                    <h2 class="lg:hidden brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
 
                                     </div>
                                 </div>
@@ -1300,10 +1332,10 @@
                                 <!-- What the prompt box does right now — never a silent switch between a new design and a refinement -->
                                 <div x-show="design" class="w-full flex flex-wrap items-center justify-between gap-2">
                                     <div class="inline-flex rounded-lg p-0.5" style="background:#EFEAE0;" role="group" aria-label="Prompt mode">
-                                        <span class="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-white shadow-sm" style="color:#1A1A1A;" aria-current="true">Refine the selected design</span>
-                                        <button type="button" @click="startNew()" class="px-3 py-1.5 rounded-md text-[12px] font-medium transition hover:bg-white/60" style="color:#6F6F6F;">Start a new design</button>
+                                        <span class="px-3 py-1.5 rounded-md text-[13px] font-semibold bg-white shadow-sm" style="color:#1A1A1A;" aria-current="true">Refine the selected design</span>
+                                        <button type="button" @click="startNew()" class="tap px-3 py-1.5 rounded-md text-[13px] font-medium transition hover:bg-white/60" style="color:#6F6F6F;">Start a new design</button>
                                     </div>
-                                    <p class="hidden sm:block text-[12px]" style="color:#6F6F6F;" x-text="canActOnSelection ? 'Describe the change — you get four new variations of the selected design.' : 'Select one of the designs above to refine it.'"></p>
+                                    <p class="hidden sm:block text-[13px]" style="color:#6F6F6F;" x-text="canActOnSelection ? 'Describe the change — you get four new variations of the selected design.' : 'Select one of the designs above to refine it.'"></p>
                                 </div>
 
 
@@ -1328,8 +1360,8 @@
                                         <span class="text-[14px] flex-1" style="color:#8A6420;">Reference image attached</span>
                                         <button @click="clearUpload()" class="tap-lg text-[12px] uppercase tracking-widest text-[#8A6420] hover:text-[#8A6420]">Remove</button>
                                     </div>
-                                    <label class="flex items-start gap-2 text-[12px]" style="color:#5A4A2A;">
-                                        <input type="checkbox" x-model="rightsConfirmed" class="mt-0.5" style="accent-color:#8A561B;">
+                                    <label class="flex items-start gap-2 text-[14px]" style="color:#5A4A2A;">
+                                        <input type="checkbox" x-model="rightsConfirmed" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;">
                                         I confirm I own this image or have the rights to use it.
                                     </label>
                                 </div>
@@ -1358,7 +1390,7 @@
                                               class="flex-1 self-center bg-transparent resize-none overflow-y-auto focus:outline-none text-[13px] sm:text-[15px] font-normal leading-normal"
                                               style="color:#2A2A2A; caret-color:#C9A96E; max-height:200px;"></textarea>
                                     <!-- The request's cost, shown before it is sent (R-07) -->
-                                    <span x-show="canSend" class="shrink-0 text-[12px] whitespace-nowrap" style="color:#6F6F6F;" x-text="creditsLabel(composerMode === 'refine' ? 'refinement' : 'design')"></span>
+                                    <span x-show="canSend" class="shrink-0 text-[13px] whitespace-nowrap" style="color:#6F6F6F;" x-text="creditsLabel(composerMode === 'refine' ? 'refinement' : 'design')"></span>
                                     <button @click="sendComposer()" :disabled="!canSend"
                                             class="tap shrink-0 rounded-full flex items-center justify-center disabled:opacity-40 transition w-9 h-9 sm:w-11 sm:h-11 bg-[#1A1A1A] hover:bg-black"
                                             :title="(composerMode === 'refine' ? 'Create four refinements · ' + creditsLabel('refinement') : 'Create four designs · ' + creditsLabel('design'))"
@@ -1366,15 +1398,15 @@
                                         <svg class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#FFFFFF;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
                                     </button>
                                 </div>
-                                <p x-show="composeError" class="text-[13px] px-1" style="color:#A1261D;" x-text="composeError"></p>
-                                <p x-show="checkingPrompt" x-cloak class="text-[12px] px-1 flex items-center gap-2" style="color:#8A6420;" role="status">
+                                <p x-show="composeError" class="err-line px-1" role="alert" x-text="composeError"></p>
+                                <p x-show="checkingPrompt" x-cloak class="text-[13px] px-1 flex items-center gap-2" style="color:#8A6420;" role="status">
                                     <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>Checking your description…</p>
                                 <!-- A design that already has a movie, 3D or order is kept as it is: a refinement becomes a new design -->
-                                <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[12px] px-1" style="color:#6F6F6F;">
+                                <p x-show="composerMode === 'refine' && design && !design.shared && design.refinement_creates_new_design" class="text-[13px] px-1" style="color:#6F6F6F;">
                                     <span x-text="'Your refinement will be saved as a new design — ' + (design?.title || 'this design') + ' ' + ({movie: 'already has a 360° movie', '3d': 'already has a 3D model', order: 'already has an order', quote: 'already has a quote request', gallery: 'is in the Inspiration Gallery'}[design?.refinement_creates_new_design] || 'is already in use') + ', so it stays as it is.'"></span></p>
 
-                                <!-- Generations remaining — anchored right under the prompt input -->
-                                <div x-show="userSession" class="hidden sm:flex w-full items-center justify-end px-1 -mt-1">
+                                <!-- Credits remaining — anchored right under the prompt input, on phones too (R-28) -->
+                                <div x-show="userSession" class="flex w-full items-center justify-end px-1 -mt-1">
                                     <button type="button" @click="toggleAccountPanel()"
                                             class="tap-lg flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-zinc-100 max-w-full"
                                             :aria-expanded="accountPanelOpen" aria-haspopup="dialog" aria-label="Account and credits">
@@ -1382,29 +1414,29 @@
                                             <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
                                             <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
                                         </svg>
-                                        <span data-clarity-mask="true" class="text-[12px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaText"></span>
+                                        <span data-clarity-mask="true" class="text-[13px] font-medium text-zinc-600 truncate" x-text="(displayName ? displayName + ' • ' : '') + quotaText"></span>
                                         <svg class="w-3 h-3 text-zinc-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                                     </button>
                                 </div>
 
                                 <!-- Result actions: Start new · Customize (proceed). Refining is done from the composer. -->
-                                <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
+                                <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3 lg:hidden">
                                     <button @click="startNew()" class="btn-outline hidden sm:inline-flex flex-1 px-2 py-3.5 leading-tight">
                                         <svg class="w-[18px] h-[18px] mr-2 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                                         Start a New Design
                                     </button>
                                     <!-- Never while a refinement of the design is being made (R-18): the server refuses it too -->
                                     <button @click="proceed()" :disabled="!canCustomize" class="btn-gold stream-glow flex-1 px-2 py-3.5 leading-tight" :title="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? '' : 'Select one of the four options first'">
-                                        <span class="sm:hidden" x-text="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? 'Customize option ' + optionNumber(selectedCandidate) : 'Select an option to continue'"></span>
-                                        <span class="hidden sm:inline" x-text="pendingBatch ? 'Wait for the refinement to finish' : 'Customize Your ' + designLabel"></span>
+                                        <span class="sm:hidden" x-text="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? 'Customize ' + selectionLabel : 'Select an option to continue'"></span>
+                                        <span class="hidden sm:inline" x-text="pendingBatch ? 'Wait for the refinement to finish' : 'Customize Your ' + designLabel + (canActOnSelection ? ' · ' + selectionLabel : '')"></span>
                                         <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
                                     </button>
                                 </div>
                                 <!-- Opening Customize makes the option's 360° movie, unless it has one already (R-07: the cost before the click) -->
-                                <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-center text-[12px]" style="color:#6F6F6F;"
+                                <p x-show="canCustomize && selectedCandidate?.movie_credits" class="lg:hidden text-center text-[13px]" style="color:#6F6F6F;"
                                    x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
-                                <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block text-center text-[12px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
-                                <p x-show="actionError" class="text-center text-[13px]" style="color:#A1261D;" x-text="actionError"></p>
+                                <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block lg:hidden text-center text-[13px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
+                                <p x-show="actionError" class="err-line justify-center text-center" role="alert" x-text="actionError"></p>
                             </div>
                         </div>
                     </div>
@@ -1442,7 +1474,7 @@
                         <div class="px-3 py-2.5 shrink-0" style="border-bottom:1px solid #DCDCDC;">
                             <div class="relative">
                                 <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style="color:#6F6F6F;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
-                                <input x-model="projectSearch" type="text" placeholder="Search designs…" class="w-full rounded-lg text-[13px] pl-7 pr-3 py-1.5 focus:outline-none transition" style="min-height:40px; background:#F8F8F8; border:1px solid #DCDCDC; color:#1A1A1A;">
+                                <input x-model="projectSearch" type="text" placeholder="Search designs…" aria-label="Search designs" class="w-full rounded-lg text-[13px] pl-7 pr-3 py-1.5 focus:outline-none transition" style="min-height:40px; background:#F8F8F8; border:1px solid #DCDCDC; color:#1A1A1A;">
                             </div>
                         </div>
                         <div class="flex-1 overflow-y-auto py-2 no-scrollbar" @scroll="zoom = null">
@@ -1450,18 +1482,18 @@
                             <div>
                                 <!-- ♥ Favorites: references to gallery masters; a tap opens the design's preview, the ♥ removes it -->
                                 <div x-show="!filteredFavorites.length" class="text-center py-10 px-4">
-                                    <p class="text-[12px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No favorites match your search.' : 'No favorites yet'"></p>
-                                    <p x-show="!projectSearch" class="text-[12px] mt-1" style="color:#9A9A9A;">Tap ♥ on a gallery design to keep it here.</p>
+                                    <p class="text-[13px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No favorites match your search.' : 'No favorites yet'"></p>
+                                    <p x-show="!projectSearch" class="text-[13px] mt-1" style="color:#6F6F6F;">Tap ♥ on a gallery design to keep it here.</p>
                                     <button x-show="!projectSearch" @click="galleryGridOpen = true" class="mt-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] font-semibold px-4 py-2.5 rounded-lg transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">Browse Inspiration</button>
                                 </div>
                                 <template x-for="f in filteredFavorites" :key="f.id">
-                                    <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]" @click="zoom = null; openGallery(f)" role="button" tabindex="0" @keydown.enter="openGallery(f)" :aria-label="'Open ' + f.title">
+                                    <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9A96E]" @click="zoom = null; openGallery(f)" role="button" tabindex="0" @keydown.enter="openGallery(f)" @keydown.space.prevent="openGallery(f)" :aria-label="'Open ' + f.title">
                                         <div class="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-white" style="border:1px solid #DCDCDC;" @mouseenter="showZoom($event, f.image_url, f.title)" @mouseleave="zoom = null">
                                             <img width="320" height="320" :src="thumb(f.image_url, 320)" alt="" class="w-full h-full object-contain" loading="lazy" decoding="async">
                                         </div>
                                         <div class="flex-1 min-w-0">
                                             <p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="f.title"></p>
-                                            <p class="text-[12px] mt-0.5 leading-snug" style="color:#6F6F6F;" x-text="isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'">Inspiration Gallery</p>
+                                            <p class="text-[13px] mt-0.5 leading-snug" style="color:#6F6F6F;" x-text="isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'">Inspiration Gallery</p>
                                         </div>
                                         <button type="button" @click.stop="toggleFav(f)" :disabled="favBusy === f.design_id" class="tap-lg tip-host shrink-0 p-1.5 rounded-lg transition hover:bg-[#FBF7EF]" style="color:#B8873A;" :aria-label="'Remove ' + f.title + ' from Favorites'">
                                             <svg class="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" fill="currentColor"/></svg>
@@ -1473,29 +1505,35 @@
                           </template>
                           <template x-if="sidebarTab === 'designs'">
                             <div>
-                            <p x-show="designsLoading" class="text-[12px] text-center py-10 px-4" style="color:#6F6F6F;">Loading your designs…</p>
+                            <p x-show="designsLoading" class="text-[13px] text-center py-10 px-4" style="color:#6F6F6F;">Loading your designs…</p>
                             <div x-show="!designsLoading && designsError" class="text-center py-10 px-4">
-                                <p class="text-[12px]" style="color:#6F6F6F;" x-text="designsError"></p>
-                                <button @click="loadDesigns()" class="mt-2 text-[12px] underline" style="color:#8A6420;">Retry</button>
+                                <p class="err-line justify-center" x-text="designsError"></p>
+                                <button @click="loadDesigns()" class="mt-2 min-h-[44px] px-3 text-[13px] underline" style="color:#8A6420;">Retry</button>
                             </div>
                             <div x-show="!designsLoading && !designsError && filteredDesigns.length === 0" class="text-center py-10 px-4">
-                                <p class="text-[12px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No designs match your search.' : 'No designs yet'"></p>
+                                <p class="text-[13px] leading-relaxed" style="color:#6F6F6F;" x-text="projectSearch ? 'No designs match your search.' : 'No designs yet'"></p>
                                 <button x-show="!projectSearch" @click="galleryGridOpen = true" class="mt-4 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] font-semibold px-4 py-2.5 rounded-lg transition border border-[#E8DCC4] hover:border-[#C9A96E]" style="color:#8A6420; background:#FBF7EF;">Browse Inspiration</button>
                             </div>
                             <template x-for="p in filteredDesigns" :key="p.id">
-                                <div class="flex items-center gap-3 px-3 py-2.5 mx-1.5 rounded-xl transition cursor-pointer hover:bg-[#F8F8F8]"
-                                     :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''" @click="zoom = null; openDesign(p.id); track('design_opened', p.id)">
+                                <div class="flex items-center gap-1 pl-1.5 pr-3 py-1 mx-1.5 rounded-xl transition hover:bg-[#F8F8F8]"
+                                     :class="design?.id === p.id ? 'bg-[#F8F4EE]' : ''">
+                                    <button type="button" class="flex-1 min-w-0 flex items-center gap-3 p-1.5 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9A96E]"
+                                            @click="zoom = null; openDesign(p.id); track('design_opened', p.id)" :aria-current="design?.id === p.id ? 'true' : null">
                                     <div class="w-16 h-16 rounded-lg overflow-hidden shrink-0" style="border:1px solid #DCDCDC; background:#F4F4F4;"
                                          @mouseenter="p.thumbnail_url && showZoom($event, p.thumbnail_url, p.title)" @mouseleave="zoom = null">
                                         <img width="320" height="320" x-show="p.thumbnail_url" :src="thumb(p.thumbnail_url, 320)" alt="" class="w-full h-full object-cover" loading="lazy" decoding="async">
                                         <div x-show="!p.thumbnail_url" class="w-full h-full flex items-center justify-center text-lg brand-font italic" style="color:#6F6F6F;">?</div>
                                     </div>
                                     <div class="flex-1 min-w-0">
-                                        <div class="flex items-center gap-2 min-w-0"><p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="p.title"></p>
+                                        <p class="text-[15px] font-medium truncate" style="color:#1A1A1A;" x-text="p.title"></p>
+                                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                                            <span x-show="productsOn && !isCharm(p)" x-cloak class="shrink-0 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#FBF7EF; color:#8A6420;"><span x-html="productIcon('ring', 'w-3.5 h-3.5')"></span>Ring</span>
+                                            <span x-show="productsOn && isCharm(p)" x-cloak class="shrink-0 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#FBF7EF; color:#8A6420;"><span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>Charm</span>
                                             <span x-show="p.shared" class="shrink-0 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#F8F4EE; color:#8A6420;" title="A shared XJet design from the Inspiration Gallery">Gallery</span>
-                                            <span x-show="productsOn && isCharm(p)" x-cloak class="shrink-0 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded" style="background:#FBF7EF; color:#8A6420;"><span x-html="productIcon('charm', 'w-3.5 h-3.5')"></span>Charm</span></div>
-                                        <p class="text-[12px] mt-0.5" style="color:#6F6F6F;" x-text="new Date(p.updated_at).toLocaleDateString()"></p>
+                                            <span class="text-[13px]" style="color:#6F6F6F;" x-text="new Date(p.updated_at).toLocaleDateString()"></span>
+                                        </div>
                                     </div>
+                                    </button>
                                     <button @click.stop="removeDesign(p)" class="tap-lg tip-host shrink-0 p-1.5 rounded-lg transition text-[#C8C8C8] hover:text-red-500 hover:bg-red-50" :aria-label="'Remove ' + p.title + ' from My Designs'">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12"/></svg>
                                         <span class="icon-tip is-left" aria-hidden="true">Remove</span>

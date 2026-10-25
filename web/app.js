@@ -1630,6 +1630,7 @@ function p3App() {
       }
       if (window.innerWidth < 1024) this.sidebarOpen = false;
       this.ensurePolling();
+      this.carouselToSelection();
     },
 
     batch(id) { return this.design?.batches.find(b => b.id === id); },
@@ -1644,6 +1645,21 @@ function p3App() {
     scrollCand(i) {
       const el = this.$refs.candRow, card = el?.querySelectorAll('.cand-card')[i];
       if (card) el.scrollTo({ left: card.offsetLeft - 16, behavior: 'smooth' });
+    },
+    // Phones: the row opens on the selected option when the batch shown has it — after Make it yours, a reload or a
+    // tab switch — never on option 1 while another one is selected (R-17)
+    carouselToSelection() {
+      this.$nextTick(() => requestAnimationFrame(() => {
+        const i = Math.max(0, this.orderedCandidates(this.viewBatch).findIndex(c => c.id === this.selectedId));
+        const el = this.$refs.candRow, card = el?.querySelectorAll('.cand-card')[i];
+        this.candIndex = i;
+        if (el && card) el.scrollTo({ left: card.offsetLeft - 16, behavior: 'auto' });
+      }));
+    },
+    // The selected option as the studio names it: its round and its place in that row — "Variation 1 · option 4"
+    get selectionLabel() {
+      const c = this.selectedCandidate, b = c && this.design?.batches.find(x => x.id === c.batch_id);
+      return c ? (b ? this.batchLabel(b) + ' · ' : '') + 'option ' + this.optionNumber(c) : '';
     },
     get pendingBatch() { return this.batch(this.pendingRefineBatchId); },
     get visibleBatches() { return (this.design?.batches || []).filter(b => b.id !== this.pendingRefineBatchId); },
@@ -1695,18 +1711,7 @@ function p3App() {
     // Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per finished 360° movie (the server's tariff)
     get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} credits remaining`; },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
-    // Muted autoplay can still be limited by the browser (e.g. Edge "Limit media autoplay", power
-    // saving): set the muted property, call play(), and if it is refused retry on the first interaction.
-    startLoadingMovie(el) {
-      el.muted = true; el.defaultMuted = true;
-      const tryPlay = () => el.play().catch(() => {
-        const again = () => { if (el.isConnected) el.play().catch(() => {}); };
-        window.addEventListener('pointerdown', again, { once: true });
-        window.addEventListener('keydown', again, { once: true });
-      });
-      if (el.readyState >= 2) tryPlay(); else el.addEventListener('canplay', tryPlay, { once: true });
-    },
-    // The P2 waiting movie is shown while a new design or a refinement is being generated.
+    // The waiting drawing is shown while a new design or a refinement is being generated.
     get waitBatch() {
       if (this.pendingBatch) return this.pendingBatch;
       return this.anyActive(this.viewBatch) ? this.viewBatch : null;

@@ -49,7 +49,6 @@ async def test_page_images_are_versioned_and_cached_for_a_year(H):
     Html = (await H.Client.get("/technology")).text
     for Name in ("PrintHead.webp", "PrintHead.jpg", "Ink.JPG", "Angel.JPG", "favicon-32.png"):
         assert re.search(r"/static/images/" + re.escape(Name) + r"\?v=\d+", Html), Name
-    assert re.search(r"/static/videos/atelier-loading\.mp4\?v=\d+", Html)
     assert "PrintHead.png" not in Html and '<source srcset="/static/images/PrintHead.webp?v=' in Html     # 2.2 MB → 30 KB
     Url = re.search(r'"(/static/images/PrintHead\.webp\?v=\d+)"', Html).group(1)
     R = await H.Client.get(Url)

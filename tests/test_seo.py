@@ -179,8 +179,7 @@ def test_pictures_of_a_known_shape_carry_their_size():
     Missing = [I for I in Imgs if not re.search(r"\swidth=", I)]
     assert len(Missing) == 3 and all(any(K in I for K in (':src="zoom?.src"', ':src="cust?.image_url"', ':src="previewSrc"'))
                                      for I in Missing), Missing
-    for Name, (W, H) in {"Ink.JPG": (658, 508), "ISO.png": (242, 114), "Angel.JPG": (430, 681),
-                         "atelier-loading-poster.jpg": (1152, 720)}.items():
+    for Name, (W, H) in {"Ink.JPG": (658, 508), "ISO.png": (242, 114), "Angel.JPG": (430, 681)}.items():   # the waiting drawing is an SVG (R-23)
         assert any(Name in I and f'width="{W}" height="{H}"' in I for I in Imgs), Name
     assert all(re.search(r'width="(\d+)" height="\1"', I) for I in Imgs if "thumb(" in I)        # design pictures: square
 
