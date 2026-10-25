@@ -146,6 +146,8 @@ function p3App() {
                                        // legacy server mode keeps the old 'email' / 'token' dialog
     regForm: { token: '', name: '', email: '', password: '' },
     regError: '', regInfo: '', regLoading: false, regUnverified: false,
+    regReason: '',                     // what the sign-in is for (R-10): 'favorites' | 'bag' | '' (designing)
+    startingCredits: window.__p3?.starting_credits ?? null,     // a new account's credits (the server's, R-16)
     authCfg: { mode: 'dual', providers: {} },   // GET /api/auth/config
     authCsrf: '',                      // the session's CSRF token: sent as X-CSRF-Token on every unsafe request
     claim: { ticket: '', name: '', email: '' },  // a legacy six-letter code that was accepted: finish by attaching a real login
@@ -908,6 +910,11 @@ function p3App() {
     // element that opened it when it closes; Escape and the Close button close it.
     openRegModal(mode) {
       this.regMode = mode || (this.legacyAuth ? 'email' : 'signin');
+      // The headline follows what the visitor just did (R-10): a ♥, the bag (its button or its address), or designing
+      let route = this._pendingRoute;
+      try { route = route || sessionStorage.getItem('p3_pending_route') || ''; } catch (_) {}
+      this.regReason = this._pendingPanel === 'bag' || ['bag', 'checkout'].includes(route) ? 'bag'
+                     : this._pendingPanel === 'favorites' || route === 'favorites' || this._pendingFav() ? 'favorites' : '';
       this.regError = ''; this.regInfo = ''; this.regUnverified = false;
       this.regForm = { token: '', name: '', email: '', password: '' };
       this._returnFocus = document.activeElement;
@@ -1315,7 +1322,9 @@ function p3App() {
       if (s && s.p3Pushed === PAGE_LOAD && s.p3Prev === BASE + '/' + FLOW_PATHS.design) history.back(); else this._route('replace');
       this._screenShown();                                                   // the Design screen again
     },
-    signOutFromAccount() { this.closeAccountPanel(); this.logout(); },
+    // A sign-out the customer chose: the home page says so (R-29); an ended session stays silent
+    signOut() { this.logout(); this.showToast('You’re signed out.', { ms: 3500 }); },
+    signOutFromAccount() { this.closeAccountPanel(); this.signOut(); },
 
     // ── catalog helpers ───────────────────────────────────────────────
     group(id) { return this.catalog?.groups.find(g => g.id === id); },

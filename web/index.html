@@ -465,7 +465,8 @@
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>Favorites</button>
                 </div>
                 <button x-show="userSession && bagCount" @click="goToCheckout()" class="btn-outline w-full py-3" x-text="'My bag (' + bagCount + ')'"></button>
-                <button @click="userSession ? logout() : openRegModal()" class="w-full py-2 text-[12px] uppercase tracking-widest text-zinc-500" x-text="userSession ? 'Sign out' : 'Sign in'"></button>
+                <button x-show="!userSession" @click="menuOpen = false; openRegModal()" class="btn-outline w-full min-h-[44px] py-3">Sign in</button>
+                <button x-show="userSession" x-cloak @click="menuOpen = false; signOut()" class="w-full min-h-[44px] py-2 text-[12px] uppercase tracking-widest text-zinc-500">Sign out</button>
             </div>
         </div>
     </nav>
@@ -2226,7 +2227,7 @@
                                         <div class="flex flex-wrap gap-2 items-start">
                                             <div class="flex-1" style="min-width:12rem">
                                                 <input id="sec-pw" :type="sec.showPw ? 'text' : 'password'" x-model="sec.newPw" autocomplete="new-password" minlength="10" aria-describedby="sec-pw-hint" class="fld" :disabled="!sec.data.email_verified">
-                                                <p id="sec-pw-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters. Changing it signs every other browser out.</p>
+                                                <p id="sec-pw-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. Changing it signs every other browser out.</p>
                                             </div>
                                             <button type="submit" :disabled="sec.busy || !sec.data.email_verified || sec.newPw.length < 10" class="btn-gold px-5 py-3 text-[12px] uppercase tracking-[0.15em]">Save</button>
                                         </div>
@@ -2429,7 +2430,7 @@
                             <div class="h-full rounded-full transition-all duration-500"
                                  :style="{ width: (quotaMax ? Math.round(100 * quotaRemaining / quotaMax) : 0) + '%', background: quotaRemaining === 0 ? '#B4443A' : 'linear-gradient(90deg,#C1995A,#8A561B)' }"></div>
                         </div>
-                        <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">
+                        <div class="text-[13px] mt-1.5 leading-snug" style="color:#6F6F6F;">
                             <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for, one per extra option you request and one per 360° movie. If a request can’t deliver all four designs, its credit comes back, and retrying the missing ones is free. Selecting, materials, sizes and a reused movie are free.</span>
                             <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. Contact us to extend your allowance.</span>
                         </div>
@@ -2518,10 +2519,12 @@
                     <div class="mb-6 text-center">
                         <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
                         <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;"
-                            x-text="{ signin: 'Sign in', register: 'Create your account', forgot: 'Reset your password', code: 'Use your sign-in code', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
-                        <p id="reg-desc" class="text-[13px] text-zinc-600 mt-2 leading-relaxed"
-                           x-text="{ signin: 'Sign in to start designing. Your designs, credits and orders stay with your account.',
-                                     register: 'Your designs are saved to your account.',
+                            x-text="{ signin: { favorites: 'Sign in to save favorites', bag: 'Sign in to see your bag' }[regReason] || 'Sign in', register: 'Create your account', forgot: 'Reset your password', code: 'Use your sign-in code', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
+                        <p id="reg-desc" class="text-[15px] text-zinc-600 mt-2 leading-relaxed"
+                           x-text="{ signin: { favorites: 'Your favorites, designs and orders stay with your account.',
+                                               bag: 'Your bag, designs and orders stay with your account.' }[regReason]
+                                             || 'Sign in to start designing. Your designs, credits and orders stay with your account.',
+                                     register: 'Your designs are saved to your account.' + (startingCredits ? ' A new account starts with ' + startingCredits + ' credits.' : ''),
                                      forgot: 'Enter your email and we send you a link to choose a new password.',
                                      code: 'Enter the 6-letter code from your welcome email — once — and we move your account to a real sign-in.',
                                      claim: 'Your designs, credits and orders are safe. Choose how you want to sign in from now on.' }[regMode] || ''"></p>
@@ -2588,9 +2591,12 @@
                         <div class="mb-2">
                             <label for="rg-password" class="flbl">Password</label>
                             <input id="rg-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="rg-hint" class="fld">
-                            <p id="rg-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
+                            <p id="rg-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
                         </div>
-                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-4"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <p class="text-[13px] text-zinc-600 mb-5 leading-relaxed">Before you create an account, please read our
+                            <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and
+                            <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy</a> notice.</p>
                         <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
                         </button>
@@ -2616,7 +2622,7 @@
                             <label for="cl-code" class="flbl">Sign-in code</label>
                             <input id="cl-code" x-model="regForm.token" @input="regForm.token = regForm.token.toUpperCase()" type="text" required maxlength="6" autocomplete="one-time-code" spellcheck="false"
                                    placeholder="e.g. XAJKLM" :disabled="regLoading" class="fld uppercase tracking-widest font-mono">
-                            <p class="text-[12px] text-zinc-500 mt-1.5">Lost it? No problem — use “Forgot password” with your email and your account is found by it.</p>
+                            <p class="text-[13px] text-zinc-500 mt-1.5">Lost it? No problem — use “Forgot password” with your email and your account is found by it.</p>
                         </div>
                         <button type="submit" :disabled="regLoading || regForm.token.trim().length < 6" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Continue</span><span x-show="regLoading">Checking…</span>
@@ -2633,7 +2639,7 @@
                         <div class="mb-2">
                             <label for="cp-password" class="flbl">Choose a password</label>
                             <input id="cp-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="cp-hint" class="fld">
-                            <p id="cp-hint" class="text-[12px] text-zinc-500 mt-1.5">At least 10 characters.</p>
+                            <p id="cp-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters.</p>
                         </div>
                         <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
                         <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
@@ -2701,7 +2707,7 @@
                                @input="regForm.token = regForm.token.toUpperCase()"
                                :disabled="regLoading"
                                class="fld uppercase tracking-widest font-mono" :class="regLoading ? 'opacity-50' : ''">
-                        <p class="text-[12px] text-zinc-500 mt-1.5">The 6 letters from your welcome email. Lost it? Register again with the same email and we re-send it.</p>
+                        <p class="text-[13px] text-zinc-500 mt-1.5">The 6 letters from your welcome email. Lost it? Register again with the same email and we re-send it.</p>
                     </div>
                     <button type="submit"
                             :disabled="regLoading"
@@ -2727,9 +2733,9 @@
                 </div>
 
                 <!-- Discovery is not gated: the gallery, materials and the process are open to everyone -->
-                <p class="text-center text-[12px] text-zinc-500 mt-6 pt-5 border-t border-zinc-100">
+                <p class="text-center text-[13px] text-zinc-500 mt-6 pt-5 border-t border-zinc-100">
                     Not ready to sign in? <button type="button" @click="closeRegModal()" class="underline underline-offset-2 hover:text-black transition">Keep browsing</button>
-                    — signing in is only needed to start a design.
+                    <span x-text="regReason ? '— the gallery, materials and prices are open to everyone.' : '— signing in is only needed to start a design.'">— signing in is only needed to start a design.</span>
                 </p>
             </div>
         </div>
@@ -2738,7 +2744,7 @@
     <!-- ── Toast: a short confirmation of what just happened, with an optional follow-up ── -->
     <template x-teleport="body">
         <div x-show="toast" x-cloak role="status" aria-live="polite"
-             class="fixed left-1/2 -translate-x-1/2 bottom-5 z-[600] flex items-center gap-4 px-5 py-3 rounded-xl shadow-2xl text-[13px] fade-in"
+             class="fixed inset-x-0 mx-auto bottom-5 z-[600] w-max flex items-center gap-4 px-5 py-3 rounded-xl shadow-2xl text-[13px] fade-in"
              style="background:#1A1A1A; color:#fff; max-width:min(92vw, 560px);">
             <span x-text="toast?.text"></span>
             <button x-show="toast?.label" @click="toastAction()" class="shrink-0 font-semibold uppercase tracking-widest text-[12px]" style="color:#E2C27A;" x-text="toast?.label"></button>
