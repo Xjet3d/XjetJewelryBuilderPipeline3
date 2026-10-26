@@ -149,3 +149,13 @@ def test_r03_on_phones_the_checkout_stepper_keeps_bag_and_checkout():
     Steps = Index[Index.index('<div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">'):]
     Steps = Steps[:Steps.index("</div>")]
     assert Steps.count("h-step-early") == 4 and Steps.index(">Customize</button>") < Steps.rindex("h-step-early") < Steps.index(">Bag</button>")
+
+
+def test_r05_how_it_works_promises_the_360_movie_for_rings_only():
+    """R-05 (26 Oct, a text-only exception in How It Works): step 3 promises the 360° movie for rings only — the same
+    sentence when rings alone are on offer, "rings come with a 360° movie" beside charms, none for charms alone."""
+    Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    How = Index[Index.index('<section id="how-it-works"'):]
+    How = How[:How.index("</section>")]
+    assert ("desc:'Select your metal and ' + wording.sizeWord + (wording.noun === 'ring' ? ', and watch your ring in a 360° movie.' : "
+            "wording.ring ? '; rings come with a 360° movie.' : '.')}") in How

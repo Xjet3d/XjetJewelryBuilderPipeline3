@@ -583,7 +583,7 @@
                     <template x-for="(s, i) in [
                         {num:'01', title:'Share Your Idea',    desc:'Describe what you want or upload a photo. No design skills needed.'},
                         {num:'02', title:'Choose From Four',   desc:'Our AI creates four different designs from your idea. Pick one and refine it until it feels right.'},
-                        {num:'03', title:'Choose Your Details', desc:'Select your metal and ' + wording.sizeWord + ', and watch your ' + wording.noun + ' in a 360° movie.'},
+                        {num:'03', title:'Choose Your Details', desc:'Select your metal and ' + wording.sizeWord + (wording.noun === 'ring' ? ', and watch your ring in a 360° movie.' : wording.ring ? '; rings come with a 360° movie.' : '.')},
                         {num:'04', title:'Add to Your Bag',    desc:'Save your finished configuration to your bag.'}
                     ]" :key="i">
                         <div class="bg-white rounded-xl p-8 border border-zinc-100 hover:border-zinc-200 transition shadow-sm flex flex-col">
