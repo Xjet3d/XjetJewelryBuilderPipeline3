@@ -5,6 +5,7 @@ due dates and the customer's update (R-48)."""
 
 import re
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -127,3 +128,13 @@ async def test_a_gold_quote_has_its_due_dates_and_the_customer_can_be_sent_an_up
         assert Mail["to"] == "dana@atelier-customer.co.il" and "closer look" in Mail["html"] and Q["ref"] in Mail["subject"]
     finally:
         await H.Close()
+
+
+def test_r12_the_design_screen_is_laid_out_as_before_work_package_2():
+    """R-12 reopened for a joint UX review (26 Oct): no next step beside the grid; the design's name under the options and
+    Start a New Design · Customize under the composer at every width, as before Work Package 2 (R-17's words kept)."""
+    Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'aria-label="Next step"' not in Index and "lg:flex lg:items-start lg:justify-center lg:gap-8" not in Index
+    assert '<div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">' in Index
+    assert '<h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>' in Index
+    assert "'Customize Your ' + designLabel + (canActOnSelection ? ' · ' + selectionLabel : '')" in Index

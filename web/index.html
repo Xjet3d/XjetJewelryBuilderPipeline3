@@ -1238,8 +1238,6 @@
                                         <button x-show="policyRefused(viewBatch) && viewBatch?.kind !== 'refine'" @click="startNew()" class="tap-lg underline underline-offset-2 text-[13px] font-semibold whitespace-nowrap">Start a new design</button>
                                     </div>
 
-                                    <!-- Desktop (from 1024 px): the next step beside the four options, in view without scrolling (R-12) -->
-                                    <div class="lg:flex lg:items-start lg:justify-center lg:gap-8">
                                     <!-- Four candidates: a 2×2 grid from 640 px up; on a phone one large option at a time, swipe to compare -->
                                     <div class="cand-row flex sm:grid sm:grid-cols-2 gap-3 sm:gap-4 w-full mx-auto overflow-x-auto sm:overflow-visible snap-x snap-mandatory -mx-4 px-4 sm:mx-auto sm:px-0 sm:max-w-[min(640px,max(320px,calc(100dvh_-_300px)))]"
                                          style="scroll-padding:0 16px;" x-ref="candRow" @scroll.passive="candScroll($event)">
@@ -1279,20 +1277,6 @@
                                             </div>
                                         </template>
                                     </div>
-                                    <aside class="hidden lg:flex flex-col gap-3 w-[260px] shrink-0 pt-1" aria-label="Next step">
-                                        <h2 class="brand-font text-[26px] font-semibold tracking-[0.06em] leading-tight" style="color:#1A1A1A;" x-text="design?.title"></h2>
-                                        <p x-show="!selectedId" class="text-[14px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
-                                        <!-- Never while a refinement of the design is being made (R-18): the server refuses it too -->
-                                        <button @click="proceed()" :disabled="!canCustomize" class="btn-gold stream-glow w-full flex-col gap-1 px-3 py-3.5 leading-tight" :title="pendingBatch ? 'Wait for the refinement to finish' : canActOnSelection ? '' : 'Select one of the four options first'">
-                                            <span x-text="pendingBatch ? 'Wait for the refinement to finish' : 'Customize Your ' + designLabel"></span>
-                                            <span x-show="!pendingBatch && canActOnSelection" class="text-[12px] font-medium tracking-[0.06em]" x-text="selectionLabel"></span>
-                                        </button>
-                                        <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-[13px]" style="color:#6F6F6F;"
-                                           x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
-                                        <button @click="startNew()" class="btn-outline w-full min-h-[44px] px-3 py-3 leading-tight">Start a New Design</button>
-                                        <p class="text-[13px]" style="color:#6F6F6F;">Or describe a change below to refine the selected design.</p>
-                                    </aside>
-                                    </div>
 
                                     <!-- Phone: which option is in view, and a dot per option (tap a dot to jump) -->
                                     <div class="sm:hidden flex items-center justify-center gap-3 -mt-1" x-show="(viewBatch?.candidates || []).length > 1">
@@ -1303,7 +1287,7 @@
                                         </div>
                                         <span class="text-[13px] text-zinc-600" x-text="'Option ' + (candIndex + 1) + ' of ' + (viewBatch?.candidates || []).length + ' · swipe to compare'"></span>
                                     </div>
-                                    <h2 class="lg:hidden brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
+                                    <h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>
 
                                     </div>
                                 </div>
@@ -1421,7 +1405,7 @@
                                 </div>
 
                                 <!-- Result actions: Start new · Customize (proceed). Refining is done from the composer. -->
-                                <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3 lg:hidden">
+                                <div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
                                     <button @click="startNew()" class="btn-outline hidden sm:inline-flex flex-1 px-2 py-3.5 leading-tight">
                                         <svg class="w-[18px] h-[18px] mr-2 stroke-[3] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                                         Start a New Design
@@ -1434,9 +1418,9 @@
                                     </button>
                                 </div>
                                 <!-- Opening Customize makes the option's 360° movie, unless it has one already (R-07: the cost before the click) -->
-                                <p x-show="canCustomize && selectedCandidate?.movie_credits" class="lg:hidden text-center text-[13px]" style="color:#6F6F6F;"
+                                <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-center text-[13px]" style="color:#6F6F6F;"
                                    x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
-                                <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block lg:hidden text-center text-[13px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
+                                <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block text-center text-[13px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
                                 <p x-show="actionError" class="err-line justify-center text-center" role="alert" x-text="actionError"></p>
                             </div>
                         </div>
