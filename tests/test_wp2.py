@@ -1,7 +1,8 @@
 """Work Package 2 (2026-10-26), server side: a bag line's own quantity (R-20), a confirmed ring size kept for the design
 (R-21), a charm's size in Checkout (R-02), the Checkout note (R-45), the order email's View Your Order button, pictures and
 next steps (R-43), developer tools and the older sign-in left out of a page where they are off (R-34), and a gold quote's
-due dates and the customer's update (R-48)."""
+due dates and the customer's update (R-48). Then the owner's decisions after the review (26 Oct): business days Sunday to
+Thursday, R-12 reopened, the phones' Checkout stepper (R-03) and How It Works' 360° movie for rings only (R-05)."""
 
 import re
 from datetime import date
@@ -113,7 +114,7 @@ async def test_a_gold_quote_has_its_due_dates_and_the_customer_can_be_sent_an_up
         D = (await H.Client.get(f"/api/admin/quote-requests/{Q['id']}", headers=QAdmin)).json()
         Due = D["due"]
         assert Due["review_by"] < Due["quote_by"] and not Due["reviewed"] and not Due["review_overdue"] and not Due["quote_overdue"]
-        assert date.fromisoformat(Due["review_by"]).weekday() < 5 and date.fromisoformat(Due["quote_by"]).weekday() < 5
+        assert date.fromisoformat(Due["review_by"]).weekday() not in (4, 5) and date.fromisoformat(Due["quote_by"]).weekday() not in (4, 5)
         assert D["suggestion"]["has_model"] is False
         Url = f"/api/admin/quote-requests/{Q['id']}/update"
         assert (await H.Client.post(Url, json={"message": "short"}, headers=QAdmin)).status_code == 400
@@ -128,6 +129,18 @@ async def test_a_gold_quote_has_its_due_dates_and_the_customer_can_be_sent_an_up
         assert Mail["to"] == "dana@atelier-customer.co.il" and "closer look" in Mail["html"] and Q["ref"] in Mail["subject"]
     finally:
         await H.Close()
+
+
+def test_business_days_run_sunday_to_thursday():
+    """The owner's decision of 26 Oct (R-48): Friday and Saturday are the weekend."""
+    from p3.quotes import _AddBusinessDays
+    for Start, One, Three in (("2026-10-28", "2026-10-29", "2026-11-02"),     # Wednesday
+                              ("2026-10-29", "2026-11-01", "2026-11-03"),     # Thursday: review by Sunday
+                              ("2026-10-30", "2026-11-01", "2026-11-03"),     # Friday
+                              ("2026-10-31", "2026-11-01", "2026-11-03"),     # Saturday
+                              ("2026-11-01", "2026-11-02", "2026-11-04")):    # Sunday
+        S = date.fromisoformat(Start)
+        assert (_AddBusinessDays(S, 1).isoformat(), _AddBusinessDays(S, 3).isoformat()) == (One, Three), Start
 
 
 def test_r12_the_design_screen_is_laid_out_as_before_work_package_2():

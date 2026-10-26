@@ -1776,7 +1776,7 @@
               <span class="badge" :class="quoteStatusClass(qd.status)" x-text="quoteStatusLabel(qd.status)"></span>
             </div>
             <p class="text-sm text-zinc-600" x-text="'Received ' + dateTime(qd.created_at)"></p>
-            <p x-show="qd.due && qd.can_send" class="text-[12px] text-zinc-600 flex flex-wrap items-center gap-2" title="The promise to the customer: reviewed by a person within one business day, the quote within three (business days Monday to Friday)">
+            <p x-show="qd.due && qd.can_send" class="text-[12px] text-zinc-600 flex flex-wrap items-center gap-2" title="The promise to the customer: reviewed by a person within one business day, the quote within three (business days Sunday to Thursday)">
               <span x-text="'Review by ' + qd.due?.review_by + (qd.due?.reviewed ? ' · reviewed' : '')"></span>
               <span x-show="qd.due?.review_overdue" class="badge bg-amber-100 text-amber-800">review overdue</span>
               <span x-show="!qd.offer" x-text="'· Quote by ' + qd.due?.quote_by"></span>

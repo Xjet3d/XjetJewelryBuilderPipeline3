@@ -47,11 +47,11 @@ def _Today() -> date:
 
 
 def _AddBusinessDays(Start: date, N: int) -> date:
-    """N business days (Monday to Friday) after Start."""
+    """N business days (Sunday to Thursday; Friday and Saturday are the weekend) after Start."""
     D = Start
     while N > 0:
         D += timedelta(days=1)
-        if D.weekday() < 5:
+        if D.weekday() not in (4, 5):
             N -= 1
     return D
 
@@ -162,7 +162,7 @@ class QuoteDesk:
 
     def Due(self, R: dict, History: list) -> dict:
         """The promise to the customer (R-48): every request reviewed by a person within one business day, the quote
-        within three (business days Monday to Friday, from the request's date in UTC). Reviewed: anything an Admin did
+        within three (business days Sunday to Thursday, from the request's date in UTC). Reviewed: anything an Admin did
         in the history — a note, an update, a 3D model, the quote."""
         Start = datetime.fromisoformat(R["created_at"]).astimezone(timezone.utc).date()
         Review, Quote = _AddBusinessDays(Start, 1), _AddBusinessDays(Start, 3)
