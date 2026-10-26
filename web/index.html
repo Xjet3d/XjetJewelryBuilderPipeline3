@@ -265,6 +265,9 @@
         /* The Design screen below 414 px: XJet's logo alone (its link keeps the name "XJet Atelier"), so the stepper,
            the bag and Exit fit on one row without overlapping (R-03) */
         @media (max-width: 413.98px) { .site-header.is-studio .h-word { display: none; } }
+        /* The Checkout step on phones: the stepper keeps its last two steps, Bag — Checkout, so it fits beside the bag and
+           Exit without overlapping (R-03) */
+        @media (max-width: 767.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }
         @media (min-width: 768px) {
             .site-header { column-gap: 1rem; padding: 1rem 2rem; }
             .site-header:not(.is-studio) { padding-top: 0; padding-bottom: 0; grid-template-columns: auto minmax(0, 1fr) auto;
@@ -332,7 +335,7 @@
         </div>
 
         <!-- Main navigation (from 1024 px; below that it is in the menu) · the Design screen's steps -->
-        <div class="h-nav flex items-center justify-center min-w-0">
+        <div class="h-nav flex items-center justify-center min-w-0" :class="['order','confirmation'].includes(view) ? 'at-checkout' : ''">
             <!-- the four in one style: capitals, 13 px (board J; a button takes neither the case nor the size from around it) -->
             <div x-show="!inStudio" class="hidden lg:flex items-center gap-9 xl:gap-8 2xl:gap-11 whitespace-nowrap text-[13px] uppercase tracking-[0.12em] font-medium text-zinc-600">
                 <button @click="scrollToHowItWorks()" class="uppercase text-[13px] py-3 hover:text-black transition">How It Works</button>
@@ -360,14 +363,14 @@
                 </div>
             </div>
             <div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">
-                <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
+                <button class="h-step-early text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'ai-studio' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="design && navigateTo('ai-studio')">Design</button>
-                <span class="text-zinc-400 text-xs leading-none">—</span>
-                <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
+                <span class="h-step-early text-zinc-400 text-xs leading-none">—</span>
+                <button class="h-step-early text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'review' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="cust && navigateTo('review')">Customize</button>
-                <span class="text-zinc-400 text-xs leading-none">—</span>
+                <span class="h-step-early text-zinc-400 text-xs leading-none">—</span>
                 <button class="text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'checkout' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
                         @click="navigateTo('checkout')">Bag</button>

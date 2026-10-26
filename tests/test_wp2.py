@@ -138,3 +138,14 @@ def test_r12_the_design_screen_is_laid_out_as_before_work_package_2():
     assert '<div x-show="design" class="w-full flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">' in Index
     assert '<h2 class="brand-font text-[24px] sm:text-[28px] font-semibold tracking-[0.06em] text-center pt-1" style="color:#1A1A1A;" x-text="design?.title"></h2>' in Index
     assert "'Customize Your ' + designLabel + (canActOnSelection ? ' · ' + selectionLabel : '')" in Index
+
+
+def test_r03_on_phones_the_checkout_stepper_keeps_bag_and_checkout():
+    """R-03 (26 Oct): below 768 px the Checkout step's stepper is Bag — Checkout, so it fits beside the bag icon (kept)
+    and Exit; Design, Customize and Bag keep the whole stepper."""
+    Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert "@media (max-width: 767.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }" in Index
+    assert """<div class="h-nav flex items-center justify-center min-w-0" :class="['order','confirmation'].includes(view) ? 'at-checkout' : ''">""" in Index
+    Steps = Index[Index.index('<div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">'):]
+    Steps = Steps[:Steps.index("</div>")]
+    assert Steps.count("h-step-early") == 4 and Steps.index(">Customize</button>") < Steps.rindex("h-step-early") < Steps.index(">Bag</button>")
