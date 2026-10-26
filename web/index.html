@@ -265,9 +265,9 @@
         /* The Design screen below 414 px: XJet's logo alone (its link keeps the name "XJet Atelier"), so the stepper,
            the bag and Exit fit on one row without overlapping (R-03) */
         @media (max-width: 413.98px) { .site-header.is-studio .h-word { display: none; } }
-        /* The Checkout step on phones: the stepper keeps its last two steps, Bag — Checkout, so it fits beside the bag and
-           Exit without overlapping (R-03) */
-        @media (max-width: 767.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }
+        /* The Checkout step on phones and tablets: the stepper keeps its last two steps, Bag — Checkout, so it fits beside
+           the bag and Exit without overlapping (R-03) */
+        @media (max-width: 1023.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }
         @media (min-width: 768px) {
             .site-header { column-gap: 1rem; padding: 1rem 2rem; }
             .site-header:not(.is-studio) { padding-top: 0; padding-bottom: 0; grid-template-columns: auto minmax(0, 1fr) auto;

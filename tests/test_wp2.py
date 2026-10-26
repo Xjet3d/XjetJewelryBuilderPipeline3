@@ -153,11 +153,11 @@ def test_r12_the_design_screen_is_laid_out_as_before_work_package_2():
     assert "'Customize Your ' + designLabel + (canActOnSelection ? ' · ' + selectionLabel : '')" in Index
 
 
-def test_r03_on_phones_the_checkout_stepper_keeps_bag_and_checkout():
-    """R-03 (26 Oct): below 768 px the Checkout step's stepper is Bag — Checkout, so it fits beside the bag icon (kept)
-    and Exit; Design, Customize and Bag keep the whole stepper."""
+def test_r03_on_phones_and_tablets_the_checkout_stepper_keeps_bag_and_checkout():
+    """R-03 (26 Oct, tablets added the same day): below 1024 px the Checkout step's stepper is Bag — Checkout, so it
+    fits beside the bag icon (kept) and Exit; Design, Customize and Bag keep the whole stepper."""
     Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
-    assert "@media (max-width: 767.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }" in Index
+    assert "@media (max-width: 1023.98px) { .site-header .h-nav.at-checkout .h-step-early { display: none; } }" in Index
     assert """<div class="h-nav flex items-center justify-center min-w-0" :class="['order','confirmation'].includes(view) ? 'at-checkout' : ''">""" in Index
     Steps = Index[Index.index('<div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">'):]
     Steps = Steps[:Steps.index("</div>")]
