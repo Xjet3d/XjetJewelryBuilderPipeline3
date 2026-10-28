@@ -1420,6 +1420,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             Ctx.Products.Set(Credits.TariffKey, New, Who.Id, str(Body_.get("note") or "")[:300])
         return Credits.Status(Ctx)
 
+    @App_.put("/api/admin/credits/starting")
+    async def SetStartingCredits(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"starting_credits": 10} — what an account created from now on starts with; existing accounts keep theirs."""
+        Who = Admin(authorization)
+        New = Credits.ValidateStarting(Body_.get("starting_credits"))
+        if New != Credits.StartingCredits(Ctx):
+            Ctx.Products.Set(Credits.StartingKey, New, Who.Id, str(Body_.get("note") or "")[:300])
+        return Credits.Status(Ctx)
+
     # ── Charm pricing: its own versioned table (a fixed price per material and size; price and cost per gram) ──
     @App_.get("/api/admin/charm-prices")
     async def GetCharmPrices(authorization: str | None = Header(None)):

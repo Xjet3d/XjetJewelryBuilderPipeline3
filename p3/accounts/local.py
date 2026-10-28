@@ -150,6 +150,7 @@ class LocalAccountProvider:
             Conn.execute("CREATE INDEX IF NOT EXISTS usage_events_account ON usage_events(account_id, created_at)")
         from p3.accounts.identity import IdentityStore
         self.Identity = IdentityStore(self)       # logins, passwords, single-use tokens and sessions (AJW-39)
+        self.StartingCredits = lambda: DefaultMaxGenerations   # a new account's credits: the app reads the Admin's (R-16)
 
     # ── tokens ───────────────────────────────────────────────────────────
     def GenerateToken(self) -> str:
@@ -353,7 +354,7 @@ class LocalAccountProvider:
         with self.Db.Transaction() as Conn:
             Conn.execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, max_generations, "
                          "verify_hash, verify_expires_at, delivery_token) VALUES (?,?,?,?, 'self', ?,?,?,?)",
-                         (AccountId, Name, Email, T, DefaultMaxGenerations, _HashSecret(Secret), Expires, Token))
+                         (AccountId, Name, Email, T, int(self.StartingCredits()), _HashSecret(Secret), Expires, Token))
             Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
                          "VALUES (?,?,?, 'self-registration', 0, ?)", (HashToken(Token), Token[:3], AccountId, T))
         return {"status": "verification_sent", "name": Name, "email": Email, "verify_secret": Secret}

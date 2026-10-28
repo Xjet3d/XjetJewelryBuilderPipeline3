@@ -37,7 +37,6 @@ from p3.quotes import QuoteDesk
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("font/woff", ".woff")
 from p3.accounts import BuildProvider as BuildAccountProvider, InsufficientCredits
-from p3.accounts.local import DefaultMaxGenerations
 from p3.auth import RequireDeveloper, RequirePrincipal
 from p3.config import LoadCatalog, LoadGenerationConfig
 from p3.context import Context, HttpError
@@ -223,6 +222,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Ctx.Products = Products.ProductSettings(Ctx.Db)   # rings and charms (charms hidden from customers by default)
+    Accounts.StartingCredits = lambda: Credits.StartingCredits(Ctx)   # a new account's credits: the Admin's number (R-16)
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
@@ -393,9 +393,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     # ── pages / static ───────────────────────────────────────────────────
     # What the customer page learns from the server (window.__p3): never a secret.
     # The support address the site shows (Contact page, Contact Us links): P3_SUPPORT_EMAIL, else the shared inbox
-    # The credits a new account starts with (Create account says it, R-16)
     PageConfig = {"env": S.Env, "dev_tools": S.DevTools, "base": Base, "public_base_url": S.PublicBaseUrl,
-                  "support_email": S.SupportEmail, "starting_credits": DefaultMaxGenerations}
+                  "support_email": S.SupportEmail}
 
     def Indexable() -> bool:
         """Search engines may index the public pages: a production configuration, or the Admin's switch (Settings →

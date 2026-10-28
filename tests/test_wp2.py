@@ -167,12 +167,12 @@ def test_r03_on_phones_and_tablets_the_checkout_stepper_keeps_bag_and_checkout()
 def test_wording_waiting_for_legal_approval_stays_out():
     """The owner's decision for the Atelier release (26 Oct): until the legal review approves them, the Terms keep
     Atelier's sign-in paragraph (not WP2's R-06 rewrite), Create account has no Terms-and-Privacy line (R-16's legal
-    part; its credit sentence stays) and the Terms carry no warranty clause (R-31)."""
+    part; since 28 Oct it promises no number of credits) and the Terms carry no warranty clause (R-31)."""
     Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
     Terms = Index[Index.index("<template x-if=\"view === 'terms'\">"):]
     Terms = Terms[:Terms.index("</template>")]
     assert "Access is by a personal 6-letter sign-in code." in Terms and "You sign in with your email address" not in Terms
-    assert "Before you create an account, please read our" not in Index and "A new account starts with ' + startingCredits" in Index
+    assert "Before you create an account, please read our" not in Index and "A new account starts with" not in Index
     assert "Warranty." not in Terms
 
 

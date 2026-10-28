@@ -209,12 +209,13 @@ class IdentityStore:
         return "removed" if all(A["removed_at"] for A in Rows) else "disabled"
 
     def CreateAccount(self, Name: str, Email: str | None, EmailVerified: bool) -> str:
-        """The only place a login-created account (and its welcome credits) comes into being."""
-        from p3.accounts.local import DefaultMaxGenerations, NewAccountId
+        """The only place a login-created account (and its welcome credits) comes into being: the starting credits of
+        this moment (the Admin's number, R-16), which a later change of that number never touches."""
+        from p3.accounts.local import NewAccountId
         AccountId, T = NewAccountId(), Now()
         self.Db.Execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, max_generations, "
                         "verified_at, activated_at) VALUES (?,?,?,?, 'auth', ?,?,?)",
-                        (AccountId, (Name or "").strip(), NormalizeEmail(Email) or None, T, DefaultMaxGenerations,
+                        (AccountId, (Name or "").strip(), NormalizeEmail(Email) or None, T, int(self.Accounts.StartingCredits()),
                          T if EmailVerified else None, T))
         self.Accounts._Event(AccountId, "account_created", "login")
         return AccountId

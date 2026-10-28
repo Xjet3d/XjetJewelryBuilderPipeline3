@@ -7,6 +7,10 @@ movie, 0 for a 3D model (Hi3D is XJet's production cost, never the customer's). 
 material or the size and reusing an existing movie cost nothing. Ten credits are, for example, four design requests,
 two refinements and four movies.
 
+A new account starts with the Admin's starting credits (Admin → Settings → Products → Credits; DefaultMaxGenerations,
+10, until an Admin sets another number, R-16). They are counted once, when the account is created — by email or with
+Google or Apple — so a change applies to the accounts created after it and never to a balance that exists.
+
 A credit is RESERVED when the work starts — atomically against the allowance, so parallel requests can never overspend
 it; the customer's balance shows it as spent at once — and SETTLED when the work is over (T-10, owner decision of
 2026-10-25). An image request (a design, a refinement, an additional option) keeps its credit once every one of its
@@ -25,6 +29,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from p3.accounts import Principal
+from p3.accounts.local import DefaultMaxGenerations
 from p3.context import Context, HttpError
 from p3.db import NewId
 from p3.providers.base import ProviderError
@@ -36,6 +41,8 @@ Labels = {Design: "design request (four images)", Refinement: "refinement reques
 DefaultTariff = {Design: 1, Refinement: 1, Option: 1, Movie: 1, Mesh: 0}
 TariffKey = "credit_tariff"              # stored with the product settings (Admin-edited, logged)
 TariffMax = 100
+StartingKey = "starting_credits"         # the same store: a new account's credits; none stored = DefaultMaxGenerations
+StartingMax = 100
 SpendCapCode = "spend_cap_reached"
 SpendCapCustomerText = "AI generation is paused for today. Please try again tomorrow."
 CapKey = "ai_daily_spend_cap"            # Admin → Settings → System: {"cap_usd": 50.0}; none: P3_DAILY_AI_SPEND_CAP_USD
@@ -48,6 +55,20 @@ def Tariff(Ctx: Context) -> dict:
     Settings_ = getattr(Ctx, "Products", None)
     Stored = (Settings_.Get(TariffKey) if Settings_ is not None else None) or {}
     return {K: int(Stored.get(K, DefaultTariff[K])) for K in Kinds}
+
+
+def StartingCredits(Ctx: Context) -> int:
+    """The credits an account created now starts with: the Admin's number, else the default (10)."""
+    Settings_ = getattr(Ctx, "Products", None)
+    Stored = Settings_.Get(StartingKey) if Settings_ is not None else None
+    return DefaultMaxGenerations if Stored is None else int(Stored)
+
+
+def ValidateStarting(Raw) -> int:
+    if isinstance(Raw, bool) or not isinstance(Raw, int) or not 0 <= Raw <= StartingMax:
+        raise HttpError(400, "invalid_starting_credits",
+                        f"The credits a new account starts with must be a whole number from 0 to {StartingMax}.")
+    return Raw
 
 
 def ValidateTariff(Raw) -> dict:
@@ -223,7 +244,8 @@ def RecordUsage(Ctx: Context, AccountId: str | None, Kind: str, RefId: str, Endp
 
 
 def Status(Ctx: Context) -> dict:
-    """For the Admin: the tariff, the defaults and the day's spend against the cap."""
+    """For the Admin: the tariff, a new account's credits, the defaults and the day's spend against the cap."""
     return {"tariff": Tariff(Ctx), "default_tariff": dict(DefaultTariff), "kinds": [{"id": K, "label": Labels[K]} for K in Kinds],
+            "starting_credits": StartingCredits(Ctx), "default_starting_credits": DefaultMaxGenerations, "starting_max": StartingMax,
             "spend_today_usd": round(SpendToday(Ctx), 4), "daily_cap_usd": DailyCap(Ctx),
             "provider": Ctx.Provider.Name, "cost_source": CostSource}

@@ -2693,6 +2693,16 @@
             <button class="btn" :disabled="productsBusy" @click="saveTariff()">Save tariff</button>
           </div>
         </template>
+        <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-zinc-100" aria-label="Starting credits">
+          <p class="text-[13px] font-semibold">New accounts start with</p>
+          <span x-show="startingEdit === null" class="badge bg-zinc-100 text-zinc-700" x-text="credits.starting_credits + (credits.starting_credits === 1 ? ' credit' : ' credits')"></span>
+          <template x-if="startingEdit !== null">
+            <span class="inline-flex items-center gap-2"><input class="inp w-24" type="number" min="0" :max="credits.starting_max" x-model.number="startingEdit" aria-label="Credits a new account starts with">
+              <button class="btn" :disabled="productsBusy" @click="saveStarting()">Save</button></span>
+          </template>
+          <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="startingEdit === null ? editStarting() : (startingEdit = null)" x-text="startingEdit === null ? 'Change' : 'Cancel'"></button>
+        </div>
+        <p class="text-[12px] text-zinc-600" x-text="'Counted once, when an account is created — with an email address, Google or Apple. A change applies to the accounts created after it; existing accounts keep their credits. From 0 to ' + credits.starting_max + '; ' + credits.default_starting_credits + ' until an Admin sets another number.'"></p>
         <p class="text-[12px] text-zinc-600">AI spend today (estimate at list prices, live requests): <strong x-text="'$' + (credits.spend_today_usd || 0).toFixed(2)"></strong><span x-text="credits.daily_cap_usd ? ' of the $' + credits.daily_cap_usd.toFixed(2) + ' daily cap — paid submissions stop at the cap' : ' — no daily cap is configured (P3_DAILY_AI_SPEND_CAP_USD)'"></span><span class="text-zinc-500"> · the email warning: Settings → System</span></p>
         <p x-show="tariffMsg" class="text-sm" :class="tariffErr ? 'text-red-600' : 'text-emerald-700'" x-text="tariffMsg"></p>
       </div>
@@ -2702,7 +2712,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : l.key)))))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : (l.key === 'starting_credits' ? 'New accounts start with ' + l.value + (l.value === 1 ? ' credit' : ' credits') : l.key))))))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>

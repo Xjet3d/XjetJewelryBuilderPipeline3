@@ -148,7 +148,6 @@ function p3App() {
     regForm: { token: '', name: '', email: '', password: '' },
     regError: '', regInfo: '', regLoading: false, regUnverified: false,
     regReason: '',                     // what the sign-in is for (R-10): 'favorites' | 'bag' | '' (designing)
-    startingCredits: window.__p3?.starting_credits ?? null,     // a new account's credits (the server's, R-16)
     authCfg: { mode: 'dual', providers: {} },   // GET /api/auth/config
     authCsrf: '',                      // the session's CSRF token: sent as X-CSRF-Token on every unsafe request
     claim: { ticket: '', name: '', email: '' },  // a legacy six-letter code that was accepted: finish by attaching a real login

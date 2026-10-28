@@ -20,7 +20,7 @@ import re
 
 from p3 import media as Media
 from p3 import products as Products
-from p3.accounts.local import DefaultMaxGenerations
+from p3.credits import StartingCredits
 
 IndexKey = "site_indexing"                    # Admin → Settings → System → Search engines (product_settings)
 VerificationKey = "google_site_verification"   # the content of Search Console's <meta name="google-site-verification">
@@ -101,10 +101,11 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
                "it to your bag." if R else
                f"Yes. You choose from four designs and can refine your favorite before adding the {W['noun']} to your bag.")
     Movie = " and each 360° movie of a ring" if R and C else " and each 360° movie" if R else ""
+    Start = StartingCredits(Ctx)                       # the Admin's number at this moment (R-16); none said at 0
     Credits = (f"Each new design and each refinement you ask for uses one credit, as does each extra option you request{Movie}. "
                "The cost is shown before you confirm. If a request can’t deliver all four designs, its credit comes back, "
-               "and retrying the missing ones is free. Choosing a design, its metal and its size is free. "
-               f"A new account starts with {DefaultMaxGenerations} credits.")
+               "and retrying the missing ones is free. Choosing a design, its metal and its size is free."
+               + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else ""))
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
             ("Do I need design experience?", "None at all. Just describe what you want in plain language or upload a "

@@ -182,6 +182,7 @@ function adminApp() {
     users: [], search: '', showRemoved: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
     credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
+    startingEdit: null,                                                     // … and the credits a new account starts with (R-16)
     created: null, createError: '', duplicateOf: null, removedOf: null, copied: null,
     editing: null, edit: {}, editError: '',
     userId: '', d: null, detailError: '', openDesign: null,
@@ -602,6 +603,20 @@ function adminApp() {
       try {
         this.credits = await this.api('PUT', '/api/admin/credits/tariff', { tariff: this.tariffEdit });
         this.tariffEdit = null; this.tariffMsg = 'Tariff saved.'; this.notify(this.tariffMsg);
+        await this.loadProducts();
+      } catch (e) { this.tariffErr = true; this.tariffMsg = e.message; } finally { this.productsBusy = false; }
+    },
+    // The credits a new account starts with (p3/credits.py StartingCredits): counted once, at the account's creation
+    editStarting() { this.startingEdit = this.credits?.starting_credits ?? 0; this.tariffMsg = ''; },
+    async saveStarting() {
+      if (this.startingEdit === null) return;
+      const was = this.credits?.starting_credits, now = this.startingEdit;
+      const lines = Number(now) === Number(was) ? [] : ['New accounts start with: ' + was + ' → ' + now + ' credit' + (Number(now) === 1 ? '' : 's')];
+      if (!await this.confirmChanges(lines, 'Change the credits a new account starts with?', 'Accounts created from now on start with the new number. Existing accounts keep the credits they have.', 'Save')) return;
+      this.productsBusy = true; this.tariffMsg = ''; this.tariffErr = false;
+      try {
+        this.credits = await this.api('PUT', '/api/admin/credits/starting', { starting_credits: now });
+        this.startingEdit = null; this.tariffMsg = 'Starting credits saved.'; this.notify(this.tariffMsg);
         await this.loadProducts();
       } catch (e) { this.tariffErr = true; this.tariffMsg = e.message; } finally { this.productsBusy = false; }
     },
