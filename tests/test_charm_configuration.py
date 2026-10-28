@@ -176,7 +176,7 @@ async def test_any_llm_has_a_charm_configuration_of_its_own(HK):
     assert Charm["active"]["id"].startswith("any-llm-charm@v1-") and len(Charm["history"]) == 1
     P = Charm["active"]["params"]
     assert P["prompt"] == "{{user_prompt}}" and P["system_prompt"].startswith("You validate requests for an AI charm-design application.")
-    assert "wearable finger rings" not in P["system_prompt"] and "plain loop at its top" in P["system_prompt"]
+    assert "wearable finger rings" not in P["system_prompt"] and "one plain integrated attachment eyelet at the top" in P["system_prompt"]
     # Saving the charm configuration never changes the ring one, and the reverse
     New = {**P, "model": "openai/gpt-4o-mini", "temperature": 0.2, "system_prompt": "Charm check, edited"}
     R = await H.Client.post("/api/admin/models/any-llm-charm/activate", json={"params": New, "note": "charm"}, headers=Admin)
