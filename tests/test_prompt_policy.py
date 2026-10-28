@@ -67,8 +67,16 @@ def test_p4_logos_brands_teams_and_characters_are_not_stopped_by_the_check():
 
 
 def test_p5_a_stopped_request_says_why_and_how_to_change_it_and_the_page_shows_it_as_a_rule():
-    for Text in Texts.values():
-        assert "what cannot be made and why, then how to change the request so that it can be made" in Text
+    for Product, Text in Texts.items():
+        Rejections = Text[Text.index("\nREJECTIONS\n"):Text.index("Set rejection_category")]
+        assert "- First, what cannot be made and why." in Rejections, Product
+        assert "- Then, how to change the request so that it can be made" in Rejections, Product
+        assert "Always write both sentences, even when the change seems obvious." in Rejections, Product
+        assert f"one of the metals for the whole {Product}; say that the customer picks the metal in Customize" in Rejections, Product
+        # No example sentence to copy: the check repeated the quoted examples word for word, without the reason (28 Oct)
+        assert '"' not in Rejections, Product
+    assert ("- Openwork, lattice or decorative holes: suggest a solid charm with the same pattern engraved, recessed or in "
+            "relief on its surface instead of cut through.") in Texts["charm"]
     # The prompt check's refusal has its own block, never the red error line of a technical problem
     assert "if (e.code === 'prompt_rejected') this.composeRefusal = e.message;" in App
     Block = Index[Index.index('<div x-show="composeRefusal"'):]

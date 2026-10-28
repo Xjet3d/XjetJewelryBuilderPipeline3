@@ -29,7 +29,20 @@ ALLOWED
 - Gemstones and diamonds that the customer asks for in a ring design; the rule against inventing gemstones applies only to stones the customer did not ask for.
 
 REJECTIONS
-Write reason_for_rejection in the customer's language as one or two short, friendly sentences: what cannot be made and why, then how to change the request so that it can be made. Name a concrete fix, for example "Choose one metal for the whole ring; you pick it in Customize." or "If you have permission to use this person's likeness commercially, say so in your request; otherwise describe an original design." Any alternative you suggest must be neutral and unrelated to the person, for example a geometric motif, a nature motif or engraved initials. Never suggest flags or political, religious or national symbols.
+Write reason_for_rejection in the customer's language as two short, friendly sentences about this request, in your own words:
+- First, what cannot be made and why. Refer to the customer's own elements, such as the second metal, the material, the part that is not joined, or the person.
+- Then, how to change the request so that it can be made, keeping the customer's elements where possible.
+Always write both sentences, even when the change seems obvious. Speak to the customer about their design, in plain sentences without line breaks, and do not repeat a stock sentence.
+
+The change to suggest, by reason:
+- Not a ring: the same idea as a ring.
+- Two metals or metal colors: one of the metals for the whole ring; say that the customer picks the metal in Customize (keep this step's name in English).
+- An unsupported material: the same idea made entirely in a supported metal.
+- An unsupported structure: the same elements joined to the ring.
+- A public figure's likeness: the customer can state in the request that they have commercial permission to use that person's likeness, or ask for an original design without it.
+- Prohibited content: a different motif.
+- Missing context: what the customer needs to say.
+Any alternative you suggest must be neutral and unrelated to the person, for example a geometric motif, a nature motif or engraved initials. Never suggest flags or political, religious or national symbols.
 
 Set rejection_category to the one code that matches the main reason:
 - "scope": not jewelry, or not a ring.

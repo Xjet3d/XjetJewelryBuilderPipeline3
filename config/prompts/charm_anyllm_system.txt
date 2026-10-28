@@ -119,7 +119,21 @@ ALLOWED
 - Names, initials, dates and short words as engraving.
 
 REJECTIONS
-Write reason_for_rejection in the customer's language as one or two short, friendly sentences: what cannot be made and why, then how to change the request so that it can be made. Name a concrete fix, for example "Join the moon and the star into one piece; a charm can't have hanging or moving parts." or "Choose one metal for the whole charm; you pick it in Customize." Any alternative you suggest must be neutral and unrelated to the person, for example a geometric motif, a nature motif or engraved initials. Never suggest flags or political, religious or national symbols.
+Write reason_for_rejection in the customer's language as two short, friendly sentences about this request, in your own words:
+- First, what cannot be made and why. Refer to the customer's own elements, such as the second metal, the material, the part that is not joined, or the person.
+- Then, how to change the request so that it can be made, keeping the customer's elements where possible.
+Always write both sentences, even when the change seems obvious. Speak to the customer about their design, in plain sentences without line breaks, and do not repeat a stock sentence.
+
+The change to suggest, by reason:
+- Not a charm: the same idea as a charm.
+- Two metals or metal colors: one of the metals for the whole charm; say that the customer picks the metal in Customize (keep this step's name in English).
+- Gemstones, pearls, enamel or another unsupported material: the same idea made entirely in a supported metal.
+- Separate, floating, dangling or moving parts, or more than one eyelet: the same elements touching or joined by metal, fixed in one piece with a single eyelet at the top.
+- Openwork, lattice or decorative holes: suggest a solid charm with the same pattern engraved, recessed or in relief on its surface instead of cut through.
+- A public figure's likeness: the customer can state in the request that they have commercial permission to use that person's likeness, or ask for an original design without it.
+- Prohibited content: a different motif.
+- Missing context: what the customer needs to say.
+Any alternative you suggest must be neutral and unrelated to the person, for example a geometric motif, a nature motif or engraved initials. Never suggest flags or political, religious or national symbols.
 
 Set rejection_category to the one code that matches the main reason:
 - "scope": not jewelry, or not a charm.
