@@ -8,7 +8,7 @@ import pytest
 from p3.accounts.local import _HashSecret
 from p3.providers import endpoints
 from p3.registration import RegisterMessage
-from tests.conftest import Harness
+from tests.conftest import Accepted, Harness
 
 AdminKey = "signin-admin-key"
 Dev = {"Authorization": f"Bearer {AdminKey}"}
@@ -34,7 +34,7 @@ def _Link(Html, Pattern):
 async def test_email_registration_verify_and_sign_in(HS):
     H = HS
     Anon = {"X-Access-Token": ""}
-    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com", **Accepted(H)}, headers=Anon)
     assert R.status_code == 200 and R.json() == {"status": "verification_sent", "message": RegisterMessage("dana@example.com")}
     Mail = _Outbox(H)
     assert len(Mail) == 1 and Mail[0]["to"] == "dana@example.com"
@@ -51,7 +51,7 @@ async def test_email_registration_verify_and_sign_in(HS):
 
     # Sign in with the token, case-insensitively, exactly as P2's "Enter it here" form.
     R = await H.Client.post("/api/register-token", json={"Token": Token.lower(), "Name": "", "Email": ""}, headers=Anon)
-    assert R.json() == {"ok": True, "used": 0, "max": 10, "remaining": 10, "name": "Dana"}
+    assert R.json() == {"ok": True, "used": 0, "max": 10, "remaining": 10, "name": "Dana", "terms_required": False}
     S = (await H.Client.get("/api/token-status", headers={"X-Access-Token": Token})).json()
     assert (S["used"], S["max"], S["remaining"], S["name"], S["email"]) == (0, 10, 10, "Dana", "dana@example.com")
 
@@ -65,16 +65,14 @@ async def test_email_registration_verify_and_sign_in(HS):
 async def test_register_rules_match_pipeline2(HS):
     H = HS
     Anon = {"X-Access-Token": ""}
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": "not-an-email"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": "not-an-email", **Accepted(H)}, headers=Anon)
     assert R.status_code == 400 and R.json()["error"] == {"code": "invalid_email", "message": "Please enter a valid email address."}
 
-    await H.Client.post("/api/register", json={"Name": "Lee", "Email": "lee@example.com"}, headers=Anon)
+    await H.Client.post("/api/register", json={"Name": "Lee", "Email": "lee@example.com", **Accepted(H)}, headers=Anon)
     First = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
-    Pending = H.Ctx.Accounts.Db.One("SELECT delivery_token FROM accounts WHERE email = 'lee@example.com'")["delivery_token"]
-    assert re.fullmatch(r"[A-Z]{6}", Pending)                                # minted at registration (P2)
-    R = await H.Client.post("/api/register-token", json={"Token": Pending}, headers=Anon)
-    assert R.status_code == 403                                              # unusable until verified (P2 is_active=0)
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": "LEE@example.com"}, headers=Anon)   # pending → re-send
+    # No account and no code before the email is confirmed (2026-10-29: P2 minted an inactive code here)
+    assert H.Ctx.Accounts.Db.One("SELECT 1 AS x FROM accounts WHERE email = 'lee@example.com'") is None
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": "LEE@example.com", **Accepted(H)}, headers=Anon)   # pending → re-send
     assert R.json() == {"status": "verification_sent", "message": RegisterMessage("LEE@example.com")}   # the same answer, the address as typed
     Second = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
     assert Second != First and "Hi Lee," in _Outbox(H)[0]["html"]           # name kept from first registration
@@ -82,8 +80,8 @@ async def test_register_rules_match_pipeline2(HS):
 
     Page = (await H.Client.get(f"/verify?token={Second}", headers=Anon)).text
     OldToken = _Link(Page, r'<div class="token">([A-Z]{6})</div>')
-    assert OldToken == Pending
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": "lee@example.com"}, headers=Anon)   # verified
+    assert H.Ctx.Accounts.Db.One("SELECT delivery_token FROM accounts WHERE email = 'lee@example.com'")["delivery_token"] == OldToken
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": "lee@example.com", **Accepted(H)}, headers=Anon)   # verified
     assert R.json() == {"status": "verification_sent", "message": RegisterMessage("lee@example.com")}   # nothing says "registered"
     Resent = _Link(_Outbox(H)[0]["html"], r">([A-Z]{6})</span>")
     assert Resent == OldToken                                                # register-once: the SAME token (P2)
@@ -106,12 +104,18 @@ async def test_token_errors_use_pipeline2_messages(HS):
 
 async def test_expired_verification_link(HS):
     H = HS
-    await H.Client.post("/api/register", json={"Name": "", "Email": "late@example.com"})
+    await H.Client.post("/api/register", json={"Name": "", "Email": "late@example.com", **Accepted(H)})
     Secret = _Link(_Outbox(H)[0]["html"], r'/verify\?token=([A-Za-z0-9_\-]+)"')
-    Past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    H.Ctx.Accounts.Db.Execute("UPDATE accounts SET verify_expires_at = ? WHERE verify_hash = ?", (Past, _HashSecret(Secret)))
+    Past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="milliseconds")
+    H.Ctx.Accounts.Db.Execute("UPDATE pending_registrations SET expires_at = ? WHERE email = 'late@example.com'", (Past,))
     Page = (await H.Client.get(f"/verify?token={Secret}")).text
     assert "Link expired" in Page and 'class="card bad"' in Page
+    assert H.Ctx.Accounts.Db.One("SELECT 1 AS x FROM accounts WHERE email = 'late@example.com'") is None   # nothing was made
+    # A sign-up from before (an account row waiting for its email check) still expires the same way
+    H.Ctx.Accounts.Db.Execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, verify_hash, "
+                              "verify_expires_at) VALUES ('p3local:acct_old', '', 'old@example.com', ?, 'self', ?, ?)",
+                              (Past, _HashSecret("old-secret"), Past))
+    assert "Link expired" in (await H.Client.get("/verify?token=old-secret")).text
 
 
 async def test_credits_pay_for_images_and_movies_and_block_at_zero(tmp_path):
@@ -150,7 +154,7 @@ async def test_failed_movie_is_not_charged(tmp_path):
 
 async def test_outbox_is_developer_only_and_never_smtp_by_default(HS):
     H = HS
-    await H.Client.post("/api/register", json={"Name": "", "Email": "x@example.com"})
+    await H.Client.post("/api/register", json={"Name": "", "Email": "x@example.com", **Accepted(H)})
     assert (await H.Client.get("/api/dev/outbox")).status_code == 403
     Box = (await H.Client.get("/api/dev/outbox", headers=Dev)).json()
     assert Box["mode"] == "outbox" and Box["messages"][0]["to"] == "x@example.com"
@@ -163,7 +167,7 @@ async def test_links_use_base_path_and_public_origin(tmp_path, monkeypatch):
     monkeypatch.setenv("P3_PUBLIC_BASE_URL", "http://proto")
     H = Harness(tmp_path, BasePath="/JewelryB2C3")
     try:
-        await H.Client.post("/api/register", json={"Name": "", "Email": "p@example.com"})
+        await H.Client.post("/api/register", json={"Name": "", "Email": "p@example.com", **Accepted(H)})
         Html = _Outbox(H)[0]["html"]
         assert 'href="http://proto/JewelryB2C3/verify?token=' in Html
         Secret = _Link(Html, r'/verify\?token=([A-Za-z0-9_\-]+)"')

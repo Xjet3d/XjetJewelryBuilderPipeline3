@@ -9,6 +9,9 @@ Pieces
     /api/auth/session and by every sign-in); every unsafe API request also has its Origin checked.
   * Routes under /api/auth/*. Pages for emailed links: /auth/verify, /auth/reset, /auth/confirm (single-use secrets
     live in the URL fragment, never in a log, and are consumed by a POST, never by a GET a mail scanner could do).
+  * Terms acceptance (2026-10-29, p3/accounts/consent.py): a new account is made only together with its acceptance —
+    an email sign-up when its link is used, a new Google / Apple customer after they accept on the page they return
+    to (the sign-up waits in an HttpOnly cookie) — and an account XJet made accepts at its first sign-in.
 
 Nothing here logs a secret, a token, a password or an unmasked email address.
 """
@@ -17,12 +20,16 @@ import html
 import logging
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Body, Form, Query, Request
+from fastapi import BackgroundTasks, Body, Form, Header, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from p3 import mail as Mail
-from p3.accounts.identity import (EmailPattern, IdentityError, IsRelayEmail, NormalizeEmail, PasswordProblem, SessionCookieMark)
+from p3 import sitepages as SitePages
+from p3.accounts.consent import AcceptedOf, ConsentError, PendingTtlHours, TermsChanged
+from p3.accounts.identity import (EmailPattern, IdentityError, IsRelayEmail, NormalizeEmail, PasswordProblem, Providers,
+                                  SessionCookieMark)
 from p3.adminauth import BrowserScheme
+from p3.auth import RequirePrincipal
 from p3.context import Context, HttpError
 from p3.oidc import OidcError, ParseUserHint
 from p3.registration import MaskEmail, PublicOrigin
@@ -32,24 +39,50 @@ Log = logging.getLogger("p3.auth")
 
 SessionCookie = "atelier_session"
 OAuthCookie = "atelier_oauth"
+PendingCookie = "atelier_pending"                     # a new Google / Apple customer's sign-up, until they accept the Terms
 UnsafeMethods = ("POST", "PUT", "PATCH", "DELETE")
 NoOriginCheck = ("/api/auth/apple/callback",)        # Apple posts the sign-in result back from appleid.apple.com
 # Requests that happen before (or instead of) a session carry no CSRF token: login CSRF is stopped by the Origin check and
-# each of these also needs a secret the attacker does not have (a password, or a single-use emailed link / ticket).
+# each of these also needs a secret the attacker does not have (a password, or a single-use emailed link / ticket / cookie).
 NoCsrf = ("/api/auth/login", "/api/auth/register", "/api/auth/forgot", "/api/auth/reset", "/api/auth/verify-email",
           "/api/auth/resend-verification", "/api/auth/confirm-link", "/api/auth/claim", "/api/auth/claim/password",
-          "/api/auth/apple/callback", "/api/register-token", "/api/register")
+          "/api/auth/apple/callback", "/api/register-token", "/api/register", "/api/auth/accept", "/api/auth/pending")
 Generic = "If that email can be used, we've sent you a message. Check your inbox."
+TermsRequiredMessage = "Please accept the Terms of Service to create your account."
+TermsChangedMessage = ("Our Terms of Service or Privacy Policy changed while you were signing up. Please read them and "
+                       "accept them again.")
 
 
 def CookiePath(Ctx: Context) -> str:
     return Ctx.Settings.BasePath or "/"
 
 
+def LegalNow(Ctx: Context) -> dict:
+    """The versions of the Terms and the Privacy Policy the site serves now (archived automatically), and whether the
+    design-use permission is part of the Terms (P3_TERMS_DESIGN_USE)."""
+    return {**Ctx.Accounts.Consent.Current(), "design_use": Ctx.Settings.TermsDesignUse}
+
+
+def TermsChangedError(Ctx: Context, Current: dict) -> HttpError:
+    return HttpError(409, "terms_changed", TermsChangedMessage, {"legal": {**Current, "design_use": Ctx.Settings.TermsDesignUse}})
+
+
+def RequireAcceptance(Ctx: Context, Body_: dict) -> dict:
+    """What a sign-up step sends: the box ticked (accept_terms) and the versions the page showed (terms, privacy) —
+    which must be the ones served now: 400 terms_required, or 409 terms_changed carrying the current ones to show."""
+    if Body_.get("accept_terms") is not True:
+        raise HttpError(400, "terms_required", TermsRequiredMessage)
+    try:
+        return Ctx.Accounts.Consent.Check({"terms": Body_.get("terms"), "privacy": Body_.get("privacy")})
+    except TermsChanged as E:
+        raise TermsChangedError(Ctx, E.Current) from None
+
+
 def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
     S = Ctx.Settings
     Base = S.BasePath
     Id = Ctx.Accounts.Identity
+    Consent = Ctx.Accounts.Consent
 
     def _Rel(Req: Request) -> str:
         return Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
@@ -120,7 +153,8 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
 
     def SignedIn(Req: Request, AccountId: str, Method: str) -> JSONResponse:
         Sess = Id.CreateSession(AccountId, Method, Req.headers.get("user-agent"))
-        return Reply(Req, {"ok": True, "csrf": Sess["csrf"], "account": Account(AccountId)}, Sess)
+        return Reply(Req, {"ok": True, "csrf": Sess["csrf"], "account": Account(AccountId),
+                           "terms_required": Consent.Required(AccountId)}, Sess)      # the page asks for the Terms first
 
     def Required(Req: Request) -> dict:
         Session = Req.scope.get("p3_session")
@@ -159,6 +193,28 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
             raise HttpError(400, "weak_password", Problem)
         return Pw
 
+    # ── Terms acceptance ─────────────────────────────────────────────────
+    def Legal() -> dict:
+        return LegalNow(Ctx)
+
+    def Changed(Current: dict) -> HttpError:
+        return TermsChangedError(Ctx, Current)
+
+    def Accepted(Body_: dict) -> dict:
+        return RequireAcceptance(Ctx, Body_)
+
+    def Created(Req: Request, Secret: str, Versions: dict, Method: str) -> JSONResponse:
+        """A pending registration becomes its account (with its login, welcome credits and acceptance), signed in."""
+        try:
+            R = Consent.CreateAccount(Secret, Versions)
+        except ConsentError as E:
+            raise HttpError(409 if E.Code in ("email_in_use", "already_linked") else 400, E.Code, E.Message) from E
+        Sess = Id.CreateSession(R["account_id"], Method, Req.headers.get("user-agent"))
+        return Reply(Req, {"ok": True, "csrf": Sess["csrf"], "account": Account(R["account_id"]), "created": True}, Sess)
+
+    def ClearPending(Resp: Response, Req: Request) -> None:
+        Resp.delete_cookie(PendingCookie, path=CookiePath(Ctx), httponly=True, samesite="lax", secure=Secure(Req))
+
     # ── anonymous information ────────────────────────────────────────────
     @App_.get("/api/auth/config")
     async def AuthConfig():
@@ -170,7 +226,13 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
         if not Session:
             return {"authenticated": False, "mode": S.AuthMode, "providers": {P: P in Ctx.Oidc for P in ("google", "apple")}}
         return {"authenticated": True, "csrf": Session["csrf"], "account": Account(Session["account_id"]),
-                "recent": Id.IsRecent(Session), "mode": S.AuthMode, "method": Session["auth_method"]}
+                "recent": Id.IsRecent(Session), "mode": S.AuthMode, "method": Session["auth_method"],
+                "terms_required": bool(Session.get("terms_required"))}
+
+    @App_.get("/api/auth/terms")
+    async def AuthTerms():
+        """The versions a sign-up accepts (sent back with the acceptance, so a change during the sign-up is noticed)."""
+        return Legal()
 
     # ── email and password ───────────────────────────────────────────────
     @App_.post("/api/auth/register")
@@ -178,6 +240,7 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
         Email = Email_(Body_)
         Name = str(Body_.get("name") or "").strip()[:100]
         Password = Password_(Body_, Email)
+        Versions = Accepted(Body_)                        # the same answer for every address: a refusal says nothing of it
         Ctx.RateLimiter.Register(Req, Email)
         Ctx.RateLimiter.Mail(Req, Email)
         Existing = Id.AccountsByEmail(Email)
@@ -194,10 +257,10 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
                                                                        Link(Req, "reset", Id.NewToken("reset_password", Live["account_id"], Email)), True))
         elif Existing:                                    # only removed / switched-off accounts have this address
             Send(Background.add_task, Email, Mail.AccountUnavailableEmail(Name, all(A["removed_at"] for A in Existing), S.SupportEmail))
-        else:
-            AccountId = Id.CreateAccount(Name, Email, False)
-            Id.SetPassword(AccountId, Password, Email, False, Hash)
-            Send(Background.add_task, Email, Mail.AuthVerifyEmail(Name, Link(Req, "verify", Id.NewToken("verify_email", AccountId, Email))))
+        else:                                             # a new address: a pending registration — the account, its credits and
+                                                          # the acceptance are made together when the emailed link is used
+            Secret = Consent.NewPending("password", Email, Name, PasswordHash=Hash, Accepted=Versions)
+            Send(Background.add_task, Email, Mail.AuthVerifyEmail(Name, Link(Req, "verify", Secret)))
         return {"ok": True, "message": f"We've sent a message to {Email}. Open it to finish creating your account."}
 
     @App_.post("/api/auth/login")
@@ -228,6 +291,20 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
     async def AuthVerify(Req: Request, Body_: dict = Body(...)):
         Ctx.RateLimiter.Token(Req)
         Secret = str(Body_.get("token") or "")
+        P = Consent.Pending(Secret)
+        if P is not None and P["method"] == "password":
+            # A sign-up's link: its account now, with the acceptance its form made — or, when the Terms or the Privacy
+            # Policy changed since, with the one this page sends after showing them (409 terms_changed asks for it)
+            Given = ({"terms": Body_.get("terms"), "privacy": Body_.get("privacy")} if Body_.get("accept_terms") is True
+                     else AcceptedOf(P))
+            try:
+                Versions = Consent.Check(Given)
+            except TermsChanged as E:
+                raise Changed(E.Current) from None
+            return Created(Req, Secret, Versions, "password")
+        if Consent.PendingState(Secret) in ("used", "expired"):          # a sign-up's link opened again, or too late
+            Gone = Consent.PendingState(Secret)
+            raise HttpError(400, "link_" + Gone, LinkMessage(Gone))
         State = Id.TokenState("verify_email", Secret)
         Row = Id.UseToken("verify_email", Secret) if State == "valid" else None
         if Row is None:
@@ -451,9 +528,18 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
                                  {"provider": Provider, "subject": C.Subject, "name": C.Name})
             Send(Background.add_task, Outcome["email"], Mail.ConfirmLinkEmail(C.Name, Provider, Link(Req, "confirm", Secret)))
             return Back(Req, "confirm_sent")
+        if Outcome["status"] == "new":
+            # A new customer, identified: no account yet. It is made when they accept the Terms on the page they return to;
+            # until then the sign-up waits in this browser (an HttpOnly cookie holding its secret), for 24 hours at most
+            Secret = Consent.NewPending(Provider, Outcome["email"], Outcome["name"], Subject=C.Subject,
+                                        EmailVerified=Outcome["email_verified"])
+            R = Back(Req, "accept_terms")
+            R.set_cookie(PendingCookie, Secret, max_age=PendingTtlHours * 3600, path=CookiePath(Ctx), httponly=True,
+                         samesite="lax", secure=Secure(Req))
+            return R
         if Outcome["status"] != "ok":
             return Back(Req, "blocked")
-        R = Back(Req, "created" if Outcome["created"] else "ok")
+        R = Back(Req, "ok")
         SetSession(R, Req, Id.CreateSession(Outcome["account_id"], Provider, Req.headers.get("user-agent")))
         return R
 
@@ -483,6 +569,47 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
             raise HttpError(409, E.Code, E.Message) from E
         return SignedIn(Req, Row["account_id"], str(D.get("provider")))
 
+    # ── accepting the Terms: a new Google / Apple customer, and an account that accepts at its sign-in ──
+    @App_.get("/api/auth/pending")
+    async def AuthPending(Req: Request):
+        """The Google / Apple sign-up waiting in this browser, if any: who it is (as the provider said) and what to accept."""
+        P = Consent.Pending(Req.cookies.get(PendingCookie))
+        if P is None or P["method"] not in Providers:
+            return {"pending": False}
+        return {"pending": True, "method": P["method"], "name": P["display_name"] or "",
+                "email": "" if IsRelayEmail(P["email"]) else (P["email"] or ""), "legal": Legal()}
+
+    @App_.post("/api/auth/accept")
+    async def AuthAccept(Req: Request, Body_: dict = Body(...)):
+        """The new Google / Apple customer accepts: their account is made now, with the acceptance, and signed in."""
+        Ctx.RateLimiter.Token(Req)
+        Secret = Req.cookies.get(PendingCookie) or ""
+        P = Consent.Pending(Secret)
+        if P is None or P["method"] not in Providers:
+            raise HttpError(400, "link_expired", "That step took too long. Please sign in again.")
+        Resp = Created(Req, Secret, Accepted(Body_), P["method"])
+        ClearPending(Resp, Req)
+        return Resp
+
+    @App_.delete("/api/auth/pending")
+    async def AuthPendingCancel(Req: Request):
+        """They did not accept: the sign-up is forgotten (no account was ever made)."""
+        Consent.DropPending(Req.cookies.get(PendingCookie))
+        Resp = JSONResponse({"ok": True})
+        ClearPending(Resp, Req)
+        return Resp
+
+    @App_.post("/api/auth/accept-terms")
+    async def AuthAcceptTerms(Body_: dict = Body(...), x_access_token: str | None = Header(None)):
+        """A signed-in account that accepts at its sign-in (one XJet made) accepts now. Any other account records nothing:
+        an account made before acceptance existed is never recorded after the fact."""
+        Who = RequirePrincipal(Ctx, x_access_token)
+        try:
+            Status = Consent.AcceptForAccount(Who.AccountId, Accepted(Body_))
+        except TermsChanged as E:
+            raise Changed(E.Current) from None
+        return {"ok": True, "status": Status}
+
     # ── pages the emailed links open ─────────────────────────────────────
     PageModes = {"verify": ("Confirm your email", "Confirm email"), "reset": ("Choose a new password", "Save password"),
                  "confirm": ("Connect your sign-in", "Confirm")}
@@ -493,7 +620,10 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
             raise HttpError(404, "not_found", "Not found.")
         Title, Button = PageModes[Mode]
         Page = (WebDir / "authpage.html").read_text(encoding="utf-8")
-        for K, V in {"{{MODE}}": Mode, "{{TITLE}}": html.escape(Title), "{{BUTTON}}": html.escape(Button), "{{BASE}}": Base}.items():
+        # The design-use permission is part of the acceptance only once it is published (P3_TERMS_DESIGN_USE)
+        DesignUse = f'<p class="hint">{html.escape(SitePages.DesignUseAcceptance)}</p>' if S.TermsDesignUse else ""
+        for K, V in {"{{MODE}}": Mode, "{{TITLE}}": html.escape(Title), "{{BUTTON}}": html.escape(Button),
+                     "{{DESIGN_USE}}": DesignUse, "{{BASE}}": Base}.items():
             Page = Page.replace(K, V)
         return HTMLResponse(Page, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow"})
 

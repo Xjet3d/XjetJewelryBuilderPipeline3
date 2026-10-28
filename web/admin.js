@@ -14,6 +14,14 @@ const STATUS = {
   inactive: ['Inactive', 'bg-zinc-200 text-zinc-600'],
   removed: ['Removed', 'bg-zinc-800 text-white'],
 };
+// The Terms (2026-10-29, read only): accepted with the account (or at its first sign-in), waiting for its first sign-in
+// (an account XJet made), or made before acceptance existed
+const TERMS = {
+  accepted: ['Accepted', 'bg-emerald-100 text-emerald-800'],
+  pending: ['Pending', 'bg-amber-100 text-amber-800'],
+  legacy: ['Legacy', 'bg-zinc-100 text-zinc-600'],
+};
+const TERMS_METHOD = { password: 'email and password', google: 'Google', apple: 'Apple', email: 'email (six-letter code)', admin: 'at first sign-in (made by XJet)' };
 const STEPS = {
   started: ['Started', 'bg-zinc-900 text-white'],
   generate_requested: ['Prompt', 'bg-zinc-100 text-zinc-600'],
@@ -1095,13 +1103,24 @@ function adminApp() {
 
     // ── list ───────────────────────────────────────────────────────────
     usersState: 'idle', usersMsg: '',              // loading · loaded · failed: "No users" only once the list is known
+    termsInfo: null,                               // GET /api/admin/terms: sign-ups waiting (masked) and the legal versions
     async load() {
       this.usersState = 'loading'; this.usersMsg = '';
       try {
         const r = await this.api('GET', '/api/admin/users' + (this.showRemoved ? '?include_removed=true' : ''));
         this.users = r.users; this.usersState = 'loaded';
       } catch (e) { this.usersState = 'failed'; this.usersMsg = e.message; }
+      try { this.termsInfo = await this.api('GET', '/api/admin/terms'); } catch (_) { this.termsInfo = null; }
     },
+    termsLabel(t) { return (TERMS[t?.status] || TERMS.legacy)[0]; },
+    termsClass(t) { return (TERMS[t?.status] || TERMS.legacy)[1]; },
+    termsTitle(t) {
+      if (t?.status === 'accepted') return `Terms v${t.terms_version} · Privacy v${t.privacy_version} · ${TERMS_METHOD[t.method] || t.method} · ${this.utc(t.accepted_at)}`;
+      return t?.status === 'pending' ? 'Accepts the Terms at its first sign-in, before designing (made by XJet)'
+                                     : 'Made before Terms acceptance existed: never asked, nothing recorded';
+    },
+    termsMethod(m) { return TERMS_METHOD[m] || m || ''; },
+    utc(iso) { return iso ? iso.slice(0, 16).replace('T', ' ') + ' UTC' : '—'; },      // a stored UTC time, as stored
     get filtered() {
       const q = this.search.trim().toLowerCase();
       return q ? this.users.filter(u => [u.name, u.email, u.token].some(v => (v || '').toLowerCase().includes(q))) : this.users;

@@ -180,8 +180,10 @@ async def test_request_limits_answer_429_with_retry_after(tmp_path):
         R = await H.Client.post("/api/designs", data={"prompt": "Band two"}, headers={"X-Forwarded-For": "203.0.113.9"})
         assert R.status_code == 429                                          # the account's limit, whatever the address
         H.Ctx.RateLimiter.Limits["register:email"] = (1, 3600)
-        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"})).status_code == 200
-        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "DANA@example.com"})).status_code == 429
+        L = (await H.Client.get("/api/auth/terms")).json()          # every sign-up accepts the Terms (2026-10-29)
+        Ok = {"accept_terms": True, "terms": L["terms"], "privacy": L["privacy"]}
+        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com", **Ok})).status_code == 200
+        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "DANA@example.com", **Ok})).status_code == 429
     finally:
         await H.Close()
 

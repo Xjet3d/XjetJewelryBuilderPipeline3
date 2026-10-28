@@ -7,6 +7,7 @@ integration keeps its own service credential under main's session middleware —
 session — and works without any exemption, since Fulfillment sends no Origin and no cookie (a request that does is
 refused like any cross-site one)."""
 
+from tests.conftest import Accepted
 from tests.test_auth import Browser, Csrf, LinkSecret, Mails, Pw, Register
 from tests.test_fulfillment_bridge import Admin, AdminKey, Prefix, Service, _Enrolled, _Event, _On, _Placed
 
@@ -26,7 +27,7 @@ async def test_customers_register_and_sign_in_the_new_way_with_the_integration_o
         assert L.status_code == 200, L.text
         # The six-letter code still opens the old account (dual), and the old registration is closed
         assert (await H.Client.get("/api/token-status")).status_code == 200
-        R = await Browser(H).post("/api/register", json={"Name": "Old way", "Email": "old.way@atelier-customer.co.il"})
+        R = await Browser(H).post("/api/register", json={"Name": "Old way", "Email": "old.way@atelier-customer.co.il", **Accepted(H)})
         assert R.status_code == 410 and R.json()["error"]["code"] == "sign_in_changed"
         # A signed-in customer reaches neither the Admin nor the integration
         assert (await B.get("/api/admin/orders")).status_code in (401, 403)
@@ -96,21 +97,21 @@ async def test_tron_keeps_today_s_sign_in_in_legacy_mode_behind_proto(tmp_path, 
         def Via(Origin: str, Token: str = "") -> dict:
             return {"Host": "tron", "X-Forwarded-Host": "tron", "Origin": Origin, "X-Access-Token": Token}
         for N, Origin in enumerate(("http://proto", "https://proto", "https://tron", "http://tron")):
-            R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": f"pilot{N}@atelier-customer.co.il"}, headers=Via(Origin))
+            R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": f"pilot{N}@atelier-customer.co.il", **Accepted(H)}, headers=Via(Origin))
             assert R.status_code == 200 and R.json()["status"] == "verification_sent", (Origin, R.text)
         assert (await H.Client.post("/api/events", json={"kind": "bag_viewed"}, headers=Via("http://proto", H.Token))).status_code == 200
         # A browser on proto's IP address (seen in tron's log, 4–8 Oct): refused by the Origin check of the integrated code
-        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip@atelier-customer.co.il"}, headers=Via("http://172.16.10.27"))
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip@atelier-customer.co.il", **Accepted(H)}, headers=Via("http://172.16.10.27"))
         assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
         # With tron's nginx passing on the host proto received (the proposed one-line change, X-Forwarded-Host
         # $http_x_forwarded_host): the IP address works again, and a page of another site is still refused
         def Passed(Origin: str, Visited: str) -> dict:
             return {"Host": "tron", "X-Forwarded-Host": Visited, "Origin": Origin, "X-Access-Token": ""}
-        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip2@atelier-customer.co.il"}, headers=Passed("http://172.16.10.27", "172.16.10.27"))
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.ip2@atelier-customer.co.il", **Accepted(H)}, headers=Passed("http://172.16.10.27", "172.16.10.27"))
         assert R.status_code == 200 and R.json()["status"] == "verification_sent", R.text
-        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.proto@atelier-customer.co.il"}, headers=Passed("http://proto", "proto"))
+        R = await H.Client.post("/api/register", json={"Name": "Pilot", "Email": "pilot.proto@atelier-customer.co.il", **Accepted(H)}, headers=Passed("http://proto", "proto"))
         assert R.status_code == 200, R.text
-        R = await H.Client.post("/api/register", json={"Name": "X", "Email": "x@atelier-customer.co.il"}, headers=Passed("http://evil.example", "172.16.10.27"))
+        R = await H.Client.post("/api/register", json={"Name": "X", "Email": "x@atelier-customer.co.il", **Accepted(H)}, headers=Passed("http://evil.example", "172.16.10.27"))
         assert R.status_code == 403 and R.json()["error"]["code"] == "bad_origin"
         # The Admin's key and Fulfillment's service credential, as on tron
         assert (await H.Client.get("/api/admin/orders", headers={**Admin, "Host": "tron"})).status_code == 200

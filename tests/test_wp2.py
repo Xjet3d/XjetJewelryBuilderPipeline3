@@ -169,9 +169,10 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
     (Legal Review Pack T1, T3, T10): the Terms say how a customer signs in — an email address and a password, or Google —
     and that a six-letter code belongs to the earlier sign-in, is not issued to a new account and only moves its account
     (R-06); Your content asks for respect of other people's intellectual property and protects the customer's photos and
-    personal details; an account is created only with the Terms checkbox ticked (it links the Terms of Service and the
-    Privacy Policy), for the email form, Google and Apple alike, and Create account promises no number of credits (R-16).
-    The design-use clause waits for counsel, and the Terms still carry no warranty clause (R-31)."""
+    personal details; the email sign-up's form has the Terms checkbox (it links the Terms of Service and the Privacy
+    Policy) and Create account promises no number of credits (R-16). Since 29 Oct (tests/test_consent.py) Google and Apple
+    are not held before identification — a new customer accepts afterwards, before the account exists — and the
+    design-use clause is in the page only between its unpublished marks. The Terms still carry no warranty clause (R-31)."""
     Root = Path(__file__).resolve().parents[1]
     Index = (Root / "web" / "index.html").read_text(encoding="utf-8")
     App = (Root / "web" / "app.js").read_text(encoding="utf-8")
@@ -185,7 +186,8 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
             and "We never show the photos you upload in the gallery or use them to promote Atelier." in Terms
             and "We do not display, promote or make for anyone else a design that shows an identifiable person or carries "
                 "personal details such as a name, initials or a date, unless you allow it." in Terms)
-    assert "royalt" not in Terms.lower() and "Warranty." not in Terms
+    Published = re.sub(r"<!--designuse-->.*?<!--/designuse-->", "", Terms, flags=re.S)
+    assert "royalt" not in Published.lower() and "royalty-free license" in Terms and "Warranty." not in Terms
     Dialog = Index[Index.index('<div x-show="!legacyAuth">'):]
     Dialog = Dialog[:Dialog.index("<!--legacy-->")]
     Box = Dialog[Dialog.index('<input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms"'):]
@@ -194,15 +196,15 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
             and '<a href="{{BASE}}/privacy"' in Box and ">Privacy Policy</a>." in Box)
     Register = Dialog[Dialog.index('<form x-show="regMode === \'register\' && !regInfo"'):]
     Register = Register[:Register.index("</form>")]
-    assert Dialog.index('id="rg-terms"') < Dialog.index("Continue with Google") < Dialog.index("Continue with Apple") < Dialog.index(Register)
+    assert 'id="rg-terms"' in Register and Dialog.index("Continue with Apple") < Dialog.index(Register)   # in the email form
     Waits = ':aria-disabled="termsPending ? \'true\' : null" :class="termsPending ? \'opacity-50\' : \'\'"'
-    assert Dialog.count(Waits) == 3 and Register.count(Waits) == 1 and "By creating an account" not in Index
+    assert Dialog.count(Waits) == 1 and Register.count(Waits) == 1 and "By creating an account" not in Index
     Legacy = Index[Index.index('<form x-show="regMode === \'email\' && !regInfo"'):]
     Legacy = Legacy[:Legacy.index("</form>")]
     assert ('<input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required' in Legacy
             and ':disabled="regLoading || !regForm.acceptTerms"' in Legacy)
     assert "get termsPending() { return this.regMode === 'register' && !this.regForm.acceptTerms; }" in App
-    assert (App.count("if (this._termsMissing()) return;") == 2                     # Google or Apple, and Create account
+    assert (App.count("if (this._termsMissing()) return;") == 1                     # Create account
             and "if (!this.regForm.acceptTerms) throw new Error(TERMS_REQUIRED);" in App)  # the older sign-in's form
     assert "A new account starts with" not in Index
 

@@ -11,7 +11,8 @@ credits, quotes and orders are never touched; this module only adds ways to prov
 * customer_sessions  opaque random session ids, stored as SHA-256, revocable, with the time of the last real sign-in
 * oauth_states       one row per Google / Apple round trip: state, nonce and PKCE verifier
 
-Welcome credits are granted by exactly one code path (CreateAccount). Linking, claiming and migrating never call it.
+Welcome credits are granted by exactly one code path: ConsentStore.CreateAccount (p3/accounts/consent.py), which makes a
+login-created account together with its Terms acceptance. Linking, claiming and migrating never call it.
 """
 
 import hashlib
@@ -208,18 +209,6 @@ class IdentityStore:
             return None
         return "removed" if all(A["removed_at"] for A in Rows) else "disabled"
 
-    def CreateAccount(self, Name: str, Email: str | None, EmailVerified: bool) -> str:
-        """The only place a login-created account (and its welcome credits) comes into being: the starting credits of
-        this moment (the Admin's number, R-16), which a later change of that number never touches."""
-        from p3.accounts.local import NewAccountId
-        AccountId, T = NewAccountId(), Now()
-        self.Db.Execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, max_generations, "
-                        "verified_at, activated_at) VALUES (?,?,?,?, 'auth', ?,?,?)",
-                        (AccountId, (Name or "").strip(), NormalizeEmail(Email) or None, T, int(self.Accounts.StartingCredits()),
-                         T if EmailVerified else None, T))
-        self.Accounts._Event(AccountId, "account_created", "login")
-        return AccountId
-
     def EmailVerified(self, AccountId: str) -> bool:
         A = self._Account(AccountId)
         if not A or not A["email"]:
@@ -300,35 +289,34 @@ class IdentityStore:
 
     # ── provider (Google / Apple) sign-in ────────────────────────────────
     def SignInWithProvider(self, Provider: str, Subject: str, Email: str | None, EmailVerified: bool, Name: str) -> dict:
-        """{"status": "ok", "account_id", "created"} | {"status": "confirm", "account_id", "email"} (a verification mail
-        must be sent) | {"status": "removed" | "disabled"}.
+        """{"status": "ok", "account_id"} | {"status": "confirm", "account_id", "email"} (a verification mail must be
+        sent) | {"status": "new", "email", "email_verified", "name"} | {"status": "removed" | "disabled"}.
 
         An identity already known signs in. A new one whose provider vouches for the address links to the account that
         has that address (never a second account, never a second welcome credit). One the provider does not vouch for
         (unverified, or an Apple relay address) and that matches an account is held until the address's owner confirms
-        by e-mail. Otherwise a new account is created."""
+        by e-mail. Otherwise it is a new customer: no account yet — it is made once they accept the Terms
+        (ConsentStore.CreateAccount)."""
         Known = self._Identity(Provider, Subject)
         Email = NormalizeEmail(Email)
         if Known:
             if not self.Usable(Known["account_id"]):
                 return {"status": self._Why(Known["account_id"])}
             self.Db.Execute("UPDATE login_identities SET last_used_at = ? WHERE id = ?", (Now(), Known["id"]))
-            return {"status": "ok", "account_id": Known["account_id"], "created": False}
+            return {"status": "ok", "account_id": Known["account_id"]}
         Relay = IsRelayEmail(Email)
         if Email and not Relay:
             Match = self.LiveAccountByEmail(Email)
             if Match and EmailVerified:
+                self.Accounts.Consent.HoldIfUnfinished(Match["account_id"])   # a registration never finished: it accepts first
                 self._DropUnverifiedPassword(Match["account_id"])
                 self._Attach(Match["account_id"], Provider, Subject, Email, True, Name)
-                return {"status": "ok", "account_id": Match["account_id"], "created": False}
+                return {"status": "ok", "account_id": Match["account_id"]}
             if Match:
                 return {"status": "confirm", "account_id": Match["account_id"], "email": Email}
             if self.Blocked(Email):
                 return {"status": self.Blocked(Email)}
-        AccountId = self.CreateAccount(Name or (Email.split("@")[0] if Email and not Relay else ""),
-                                       None if Relay else Email, EmailVerified and not Relay)
-        self._Attach(AccountId, Provider, Subject, Email, EmailVerified, Name)
-        return {"status": "ok", "account_id": AccountId, "created": True}
+        return {"status": "new", "email": Email or None, "email_verified": bool(EmailVerified) and not Relay, "name": Name or ""}
 
     def _Why(self, AccountId: str) -> str:
         A = self._Account(AccountId)
@@ -413,6 +401,7 @@ class IdentityStore:
             return False
 
     def MarkPasswordEmailVerified(self, AccountId: str) -> None:
+        self.Accounts.Consent.HoldIfUnfinished(AccountId)      # a registration begun before acceptance: it accepts at sign-in
         T = Now()
         Pw = self.Db.One("SELECT email FROM login_identities WHERE account_id = ? AND provider = 'password'", (AccountId,))
         self.Db.Execute("UPDATE login_identities SET email_verified = 1 WHERE account_id = ? AND provider = 'password'", (AccountId,))
@@ -505,7 +494,7 @@ class IdentityStore:
         """The live session for this cookie value, or None. Slides the idle expiry (written at most every 30 minutes)."""
         if not Token or len(Token) > 200:
             return None
-        Row = self.Db.One("SELECT s.*, a.display_name, a.status, a.removed_at FROM customer_sessions s "
+        Row = self.Db.One("SELECT s.*, a.display_name, a.status, a.removed_at, a.terms_required FROM customer_sessions s "
                           "JOIN accounts a ON a.account_id = s.account_id WHERE s.session_digest = ?", (_Digest("session", Token),))
         if Row is None or Row["revoked_at"] or Row["removed_at"] or Row["status"] != "active":
             return None
@@ -519,7 +508,8 @@ class IdentityStore:
 
     def PrincipalFor(self, Session: dict) -> Principal:
         return Principal(AccountId=Session["account_id"], DisplayName=Session["display_name"] or "", Issuer=self.Accounts.Issuer,
-                         Attributes={"session_id": Session["id"], "auth_method": Session["auth_method"]})
+                         Attributes={"session_id": Session["id"], "auth_method": Session["auth_method"],
+                                     "terms_required": bool(Session.get("terms_required"))})
 
     def IsRecent(self, Session: dict) -> bool:
         return Session["auth_at"] >= _Iso(_Utc() - timedelta(minutes=RecentAuthMinutes))
@@ -608,7 +598,13 @@ class IdentityStore:
         """Counters for monitoring: sign-ins in the last 24 h by method, live sessions, links sent, and the migration picture."""
         Since = _Iso(_Utc() - timedelta(hours=24))
         Rows = self.Db.All("SELECT detail, COUNT(*) AS n FROM account_events WHERE kind = 'sign_in' AND created_at >= ? GROUP BY detail", (Since,))
-        Sent = self.Db.All("SELECT purpose, COUNT(*) AS n FROM auth_tokens WHERE created_at >= ? GROUP BY purpose", (Since,))
+        Sent = {R["purpose"]: R["n"] for R in self.Db.All("SELECT purpose, COUNT(*) AS n FROM auth_tokens WHERE created_at >= ? "
+                                                         "GROUP BY purpose", (Since,))}
+        # A new address's confirmation link belongs to its pending registration (2026-10-29): a verification link too
+        SignUps = (self.Db.One("SELECT COUNT(*) AS n FROM pending_registrations WHERE created_at >= ? AND method IN "
+                               "('password', 'email')", (Since,)) or {}).get("n", 0)
+        if SignUps:
+            Sent["verify_email"] = Sent.get("verify_email", 0) + SignUps
         Live = (self.Db.One("SELECT COUNT(*) AS n FROM customer_sessions WHERE revoked_at IS NULL AND expires_at > ? AND absolute_expires_at > ?", (Now(), Now())) or {}).get("n", 0)
-        return {"sign_ins_24h": {R["detail"]: R["n"] for R in Rows}, "links_issued_24h": {R["purpose"]: R["n"] for R in Sent},
+        return {"sign_ins_24h": {R["detail"]: R["n"] for R in Rows}, "links_issued_24h": Sent,
                 "live_sessions": Live, "migration": self.LegacyReport()}

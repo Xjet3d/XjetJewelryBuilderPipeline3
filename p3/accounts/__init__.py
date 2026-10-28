@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from p3.accounts.consent import ConsentStore
     from p3.accounts.identity import IdentityStore
 
 
@@ -30,6 +31,14 @@ class InsufficientCredits(Exception):
     """The account may not spend the requested units (quota / balance policy)."""
 
     def __init__(self, Message: str = "You have used all the credits on this account. Contact us to extend your allowance."):
+        super().__init__(Message)
+        self.Message = Message
+
+
+class TermsRequired(Exception):
+    """The account has not accepted the Terms yet (one XJet created): no design, credit or order until it does."""
+
+    def __init__(self, Message: str = "Please accept the Terms of Service to continue."):
         super().__init__(Message)
         self.Message = Message
 
@@ -81,6 +90,7 @@ UsagePromptCheck = "prompt_check"      # one LLM request before the images (XJet
 class AccountProvider(Protocol):
     Issuer: str
     Identity: "IdentityStore"        # logins, passwords, single-use tokens and sessions (p3/accounts/identity.py, AJW-39)
+    Consent: "ConsentStore"          # legal texts, Terms acceptances and pending registrations (p3/accounts/consent.py)
 
     def Authenticate(self, Token: str | None) -> Principal:
         """Resolve an access token to a Principal or raise AuthError."""

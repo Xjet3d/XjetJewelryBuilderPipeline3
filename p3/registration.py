@@ -16,6 +16,7 @@ from p3.accounts.local import EmailPattern
 from p3.context import Context, HttpError
 from p3.mail import TokenEmail, VerificationEmail
 from p3.settings import WebDir
+from p3.sitepages import DesignUseAcceptance
 
 Log = logging.getLogger("p3.registration")
 
@@ -47,12 +48,14 @@ class RegistrationService:
     def _StudioUrl(self, Request_: Request) -> str:
         return f"{PublicOrigin(Request_)}{self.Ctx.Settings.BasePath}/"
 
-    # POST /api/register  {Name, Email}
-    def Register(self, Request_: Request, Name: str, Email: str, Defer=None) -> dict:
+    # POST /api/register  {Name, Email, accept_terms, terms, privacy}
+    def Register(self, Request_: Request, Name: str, Email: str, Defer=None, Accepted: dict | None = None) -> dict:
+        """Accepted: the versions of the Terms and the Privacy Policy the form accepted (checked by the route): a new
+        address's account is made with them when its link is used (2026-10-29)."""
         Email = (Email or "").strip()
         if not EmailPattern.match(Email):
             raise HttpError(400, "invalid_email", "Please enter a valid email address.")
-        R = self.Ctx.Accounts.StartEmailRegistration(Name, Email)
+        R = self.Ctx.Accounts.StartEmailRegistration(Name, Email, Accepted)
         if R["status"] == "removed":                     # no dead code is e-mailed; the page says what to do
             raise HttpError(403, "account_removed", RemovedMessage(self.Ctx.Settings.SupportEmail))
         if R["status"] == "inactive":
@@ -75,17 +78,28 @@ class RegistrationService:
             raise HttpError(404, "token_not_found", "Token not found. Check the code and try again.") from E
         self.Ctx.Accounts.RecordSignIn(Who.AccountId, "link" if Via == "link" else "token")
         P = self.Ctx.Accounts.Profile(Who)
-        return {"ok": True, "used": P["used"], "max": P["max"], "remaining": P["remaining"], "name": P["name"]}
+        # terms_required: an account XJet made accepts the Terms at its first sign-in, before anything else (2026-10-29)
+        return {"ok": True, "used": P["used"], "max": P["max"], "remaining": P["remaining"], "name": P["name"],
+                "terms_required": P["terms_required"]}
 
-    # GET /verify?token=
-    def VerifyPage(self, Request_: Request, Secret: str, Defer=None) -> str:
-        R = self.Ctx.Accounts.VerifyEmail(Secret)
+    # GET /verify?token= · POST /verify (the acceptance the page asks for when the Terms changed after the sign-up)
+    def VerifyPage(self, Request_: Request, Secret: str, Defer=None, Form: dict | None = None) -> str:
+        Given = None
+        if Form and Form.get("accept_terms") == "1":
+            try:
+                Given = {D: {"version": int(Form.get(f"{D}_version") or 0), "sha256": Form.get(f"{D}_sha256") or ""}
+                         for D in ("terms", "privacy")}
+            except ValueError:
+                Given = {}
+        R = self.Ctx.Accounts.VerifyEmail(Secret, Given)
         Studio = self._StudioUrl(Request_)
         if R["status"] == "verified":
             self._Queue(Defer, R["email"], TokenEmail(R["name"], R["token"], f"{Studio}#token={R['token']}"))
         # A link is used once: opened again it confirms the verification and reveals nothing (the code was emailed)
         return RenderVerifyPage(R["status"], R.get("token") if R["status"] == "verified" else None, R["name"], Studio,
-                                self.Ctx.Settings.BasePath, self.Ctx.Settings.SupportEmail)
+                                self.Ctx.Settings.BasePath, self.Ctx.Settings.SupportEmail,
+                                Legal=R.get("legal"), Secret=Secret, DesignUse=self.Ctx.Settings.TermsDesignUse,
+                                NotTicked=bool(Form) and Given is None)
 
 
 def MaskEmail(Email: str) -> str:
@@ -113,8 +127,11 @@ def RegisterMessage(Email: str) -> str:
             "or, if you're already registered, it carries your sign-in code.")
 
 
-def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str, Support: str = "") -> str:
-    """P2 templates/verify.html, rendered without a template engine (all values escaped)."""
+def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str, Support: str = "",
+                     Legal: dict | None = None, Secret: str = "", DesignUse: bool = False, NotTicked: bool = False) -> str:
+    """P2 templates/verify.html, rendered without a template engine (all values escaped). terms_changed: the Terms or
+    the Privacy Policy changed after the sign-up, so the page asks for the acceptance again (Legal: the versions shown,
+    posted back with the link's secret) before the account is made."""
     E = lambda V: html.escape(V or "", quote=True)
     Ok = Status in ("verified", "already")
     if Ok and Token:
@@ -155,6 +172,29 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
       <p>{E(Name) + ', your' if Name else 'Your'} email has already been verified. Sign in with the code we emailed
         you — or register again with the same email to have it sent once more.</p>
       <a class="btn" href="{E(StudioUrl)}">Start designing →</a>"""
+    elif Status == "terms_changed" and Legal:
+        Hidden = "".join(f'<input type="hidden" name="{D}_{K}" value="{E(str(Legal[D][K]))}">'
+                         for D in ("terms", "privacy") for K in ("version", "sha256"))
+        Permission = f'<p class="note">{E(DesignUseAcceptance)}</p>' if DesignUse else ""
+        Missing = '<p class="note err">Please tick the box to accept.</p>' if NotTicked else ""
+        Body = f"""
+      <h1>Accept the updated Terms</h1>
+      <p>Our Terms of Service or Privacy Policy changed after you signed up. Please read them and accept them to create
+        your account.</p>
+      <form method="post" action="{E(BasePath)}/verify">
+        <input type="hidden" name="token" value="{E(Secret)}">{Hidden}
+        <label class="accept"><input type="checkbox" name="accept_terms" value="1" required>
+          <span>I accept the <a href="{E(BasePath)}/terms" target="_blank" rel="noopener">Terms of Service</a> and confirm
+            that I have read the <a href="{E(BasePath)}/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+        {Permission}{Missing}
+        <button class="btn" type="submit">Accept and create my account</button>
+      </form>"""
+    elif Status == "email_in_use":
+        Body = f"""
+      <h1>Already registered</h1>
+      <p>This email already has an XJet Atelier account. Sign in with your code — or register again with the same email
+        to have it sent once more.</p>
+      <a class="btn" href="{E(BasePath)}/">Back to XJet Atelier →</a>"""
     elif Status == "removed":
         Body = f"""
       <h1>Account removed</h1>

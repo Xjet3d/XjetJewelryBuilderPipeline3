@@ -645,6 +645,15 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return {"users": [{**U, **UserCost(Ctx, U["account_id"], Prices)} for U in Users],
                 "cost_basis": "Live sessions only, estimated at list prices; mock requests are $0."}
 
+    @App_.get("/api/admin/terms")
+    async def TermsOverview(authorization: str | None = Header(None)):
+        """Read only: the sign-ups waiting (masked addresses: nobody has confirmed them), the versions of the Terms and the
+        Privacy Policy served now and every archived version (each account's own status is on its row: users[].terms)."""
+        Admin(authorization)
+        Consent = Ctx.Accounts.Consent
+        return {"pending_registrations": Consent.ListPending(), "current": Consent.Current(), "archive": Consent.Archive(),
+                "design_use_published": Ctx.Settings.TermsDesignUse}
+
     @App_.post("/api/admin/users")
     async def CreateUser(Body_: dict = Body(...), authorization: str | None = Header(None)):
         Admin(authorization)

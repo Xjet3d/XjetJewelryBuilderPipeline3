@@ -29,7 +29,9 @@ import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from p3.accounts import AccountNotFound, AuthError, DuplicateEmail, InsufficientCredits, Principal, RemovedAccount, UsageMovie
+from p3.accounts import (AccountNotFound, AuthError, DuplicateEmail, InsufficientCredits, Principal, RemovedAccount, TermsRequired,
+                         UsageMovie)
+from p3.accounts.consent import AcceptedOf, ConsentError, TermsChanged
 from p3.db import Database, Now
 
 Issuer = "p3local"
@@ -148,8 +150,10 @@ class LocalAccountProvider:
                     Conn.execute(Sql)
             Conn.execute("CREATE INDEX IF NOT EXISTS accounts_self_email ON accounts(source, email)")
             Conn.execute("CREATE INDEX IF NOT EXISTS usage_events_account ON usage_events(account_id, created_at)")
+        from p3.accounts.consent import ConsentStore
         from p3.accounts.identity import IdentityStore
         self.Identity = IdentityStore(self)       # logins, passwords, single-use tokens and sessions (AJW-39)
+        self.Consent = ConsentStore(self)         # legal texts, Terms acceptances, pending registrations (2026-10-29)
         self.StartingCredits = lambda: DefaultMaxGenerations   # a new account's credits: the app reads the Admin's (R-16)
 
     # ── tokens ───────────────────────────────────────────────────────────
@@ -187,26 +191,29 @@ class LocalAccountProvider:
             self.Db.Execute("UPDATE accounts SET activated_at = COALESCE(activated_at, ?) WHERE account_id = ?",
                             (T, Row["account_id"]))
         return Principal(AccountId=Row["account_id"], DisplayName=Row["display_name"] or "",
-                         Issuer=Issuer, Attributes={"token_label": Row["label"]})
+                         Issuer=Issuer, Attributes={"token_label": Row["label"], "terms_required": bool(Row["terms_required"])})
 
     # ── quota / usage ────────────────────────────────────────────────────
     def _Quota(self, AccountId: str) -> dict:
-        Row = self.Db.One("SELECT display_name, email, generations_used, max_generations, tokens_reserved FROM accounts "
-                          "WHERE account_id = ?", (AccountId,))
+        Row = self.Db.One("SELECT display_name, email, generations_used, max_generations, tokens_reserved, terms_required "
+                          "FROM accounts WHERE account_id = ?", (AccountId,))
         Used, Max, Reserved = Row["generations_used"], Row["max_generations"], Row["tokens_reserved"] or 0
         return {"used": Used, "max": Max, "reserved": Reserved, "remaining": max(0, Max - Used - Reserved),
-                "name": Row["display_name"] or "", "email": Row["email"] or ""}
+                "name": Row["display_name"] or "", "email": Row["email"] or "", "terms_required": bool(Row["terms_required"])}
 
     def AuthorizeSpend(self, Who: Principal, Kind: str, Units: int) -> None:
         """Reserve Units credits in one atomic step: used + reserved + Units must fit the allowance, so parallel
-        requests can never overspend it (P2's rule — nothing starts at 0 remaining — extended to every paid kind)."""
+        requests can never overspend it (P2's rule — nothing starts at 0 remaining — extended to every paid kind). An
+        account that has not accepted the Terms yet reserves nothing (TermsRequired)."""
         if Units <= 0:
             return
         with self.Db.Transaction() as Conn:
             N = Conn.execute("UPDATE accounts SET tokens_reserved = tokens_reserved + ? WHERE account_id = ? "
-                             "AND generations_used + tokens_reserved + ? <= max_generations",
+                             "AND generations_used + tokens_reserved + ? <= max_generations AND terms_required = 0",
                              (int(Units), Who.AccountId, int(Units))).rowcount
         if not N:
+            if self.Consent.Required(Who.AccountId):
+                raise TermsRequired()
             raise InsufficientCredits(QuotaMessage)
 
     def Settle(self, AccountId: str, Kind: str, RefId: str, Charged: bool, Units: int = 1) -> bool:
@@ -307,15 +314,18 @@ class LocalAccountProvider:
         return bool(Token) and bool(self.Db.One("SELECT 1 AS x FROM access_tokens WHERE token_hash = ? AND active = 1",
                                                 (HashToken(Token),)))
 
-    def StartEmailRegistration(self, Name: str, Email: str) -> dict:
+    def StartEmailRegistration(self, Name: str, Email: str, Accepted: dict | None = None) -> dict:
         """P2 RegisterEndpoint storage rules, for every account with the address (2026-10-08):
           already_registered   a live account whose code works — self-registered and verified, or created in the
                                Admin: its code is e-mailed again ("token"); register-once, so no new credits;
-          verification_resent  a self-registration still waiting for its e-mail check: a new link ("verify_secret");
+          verification_resent  a self-registration made before acceptance existed and still waiting for its e-mail
+                               check: a new link ("verify_secret"); that account accepts at its first sign-in;
           inactive             a live account XJet switched off: nothing is sent — its code would not work;
           removed              only removed accounts have it: nothing is sent, and no new account is made (credits
                                are not handed out twice); the Admin restores the account;
-          verification_sent    a new address: a new self-registration and its verification link.
+          verification_sent    a new address: a pending registration — not an account, no credits — and its
+                               verification link; the account is made when the link is used, with the acceptance
+                               (Accepted: the versions the form accepted, 2026-10-29).
         A blocked attempt is recorded on the account (register_blocked), so the Admin sees it."""
         Name, Email = (Name or "").strip(), (Email or "").strip()
         Rows = self._AccountsByEmail(Email)
@@ -341,31 +351,29 @@ class LocalAccountProvider:
             self._Event(Removed["account_id"], "register_blocked", "account removed")
             return {"status": "removed", "name": Removed["display_name"] or "", "email": Email,
                     "account_id": Removed["account_id"]}
-        Secret = secrets.token_urlsafe(32)
-        Expires = (_Utc() + timedelta(hours=VerifyTtlHours)).isoformat()
         if Pending:    # pending → re-issue the link (P2 RefreshVerification keeps the stored name)
             Existing = Pending[0]
+            Secret = secrets.token_urlsafe(32)
             self.Db.Execute("UPDATE accounts SET verify_hash = ?, verify_expires_at = ? WHERE account_id = ?",
-                            (_HashSecret(Secret), Expires, Existing["account_id"]))
+                            (_HashSecret(Secret), (_Utc() + timedelta(hours=VerifyTtlHours)).isoformat(), Existing["account_id"]))
             return {"status": "verification_resent", "name": Name or Existing["display_name"] or "",
                     "email": Email, "verify_secret": Secret}
-        # P2 CreateSelfRegistration: the token is minted now, inactive until the email is verified.
-        AccountId, Token, T = NewAccountId(), self.GenerateToken(), Now()
-        with self.Db.Transaction() as Conn:
-            Conn.execute("INSERT INTO accounts (account_id, display_name, email, created_at, source, max_generations, "
-                         "verify_hash, verify_expires_at, delivery_token) VALUES (?,?,?,?, 'self', ?,?,?,?)",
-                         (AccountId, Name, Email, T, int(self.StartingCredits()), _HashSecret(Secret), Expires, Token))
-            Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
-                         "VALUES (?,?,?, 'self-registration', 0, ?)", (HashToken(Token), Token[:3], AccountId, T))
+        # A new address: no account before its email is confirmed (2026-10-29); the code is minted with the account. As in
+        # P2, signing up again re-issues the link (the earlier one stops working) and keeps the name given first.
+        Name = Name or self.Consent.PendingName("email", Email)
+        Secret = self.Consent.NewPending("email", Email, Name, Accepted=Accepted, Replace=True)
         return {"status": "verification_sent", "name": Name, "email": Email, "verify_secret": Secret}
 
-    def VerifyEmail(self, Secret: str) -> dict:
-        """P2 VerifyRegistration. {"status": "verified"|"already"|"expired"|"invalid"|"removed", "name", "email",
-        "token" (verified / already)}. A link to a removed account switches nothing on."""
+    def VerifyEmail(self, Secret: str, Given: dict | None = None) -> dict:
+        """P2 VerifyRegistration. {"status": "verified"|"already"|"expired"|"invalid"|"removed"|"terms_changed"|
+        "email_in_use", "name", "email", "token" (verified / already), "legal" (terms_changed: the versions to accept)}.
+        A pending registration becomes its account here, with the acceptance its form made — or, when the Terms or the
+        Privacy Policy changed since, with the one the page sends now (Given). An older self-registration's link still
+        works, and that account accepts at its first sign-in. A link to a removed account switches nothing on."""
         Secret = (Secret or "").strip()
         Row = self.Db.One("SELECT * FROM accounts WHERE verify_hash = ?", (_HashSecret(Secret),)) if Secret else None
         if Row is None:
-            return {"status": "invalid", "name": "", "email": ""}
+            return self._VerifyPending(Secret, Given)
         Base = {"name": Row["display_name"] or "", "email": Row["email"] or ""}
         if Row["removed_at"]:                              # an old link to a removed account: nothing is switched on
             return {"status": "removed", **Base}
@@ -373,6 +381,7 @@ class LocalAccountProvider:
             return {"status": "already", "token": Row["delivery_token"], **Base}
         if Row["verify_expires_at"] and Row["verify_expires_at"] < _Utc().isoformat():
             return {"status": "expired", **Base}
+        self.Consent.HoldIfUnfinished(Row["account_id"])   # begun before acceptance existed: it accepts at its first sign-in
         T = Now()
         Token = Row["delivery_token"]
         with self.Db.Transaction() as Conn:
@@ -383,6 +392,28 @@ class LocalAccountProvider:
         if not Token:     # pending registration created before tokens were minted at registration
             Token = self._RotateToken(Row["account_id"], "self-registration")
         return {"status": "verified", "token": Token, **Base}
+
+    def _VerifyPending(self, Secret: str, Given: dict | None) -> dict:
+        """The link of a pending email registration: the account, its code and the acceptance, made together."""
+        State = self.Consent.PendingState(Secret)
+        P = self.Consent.Pending(Secret) if State == "valid" else None
+        if State == "used":                            # opened again it reveals nothing (the code was emailed) and switches
+            A = self.Db.One("SELECT display_name, email, removed_at FROM accounts WHERE account_id = ?",   # nothing back on
+                            (self.Consent.UsedBy(Secret) or "",))
+            Base = {"name": (A or {}).get("display_name") or "", "email": (A or {}).get("email") or ""}
+            return {"status": "removed" if A and A["removed_at"] else "already", **Base}
+        if P is None or P["method"] != "email":
+            return {"status": "expired" if State == "expired" else "invalid", "name": "", "email": ""}
+        Base = {"name": P["display_name"] or "", "email": P["email"] or ""}
+        try:
+            Versions = self.Consent.Check(Given if Given is not None else AcceptedOf(P))
+        except TermsChanged as E:
+            return {"status": "terms_changed", "legal": E.Current, **Base}
+        try:
+            R = self.Consent.CreateAccount(Secret, Versions)
+        except ConsentError as E:
+            return {"status": "email_in_use" if E.Code == "email_in_use" else "invalid", **Base}
+        return {"status": "verified", "token": R["token"], **Base}
 
     def _RotateToken(self, AccountId: str, Label: str) -> str:
         """Issue a new active token for a self-registered account (retiring older ones) and keep it
@@ -398,15 +429,16 @@ class LocalAccountProvider:
     # ── administration ───────────────────────────────────────────────────
     def IssueToken(self, Label: str, DisplayName: str | None = None, Email: str | None = None,
                    AccountId: str | None = None, Token: str | None = None,
-                   MaxGenerations: int = DefaultMaxGenerations) -> tuple[str, Principal]:
+                   MaxGenerations: int = DefaultMaxGenerations, TermsRequired: bool = False) -> tuple[str, Principal]:
         """Create (or reuse AccountId for) an admin account and issue a token for it. The token is
-        kept on the account (delivery_token) so the admin table can show it, as in P2."""
+        kept on the account (delivery_token) so the admin table can show it, as in P2. TermsRequired: a new account
+        XJet makes for a customer (the Admin, the CLI) accepts the Terms at its first sign-in."""
         Token = NormalizeToken(Token) if Token else self.GenerateToken()
         AccountId = AccountId or NewAccountId()
         T = Now()
         with self.Db.Transaction() as Conn:
-            Conn.execute("INSERT OR IGNORE INTO accounts (account_id, display_name, email, created_at, max_generations) "
-                         "VALUES (?,?,?,?,?)", (AccountId, DisplayName or Label, Email, T, int(MaxGenerations)))
+            Conn.execute("INSERT OR IGNORE INTO accounts (account_id, display_name, email, created_at, max_generations, terms_required) "
+                         "VALUES (?,?,?,?,?,?)", (AccountId, DisplayName or Label, Email, T, int(MaxGenerations), 1 if TermsRequired else 0))
             Conn.execute("INSERT INTO access_tokens (token_hash, token_hint, account_id, label, active, created_at) "
                          "VALUES (?,?,?,?,1,?)", (HashToken(Token), Token[:3], AccountId, Label, T))
             Conn.execute("UPDATE accounts SET delivery_token = ? WHERE account_id = ?", (Token, AccountId))
@@ -477,7 +509,7 @@ class LocalAccountProvider:
         Removed = self._RemovedAccountByEmail(Email)       # never a second account: restore that one instead
         if Removed:
             raise RemovedAccount(Removed["account_id"], Removed["display_name"] or "", Removed["removed_at"])
-        Token, Who = self.IssueToken(Name, DisplayName=Name, Email=Email, MaxGenerations=Max)
+        Token, Who = self.IssueToken(Name, DisplayName=Name, Email=Email, MaxGenerations=Max, TermsRequired=True)
         self._Event(Who.AccountId, "admin_created")
         return self.AdminGet(Who.AccountId) | {"token": Token}
 
@@ -546,7 +578,8 @@ class LocalAccountProvider:
         "(SELECT COUNT(*) FROM login_identities l WHERE l.account_id = a.account_id) AS login_count, "
         "(SELECT MAX(t.last_used_at) FROM access_tokens t WHERE t.account_id = a.account_id) AS last_activity_at, "
         "(SELECT t.token_hint FROM access_tokens t WHERE t.account_id = a.account_id "
-        " ORDER BY t.active DESC, t.created_at DESC LIMIT 1) AS token_hint "
+        " ORDER BY t.active DESC, t.created_at DESC LIMIT 1) AS token_hint, "
+        "(SELECT c.id FROM consents c WHERE c.account_id = a.account_id ORDER BY c.accepted_at DESC, c.id DESC LIMIT 1) AS consent_id "
         "FROM accounts a")
 
     @staticmethod
@@ -576,15 +609,31 @@ class LocalAccountProvider:
             "removed_at": R["removed_at"],
         }
 
+    def _WithTerms(self, Rows: list[dict]) -> list[dict]:
+        """Each row's Terms status (read only): accepted (when, how, which versions), pending (accepts at its sign-in) or
+        legacy (made before acceptance existed). Only what was accepted — never a password, token or address of it."""
+        Ids = [R["consent_id"] for R in Rows if R.get("consent_id")]
+        Marks = ",".join("?" * len(Ids))
+        Found = {C["id"]: C for C in self.Db.All(f"SELECT id, accepted_at, method, terms_version, privacy_version FROM consents "
+                                                 f"WHERE id IN ({Marks})", tuple(Ids))} if Ids else {}
+        Out = []
+        for R in Rows:
+            C = Found.get(R.get("consent_id"))
+            Terms = ({"status": "accepted", "accepted_at": C["accepted_at"], "method": C["method"],
+                      "terms_version": C["terms_version"], "privacy_version": C["privacy_version"]} if C else
+                     {"status": "pending" if R.get("terms_required") else "legacy"})
+            Out.append({**self._AdminRow(R), "terms": Terms})
+        return Out
+
     def AdminList(self, IncludeRemoved: bool = False) -> list[dict]:
         Where = "" if IncludeRemoved else " WHERE a.removed_at IS NULL"
-        return [self._AdminRow(R) for R in self.Db.All(self._AdminSelect + Where + " ORDER BY a.created_at DESC")]
+        return self._WithTerms(self.Db.All(self._AdminSelect + Where + " ORDER BY a.created_at DESC"))
 
     def AdminGet(self, AccountId: str) -> dict:
         Row = self.Db.One(self._AdminSelect + " WHERE a.account_id = ?", (AccountId,))
         if Row is None:
             raise AccountNotFound(AccountId)
-        return self._AdminRow(Row)
+        return self._WithTerms([Row])[0]
 
     def AdminActivity(self, AccountId: str) -> dict:
         """Identity-side activity for the admin detail view: provider usage events and account events (the credit

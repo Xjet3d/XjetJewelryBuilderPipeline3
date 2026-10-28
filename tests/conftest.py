@@ -68,6 +68,11 @@ class Harness:
         return (self.Settings.AssetsDir / Url.removeprefix(self.Base + "/assets/")).read_bytes()
 
 
+def Accepted(H) -> dict:
+    """The Terms box ticked, with the versions the site serves now: what every sign-up sends (2026-10-29)."""
+    return {"accept_terms": True, **H.Ctx.Accounts.Consent.Current()}
+
+
 @pytest.fixture
 async def H(tmp_path):
     Obj = Harness(tmp_path)

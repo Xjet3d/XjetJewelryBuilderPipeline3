@@ -47,6 +47,13 @@ FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "
                "bag": "checkout", "checkout": "order"}
 _LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
+# What a customer accepts besides the Terms when the design-use clause is published (P3_TERMS_DESIGN_USE): the owner's
+# business-approved wording of 29 Oct 2026, pending legal counsel's review — published only with the owner's separate
+# approval. The same sentence is in web/index.html between <!--designuse--> marks (the sign-up forms and the Terms dialog).
+DesignUseAcceptance = ("By accepting, you also grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to show, "
+                       "promote, make and sell jewelry based on the designs you create, including in our public gallery and "
+                       "to other customers, as the Terms of Service describe. What you upload stays yours, and we ask your "
+                       "separate permission before we publicly use an identifiable photo, likeness or personal information.")
 _OpenTag = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*/?>""")
 
 
@@ -512,6 +519,14 @@ def _LiveCopy(Html: str, View: str) -> str:
         if Depth == 0:
             return Html[Start:Start + M.end()]
     return Html[Start:]
+
+
+def LegalText(Html: str, View: str, Base: str = "") -> str:
+    """What a reader of a legal page gets from it (the page's live copy: its words, link targets and pictures), without
+    the base path, so the same wording is the same text on every copy of the site: the text a Terms acceptance is for
+    (p3/accounts/consent.py archives it and its hash)."""
+    Text = _Readable(_LiveCopy(Html, View))
+    return Text.replace(Base + "/", "/") if Base else Text
 
 
 def PageFingerprint(Html: str, View: str, Origin: str = "") -> str:

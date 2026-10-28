@@ -25,6 +25,9 @@
   .msg { padding:12px 14px; border-radius:4px; margin:0 0 16px; font-size:14px; }
   .msg.err { background:#FDECEC; color:var(--err); border:1px solid #F3B8B8; }
   .msg.ok { background:#EAF6EE; color:var(--ok); border:1px solid #B7DFC4; }
+  .accept { display:flex; gap:12px; align-items:flex-start; font-size:14px; font-weight:400; line-height:1.55; margin:0 0 16px; cursor:pointer; }
+  .accept input { width:20px; height:20px; min-height:0; margin:2px 0 0; flex-shrink:0; accent-color:#8A561B; }
+  .accept a { color:var(--ink); }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -40,6 +43,13 @@
       <p class="hint" id="pw-hint">At least 10 characters. A password manager can create one for you.</p>
     </div>
     <p id="intro"></p>
+    <!-- The Terms changed after the sign-up (409 terms_changed): the account is made once they are accepted again -->
+    <div id="terms-wrap" hidden>
+      <label class="accept"><input id="terms" type="checkbox">
+        <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener">Terms of Service</a> and confirm that I have
+          read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+      {{DESIGN_USE}}
+    </div>
     <button id="go" type="submit">{{BUTTON}}</button>
   </form>
   <p style="margin:20px 0 0;font-size:14px;"><a id="home" href="{{BASE}}/" style="color:var(--gold);">Back to XJet Atelier</a></p>
@@ -48,7 +58,7 @@
 (function () {
   var BASE = "{{BASE}}", MODE = document.querySelector('main').dataset.mode;
   var $ = function (id) { return document.getElementById(id); };
-  var token = '';
+  var token = '', legal = null;        // legal: the versions to accept again when the Terms changed after the sign-up
   try { token = new URLSearchParams(location.hash.replace(/^#/, '')).get('token') || ''; history.replaceState(null, '', location.pathname); } catch (e) {}
   var intro = { verify: 'Press the button to confirm this email address and sign in.',
                 reset: '', confirm: 'Press the button to connect this sign-in to your existing XJet Atelier account.' };
@@ -61,6 +71,10 @@
     ev.preventDefault();
     var body = { token: token };
     if (MODE === 'reset') { body.password = $('pw').value; if (!body.password) { say('Choose a password.', 'err'); $('pw').focus(); return; } }
+    if (legal) {
+      if (!$('terms').checked) { say('Please tick the box to accept the Terms of Service.', 'err'); $('terms').focus(); return; }
+      body.accept_terms = true; body.terms = legal.terms; body.privacy = legal.privacy;
+    }
     $('go').disabled = true;
     fetch(BASE + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -69,9 +83,14 @@
           say(MODE === 'reset' ? 'Your password is saved. Taking you to the studio…' : 'Done. Taking you to the studio…', 'ok');
           $('form').hidden = true; setTimeout(function () { location.replace(BASE + '/#auth=' + (MODE === 'verify' ? 'created' : 'ok')); }, 900);
         } else {
-          say((r.j && r.j.error && r.j.error.message) || 'Something went wrong. Please try again.', 'err');
+          var err = (r.j && r.j.error) || {};
+          say(err.message || 'Something went wrong. Please try again.', 'err');
           $('go').disabled = false;
-          if (r.j && r.j.error && /^link_/.test(r.j.error.code)) { $('form').hidden = true; }
+          if (err.code === 'terms_changed' && err.legal) {          // show the current Terms and ask again
+            legal = err.legal; $('terms').checked = false; $('terms-wrap').hidden = false;
+            $('intro').hidden = true; $('go').textContent = 'Accept and create account';
+          }
+          if (/^link_/.test(err.code || '') || err.code === 'email_in_use') { $('form').hidden = true; }
         }
       })
       .catch(function () { say('Network error. Check your connection and try again.', 'err'); $('go').disabled = false; });

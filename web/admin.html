@@ -261,7 +261,7 @@
       </div>
       <div class="table-wrap">
       <table class="w-full sticky-head" aria-label="Users">
-        <thead><tr><th>Sign-in code</th><th>Name</th><th>Email</th><th>Used / Max</th><th class="text-right">Sessions</th><th class="text-right whitespace-nowrap" title="Live sessions only, estimated at list prices; mock requests are $0.">AI cost</th><th>Status</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
+        <thead><tr><th>Sign-in code</th><th>Name</th><th>Email</th><th>Used / Max</th><th class="text-right">Sessions</th><th class="text-right whitespace-nowrap" title="Live sessions only, estimated at list prices; mock requests are $0.">AI cost</th><th>Status</th><th title="Terms of Service and Privacy Policy acceptance (read only)">Terms</th><th>Created</th><th>Last activity</th><th class="text-right">Actions</th></tr></thead>
           <template x-for="u in filtered" :key="u.account_id">
             <tbody>
             <tr class="row-link" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go('#/users/' + encodeURIComponent(u.account_id))" tabindex="0" @keydown.enter="go('#/users/' + encodeURIComponent(u.account_id))" :aria-label="'Open user ' + (u.name || u.email || '')">
@@ -272,6 +272,7 @@
               <td class="text-right tabular-nums" x-text="u.sessions ?? '—'"></td>
               <td class="text-right tabular-nums" x-text="money(u.ai_cost)"></td>
               <td><span class="badge" :class="statusClass(u.status)" x-text="statusLabel(u.status)"></span></td>
+              <td><span class="badge" :class="termsClass(u.terms)" :title="termsTitle(u.terms)" x-text="termsLabel(u.terms)"></span></td>
               <td class="text-zinc-500" x-text="date(u.created_at)"></td>
               <td class="text-zinc-500" x-text="ago(u.last_activity_at)"></td>
               <td class="text-right whitespace-nowrap space-x-3 text-xs" @click.stop>
@@ -283,7 +284,7 @@
               </td>
             </tr>
             <tr x-show="editing === u.account_id" x-cloak class="bg-zinc-50">
-              <td colspan="10" class="!py-4" @click.stop>
+              <td colspan="11" class="!py-4" @click.stop>
                 <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_140px_auto_auto] gap-3 items-end">
                   <div><label class="lbl block mb-1">Name *</label><input class="inp" x-model="edit.Name"></div>
                   <div><label class="lbl block mb-1">Email *</label><input class="inp" type="email" x-model="edit.Email"></div>
@@ -298,11 +299,35 @@
             </tr>
             </tbody>
           </template>
-          <tbody x-show="!filtered.length"><tr><td colspan="10" class="text-center text-zinc-500 !py-10">
+          <tbody x-show="!filtered.length"><tr><td colspan="11" class="text-center text-zinc-500 !py-10">
             <span x-show="usersState === 'loading'">Loading…</span>
             <span x-show="usersState === 'loaded'" x-text="search.trim() ? 'No user matches “' + search.trim() + '”.' : 'No users.'"></span>
             <span x-show="usersState === 'failed'" class="text-red-600" x-text="'The users could not be loaded: ' + usersMsg"></span>
             <button x-show="usersState === 'failed'" class="underline ml-2" @click="load()">Try again</button></td></tr></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- The Terms (2026-10-29), read only: the sign-ups waiting to become accounts (masked: nobody has confirmed these
+         addresses; no credits; gone after 24 hours) and the versions of the legal texts customers accept now -->
+    <section class="card" x-show="termsInfo" x-cloak>
+      <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
+        <p class="lbl">Sign-ups waiting (<span x-text="termsInfo?.pending_registrations.length || 0"></span>)</p>
+        <p class="text-xs text-zinc-500">
+          Customers accept Terms <strong x-text="'v' + (termsInfo?.current.terms.version ?? '—')"></strong> ·
+          Privacy <strong x-text="'v' + (termsInfo?.current.privacy.version ?? '—')"></strong> ·
+          design-use clause <span x-text="termsInfo?.design_use_published ? 'published' : 'not published (waiting for approval)'"></span></p>
+      </div>
+      <div class="table-wrap">
+      <table class="w-full" aria-label="Sign-ups waiting">
+        <thead><tr><th>Email</th><th>How</th><th>Started</th><th>Expires</th></tr></thead>
+        <tbody>
+          <template x-for="p in termsInfo?.pending_registrations || []" :key="p.id">
+            <tr><td class="font-mono text-zinc-600" x-text="p.email"></td><td x-text="termsMethod(p.method)"></td>
+              <td class="text-zinc-500" x-text="utc(p.created_at)"></td><td class="text-zinc-500" x-text="utc(p.expires_at)"></td></tr>
+          </template>
+          <tr x-show="!(termsInfo?.pending_registrations || []).length"><td colspan="4" class="text-center text-zinc-500 !py-6">None.</td></tr>
+        </tbody>
       </table>
       </div>
     </section>
@@ -339,6 +364,18 @@
           <button class="text-red-500 hover:underline" x-show="d.user.status !== 'removed'" @click="remove(d.user)">Remove</button>
           <button class="text-green-600 hover:underline" x-show="d.user.status === 'removed'" @click="act(d.user, 'restore')">Restore</button>
         </div>
+      </section>
+
+      <!-- The Terms (read only): what this account accepted, when and how — or why nothing is recorded -->
+      <section class="card p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <p class="lbl">Terms of Service</p>
+        <span class="badge" :class="termsClass(d.user.terms)" x-text="termsLabel(d.user.terms)"></span>
+        <template x-if="d.user.terms?.status === 'accepted'">
+          <p class="text-sm text-zinc-700">Terms <strong x-text="'v' + d.user.terms.terms_version"></strong> · Privacy
+            <strong x-text="'v' + d.user.terms.privacy_version"></strong> · <span x-text="termsMethod(d.user.terms.method)"></span> ·
+            <span x-text="utc(d.user.terms.accepted_at)"></span></p>
+        </template>
+        <p x-show="d.user.terms?.status !== 'accepted'" class="text-sm text-zinc-500" x-text="termsTitle(d.user.terms)"></p>
       </section>
 
       <!-- Account dates -->

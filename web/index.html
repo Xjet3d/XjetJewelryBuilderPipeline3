@@ -1038,6 +1038,9 @@
                         <h2 class="text-lg font-semibold text-zinc-900">Your content</h2>
                         <p>You keep the rights to the descriptions and images you upload, and you confirm you have the right to use them. Respect other people's intellectual property, such as their artwork, designs and trademarks, as XJet does. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
                         <p><strong class="font-semibold text-zinc-900">Your photos and personal information.</strong> We never show the photos you upload in the gallery or use them to promote Atelier. We do not display, promote or make for anyone else a design that shows an identifiable person or carries personal details such as a name, initials or a date, unless you allow it.</p>
+                        <!--designuse--><!-- Your designs: the owner's business-approved wording (29 Oct 2026), pending legal counsel's review. Served only
+                             once the owner separately approves publishing it (P3_TERMS_DESIGN_USE); new sign-ups then accept a new version -->
+                        <p><strong class="font-semibold text-zinc-900">Your designs.</strong> You grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to reproduce, adapt, display and promote the designs you create in Atelier, and to manufacture and sell jewelry based on them, including in our public gallery and to other customers. No royalties are due to you unless we agree otherwise in writing. What you upload remains yours, and we ask your separate permission before we publicly use an identifiable photograph, a person's likeness or personal information.</p><!--/designuse-->
                         <h2 class="text-lg font-semibold text-zinc-900">Orders</h2>
                         <p x-text="termsOrders"></p>
                         <h2 class="text-lg font-semibold text-zinc-900">Preview accuracy</h2>
@@ -2544,18 +2547,12 @@
                     </div>
                     <div x-show="regInfo" role="status" class="mb-4 px-4 py-3 border text-sm text-center" style="background:#FBF7EF;border-color:#C9A96E;color:#3A2E12;" x-text="regInfo"></div>
 
-                    <!-- Create an account: the Terms are accepted first, for an email account and for Google or Apple alike
-                         (the owner's decision of 28 Oct 2026: business-approved, not yet reviewed by legal counsel, Legal Review Pack T10) -->
-                    <label x-show="regMode === 'register' && !regInfo" class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-5 leading-relaxed">
-                        <input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
-                        <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
-                    </label>
+                    <!-- Google / Apple (only the ones this server has credentials for; a claim carries its ticket along). A new
+                         customer accepts the Terms after Google or Apple identified them, before the account exists (the Terms dialog) -->
 
-                    <!-- Google / Apple (only the ones this server has credentials for; a claim carries its ticket along) -->
                     <div x-show="!regInfo && ['signin', 'register', 'claim'].includes(regMode) && (authCfg.providers.google || authCfg.providers.apple)" class="space-y-3 mb-5">
                         <a x-show="authCfg.providers.google" :href="authStartUrl('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
                            @click.prevent="startProvider('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
-                           :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''"
                            class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition hover:bg-zinc-50"
                            style="min-height:48px;background:#fff;border:1px solid #747775;color:#1F1F1F;border-radius:4px;">
                             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
@@ -2563,7 +2560,6 @@
                         </a>
                         <a x-show="authCfg.providers.apple" :href="authStartUrl('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
                            @click.prevent="startProvider('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
-                           :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''"
                            class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition"
                            style="min-height:48px;background:#000;border:1px solid #000;color:#fff;border-radius:4px;">
                             <svg width="17" height="20" viewBox="0 0 814 1000" fill="#fff" aria-hidden="true"><path d="M788 340c-6 5-110 63-110 192 0 150 131 203 135 204-1 3-21 72-69 142-43 62-88 124-157 124s-87-40-167-40c-78 0-106 41-170 41s-108-58-158-128C49 770 0 641 0 518c0-198 129-303 255-303 67 0 123 44 165 44 40 0 102-47 178-47 29 0 133 3 190 98zM555 160c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 33-146 75-28 32-55 83-55 135 0 8 1 15 2 17 3 1 8 1 12 1 45 0 101-30 136-69z"/></svg>
@@ -2611,6 +2607,13 @@
                             <p id="rg-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
                         </div>
                         <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <!-- The Terms, accepted with an email sign-up and recorded when its emailed link makes the account (the owner's
+                             decisions of 28-29 Oct 2026: business-approved, not yet reviewed by legal counsel, Legal Review Pack T10) -->
+                        <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-5 leading-relaxed">
+                            <input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
+                            <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
+                        </label>
+                        <!--designuse--><p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you also grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to show, promote, make and sell jewelry based on the designs you create, including in our public gallery and to other customers, as the Terms of Service describe. What you upload stays yours, and we ask your separate permission before we publicly use an identifiable photo, likeness or personal information.</p><!--/designuse-->
                         <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10"
                                 :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
@@ -2704,6 +2707,7 @@
                         <input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                         <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
                     </label>
+                    <!--designuse--><p class="text-[13px] text-zinc-600 -mt-3 mb-6 leading-relaxed">By accepting, you also grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to show, promote, make and sell jewelry based on the designs you create, including in our public gallery and to other customers, as the Terms of Service describe. What you upload stays yours, and we ask your separate permission before we publicly use an identifiable photo, likeness or personal information.</p><!--/designuse-->
                     <button type="submit" :disabled="regLoading || !regForm.acceptTerms"
                             class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                         <span x-show="!regLoading" class="inline-flex items-center">Send Verification Link
@@ -2758,6 +2762,40 @@
                     Not ready to sign in? <button type="button" @click="closeRegModal()" class="underline underline-offset-2 hover:text-black transition">Keep browsing</button>
                     <span x-text="regReason ? '— the gallery, materials and prices are open to everyone.' : '— signing in is only needed to start a design.'">— signing in is only needed to start a design.</span>
                 </p>
+            </div>
+        </div>
+    </template>
+
+    <!-- ── The Terms, accepted before an account is used (2026-10-29): a new Google / Apple customer after identification —
+         the account is made when they accept — or an account XJet made, at its first sign-in. The server refuses designs,
+         credits and orders until then (403 terms_required). Business-approved wording, not yet reviewed by legal counsel. ── -->
+    <template x-teleport="body">
+        <div x-show="termsGate.open" x-cloak class="fixed inset-0 z-[210] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75);">
+            <div id="terms-dialog" class="bg-white w-full max-w-md p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true"
+                 aria-labelledby="terms-title" aria-describedby="terms-desc" @keydown="trapFocus($event, 'terms-dialog')">
+                <div class="mb-6 text-center">
+                    <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
+                    <h2 id="terms-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;"
+                        x-text="termsGate.mode === 'pending' ? 'Create your account' : 'Before you start'"></h2>
+                    <p id="terms-desc" class="text-[15px] text-zinc-600 mt-2 leading-relaxed"
+                       x-text="termsGate.mode === 'pending'
+                               ? 'One more step' + (termsGate.email ? ' for ' + termsGate.email : '') + ': please accept our Terms of Service to create your XJet Atelier account.'
+                               : 'Please accept our Terms of Service before you start designing.'"></p>
+                </div>
+                <div x-show="termsGate.error" role="alert" class="mb-4 px-4 py-3 border text-sm" style="background:#fff5f5;border-color:#fca5a5;color:#b91c1c;" x-text="termsGate.error"></div>
+                <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-5 leading-relaxed">
+                    <input id="tg-terms" type="checkbox" x-model="termsGate.accept" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
+                    <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
+                </label>
+                <!--designuse--><p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you also grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to show, promote, make and sell jewelry based on the designs you create, including in our public gallery and to other customers, as the Terms of Service describe. What you upload stays yours, and we ask your separate permission before we publicly use an identifiable photo, likeness or personal information.</p><!--/designuse-->
+                <button type="button" @click="acceptTermsGate()" :disabled="termsGate.loading || !termsGate.accept"
+                        class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                    <span x-show="!termsGate.loading" x-text="termsGate.mode === 'pending' ? 'Accept and create account' : 'Accept and continue'"></span>
+                    <span x-show="termsGate.loading">Saving…</span>
+                </button>
+                <p class="text-center mt-5"><button type="button" @click="declineTermsGate()" :disabled="termsGate.loading"
+                        class="text-[13px] text-zinc-600 underline underline-offset-2 hover:text-black"
+                        x-text="termsGate.mode === 'pending' ? 'Cancel — no account is made' : 'Sign out'"></button></p>
             </div>
         </div>
     </template>

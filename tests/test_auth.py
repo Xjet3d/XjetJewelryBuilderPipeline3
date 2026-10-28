@@ -58,8 +58,14 @@ def Csrf(Resp):
     return {"X-CSRF-Token": Resp.json()["csrf"]}
 
 
+async def Acceptance(B) -> dict:
+    """The Terms box ticked, with the versions the site serves now (2026-10-29: every sign-up accepts them)."""
+    L = (await B.get("/api/auth/terms")).json()
+    return {"accept_terms": True, "terms": L["terms"], "privacy": L["privacy"]}
+
+
 async def Register(H, B, Email="dana@example.com", Name="Dana", Password=Pw):
-    R = await B.post("/api/auth/register", json={"name": Name, "email": Email, "password": Password})
+    R = await B.post("/api/auth/register", json={"name": Name, "email": Email, "password": Password, **(await Acceptance(B))})
     assert R.status_code == 200, R.text
     return R
 
@@ -74,8 +80,19 @@ async def SignedUp(H, Email="dana@example.com", Name="Dana"):
     return B, Csrf(R)
 
 
-async def ViaProvider(H, B, Provider="google", Purpose="login", Code="ok", Ticket=""):
-    """Run a provider round trip in browser B; returns the final redirect's fragment (e.g. "auth=ok")."""
+async def ViaProvider(H, B, Provider="google", Purpose="login", Code="ok", Ticket="", Accept=True):
+    """Run a provider round trip in browser B; returns the final redirect's fragment (e.g. "auth=ok"). A new customer
+    comes back to accept the Terms ("auth=accept_terms"): with Accept they do, the account is made and "auth=created" is
+    returned (2026-10-29)."""
+    Frag = await _ProviderTrip(H, B, Provider, Purpose, Code, Ticket)
+    if Frag == "auth=accept_terms" and Accept:
+        R = await B.post("/api/auth/accept", json=await Acceptance(B))
+        assert R.status_code == 200, R.text
+        return "auth=created"
+    return Frag
+
+
+async def _ProviderTrip(H, B, Provider, Purpose, Code, Ticket):
     Q = f"?purpose={Purpose}" + (f"&ticket={Ticket}" if Ticket else "")
     R = await B.get(f"/api/auth/{Provider}/start{Q}")
     assert R.status_code == 303, R.text
@@ -99,9 +116,10 @@ async def test_register_verify_login_and_logout(A):
     assert "dana@example.com" in R.json()["message"]
     Sent = Mails(A)
     assert len(Sent) == 1 and Sent[0]["to"] == "dana@example.com" and "Confirm your email" in Sent[0]["subject"]
-    # an unconfirmed address cannot sign in, and the answer for a wrong password is the same as for an unknown address
+    # an unconfirmed sign-up is no account yet (2026-10-29): it cannot sign in, and the answer for a wrong password is the
+    # same as for an unknown address
     Bad = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})
-    assert Bad.status_code == 403 and Bad.json()["error"]["code"] == "email_unverified"
+    assert Bad.status_code == 401 and Bad.json()["error"]["code"] == "invalid_credentials"
     Wrong = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": "nope-nope-nope"})
     Unknown = await B.post("/api/auth/login", json={"email": "nobody@example.com", "password": "nope-nope-nope"})
     assert Wrong.status_code == Unknown.status_code == 401 and Wrong.json() == Unknown.json()
@@ -140,7 +158,7 @@ async def test_email_links_are_single_use_expiring_and_stored_as_digests(A):
     B = Browser(A)
     await Register(A, B)
     Secret = LinkSecret(Mails(A)[0]["html"])
-    Dump = " ".join(str(R) for T in ("auth_tokens",) for R in A.Ctx.Accounts.Db.All(f"SELECT * FROM {T}"))
+    Dump = " ".join(str(R) for T in ("auth_tokens", "pending_registrations") for R in A.Ctx.Accounts.Db.All(f"SELECT * FROM {T}"))
     assert Secret not in Dump
     assert (await B.post("/api/auth/verify-email", json={"token": Secret})).status_code == 200
     Again = await B.post("/api/auth/verify-email", json={"token": Secret})
@@ -148,7 +166,7 @@ async def test_email_links_are_single_use_expiring_and_stored_as_digests(A):
 
     await Register(A, Browser(A), Email="late@example.com")
     Late = LinkSecret(Mails(A)[-1]["html"])
-    A.Ctx.Accounts.Db.Execute("UPDATE auth_tokens SET expires_at = '2000-01-01T00:00:00.000+00:00' WHERE purpose = 'verify_email' AND used_at IS NULL")
+    A.Ctx.Accounts.Db.Execute("UPDATE pending_registrations SET expires_at = '2000-01-01T00:00:00.000+00:00' WHERE used_at IS NULL")
     R = await Browser(A).post("/api/auth/verify-email", json={"token": Late})
     assert R.status_code == 400 and R.json()["error"]["code"] == "link_expired"
     assert (await Browser(A).post("/api/auth/verify-email", json={"token": "garbage"})).json()["error"]["code"] == "link_invalid"
@@ -346,10 +364,14 @@ async def test_a_verified_provider_discards_an_unconfirmed_password_registration
     """Pre-hijacking: someone registers the victim's address with a password they chose; the victim, who never confirmed,
     later signs in with Google. The attacker's password must not survive."""
     await Register(A, Browser(A), Password="attacker passphrase 1")
+    Attacker = LinkSecret(Mails(A)[-1]["html"])
     Victim = Browser(A)
-    assert await ViaProvider(A, Victim) == "auth=ok"
+    assert await ViaProvider(A, Victim) == "auth=created"      # the unconfirmed sign-up was never an account (2026-10-29)
     Try = await Browser(A).post("/api/auth/login", json={"email": "dana@example.com", "password": "attacker passphrase 1"})
     assert Try.status_code == 401
+    assert A.Ctx.Accounts.Db.One("SELECT COUNT(*) AS n FROM password_credentials")["n"] == 0
+    # and the attacker's link went with it: it makes no second account and attaches no password
+    assert (await Browser(A).post("/api/auth/verify-email", json={"token": Attacker})).status_code == 400
     assert A.Ctx.Accounts.Db.One("SELECT COUNT(*) AS n FROM password_credentials")["n"] == 0
 
 

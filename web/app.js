@@ -155,8 +155,14 @@ function p3App() {
     claim: { ticket: '', name: '', email: '' },  // a legacy six-letter code that was accepted: finish by attaching a real login
     sec: { data: null, loading: false, busy: false, msg: '', err: '', newPw: '', reauthPw: '', needReauth: false, showPw: false },
     get legacyAuth() { return this.authCfg.mode === 'legacy'; },
-    // Create an account: Google, Apple and the email form wait for the Terms checkbox
+    // Create an account with an email: the form waits for the Terms checkbox (Google and Apple ask after identifying)
     get termsPending() { return this.regMode === 'register' && !this.regForm.acceptTerms; },
+    // The Terms, accepted on the server with the versions shown (2026-10-29): the versions served now (GET /api/auth/terms)
+    // and the dialog for a new Google / Apple customer ("pending": the account is made when they accept) or an account
+    // XJet made ("account": at its first sign-in). termsRequired: this account still has to accept (no design until then).
+    legal: null,
+    termsGate: { open: false, mode: '', email: '', method: '', accept: false, loading: false, error: '' },
+    termsRequired: false, _resumeAfterTerms: null,
     quotaUsed: 0, quotaMax: 10,
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
     tariff: { design: 1, refinement: 1, option: 1, movie: 1 },       // the server's (Admin → Credits), from token-status
@@ -286,6 +292,7 @@ function p3App() {
       // Back / Forward: the address names the screen (a page, a step of the journey) and the gallery design that is open
       window.addEventListener('popstate', () => this._onHistory());
       if (hashView === 'account') { this.view = 'account'; this._screenShown(); }   // signed out, the page offers the sign-in
+      if (authStatus === 'accept_terms') { await this._openPendingTerms(); this.measureScreen(); return; }   // a new Google / Apple customer
       if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
       const signedInNow = !!this.token && (fromLink || authStatus === 'ok' || authStatus === 'created');
       if (authReturn && !signedInNow) this.measureScreen();                        // a sign-in that did not complete
@@ -338,9 +345,12 @@ function p3App() {
           if (S?.authenticated) { this.authCsrf = S.csrf; return this.api(method, path, body, { ...opts, _retried: true }); }
         }
         if (resp.status === 401 && err.code === 'login_required' && this.userSession && !opts.noAuth) this._sessionEnded();
+        // An account that has not accepted the Terms yet gets nothing else: ask for them (the server refuses until then)
+        if (resp.status === 403 && err.code === 'terms_required' && this.userSession) { this.termsRequired = true; this._openTermsGate('account'); }
         const ex = new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
         if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
         if (err.category) ex.category = err.category;          // why the prompt check stopped a request (P5)
+        if (err.legal) ex.legal = err.legal;                   // terms_changed: the versions to show and accept now
         throw ex;
       }
       return data;
@@ -888,6 +898,11 @@ function p3App() {
     },
     // After any sign-in: straight into the gallery design the customer chose, else the Design screen.
     async _afterSignIn(fromVerification) {
+      if (this.termsRequired) {                // the Terms before Design: the same step again once they are accepted
+        this._resumeAfterTerms = () => this._afterSignIn(fromVerification);
+        this._openTermsGate('account');
+        return;
+      }
       const pending = this._pendingGallery();
       if (pending) { await this.startFromGallery(pending); return; }
       const fav = this._pendingFav();
@@ -927,6 +942,7 @@ function p3App() {
       this.regForm = { token: '', name: '', email: '', password: '', acceptTerms: false };
       this._returnFocus = document.activeElement;
       this.showRegModal = true;
+      this.loadLegal();                        // the versions of the Terms a sign-up here accepts
       // The dialog is teleported to <body>, so it is found by id rather than through $refs.
       this.$nextTick(() => setTimeout(() => document.getElementById('reg-dialog')?.querySelector('input:not([disabled]), button:not([disabled])')?.focus(), 30));
     },
@@ -956,7 +972,7 @@ function p3App() {
       let S = null;
       try { S = await this.api('GET', '/api/auth/session', null, { noAuth: true }); } catch (_) {}
       if (S && S.authenticated) {
-        this.authCsrf = S.csrf; this._authMethod = S.method || '';
+        this.authCsrf = S.csrf; this._authMethod = S.method || ''; this.termsRequired = !!S.terms_required;
         this._setSession({ token: 'session', session: true, name: S.account.name, email: S.account.email, quotaUsed: 0, quotaMax: 10 });
         this._saveUserProfile(S.account.name || null, S.account.email || null);
         try { localStorage.removeItem(SESSION_KEY); } catch (_) {}                // nothing of a session lives in the browser's storage
@@ -1013,22 +1029,22 @@ function p3App() {
     authStartUrl(provider, purpose = 'login', ticket = '') {
       return url('/api/auth/' + provider + '/start?purpose=' + encodeURIComponent(purpose) + (ticket ? '&ticket=' + encodeURIComponent(ticket) : ''));
     },
-    // Create an account without the Terms ticked: Google, Apple and Create account say so and move to the checkbox,
-    // which sits above them all and can be scrolled out of sight on a small screen
+    // Create account without the Terms ticked: the form says so and moves to the checkbox
     _termsMissing() {
       if (!this.termsPending) return false;
       this.regError = TERMS_REQUIRED;
       this.$nextTick(() => document.getElementById('rg-terms')?.focus());
       return true;
     },
-    // Leave for Google / Apple: what the customer was about to do is kept across the round trip
+    // Leave for Google / Apple: what the customer was about to do is kept across the round trip. A new customer accepts
+    // the Terms when they come back (the Terms dialog), before their account exists; an existing one signs in at once.
     startProvider(provider, purpose = 'login', ticket = '') {
-      if (this._termsMissing()) return;
       try { sessionStorage.setItem('p3_pending_panel', this._pendingPanel || ''); } catch (_) {}
       location.href = this.authStartUrl(provider, purpose, ticket);
     },
     _signedIn(R) {
       this.authCsrf = R.csrf;
+      this.termsRequired = !!R.terms_required;            // an account XJet made, or a registration begun before: Terms first
       this._setSession({ token: 'session', session: true, name: R.account.name, email: R.account.email, quotaUsed: 0, quotaMax: 10 });
       this._saveUserProfile(R.account.name || null, R.account.email || null);
       this.showRegModal = false; this._returnFocus = null;
@@ -1040,7 +1056,66 @@ function p3App() {
     regSwitch(mode) { this.regMode = mode; this.regError = ''; this.regInfo = ''; this.regUnverified = false; this.regForm.password = ''; },
     async _regCall(fn) {
       this.regLoading = true; this.regError = ''; this.regInfo = ''; this.regUnverified = false;
-      try { await fn(); } catch (E) { this.regError = E.message; this.regUnverified = E.code === 'email_unverified'; } finally { this.regLoading = false; }
+      try { await fn(); } catch (E) {
+        this.regError = E.message; this.regUnverified = E.code === 'email_unverified';
+        if (E.code === 'terms_changed') { if (E.legal) this.legal = E.legal; this.regForm.acceptTerms = false; }   // read them again
+      } finally { this.regLoading = false; }
+    },
+    // ── the Terms (2026-10-29): the versions shown are sent back with the acceptance, and checked on the server ──
+    async loadLegal() {
+      try { this.legal = await this.api('GET', '/api/auth/terms', null, { noAuth: true }); } catch (_) {}
+      return this.legal;
+    },
+    async _acceptance() {
+      if (!this.legal) await this.loadLegal();
+      return { accept_terms: true, terms: this.legal?.terms, privacy: this.legal?.privacy };
+    },
+    _openTermsGate(mode, email = '') {
+      if (this.termsGate.open) return;
+      this.showRegModal = false;
+      this.termsGate = { open: true, mode, email, method: this._authMethod || '', accept: false, loading: false, error: '' };
+      this.loadLegal();                                   // the versions served now: the ones this dialog accepts
+      this.$nextTick(() => setTimeout(() => document.getElementById('tg-terms')?.focus(), 30));
+    },
+    // Back from Google / Apple as a new customer (#auth=accept_terms): their sign-up waits in this browser for the Terms
+    async _openPendingTerms() {
+      let P = null;
+      try { P = await this.api('GET', '/api/auth/pending', null, { noAuth: true }); } catch (_) {}
+      if (!P || !P.pending) { this._showAuthStatus('expired'); return; }
+      this.legal = P.legal; this._authMethod = P.method;
+      this._openTermsGate('pending', P.email || '');
+    },
+    async acceptTermsGate() {
+      const G = this.termsGate;
+      if (!G.accept || G.loading) return;
+      G.loading = true; G.error = '';
+      try {
+        const Body = await this._acceptance();
+        if (G.mode === 'pending') {                       // the account is made now, with the acceptance, and signed in
+          const R = await this.api('POST', '/api/auth/accept', Body, { noAuth: true });
+          this.termsGate = { ...this.termsGate, open: false };
+          this._measureSignIn(true);
+          await this._signedIn(R);
+          return;
+        }
+        await this.api('POST', '/api/auth/accept-terms', Body);
+        this.termsRequired = false;
+        this.termsGate = { ...this.termsGate, open: false };
+        const Resume = this._resumeAfterTerms; this._resumeAfterTerms = null;
+        await this._refreshQuota();
+        if (Resume) await Resume();
+        this.refreshBag();                                  // refused until now (403 terms_required)
+      } catch (E) {
+        if (E.code === 'terms_changed') { if (E.legal) this.legal = E.legal; this.termsGate.accept = false; }
+        this.termsGate.error = E.message;
+      } finally { this.termsGate.loading = false; }
+    },
+    async declineTermsGate() {
+      const Mode = this.termsGate.mode;
+      this.termsGate = { ...this.termsGate, open: false };
+      this._resumeAfterTerms = null;
+      if (Mode === 'pending') { try { await this.api('DELETE', '/api/auth/pending', null, { noAuth: true }); } catch (_) {} return; }
+      this.signOut();                                     // an account that does not accept cannot use Atelier
     },
     // Sign-in and new accounts for the analytics tools, by the way they were made: login (password, Google, Apple;
     // the six-letter code and its link before them) and sign_up (Google, Apple, or an email confirmed by its link). A return from Google, Apple or an emailed link names it through the server's session.
@@ -1059,7 +1134,8 @@ function p3App() {
     submitRegister() {
       if (this._termsMissing()) return;
       return this._regCall(async () => {
-        const R = await this.api('POST', '/api/auth/register', { name: this.regForm.name.trim(), email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
+        const R = await this.api('POST', '/api/auth/register', { name: this.regForm.name.trim(), email: this.regForm.email.trim(),
+                                                                 password: this.regForm.password, ...(await this._acceptance()) }, { noAuth: true });
         this.regInfo = R.message; this.regForm.password = '';
       });
     },
@@ -1153,7 +1229,7 @@ function p3App() {
       try {
         if (!this.regForm.acceptTerms) throw new Error(TERMS_REQUIRED);
         const Name = this.regForm.name.trim(), Email = this.regForm.email.trim();
-        const Result = await this.api('POST', '/api/register', { Name, Email }, { noAuth: true });
+        const Result = await this.api('POST', '/api/register', { Name, Email, ...(await this._acceptance()) }, { noAuth: true });
         this.measure('sign_up', { method: 'email' });
         this._saveUserProfile(Name, Email);
         // The token is never returned here — it is emailed. Show a confirmation message.
@@ -1161,6 +1237,7 @@ function p3App() {
           || "We've sent a verification email to your inbox. Please verify your email to save your designs and continue creating your jewelry.";
       } catch (E) {
         this.regError = E.message;
+        if (E.code === 'terms_changed') { if (E.legal) this.legal = E.legal; this.regForm.acceptTerms = false; }
       } finally {
         this.regLoading = false;
       }
@@ -1171,6 +1248,7 @@ function p3App() {
         const Token = this.regForm.token.toUpperCase().trim();
         const Result = await this.api('POST', '/api/register-token', { Token, Name: '', Email: '' }, { noAuth: true });
         this._setSession({ token: Token, quotaUsed: Result.used, quotaMax: Result.max, name: Result.name || '' });
+        this.termsRequired = !!Result.terms_required;   // an account XJet made: the Terms first (_afterSignIn)
         this.measure('login', { method: 'code' });
         if (Result.name) this._saveUserProfile(Result.name, null);
         this.showRegModal = false; this._returnFocus = null;
@@ -1216,6 +1294,8 @@ function p3App() {
       const used = Q.used + (Q.reserved || 0);
       this.quotaUsed = used; this.quotaMax = Q.max;
       if (Q.tariff) this.tariff = Q.tariff;
+      this.termsRequired = !!Q.terms_required;
+      if (this.termsRequired) this._openTermsGate('account');
       Object.assign(this.userSession, { quotaUsed: used, quotaMax: Q.max });
       if (Q.name) this.userSession.name = Q.name;
       if (Q.email) this.userSession.email = Q.email;
@@ -1253,6 +1333,7 @@ function p3App() {
       const local = this._localLogout; this._localLogout = false;
       if (this.userSession?.session && !local) { this.api('POST', '/api/auth/logout').catch(() => {}); }
       this.authCsrf = '';
+      this.termsRequired = false; this._resumeAfterTerms = null; this.termsGate = { ...this.termsGate, open: false };
       this.sec = { data: null, loading: false, busy: false, msg: '', err: '', newPw: '', reauthPw: '', needReauth: false, showPw: false };
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
       try { localStorage.removeItem(PROFILE_KEY); } catch (_) {}        // nothing of the person stays in the browser

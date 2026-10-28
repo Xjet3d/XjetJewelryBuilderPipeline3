@@ -10,7 +10,7 @@ from p3 import adminauth as AdminAuth
 from p3.cli import Main as Cli
 from p3.oidc import Claims
 from tests.conftest import Harness
-from tests.test_auth import FakeIdp, Browser, Csrf, LinkSecret, Mails, Register
+from tests.test_auth import Acceptance, FakeIdp, Browser, Csrf, LinkSecret, Mails, Register
 
 Key = "break-glass-key-of-24-plus-characters"
 DovClaims = Claims(Subject="google-dov-123", Email="dov.grobgeld@xjetdigital.com", EmailVerified=True, Name="Dov")
@@ -58,6 +58,7 @@ async def test_an_email_match_alone_does_not_grant_admin_and_the_attempt_is_reco
     R = await B.get("/api/auth/google/start")
     State = parse_qs(urlparse(R.headers["location"]).query)["state"][0]
     await B.get(f"/api/auth/google/callback?code=ok&state={State}")
+    assert (await B.post("/api/auth/accept", json=await Acceptance(B))).status_code == 200   # a new customer accepts the Terms
     assert (await B.get("/api/token-status")).status_code == 200
     assert (await B.get("/api/admin/users")).status_code == 403                          # the customer cookie opens no admin route
     assert (await B.get("/api/admin/session")).status_code == 403

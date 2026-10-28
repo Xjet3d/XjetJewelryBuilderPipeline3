@@ -8,7 +8,7 @@ import re
 import pytest
 
 from p3.registration import InactiveMessage, RegisterMessage, RemovedMessage
-from tests.conftest import Harness
+from tests.conftest import Accepted, Harness
 
 AdminKey = "accounts-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -38,7 +38,7 @@ def _Events(H, AccountId: str) -> list[str]:
 
 async def _Registered(H, Name="Yakir Tubul", Address=Email) -> tuple[str, str, str]:
     """A self-registered, verified customer: (account id, sign-in code, verification secret)."""
-    R = await H.Client.post("/api/register", json={"Name": Name, "Email": Address}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": Name, "Email": Address, **Accepted(H)}, headers=Anon)
     assert R.status_code == 200, R.text
     Secret = re.search(r'/verify\?token=([A-Za-z0-9_\-]+)"', _Mail(H)[0]["html"]).group(1)
     Page = (await H.Client.get(f"/verify?token={Secret}", headers=Anon)).text
@@ -62,7 +62,7 @@ async def test_removed_then_registering_again_sends_no_dead_code_and_says_to_con
     assert (await _SignIn(H, Code)).json()["ok"]
     await _Act(H, Acc, "remove")
     Sent = len(_Mail(H))
-    R = await H.Client.post("/api/register", json={"Name": "Yakir Tubul", "Email": "YAKA@example.com"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "Yakir Tubul", "Email": "YAKA@example.com", **Accepted(H)}, headers=Anon)
     assert R.status_code == 403 and R.json()["error"] == {
         "code": "account_removed", "message": "This account was removed. Please contact XJet at atelier@xjet3d.com to restore access."}
     assert len(_Mail(H)) == Sent                                       # nothing e-mailed: no dead code
@@ -107,7 +107,7 @@ async def test_with_two_removed_accounts_the_one_the_customer_used_is_offered_no
     await _Act(H, Twin["account_id"], "remove")                          # removed after the original
     R = await H.Client.post("/api/admin/users", json={"Name": "Again", "Email": Email}, headers=Admin)
     assert R.status_code == 409 and R.json()["error"]["account"]["account_id"] == Acc
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email, **Accepted(H)}, headers=Anon)
     assert R.status_code == 403 and R.json()["error"]["code"] == "account_removed"
     assert "register_blocked" in _Events(H, Acc) and "register_blocked" not in _Events(H, Twin["account_id"])
 
@@ -129,7 +129,7 @@ async def test_restore_brings_back_the_same_account_with_its_history_and_activat
     Restored = await _Act(H, Acc, "restore")
     assert Restored["account_id"] == Acc and Restored["status"] == "inactive"
     assert (await _SignIn(H, Code)).status_code == 403
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email, **Accepted(H)}, headers=Anon)
     assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage("atelier@xjet3d.com")}
 
     # Activate: its own code works again, and e-mail sign-in sends that same code
@@ -142,7 +142,7 @@ async def test_restore_brings_back_the_same_account_with_its_history_and_activat
     assert H.Ctx.Db.All("SELECT id FROM designs WHERE owner_account_id = ?", (Acc,)) == Designs
     Kinds = _Events(H, Acc)
     assert Kinds.index("removed") < Kinds.index("restored") < Kinds.index("activated")
-    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "", "Email": Email, **Accepted(H)}, headers=Anon)
     assert R.status_code == 200 and R.json() == {"status": "verification_sent", "message": RegisterMessage(Email)}
     assert _Mail(H)[0]["subject"] == "Your XJet Atelier sign-in code" and Code in _Mail(H)[0]["html"]
 
@@ -163,7 +163,7 @@ async def test_email_sign_in_sends_an_admin_created_customer_their_code_and_a_sw
     assert R.status_code == 200, R.text
     Acc, Code = R.json()["account_id"], R.json()["token"]
     Sent = len(_Mail(H))
-    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "Dana@Example.com"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "Dana@Example.com", **Accepted(H)}, headers=Anon)
     assert R.status_code == 200 and R.json() == {"status": "verification_sent", "message": RegisterMessage("Dana@Example.com")}
     Mail = _Mail(H)
     assert len(Mail) == Sent + 1 and Mail[0]["to"] == "Dana@Example.com"
@@ -174,9 +174,9 @@ async def test_email_sign_in_sends_an_admin_created_customer_their_code_and_a_sw
     assert "code_emailed" in _Events(H, Acc)
     # Switched off by XJet: no dead code by e-mail either, and no new account
     await _Act(H, Acc, "deactivate")
-    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com", **Accepted(H)}, headers=Anon)
     assert R.status_code == 403 and R.json()["error"] == {"code": "account_inactive", "message": InactiveMessage("atelier@xjet3d.com")}
     assert len(_Mail(H)) == Sent + 1 and len(_Accounts(H, "dana@example.com")) == 1
     # A new address still registers as before (verification link)
-    R = await H.Client.post("/api/register", json={"Name": "New", "Email": "new@example.com"}, headers=Anon)
+    R = await H.Client.post("/api/register", json={"Name": "New", "Email": "new@example.com", **Accepted(H)}, headers=Anon)
     assert R.status_code == 200 and "/verify?token=" in _Mail(H)[0]["html"]

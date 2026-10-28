@@ -11,7 +11,7 @@ from PIL import Image
 
 from p3 import assets
 from p3.settings import WebDir
-from tests.conftest import Harness
+from tests.conftest import Accepted, Harness
 
 AdminKey = "privacy-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -93,7 +93,7 @@ async def test_a_customers_design_is_published_only_with_a_consent_note(tmp_path
 async def test_a_used_verification_link_reveals_nothing_and_registration_answers_alike(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
-        R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)
+        R = await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com", **Accepted(H)}, headers=Anon)
         assert R.status_code == 200, R.text
         First = R.json()
         assert First["status"] == "verification_sent" and "dana@example.com" in First["message"]
@@ -105,8 +105,8 @@ async def test_a_used_verification_link_reveals_nothing_and_registration_answers
         Again = (await H.Client.get(f"/verify?token={Secret}", headers=Anon)).text
         assert "Already verified" in Again and Token not in Again and 'class="token"' not in Again
         # Registering again — pending or verified — answers exactly like the first time (nothing says who is registered)
-        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com"}, headers=Anon)).json() == First
-        Lee = (await H.Client.post("/api/register", json={"Name": "Lee", "Email": "lee@example.com"}, headers=Anon)).json()
+        assert (await H.Client.post("/api/register", json={"Name": "Dana", "Email": "dana@example.com", **Accepted(H)}, headers=Anon)).json() == First
+        Lee = (await H.Client.post("/api/register", json={"Name": "Lee", "Email": "lee@example.com", **Accepted(H)}, headers=Anon)).json()
         assert Lee["status"] == First["status"] and Lee["message"].replace("lee@", "dana@") == First["message"]
     finally:
         await H.Close()

@@ -69,9 +69,10 @@ def Main(Argv=None) -> int:
     print(f"# account provider: {S.AccountProvider} ({S.DataDir})")
     if Args.cmd == "create-token":
         Token, Who = Accounts.IssueToken(Args.label or (Args.name or ""), DisplayName=Args.name, Email=Args.email,
-                                         MaxGenerations=Args.max_generations)
+                                         MaxGenerations=Args.max_generations, TermsRequired=True)
         print(Token)
-        print(f"# account: {Who.AccountId}, {Args.max_generations} credits  (the token is shown only once)")
+        print(f"# account: {Who.AccountId}, {Args.max_generations} credits  (the token is shown only once; "
+              "the Terms are accepted at its first sign-in)")
     elif Args.cmd == "set-quota":
         Who = Accounts.Authenticate(Args.token)
         Accounts.SetQuota(Who.AccountId, Args.max_generations, Args.reset_usage)

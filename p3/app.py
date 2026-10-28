@@ -36,7 +36,7 @@ from p3.quotes import QuoteDesk
 # Font files: some platforms' mimetypes tables lack WOFF2, and browsers want the right type for preloaded fonts
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("font/woff", ".woff")
-from p3.accounts import BuildProvider as BuildAccountProvider, InsufficientCredits
+from p3.accounts import BuildProvider as BuildAccountProvider, InsufficientCredits, TermsRequired
 from p3.auth import RequireDeveloper, RequirePrincipal
 from p3.config import LoadCatalog, LoadGenerationConfig
 from p3.context import Context, HttpError
@@ -146,19 +146,22 @@ def AdminBuild() -> str:
 
 
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
-                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None) -> str:
+                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None,
+                   DesignUse: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
     (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description, "{{SITE_FOOTER}}"
     the site's footer (web/partials/site-footer.html: one footer, at the end of every public page). Mock False: the
     parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out. Dev False: the developer
     tools between <!--dev--> and <!--/dev--> (R-34: no internal tool, key name or vendor in a customer's page);
-    Legacy False: the six-letter-code dialog between <!--legacy--> and <!--/legacy-->."""
+    Legacy False: the six-letter-code dialog between <!--legacy--> and <!--/legacy-->; DesignUse False: the design-use
+    clause of the Terms and its line in the acceptances, between <!--designuse--> and <!--/designuse--> (unpublished until
+    the owner approves it: P3_TERMS_DESIGN_USE)."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     if "{{SITE_FOOTER}}" in Html:                 # the partial's own leading comment stays in the partial
         Footer = re.sub(r"^\s*<!--.*?-->\s*", "", (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8"), count=1, flags=re.S)
         Html = Html.replace("{{SITE_FOOTER}}", Footer.strip())
-    for Tag, On in (("mock", Mock), ("dev", Dev), ("legacy", Legacy)):
+    for Tag, On in (("mock", Mock), ("dev", Dev), ("legacy", Legacy), ("designuse", DesignUse)):
         if On is not None:
             Html = re.sub(f"<!--{Tag}-->.*?<!--/{Tag}-->", "", Html, flags=re.S) if not On else Html.replace(f"<!--{Tag}-->", "").replace(f"<!--/{Tag}-->", "")
     for Asset in ("app.js", "consent.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
@@ -384,11 +387,24 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def _NoCredits(_Req: Request, E: InsufficientCredits):
         return JSONResponse(status_code=402, content={"error": {"code": "quota_exhausted", "message": E.Message}})
 
+    @App_.exception_handler(TermsRequired)
+    async def _NoTerms(_Req: Request, E: TermsRequired):
+        return JSONResponse(status_code=403, content={"error": {"code": "terms_required", "message": E.Message}})
+
     authapi.Install(App_, Ctx, Mailer)               # sessions, CSRF, email/password, Google, Apple, linking, legacy claim (AJW-39)
 
-    def Tok(XAccessToken: str | None):
-        """Resolve the caller to a Principal (the only way routes learn who is calling)."""
+    def TokAny(XAccessToken: str | None):
+        """Resolve the caller to a Principal (the only way routes learn who is calling), whether or not the account has
+        accepted the Terms: for what the page needs to ask for the acceptance (the account's profile)."""
         return RequirePrincipal(Ctx, XAccessToken)
+
+    def Tok(XAccessToken: str | None):
+        """The caller, who may use Atelier: an account that still has to accept the Terms (one XJet made, at its first
+        sign-in) gets no design, credit, bag or order until it does (403 terms_required)."""
+        Who = TokAny(XAccessToken)
+        if Who.Attributes.get("terms_required"):
+            raise TermsRequired()
+        return Who
 
     # ── pages / static ───────────────────────────────────────────────────
     # What the customer page learns from the server (window.__p3): never a secret.
@@ -470,7 +486,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
-                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy")
+                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy", DesignUse=S.TermsDesignUse)
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration") and not Flow:
@@ -514,6 +530,30 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                  else "; rings come with a 360° movie.")
         return (f"Design custom {What or 'jewelry'} with AI at XJet Atelier. Describe your vision, choose from four designs"
                 + (Movie and ", refine it" + Movie or " and refine it."))
+
+    LegalCache: dict = {}
+
+    def LegalTexts() -> dict:
+        """The Terms of Service and the Privacy Policy as a customer reads them here now (the products on offer, the
+        design-use clause when published): what a Terms acceptance is for (p3/accounts/consent.py versions and archives
+        them). Made again only when the page, the products on offer or the clause's switch changed."""
+        Visible = Products.VisibleProducts(Ctx, None)
+        Key = ((WebDir / "index.html").stat().st_mtime_ns, Visible, S.TermsDesignUse)
+        if LegalCache.get("key") != Key:
+            Html = _VersionedPage("index.html", Base, {}, Mock=False, Dev=False, Legacy=S.AuthMode == "legacy",
+                                  DesignUse=S.TermsDesignUse)
+            Texts = {}
+            for View in ("terms", "privacy"):
+                Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible))
+                Texts[View] = SitePages.LegalText(SitePages.ServerView(Html, View, Fill), View, Base)
+            LegalCache.update(key=Key, texts=Texts)
+        return LegalCache["texts"]
+
+    Ctx.Accounts.Consent.Texts = LegalTexts
+    try:
+        Ctx.Accounts.Consent.Current()               # the texts served from now on are archived (a new version when changed)
+    except Exception:                                # never the start's failure: the first sign-up archives them then
+        Logger.exception("The legal texts could not be archived at start")
 
     @App_.get("/", include_in_schema=False)
     async def Index(request: Request):
@@ -793,7 +833,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/session")
     async def Session(x_access_token: str | None = Header(None)):
-        return {**Ctx.Accounts.Profile(Tok(x_access_token)), "tariff": Credits.Tariff(Ctx)}
+        return {**Ctx.Accounts.Profile(TokAny(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
     LegacyGone = HttpError(410, "sign_in_changed", "Sign-in has changed: create an account or sign in with Google, Apple or your email.")
@@ -802,8 +842,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def Register(Req: Request, Background: BackgroundTasks, Body_: dict = Body(...)):
         if S.AuthMode != "legacy":                       # the old flow e-mails a sign-in code, which no email may carry any more
             raise LegacyGone
+        Versions = authapi.RequireAcceptance(Ctx, Body_)  # the Terms box and the versions the form showed (2026-10-29)
         Ctx.RateLimiter.Register(Req, str(Body_.get("Email") or ""))
-        return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""), Background.add_task)
+        return Registration.Register(Req, Body_.get("Name", ""), Body_.get("Email", ""), Background.add_task, Versions)
 
     @App_.post("/api/register-token")
     async def RegisterToken(Req: Request, Body_: dict = Body(...)):
@@ -814,7 +855,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/token-status")
     async def TokenStatus(x_access_token: str | None = Header(None)):
-        return {**Ctx.Accounts.Profile(Tok(x_access_token)), "tariff": Credits.Tariff(Ctx)}
+        return {**Ctx.Accounts.Profile(TokAny(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     @App_.get("/verify", include_in_schema=False)
     async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
@@ -822,9 +863,18 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             return HTMLResponse(RenderVerifyPage("invalid", None, "", Registration._StudioUrl(Req), Base, S.SupportEmail))
         return HTMLResponse(Registration.VerifyPage(Req, token, Background.add_task))
 
+    @App_.post("/verify", include_in_schema=False)
+    async def VerifyAccept(Req: Request, Background: BackgroundTasks):
+        """The verification page's acceptance, when the Terms or the Privacy Policy changed after the sign-up."""
+        if S.AuthMode != "legacy":
+            return HTMLResponse(RenderVerifyPage("invalid", None, "", Registration._StudioUrl(Req), Base, S.SupportEmail))
+        Ctx.RateLimiter.Token(Req)
+        Form_ = {K: str(V) for K, V in (await Req.form()).items()}
+        return HTMLResponse(Registration.VerifyPage(Req, Form_.get("token", ""), Background.add_task, Form_))
+
     @App_.post("/api/events")
     async def SessionEvent(Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return Sessions.RecordClientEvent(Ctx, Tok(x_access_token).AccountId, str(Body_.get("kind", "")),
+        return Sessions.RecordClientEvent(Ctx, TokAny(x_access_token).AccountId, str(Body_.get("kind", "")),
                                           Body_.get("design_id") or None)
 
     # ── while rings are the only product on offer, a customer gets exactly the answers of before: no product fields ──
