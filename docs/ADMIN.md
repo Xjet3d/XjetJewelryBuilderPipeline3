@@ -432,8 +432,8 @@ request, about $0.001 at list price), which answer `{is_jewelry, is_feasible, re
   *Latest prompt checks*, to compare by hand.
 - **Stopped**: nothing is created — no design, no credit, no image request. The customer reads the reason under the
   prompt box (in their language) and can change the words (`422 prompt_rejected`). Instructions may also name why with
-  `rejection_category` (`scope`, `material`, `mixed_metals`, `construction`, `public_figure`, `protected_content`,
-  `prohibited_content`, `unclear`, `other`): it is kept with the check (a badge in *Latest prompt checks*) and sent with
+  `rejection_category` (`scope`, `material`, `mixed_metals`, `construction`, `public_figure`, `prohibited_content`,
+  `unclear`, `other`): it is kept with the check (a badge in *Latest prompt checks*) and sent with
   the 422, and the customer page shows a stopped request as a design rule (*We can't make this design*), never as a
   technical error. The content policy of 28 Oct (P1–P7) is in `config/prompts/ring_anyllm_system.txt` and
   `charm_anyllm_system.txt` (the Charm seed): activate them as new versions on each site's any-llm pages.
