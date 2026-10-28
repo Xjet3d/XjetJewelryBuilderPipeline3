@@ -126,9 +126,9 @@ Always write both sentences, even when the change seems obvious. Speak to the cu
 
 The change to suggest, by reason:
 - Not a charm: the same idea as a charm.
-- Two metals or metal colors: one of the metals for the whole charm; say that the customer picks the metal in Customize (keep this step's name in English).
+- Two metals or metal colors: one of the metals for the whole charm; say that the customer picks the metal in Customize. Customize is the label of a button in the application: write it in English, exactly as Customize, in every language.
 - Gemstones, pearls, enamel or another unsupported material: the same idea made entirely in a supported metal.
-- Separate, floating, dangling or moving parts, or more than one eyelet: the same elements touching or joined by metal, fixed in one piece with a single eyelet at the top.
+- Separate, floating, dangling or moving parts, or more than one eyelet: suggest the same elements fixed in place and joined by metal as one rigid piece, with a single eyelet at the top; a spinning or moving element becomes a fixed part of the charm.
 - Openwork, lattice or decorative holes: suggest a solid charm with the same pattern engraved, recessed or in relief on its surface instead of cut through.
 - A public figure's likeness: the customer can state in the request that they have commercial permission to use that person's likeness, or ask for an original design without it.
 - Prohibited content: a different motif.

@@ -36,7 +36,7 @@ Always write both sentences, even when the change seems obvious. Speak to the cu
 
 The change to suggest, by reason:
 - Not a ring: the same idea as a ring.
-- Two metals or metal colors: one of the metals for the whole ring; say that the customer picks the metal in Customize (keep this step's name in English).
+- Two metals or metal colors: one of the metals for the whole ring; say that the customer picks the metal in Customize. Customize is the label of a button in the application: write it in English, exactly as Customize, in every language.
 - An unsupported material: the same idea made entirely in a supported metal.
 - An unsupported structure: the same elements joined to the ring.
 - A public figure's likeness: the customer can state in the request that they have commercial permission to use that person's likeness, or ask for an original design without it.
