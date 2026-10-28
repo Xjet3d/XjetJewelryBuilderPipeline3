@@ -60,7 +60,7 @@ def ValidateText(Text: str, What: str) -> str:
 # never the provider's words (fal.ai's message, an HTTP status, an exception), which stay with the slot for the
 # Admin's session page and the log.
 CustomerFailureText = {
-    "content_policy": "We couldn't create this option: the description or image may not meet our content guidelines.",
+    "content_policy": "The image service declined this option under its safety rules.",
     "billing": "The design service is temporarily unavailable. Please try again later.",
     "reference_unavailable": "The reference image could not be loaded.",
     "duplicate_output": "This option came out identical to another one.",
@@ -71,8 +71,8 @@ GenericFailureText = "This option couldn't be generated."
 # A refusal under the AI model's content rules (most often a picture of a real, identifiable person): the same
 # description is refused again, so the app never offers it for another paid request — the customer changes it instead.
 NotRetryable = {"content_policy"}
-PolicyRetryText = ("This option was refused under our content guidelines, and the same description would be refused again. "
-                   "Please change your description.")
+PolicyRetryText = ("The image service declined this option under its safety rules and would decline the same description "
+                   "again. Please change your description.")
 
 
 def CustomerError(Code: str | None) -> str:

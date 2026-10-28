@@ -99,6 +99,25 @@ async def test_a_stopped_request_creates_nothing_and_costs_no_credit(HP):
     assert Ev and Ev[0]["status"] == "rejected" and "Mock: this request can't be designed." in Ev[0]["text"]
 
 
+async def test_a_stopped_request_names_why_and_the_admin_sees_it(HP):
+    """P5 (28 Oct): instructions may name why a request was stopped (rejection_category, one of Categories). The 422
+    carries it for the page, the check keeps it and the any-llm page shows it; a code the check doesn't know is dropped,
+    and instructions that name none are answered exactly as before."""
+    H = HP
+    await RingCheckOn(H)
+    H.Provider.Script(endpoints.Llm, "reject:mixed_metals", "reject:no_such_code", "reject")
+    R = await H.Client.post("/api/designs", data={"prompt": "A two-tone band in gold and silver"})
+    assert R.status_code == 422 and R.json()["error"] == {"code": "prompt_rejected", "message": "Mock: this request can't be designed.",
+                                                          "category": "mixed_metals"}
+    for Prompt in ("A band with a code nobody listed", "A band from older instructions"):
+        R = await H.Client.post("/api/designs", data={"prompt": Prompt})
+        assert R.status_code == 422 and R.json()["error"] == {"code": "prompt_rejected", "message": "Mock: this request can't be designed."}
+    assert [(C["decision"], C["category"]) for C in Checks(H)] == [("rejected", "mixed_metals"), ("rejected", None), ("rejected", None)]
+    P = (await H.Client.get("/api/admin/prompt-check?product=ring", headers=Admin)).json()
+    assert sorted(C["category"] or "" for C in P["checks"]) == ["", "", "mixed_metals"]
+    assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM designs")["n"] == 0 and H.Provider.SubmissionsFor(endpoints.ImageGenerate) == []
+
+
 async def test_an_accepted_request_is_made_with_the_customers_words_and_shows_its_check(HP):
     H = HP
     await RingCheckOn(H)
