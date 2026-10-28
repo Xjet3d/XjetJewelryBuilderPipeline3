@@ -1031,10 +1031,13 @@
                         <h1 class="text-4xl brand-font text-zinc-900">Terms of Service</h1>
                         <h2 class="text-lg font-semibold text-zinc-900">The service</h2>
                         <p x-text="termsService"></p>
+                        <!-- Your access and Your content: wording business-approved by the owner (28 Oct 2026), not yet reviewed
+                             by legal counsel (Legal Review Pack T1, T3) -->
                         <h2 class="text-lg font-semibold text-zinc-900">Your access</h2>
                         <p>You create an account and sign in with your email address and a password, or with your Google account. Keep your sign-in details private: anyone who uses them can use your account and its credits and create designs. Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; if you have one, it only moves its account to the new sign-in and then stops working. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Your content</h2>
-                        <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
+                        <p>You keep the rights to the descriptions and images you upload, and you confirm you have the right to use them. Respect other people's intellectual property, such as their artwork, designs and trademarks, as XJet does. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
+                        <p><strong class="font-semibold text-zinc-900">Your photos and personal information.</strong> We never show the photos you upload in the gallery or use them to promote Atelier. We do not display, promote or make for anyone else a design that shows an identifiable person or carries personal details such as a name, initials or a date, unless you allow it.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Orders</h2>
                         <p x-text="termsOrders"></p>
                         <h2 class="text-lg font-semibold text-zinc-900">Preview accuracy</h2>
@@ -2541,10 +2544,18 @@
                     </div>
                     <div x-show="regInfo" role="status" class="mb-4 px-4 py-3 border text-sm text-center" style="background:#FBF7EF;border-color:#C9A96E;color:#3A2E12;" x-text="regInfo"></div>
 
+                    <!-- Create an account: the Terms are accepted first, for an email account and for Google or Apple alike
+                         (the owner's decision of 28 Oct 2026: business-approved, not yet reviewed by legal counsel, Legal Review Pack T10) -->
+                    <label x-show="regMode === 'register' && !regInfo" class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-5 leading-relaxed">
+                        <input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
+                        <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
+                    </label>
+
                     <!-- Google / Apple (only the ones this server has credentials for; a claim carries its ticket along) -->
                     <div x-show="!regInfo && ['signin', 'register', 'claim'].includes(regMode) && (authCfg.providers.google || authCfg.providers.apple)" class="space-y-3 mb-5">
                         <a x-show="authCfg.providers.google" :href="authStartUrl('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
                            @click.prevent="startProvider('google', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''"
                            class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition hover:bg-zinc-50"
                            style="min-height:48px;background:#fff;border:1px solid #747775;color:#1F1F1F;border-radius:4px;">
                             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
@@ -2552,6 +2563,7 @@
                         </a>
                         <a x-show="authCfg.providers.apple" :href="authStartUrl('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
                            @click.prevent="startProvider('apple', regMode === 'claim' ? 'claim' : 'login', claim.ticket)"
+                           :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''"
                            class="flex items-center justify-center gap-3 w-full px-4 text-[14px] font-medium transition"
                            style="min-height:48px;background:#000;border:1px solid #000;color:#fff;border-radius:4px;">
                             <svg width="17" height="20" viewBox="0 0 814 1000" fill="#fff" aria-hidden="true"><path d="M788 340c-6 5-110 63-110 192 0 150 131 203 135 204-1 3-21 72-69 142-43 62-88 124-157 124s-87-40-167-40c-78 0-106 41-170 41s-108-58-158-128C49 770 0 641 0 518c0-198 129-303 255-303 67 0 123 44 165 44 40 0 102-47 178-47 29 0 133 3 190 98zM555 160c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 33-146 75-28 32-55 83-55 135 0 8 1 15 2 17 3 1 8 1 12 1 45 0 101-30 136-69z"/></svg>
@@ -2598,12 +2610,9 @@
                             <input id="rg-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="rg-hint" class="fld">
                             <p id="rg-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
                         </div>
-                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-4"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
-                        <!-- Awaiting legal approval (R-16, legal review T10): the wording, and whether a checkbox is needed -->
-                        <p class="text-[14px] text-zinc-700 mb-5 leading-relaxed">By creating an account, you accept our
-                            <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that you have read our
-                            <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</p>
-                        <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
+                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10"
+                                :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
                         </button>
                         <p class="text-center text-[13px] text-zinc-600 mt-5">Already have an account?
@@ -2690,7 +2699,12 @@
                         <input id="reg-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="email" inputmode="email"
                                placeholder="you@example.com" class="fld" :class="regLoading ? 'opacity-50' : ''">
                     </div>
-                    <button type="submit" :disabled="regLoading"
+                    <!-- The same Terms acceptance as Create an account (owner's decision, 28 Oct 2026; not yet reviewed by counsel) -->
+                    <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-6 leading-relaxed">
+                        <input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
+                        <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
+                    </label>
+                    <button type="submit" :disabled="regLoading || !regForm.acceptTerms"
                             class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                         <span x-show="!regLoading" class="inline-flex items-center">Send Verification Link
                             <svg class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>

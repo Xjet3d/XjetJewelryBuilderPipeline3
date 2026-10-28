@@ -164,24 +164,47 @@ def test_r03_on_phones_and_tablets_the_checkout_stepper_keeps_bag_and_checkout()
     assert Steps.count("h-step-early") == 4 and Steps.index(">Customize</button>") < Steps.rindex("h-step-early") < Steps.index(">Bag</button>")
 
 
-def test_sign_in_wording_says_how_customers_sign_in_and_waits_for_legal_approval():
-    """The owner's decisions of 28 Oct, on proto until the legal review approves them for Atelier: the Terms say how a
-    customer signs in — an email address and a password, or Google — and that a six-letter code belongs to the earlier
-    sign-in, is not issued to a new account and only moves its account (R-06); Create account links the Terms of Service
-    and the Privacy Policy and promises no number of credits (R-16). The Terms still carry no warranty clause (R-31)."""
-    Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel():
+    """The owner's decisions of 28 Oct, business-approved for proto and Atelier alike, not yet reviewed by legal counsel
+    (Legal Review Pack T1, T3, T10): the Terms say how a customer signs in — an email address and a password, or Google —
+    and that a six-letter code belongs to the earlier sign-in, is not issued to a new account and only moves its account
+    (R-06); Your content asks for respect of other people's intellectual property and protects the customer's photos and
+    personal details; an account is created only with the Terms checkbox ticked (it links the Terms of Service and the
+    Privacy Policy), for the email form, Google and Apple alike, and Create account promises no number of credits (R-16).
+    The design-use clause waits for counsel, and the Terms still carry no warranty clause (R-31)."""
+    Root = Path(__file__).resolve().parents[1]
+    Index = (Root / "web" / "index.html").read_text(encoding="utf-8")
+    App = (Root / "web" / "app.js").read_text(encoding="utf-8")
     Terms = Index[Index.index("<template x-if=\"view === 'terms'\">"):]
     Terms = Terms[:Terms.index("</template>")]
     assert "Access is by a personal 6-letter sign-in code." not in Terms
     assert ("You create an account and sign in with your email address and a password, or with your Google account." in Terms
             and "Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; "
                 "if you have one, it only moves its account to the new sign-in and then stops working." in Terms)
-    Register = Index[Index.index('<form x-show="regMode === \'register\' && !regInfo"'):]
+    assert ("Respect other people's intellectual property, such as their artwork, designs and trademarks, as XJet does." in Terms
+            and "We never show the photos you upload in the gallery or use them to promote Atelier." in Terms
+            and "We do not display, promote or make for anyone else a design that shows an identifiable person or carries "
+                "personal details such as a name, initials or a date, unless you allow it." in Terms)
+    assert "royalt" not in Terms.lower() and "Warranty." not in Terms
+    Dialog = Index[Index.index('<div x-show="!legacyAuth">'):]
+    Dialog = Dialog[:Dialog.index("<!--legacy-->")]
+    Box = Dialog[Dialog.index('<input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms"'):]
+    Box = Box[:Box.index("</label>")]
+    assert ('<a href="{{BASE}}/terms"' in Box and ">Terms of Service</a>" in Box
+            and '<a href="{{BASE}}/privacy"' in Box and ">Privacy Policy</a>." in Box)
+    Register = Dialog[Dialog.index('<form x-show="regMode === \'register\' && !regInfo"'):]
     Register = Register[:Register.index("</form>")]
-    assert ('By creating an account, you accept our\n                            <a href="{{BASE}}/terms"' in Register
-            and '>Privacy Policy</a>.</p>' in Register and Register.index("Privacy Policy") < Register.index('type="submit"'))
+    assert Dialog.index('id="rg-terms"') < Dialog.index("Continue with Google") < Dialog.index("Continue with Apple") < Dialog.index(Register)
+    Waits = ':aria-disabled="termsPending ? \'true\' : null" :class="termsPending ? \'opacity-50\' : \'\'"'
+    assert Dialog.count(Waits) == 3 and Register.count(Waits) == 1 and "By creating an account" not in Index
+    Legacy = Index[Index.index('<form x-show="regMode === \'email\' && !regInfo"'):]
+    Legacy = Legacy[:Legacy.index("</form>")]
+    assert ('<input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required' in Legacy
+            and ':disabled="regLoading || !regForm.acceptTerms"' in Legacy)
+    assert "get termsPending() { return this.regMode === 'register' && !this.regForm.acceptTerms; }" in App
+    assert (App.count("if (this._termsMissing()) return;") == 2                     # Google or Apple, and Create account
+            and "if (!this.regForm.acceptTerms) throw new Error(TERMS_REQUIRED);" in App)  # the older sign-in's form
     assert "A new account starts with" not in Index
-    assert "Warranty." not in Terms
 
 
 def test_r05_how_it_works_promises_the_360_movie_for_rings_only():

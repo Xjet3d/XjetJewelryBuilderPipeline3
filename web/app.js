@@ -18,6 +18,8 @@ const SESSION_KEY = 'p3_session' + (BASE ? ':' + BASE : '');
 const PROFILE_KEY = 'p3_profile' + (BASE ? ':' + BASE : '');
 const GALLERY_KEY = 'p3_gallery_pending' + (BASE ? ':' + BASE : '');   // the gallery design chosen before signing in
 const FAV_KEY = 'p3_fav_pending' + (BASE ? ':' + BASE : '');           // the gallery design ♥-ed before signing in
+// An account is created only with the Terms accepted (owner's decision of 28 Oct 2026, not yet reviewed by legal counsel)
+const TERMS_REQUIRED = 'Please accept the Terms of Service to create your account.';
 // The homepage story the gallery lightbox paused (showcase.js controller) — kept outside Alpine, whose reactive proxy
 // would wrap it and break the check that it is still the story on the page
 let PAUSED_STORY = null;
@@ -145,7 +147,7 @@ function p3App() {
     showRegModal: false,
     regMode: 'signin',                 // signin | register | forgot | code (a six-letter code) | claim (secure a claimed account);
                                        // legacy server mode keeps the old 'email' / 'token' dialog
-    regForm: { token: '', name: '', email: '', password: '' },
+    regForm: { token: '', name: '', email: '', password: '', acceptTerms: false },
     regError: '', regInfo: '', regLoading: false, regUnverified: false,
     regReason: '',                     // what the sign-in is for (R-10): 'favorites' | 'bag' | '' (designing)
     authCfg: { mode: 'dual', providers: {} },   // GET /api/auth/config
@@ -153,6 +155,8 @@ function p3App() {
     claim: { ticket: '', name: '', email: '' },  // a legacy six-letter code that was accepted: finish by attaching a real login
     sec: { data: null, loading: false, busy: false, msg: '', err: '', newPw: '', reauthPw: '', needReauth: false, showPw: false },
     get legacyAuth() { return this.authCfg.mode === 'legacy'; },
+    // Create an account: Google, Apple and the email form wait for the Terms checkbox
+    get termsPending() { return this.regMode === 'register' && !this.regForm.acceptTerms; },
     quotaUsed: 0, quotaMax: 10,
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
     tariff: { design: 1, refinement: 1, option: 1, movie: 1 },       // the server's (Admin → Credits), from token-status
@@ -920,7 +924,7 @@ function p3App() {
       this.regReason = this._pendingPanel === 'bag' || ['bag', 'checkout'].includes(route) ? 'bag'
                      : this._pendingPanel === 'favorites' || route === 'favorites' || this._pendingFav() ? 'favorites' : '';
       this.regError = ''; this.regInfo = ''; this.regUnverified = false;
-      this.regForm = { token: '', name: '', email: '', password: '' };
+      this.regForm = { token: '', name: '', email: '', password: '', acceptTerms: false };
       this._returnFocus = document.activeElement;
       this.showRegModal = true;
       // The dialog is teleported to <body>, so it is found by id rather than through $refs.
@@ -1009,8 +1013,17 @@ function p3App() {
     authStartUrl(provider, purpose = 'login', ticket = '') {
       return url('/api/auth/' + provider + '/start?purpose=' + encodeURIComponent(purpose) + (ticket ? '&ticket=' + encodeURIComponent(ticket) : ''));
     },
+    // Create an account without the Terms ticked: Google, Apple and Create account say so and move to the checkbox,
+    // which sits above them all and can be scrolled out of sight on a small screen
+    _termsMissing() {
+      if (!this.termsPending) return false;
+      this.regError = TERMS_REQUIRED;
+      this.$nextTick(() => document.getElementById('rg-terms')?.focus());
+      return true;
+    },
     // Leave for Google / Apple: what the customer was about to do is kept across the round trip
     startProvider(provider, purpose = 'login', ticket = '') {
+      if (this._termsMissing()) return;
       try { sessionStorage.setItem('p3_pending_panel', this._pendingPanel || ''); } catch (_) {}
       location.href = this.authStartUrl(provider, purpose, ticket);
     },
@@ -1019,7 +1032,7 @@ function p3App() {
       this._setSession({ token: 'session', session: true, name: R.account.name, email: R.account.email, quotaUsed: 0, quotaMax: 10 });
       this._saveUserProfile(R.account.name || null, R.account.email || null);
       this.showRegModal = false; this._returnFocus = null;
-      this.regForm = { token: '', name: '', email: '', password: '' };
+      this.regForm = { token: '', name: '', email: '', password: '', acceptTerms: false };
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}      // a six-letter-code session is replaced by this one
       try { if (!this._pendingPanel) this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
       return this._afterSignIn(false).then(() => this.refreshBag());
@@ -1044,6 +1057,7 @@ function p3App() {
       });
     },
     submitRegister() {
+      if (this._termsMissing()) return;
       return this._regCall(async () => {
         const R = await this.api('POST', '/api/auth/register', { name: this.regForm.name.trim(), email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
         this.regInfo = R.message; this.regForm.password = '';
@@ -1127,7 +1141,7 @@ function p3App() {
         const R = await this.api('POST', '/api/auth/claim', { token: this.token });
         this.claim = { ticket: R.ticket, name: R.name, email: R.email };
         this.regMode = 'claim'; this.regError = ''; this.regInfo = '';
-        this.regForm = { token: '', name: '', email: R.email || '', password: '' };
+        this.regForm = { token: '', name: '', email: R.email || '', password: '', acceptTerms: false };
         this._returnFocus = document.activeElement; this.showRegModal = true;
       } catch (E) { this.sec.err = E.message; }
     },
@@ -1137,6 +1151,7 @@ function p3App() {
     async submitEmailRegistration() {
       this.regLoading = true; this.regError = ''; this.regInfo = '';
       try {
+        if (!this.regForm.acceptTerms) throw new Error(TERMS_REQUIRED);
         const Name = this.regForm.name.trim(), Email = this.regForm.email.trim();
         const Result = await this.api('POST', '/api/register', { Name, Email }, { noAuth: true });
         this.measure('sign_up', { method: 'email' });
@@ -1159,7 +1174,7 @@ function p3App() {
         this.measure('login', { method: 'code' });
         if (Result.name) this._saveUserProfile(Result.name, null);
         this.showRegModal = false; this._returnFocus = null;
-        this.regForm = { token: '', name: '', email: '' };
+        this.regForm = { token: '', name: '', email: '', acceptTerms: false };
         await this._afterSignIn(false);        // the chosen gallery design, else the Design screen (as P2)
         this.refreshBag();
       } catch (E) {
