@@ -1032,7 +1032,7 @@
                         <h2 class="text-lg font-semibold text-zinc-900">The service</h2>
                         <p x-text="termsService"></p>
                         <h2 class="text-lg font-semibold text-zinc-900">Your access</h2>
-                        <p>Access is by a personal 6-letter sign-in code. Keep your code private: anyone holding it can use your account and create designs. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
+                        <p>You create an account and sign in with your email address and a password, or with your Google account. Keep your sign-in details private: anyone who uses them can use your account and its credits and create designs. Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; if you have one, it only moves its account to the new sign-in and then stops working. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Your content</h2>
                         <p>You keep the rights to the descriptions and images you upload. You confirm you have the right to use them. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Orders</h2>
@@ -2593,7 +2593,11 @@
                             <input id="rg-password" x-model="regForm.password" :type="sec.showPw ? 'text' : 'password'" required minlength="10" :disabled="regLoading" autocomplete="new-password" aria-describedby="rg-hint" class="fld">
                             <p id="rg-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
                         </div>
-                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-4"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
+                        <!-- Awaiting legal approval (R-16, legal review T10): the wording, and whether a checkbox is needed -->
+                        <p class="text-[14px] text-zinc-700 mb-5 leading-relaxed">By creating an account, you accept our
+                            <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that you have read our
+                            <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</p>
                         <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
                         </button>

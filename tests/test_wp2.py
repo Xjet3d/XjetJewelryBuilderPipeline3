@@ -164,15 +164,23 @@ def test_r03_on_phones_and_tablets_the_checkout_stepper_keeps_bag_and_checkout()
     assert Steps.count("h-step-early") == 4 and Steps.index(">Customize</button>") < Steps.rindex("h-step-early") < Steps.index(">Bag</button>")
 
 
-def test_wording_waiting_for_legal_approval_stays_out():
-    """The owner's decision for the Atelier release (26 Oct): until the legal review approves them, the Terms keep
-    Atelier's sign-in paragraph (not WP2's R-06 rewrite), Create account has no Terms-and-Privacy line (R-16's legal
-    part; since 28 Oct it promises no number of credits) and the Terms carry no warranty clause (R-31)."""
+def test_sign_in_wording_says_how_customers_sign_in_and_waits_for_legal_approval():
+    """The owner's decisions of 28 Oct, on proto until the legal review approves them for Atelier: the Terms say how a
+    customer signs in — an email address and a password, or Google — and that a six-letter code belongs to the earlier
+    sign-in, is not issued to a new account and only moves its account (R-06); Create account links the Terms of Service
+    and the Privacy Policy and promises no number of credits (R-16). The Terms still carry no warranty clause (R-31)."""
     Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
     Terms = Index[Index.index("<template x-if=\"view === 'terms'\">"):]
     Terms = Terms[:Terms.index("</template>")]
-    assert "Access is by a personal 6-letter sign-in code." in Terms and "You sign in with your email address" not in Terms
-    assert "Before you create an account, please read our" not in Index and "A new account starts with" not in Index
+    assert "Access is by a personal 6-letter sign-in code." not in Terms
+    assert ("You create an account and sign in with your email address and a password, or with your Google account." in Terms
+            and "Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; "
+                "if you have one, it only moves its account to the new sign-in and then stops working." in Terms)
+    Register = Index[Index.index('<form x-show="regMode === \'register\' && !regInfo"'):]
+    Register = Register[:Register.index("</form>")]
+    assert ('By creating an account, you accept our\n                            <a href="{{BASE}}/terms"' in Register
+            and '>Privacy Policy</a>.</p>' in Register and Register.index("Privacy Policy") < Register.index('type="submit"'))
+    assert "A new account starts with" not in Index
     assert "Warranty." not in Terms
 
 
