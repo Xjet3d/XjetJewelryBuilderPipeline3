@@ -45,8 +45,7 @@ PollS = 0.3                                               # a check takes about 
 MaxReason = 300
 DefaultReason = "This request can't be made into a design here. Please change your description."
 # Why a request was stopped, as the instructions name it (config/prompts/*anyllm_system.txt list the same codes)
-Categories = ("scope", "material", "mixed_metals", "construction", "public_figure", "protected_content",
-              "prohibited_content", "unclear", "other")
+Categories = ("scope", "material", "mixed_metals", "construction", "public_figure", "prohibited_content", "unclear", "other")
 
 
 def State(Ctx: Context) -> dict:

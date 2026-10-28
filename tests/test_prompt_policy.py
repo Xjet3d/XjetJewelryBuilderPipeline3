@@ -1,9 +1,11 @@
-"""Atelier's content policy of 28 Oct (P1–P7) in the prompt-check instructions: config/prompts/ring_anyllm_system.txt and
-charm_anyllm_system.txt (the Charm seed), each activated as a new version on a site's any-llm page. Faces are allowed and
-public figures still stopped (P1); one metal per piece, uniform gold plating counting as one (P2); a charm may join several
-motifs into one connected, rigid piece with one eyelet (P3); protected logos and characters need the customer's rights
-(P4); a stopped request says why and how to change it, with one of the check's codes (P5). The model and its settings
-stay in each site's active versions, unchanged (P7). The customer page tells a refusal from a technical failure (P5)."""
+"""Atelier's content policy of 28 Oct (P1–P5, with the owner's clarifications of the same day) in the prompt-check
+instructions: config/prompts/ring_anyllm_system.txt and charm_anyllm_system.txt (the Charm seed), each activated as a new
+version on a site's any-llm page. Faces are allowed, and a public figure's likeness only with the customer's statement of
+commercial permission (P1); one metal per piece, uniform gold plating and any finish of the one metal allowed (P2); a
+charm may join several motifs into one connected, rigid piece with one eyelet (P3); logos, brands, team names, crests,
+characters and fan designs are not stopped by the check — the image service's own refusals are respected (P4); a stopped
+request says why and how to change it, with one of the check's codes (P5). The model and its settings stay in each
+site's active versions, unchanged (P7). The customer page tells a refusal from a technical failure (P5)."""
 
 import re
 from pathlib import Path
@@ -29,17 +31,21 @@ def test_both_instructions_ask_for_the_decision_and_list_exactly_the_codes_the_c
         assert Codes(Text) == list(PromptCheck.Categories), Product
 
 
-def test_p1_faces_are_allowed_and_public_figures_are_still_stopped():
+def test_p1_faces_are_allowed_and_a_public_figure_needs_the_customers_statement_of_permission():
     for Text in Texts.values():
         assert "Do not reject a request because it shows or describes a human face, and do not ask for proof of permission." in Text
         assert "the faces of family, friends, loved ones or other people whose permission they have" in Text
-        assert "named or clearly identifiable real public figure" in Text
+        assert ("named or clearly identifiable real public figure, such as a politician, celebrity, athlete, royal or influencer, "
+                "unless the customer states that they have appropriate commercial permission to use that person's likeness. "
+                "Do not ask for proof: accept the customer's statement.") in Text
 
 
-def test_p2_one_metal_per_piece_and_uniform_gold_plating_is_one_metal():
+def test_p2_one_metal_per_piece_while_plating_and_finishes_are_allowed():
     for Product, Text in Texts.items():
-        assert "Reject explicitly requested mixed metals or two-tone designs" in Text, Product
+        assert "Reject explicitly requested mixed metals or two-tone designs: two metals or two metal colors" in Text, Product
         assert f"Uniform gold plating over the whole {Product} is one metal and is allowed." in Text, Product
+        assert ("Finishes of the one metal, such as polished, matte, brushed, hammered, blackened or oxidized, are not a second "
+                "metal and are allowed.") in Text, Product
         assert "14K gold over stainless steel (stainless steel with uniform 14K gold plating)" in Text, Product
         assert "vermeil" not in Text.lower(), Product
 
@@ -53,11 +59,11 @@ def test_p3_a_charm_joins_several_motifs_into_one_rigid_piece_with_one_eyelet():
     assert "Multiple charms or additional attachment loops" not in Charm
 
 
-def test_p4_protected_content_needs_the_customers_rights():
+def test_p4_logos_brands_teams_and_characters_are_not_stopped_by_the_check():
     for Text in Texts.values():
-        assert "A reproduction of protected content that the customer does not say they own or are licensed to use" in Text
-        assert "Logos, crests, names and characters that the customer says they own or are licensed to use" in Text
-        assert "are not a reason to reject" not in Text                     # the brand rule of 9 Oct is replaced
+        assert ("Logos, brand names, team names, club crests, characters from films, cartoons, anime, games or comics, and "
+                "other fan designs are not a reason to reject") in Text
+        assert "protected content" not in Text and "licensed to use" not in Text
 
 
 def test_p5_a_stopped_request_says_why_and_how_to_change_it_and_the_page_shows_it_as_a_rule():
