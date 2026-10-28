@@ -73,10 +73,15 @@ def test_p5_a_stopped_request_says_why_and_how_to_change_it_and_the_page_shows_i
         assert "- Then, how to change the request so that it can be made" in Rejections, Product
         assert "Always write both sentences, even when the change seems obvious." in Rejections, Product
         assert f"one of the metals for the whole {Product}; say that the customer picks the metal in Customize" in Rejections, Product
+        # The step is the page's English button: a Spanish refusal said "Personalizar" (R23, 28 Oct)
+        assert "Customize is the label of a button in the application: write it in English, exactly as Customize, in every language." in Rejections, Product
         # No example sentence to copy: the check repeated the quoted examples word for word, without the reason (28 Oct)
         assert '"' not in Rejections, Product
     assert ("- Openwork, lattice or decorative holes: suggest a solid charm with the same pattern engraved, recessed or in "
             "relief on its surface instead of cut through.") in Texts["charm"]
+    # A spinning centre was refused without a way forward (C06, 28 Oct)
+    assert ("suggest the same elements fixed in place and joined by metal as one rigid piece, with a single eyelet at the top; "
+            "a spinning or moving element becomes a fixed part of the charm.") in Texts["charm"]
     # The prompt check's refusal has its own block, never the red error line of a technical problem
     assert "if (e.code === 'prompt_rejected') this.composeRefusal = e.message;" in App
     Block = Index[Index.index('<div x-show="composeRefusal"'):]
