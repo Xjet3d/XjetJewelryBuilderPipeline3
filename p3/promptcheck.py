@@ -9,7 +9,10 @@ object: is_jewelry, is_feasible, reason_for_rejection, refined_prompt. The one e
 - Both booleans true: accepted. The design is made exactly as before — the image requests use the customer's words;
   the rewrite (refined_prompt) is kept for the Admin only.
 - Otherwise: rejected. Nothing is created — no design, no credit, no image request. The customer reads the reason (in
-  their own language, as the instructions ask) and can change the words: 422 prompt_rejected.
+  their own language, as the instructions ask: what can't be made and how to change the request) and can change the
+  words: 422 prompt_rejected. Instructions may also name the reason with one of Categories (rejection_category, P5 of
+  28 Oct): it is kept with the check and sent with the 422, so the page shows a policy refusal as such — never as a
+  technical failure. Instructions without it work as before.
 - No decision (a provider error, the time limit, an answer that is not that JSON object): the request goes ahead. The
   check saves money; it is not the safety net — the image model keeps its own rules.
 
@@ -41,6 +44,9 @@ TimeoutS = 20.0                                           # longer than this: no
 PollS = 0.3                                               # a check takes about 2 s; the 2 s image poll would double it
 MaxReason = 300
 DefaultReason = "This request can't be made into a design here. Please change your description."
+# Why a request was stopped, as the instructions name it (config/prompts/*anyllm_system.txt list the same codes)
+Categories = ("scope", "material", "mixed_metals", "construction", "public_figure", "protected_content",
+              "prohibited_content", "unclear", "other")
 
 
 def State(Ctx: Context) -> dict:
@@ -128,7 +134,7 @@ async def Before(Ctx: Context, Who: Principal, Text: str, Product: str, Kind: st
     Version = Ctx.Models.Active(Model)
     Checked = Frame(Text, Previous, Reference)
     Cid, T0 = NewId("pck"), time.monotonic()
-    RequestId = Reason = Refined = Error = None
+    RequestId = Reason = Refined = Error = Category = None
     try:
         Est = Credits.CheckSpendCap(Ctx, endpoints.Llm, Version.Params)
         try:
@@ -146,17 +152,18 @@ async def Before(Ctx: Context, Who: Principal, Text: str, Product: str, Kind: st
         else:
             Why = J.get("reason_for_rejection")
             Decision, Reason = "rejected", (Why.strip()[:MaxReason] if isinstance(Why, str) else "") or DefaultReason
+            Category = J.get("rejection_category") if J.get("rejection_category") in Categories else None
     except Exception as E:  # noqa: BLE001 — no decision: the request goes ahead (the image model keeps its own rules)
         Decision, Error = "undecided", f"{type(E).__name__}: {E}"[:400]
         Logger.warning("Prompt check %s made no decision: %s", Cid, Error)
     Ctx.Db.Execute(
         "INSERT INTO prompt_checks (id, owner_account_id, kind, product_type, text, checked_text, source_design_id, decision, "
-        "reason, refined_prompt, config_version, provider_request_id, seconds, error, ai_mode, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (Cid, Who.AccountId, Kind, Product, Text, Checked, SourceDesignId, Decision, Reason, Refined, Version.Id, RequestId,
-         round(time.monotonic() - T0, 2), Error, "mock" if Ctx.Provider.Name == "mock" else "live", Now()))
+        "reason, category, refined_prompt, config_version, provider_request_id, seconds, error, ai_mode, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (Cid, Who.AccountId, Kind, Product, Text, Checked, SourceDesignId, Decision, Reason, Category, Refined, Version.Id,
+         RequestId, round(time.monotonic() - T0, 2), Error, "mock" if Ctx.Provider.Name == "mock" else "live", Now()))
     if Decision == "rejected":
-        raise HttpError(422, "prompt_rejected", Reason)
+        raise HttpError(422, "prompt_rejected", Reason, {"category": Category} if Category else None)
     return Cid
 
 
@@ -183,7 +190,7 @@ def Recent(Ctx: Context, Product: str, Limit: int = 50) -> list[dict]:
     Rows = Ctx.Db.All("SELECT * FROM prompt_checks WHERE product_type = ? ORDER BY created_at DESC LIMIT ?",
                       (Products.Normalize(Product), int(Limit)))
     return [{"id": R["id"], "created_at": R["created_at"], "kind": R["kind"], "text": R["text"], "decision": R["decision"],
-             "reason": R["reason"], "refined_prompt": R["refined_prompt"], "error": R["error"], "seconds": R["seconds"],
+             "reason": R["reason"], "category": R["category"], "refined_prompt": R["refined_prompt"], "error": R["error"], "seconds": R["seconds"],
              "config_version": R["config_version"], "ai_mode": R["ai_mode"], "customer": Who_(R["owner_account_id"]),
              "account_id": R["owner_account_id"], "session_id": R["design_id"] or R["source_design_id"]} for R in Rows]
 

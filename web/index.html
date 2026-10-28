@@ -1387,6 +1387,11 @@
                                     </button>
                                 </div>
                                 <p x-show="composeError" class="err-line px-1" role="alert" x-text="composeError"></p>
+                                <!-- The prompt check stopped the request (P5): a design rule, not a fault — what can't be made and how to change it -->
+                                <div x-show="composeRefusal" x-cloak class="px-4 py-2.5 rounded-xl text-[14px] leading-relaxed" role="alert" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#3A2E12;">
+                                    <p class="font-semibold" x-text="composerMode === 'refine' ? 'We can’t make this change' : 'We can’t make this design'"></p>
+                                    <p x-text="composeRefusal"></p>
+                                </div>
                                 <p x-show="checkingPrompt" x-cloak class="text-[13px] px-1 flex items-center gap-2" style="color:#8A6420;" role="status">
                                     <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>Checking your description…</p>
                                 <!-- A design that already has a movie, 3D or order is kept as it is: a refinement becomes a new design -->

@@ -173,6 +173,7 @@ function p3App() {
     // ── studio: compose ──────────────────────────────────────────────
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
     composeError: '', submitting: false,
+    composeRefusal: '',                // the prompt check stopped the request: what can't be made and how to change it (P5)
 
     // ── studio: current design ───────────────────────────────────────
     design: null,
@@ -335,6 +336,7 @@ function p3App() {
         if (resp.status === 401 && err.code === 'login_required' && this.userSession && !opts.noAuth) this._sessionEnded();
         const ex = new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
         if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
+        if (err.category) ex.category = err.category;          // why the prompt check stopped a request (P5)
         throw ex;
       }
       return data;
@@ -1396,7 +1398,7 @@ function p3App() {
       this.uploadedFile = f;
       this.uploadedPreview = URL.createObjectURL(f);
       this.rightsConfirmed = false;
-      this.composeError = '';
+      this.composeError = ''; this.composeRefusal = '';
     },
     // Ctrl+V / Cmd+V on the Design screen: a pasted image (a screenshot, a copied picture) becomes the
     // reference image exactly as if it had been chosen with the upload button; pasted text is left to the
@@ -1581,7 +1583,7 @@ function p3App() {
     },
 
     async generate() {
-      this.composeError = '';
+      this.composeError = ''; this.composeRefusal = '';
       const text = this.userInput.trim() || (this.uploadedFile ? 'Process this image' : '');
       if (text.length < 3) { this.composeError = 'Please describe your ' + this.newNoun + ' in a few words.'; return; }
       if (this.uploadedFile && !this.rightsConfirmed) { this.composeError = 'Please confirm you have the rights to use the uploaded image.'; return; }
@@ -1604,7 +1606,8 @@ function p3App() {
         this.loadDesigns(); this._refreshQuota();
       } catch (e) {
         this.measure('design_generation_failed', { product_type: product, kind: 'new', reason: this.failReason(e) });
-        this.composeError = e.message;          // prompt and reference are kept for retry
+        if (e.code === 'prompt_rejected') this.composeRefusal = e.message;   // a policy refusal, never shown as a fault
+        else this.composeError = e.message;     // prompt and reference are kept for retry
       } finally {
         this.submitting = false;
       }
@@ -1615,7 +1618,7 @@ function p3App() {
       this.track('new_design_clicked');
       this.stopPolling();
       this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
-      this.actionError = ''; this.composeError = ''; this.closePreview();
+      this.actionError = ''; this.composeError = ''; this.composeRefusal = ''; this.closePreview();
       this.userInput = ''; this.clearUpload();
       this.persist({ designId: null, view: 'ai-studio' });
       // The Design screen at its address; the caller shows it (navigateTo: its one page view, as before)
@@ -1628,7 +1631,7 @@ function p3App() {
       const d = await this.api('GET', `/api/designs/${designId}`);
       this.design = d; this.cust = null; this.pendingRefineBatchId = null;
       this.openedFromList = true; this.candIndex = 0;
-      this.actionError = ''; this.composeError = '';
+      this.actionError = ''; this.composeError = ''; this.composeRefusal = '';
       const last = d.batches[d.batches.length - 1];
       // Show the newest batch that has something to show; a still-running refinement is shown as progress.
       const shown = [...d.batches].reverse().find(b => !this.anyActive(b)) || last;
@@ -1712,10 +1715,12 @@ function p3App() {
     // Every option refused under the AI model's content rules: the same words would be refused again, so the customer is
     // asked for different ones and never offered a paid retry (the server refuses one too)
     policyRefused(b) { return !!b && b.status === 'failed' && b.candidates.every(c => c.error_code === 'content_policy'); },
+    // A policy refusal says what to change; a technical failure says it was not the customer's words (P5, 28 Oct)
     failedBatchText(b) {
-      if (!this.policyRefused(b)) return 'None of the designs could be created.';
-      return (b.kind === 'refine' ? 'None of the variations could be created: the change' : 'None of the designs could be created: the description')
-        + ' may not meet our content guidelines. We can’t make pictures of real people, such as public figures — try a symbol, motif or style instead.';
+      const what = b?.kind === 'refine' ? 'variations' : 'designs';
+      if (!this.policyRefused(b)) return `None of the ${what} could be created because of a technical problem, not your description. Your credit was returned.`;
+      return `None of the ${what} could be created: the image service declined this ${b.kind === 'refine' ? 'change' : 'description'} under its safety rules`
+        + ' and would decline the same words again. Change them and try again — for example leave out a public figure, a protected logo or character, or sexual, violent or hateful content.';
     },
     batchLabel(b) {
       if (b.kind === 'initial') return 'Original';
@@ -1780,8 +1785,8 @@ function p3App() {
       if (b.id === this.pendingRefineBatchId && !this.anyActive(b)) {
         this.pendingRefineBatchId = null;
         if (b.status === 'failed') this.actionError = this.policyRefused(b)
-          ? 'The refinement could not be generated: the change may not meet our content guidelines. Please describe a different change.'
-          : 'The refinement could not be generated. You can retry the failed designs.';
+          ? 'The image service declined this change under its safety rules. Please describe a different change.'
+          : 'The refinement could not be generated because of a technical problem, not your words. You can retry the failed designs.';
         // Switch to the new batch so the user can choose again; the earlier batch stays in history.
         this.viewBatchId = b.id;
         this.setSelection(null);
@@ -1838,7 +1843,7 @@ function p3App() {
       this.$refs.composer?.focus();
     },
     async refine() {
-      this.composeError = '';
+      this.composeError = ''; this.composeRefusal = '';
       if (!this.canActOnSelection) { this.composeError = 'Select one of the designs to refine it.'; return; }
       const text = this.userInput.trim();
       if (text.length < 3) { this.composeError = 'Describe the change you want.'; return; }
@@ -1867,7 +1872,8 @@ function p3App() {
         this.ensurePolling(); this._refreshQuota();
       } catch (e) {
         this.measure('design_generation_failed', { product_type: product, kind: 'refine', reason: this.failReason(e) });
-        this.composeError = e.message;         // e.g. reference_unavailable — no text-only fallback
+        if (e.code === 'prompt_rejected') this.composeRefusal = e.message;   // a policy refusal, never shown as a fault
+        else this.composeError = e.message;    // e.g. reference_unavailable — no text-only fallback
       } finally {
         this.submitting = false;
       }
@@ -1893,7 +1899,7 @@ function p3App() {
         if (this.design?.id === p.id) {
           this.stopPolling();
           this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
-          this.actionError = ''; this.composeError = ''; this.closePreview();
+          this.actionError = ''; this.composeError = ''; this.composeRefusal = ''; this.closePreview();
           this.persist({ designId: null });
           // the Design screen, empty; inside the panel opened at its address the panel stays (and its address)
           if (STUDIO_VIEWS.includes(this.view) && !(this.view === 'ai-studio' && this.panelRoute)) this.navigateTo('ai-studio', { history: 'replace' });

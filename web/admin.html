@@ -2920,7 +2920,7 @@
             <td class="whitespace-nowrap"><span class="badge" :class="c.decision === 'rejected' ? 'bg-amber-100 text-amber-800' : c.decision === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-600'" x-text="{ accepted: 'Accepted', rejected: 'Stopped', undecided: 'No decision' }[c.decision] || c.decision"></span><span x-show="c.ai_mode === 'mock'" class="text-zinc-400"> · mock</span></td>
             <td><span x-text="(c.kind === 'refinement' ? 'Change: ' : '') + c.text"></span>
               <span x-show="c.refined_prompt" class="block text-zinc-500 mt-0.5" x-text="'LLM rewrite (not used for images): ' + (c.refined_prompt || '')"></span></td>
-            <td x-text="c.reason || c.error || '—'"></td>
+            <td><span x-show="c.category" class="badge bg-zinc-100 text-zinc-700 mr-1" x-text="(c.category || '').replace('_', ' ')"></span><span x-text="c.reason || c.error || '—'"></span></td>
             <td x-text="c.customer || '—'"></td>
             <td class="tabular-nums whitespace-nowrap" x-text="c.seconds != null ? c.seconds + ' s' : '—'"></td>
             <td><a x-show="c.session_id" class="underline" :href="'#/sessions/' + encodeURIComponent(c.session_id || '')">Session</a></td>

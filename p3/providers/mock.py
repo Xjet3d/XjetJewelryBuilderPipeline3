@@ -240,11 +240,14 @@ class MockProvider:
         if Endpoint == endpoints.Llm:              # the prompt check: the JSON decision its instructions ask for
             if Req["outcome"] == "prose":
                 return {"output": "Mock: I can help you design a lovely piece of jewelry!", "error": None}
-            Accept = Req["outcome"] != "reject"
-            return {"output": json.dumps({"is_jewelry": True, "is_feasible": Accept,
-                                          "reason_for_rejection": None if Accept else "Mock: this request can't be designed.",
-                                          "refined_prompt": ("Mock: " + str(Args.get("prompt", ""))[:80]) if Accept else None}),
-                    "error": None}
+            # "reject" stops the request; "reject:mixed_metals" also names why (rejection_category), as newer instructions do
+            Accept = not str(Req["outcome"]).startswith("reject")
+            Decision = {"is_jewelry": True, "is_feasible": Accept,
+                        "reason_for_rejection": None if Accept else "Mock: this request can't be designed.",
+                        "refined_prompt": ("Mock: " + str(Args.get("prompt", ""))[:80]) if Accept else None}
+            if ":" in str(Req["outcome"]):
+                Decision["rejection_category"] = str(Req["outcome"]).split(":", 1)[1]
+            return {"output": json.dumps(Decision), "error": None}
         raise ProviderError(f"Mock has no handler for {Endpoint}")
 
     async def Download(self, Url: str) -> bytes:

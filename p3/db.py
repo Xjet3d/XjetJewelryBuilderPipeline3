@@ -688,6 +688,13 @@ def _InstallSizeConfirmed(Conn) -> None:
         Conn.execute("ALTER TABLE customizations ADD COLUMN size_confirmed_at TEXT")
 
 
+def _InstallCheckCategory(Conn) -> None:
+    """Why the prompt check stopped a request, as its instructions name it (P5, 2026-10-28): an additive column, old code
+    ignores it."""
+    if "category" not in _Columns(Conn, "prompt_checks"):
+        Conn.execute("ALTER TABLE prompt_checks ADD COLUMN category TEXT")
+
+
 def _InstallVersions(Conn) -> None:
     """3D versions (additive: new columns and tables; old code ignores them). The backfill runs once per database."""
     Conn.executescript(VersionTables)
@@ -901,6 +908,7 @@ class Database:
                     _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
                     _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
                     _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
+                    _InstallCheckCategory(Conn)           # why a prompt check stopped a request (2026-10-28)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
 
