@@ -1,23 +1,33 @@
-"""Terms acceptance (2026-10-29): every new account accepts the Terms of Service and the Privacy Policy, and the
-acceptance is recorded with the account in one transaction — an email sign-up when its link is used (no account before),
+"""Terms acceptance (2026-10-29): every new account accepts the Terms of Service and the Privacy Policy — with the
+commercial use of the designs it creates (Your designs: business-approved, pending legal counsel's review) — and the
+acceptance is recorded with the account in one transaction: an email sign-up when its link is used (no account before),
 a new Google or Apple customer after identification, an account XJet made at its first sign-in. Existing accounts are
-never asked or recorded after the fact. The legal texts are versioned and archived automatically; a change during a
-sign-up asks for the new version; the server refuses designs, credits and orders until an acceptance is required and
-missing; the Admin sees each account's status read only, and pending sign-ups with masked addresses. Mail goes to the
-outbox, the identity providers are fakes: no network, no paid call."""
+never asked or recorded after the fact. The legal texts are versioned and archived automatically from their wording
+(not the products on offer or the prices); a change during a sign-up asks for the new version; the server refuses
+designs, credits and orders until an acceptance is required and missing; the Admin sees each account's status read
+only, and pending sign-ups with masked addresses. Mail goes to the outbox, the identity providers are fakes: no network,
+no paid call."""
 
+import html
 import re
+from pathlib import Path
 
 import pytest
 
 from p3.accounts import TermsRequired
 from p3.accounts.consent import MaskEmail, Sha256
 from p3.oidc import Claims
+from p3.sitepages import DesignUseAcceptance
 from tests.conftest import Harness
 from tests.test_auth import Browser, Csrf, FakeIdp, LinkSecret, Mails, Pw, ViaProvider
 
 AdminKey = "consent-admin-key"
 AdminHeaders = {"Authorization": f"Bearer {AdminKey}"}
+Index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+# The Terms' commercial use of customers' designs (Your designs, Legal Review Pack T11), its first sentence
+Clause = ("XJet may display and promote the designs you create in Atelier, including in our public gallery, and may "
+          "manufacture and sell jewelry based on them to other customers, without paying you royalties unless we agree "
+          "otherwise in writing.")
 
 
 @pytest.fixture
@@ -71,9 +81,12 @@ def Link(H, Email):
     return LinkSecret([M for M in Mails(H) if M["to"] == Email][-1]["html"])
 
 
-def PublishDesignUse(H, On=True):
-    """The owner's switch for the design-use clause (P3_TERMS_DESIGN_USE): off unless approved."""
-    H.Settings.TermsDesignUse = On
+def ChangeTerms(H, Extra=" One sentence more."):
+    """A release that changes the Terms' wording: the next acceptance is for the Terms' next version. Returns the texts
+    as they were, to put back."""
+    Served = H.Ctx.Accounts.Consent.Texts
+    H.Ctx.Accounts.Consent.Texts = lambda: {**Served(), "terms": Served()["terms"] + Extra}
+    return Served
 
 
 # ── the legal texts ─────────────────────────────────────────────────────────────
@@ -81,25 +94,68 @@ def PublishDesignUse(H, On=True):
 async def test_the_legal_texts_are_versioned_and_archived_automatically(A):
     B = Browser(A)
     L1 = await Legal(B)
-    assert L1["terms"]["version"] == 1 and L1["privacy"]["version"] == 1 and L1["design_use"] is False
+    assert L1 == {"terms": L1["terms"], "privacy": L1["privacy"]} and L1["terms"]["version"] == L1["privacy"]["version"] == 1
     Archive = {R["doc"]: R for R in Rows(A, "SELECT * FROM legal_documents")}
     assert set(Archive) == {"terms", "privacy"}
-    # The text a reader of each page gets (served text, base path left out), and its hash is what customers accept
-    assert "You create an account and sign in with your email address and a password" in Archive["terms"]["text"]
-    assert "What we collect" in Archive["privacy"]["text"] and "Terms of Service" not in Archive["privacy"]["text"][:40]
-    assert Sha256(Archive["terms"]["text"]) == L1["terms"]["sha256"] and Sha256(Archive["privacy"]["text"]) == L1["privacy"]["sha256"]
-    assert "royalty-free" not in Archive["terms"]["text"]                       # the design-use clause is not published
-    assert "royalty-free" not in (await B.get("/terms")).text and "royalty-free" not in (await B.get("/")).text
-    # The owner publishes it: the Terms' text changes, so new sign-ups accept version 2; the Privacy Policy stays version 1
-    PublishDesignUse(A)
+    Terms, Privacy = Archive["terms"]["text"], Archive["privacy"]["text"]
+    # Each page's own wording (base path left out), not the site's frame or footer; its hash is what customers accept
+    assert Terms.startswith("Terms of Service The service ") and Privacy.startswith("Privacy What we collect ")
+    assert "You create an account and sign in with your email address and a password" in Terms and "/privacy" in Terms
+    assert "made in real metal with NanoParticle Jetting" not in Terms + Privacy and "<!--" not in Terms + Privacy
+    assert Sha256(Terms) == L1["terms"]["sha256"] and Sha256(Privacy) == L1["privacy"]["sha256"]
+    # The commercial use of customers' designs is part of the Terms every new account accepts, the protections kept
+    assert Clause in Terms and Clause in (await B.get("/terms")).text
+    assert ("we ask your separate permission before we publicly use an identifiable photograph, a person's likeness or "
+            "personal information" in Terms and "other people's intellectual property stays theirs" in Terms
+            and "We never show the photos you upload in the gallery" in Terms)
+    # A change of the wording is the Terms' next version (the Privacy Policy stays version 1) …
+    Served = ChangeTerms(A)
     L2 = await Legal(B)
-    assert (L2["terms"]["version"], L2["privacy"]["version"], L2["design_use"]) == (2, 1, True)
-    Terms2 = Rows(A, "SELECT text FROM legal_documents WHERE doc = 'terms' AND version = 2")[0]["text"]
-    assert "worldwide, non-exclusive, royalty-free license" in Terms2 and "royalty-free" in (await B.get("/terms")).text
-    # The same text again is the version it already was: nothing new is archived
-    PublishDesignUse(A, False)
-    assert (await Legal(B))["terms"] == L1["terms"]
-    assert len(Rows(A, "SELECT 1 FROM legal_documents")) == 3
+    assert (L2["terms"]["version"], L2["privacy"]) == (2, L1["privacy"])
+    # … and the same wording again is the version it already was: nothing new is archived
+    A.Ctx.Accounts.Consent.Texts = Served
+    assert await Legal(B) == L1 and len(Rows(A, "SELECT 1 FROM legal_documents")) == 3
+
+
+async def test_the_legal_versions_follow_the_wording_not_the_products_or_the_prices(A):
+    B = Browser(A)
+    L1 = await Legal(B)
+    Terms = Rows(A, "SELECT text FROM legal_documents WHERE doc = 'terms'")[0]["text"]
+    # A sentence that follows the products on offer is archived in each of its forms
+    assert all(F in Terms for F in ("[rings and charms on offer]", "[rings on offer]", "[charms on offer]", "[no product on offer]"))
+    assert "The current release supports rings only." in Terms and "The current release supports rings and charms." in Terms
+    Before = (await B.get("/terms")).text
+    # The Admin offers charms too: the page says so, and the Terms customers accept are the same version
+    R = await A.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=AdminHeaders)
+    assert R.status_code == 200
+    After = (await B.get("/terms")).text
+    assert "The current release supports rings and charms." in After and "The current release supports rings and charms." not in Before
+    assert await Legal(B) == L1
+    # A new price changes nothing either
+    Table = (await A.Client.get("/api/admin/material-prices", headers=AdminHeaders)).json()
+    Prices = {R["id"]: {K: R[K] for K in ("density_g_cm3", "price_per_g", "cost_per_g", "fixed_price")} for R in Table["rows"]}
+    Prices["silver"]["price_per_g"] += 1
+    R = await A.Client.put("/api/admin/material-prices", json={"materials": Prices, "note": "test"}, headers=AdminHeaders)
+    assert R.status_code == 200
+    assert await Legal(B) == L1 and len(Rows(A, "SELECT 1 FROM legal_documents")) == 2
+
+
+async def test_every_terms_acceptance_includes_the_commercial_use_of_designs(A, tmp_path):
+    # Under each Terms box: the email sign-up, the older sign-up (proto) and the Terms dialog (a new Google or Apple
+    # customer, an account XJet made, a registration begun before)
+    for Box in ('id="rg-terms"', 'id="reg-terms"', 'id="tg-terms"'):
+        Rest = Index[Index.index(Box):]
+        Rest = Rest[Rest.index("</label>") + len("</label>"):].lstrip()
+        assert Rest.startswith('<p class="text-[13px]') and DesignUseAcceptance in Rest[:Rest.index("</p>")], Box
+    assert "XJet may display and promote the designs you create" in DesignUseAcceptance and "without royalties" in DesignUseAcceptance
+    assert DesignUseAcceptance in (await Browser(A).get("/")).text
+    Proto = Harness(tmp_path / "proto", AuthMode="legacy")
+    try:
+        assert DesignUseAcceptance in (await Browser(Proto).get("/")).text
+    finally:
+        await Proto.Close()
+    # The page an emailed link opens, when it asks for the Terms again (proto's page: the older sign-up's test below)
+    assert html.escape(DesignUseAcceptance) in (await Browser(A).get("/auth/verify")).text
 
 
 # ── email and password ──────────────────────────────────────────────────────────
@@ -121,8 +177,8 @@ async def test_an_email_sign_up_is_no_account_until_its_link_is_used_and_then_ca
     assert AccountsFor(A, "dana@example.com") == []                             # no account, no credits
     Pending = Rows(A, "SELECT * FROM pending_registrations")
     assert len(Pending) == 1 and Pending[0]["method"] == "password" and Pending[0]["terms_version"] == 1
-    Bad = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})
-    assert Bad.status_code == 401                                               # nothing to sign in to yet
+    Early = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})
+    assert Early.status_code == 403 and Early.json()["error"]["code"] == "email_unverified"   # confirm first, as before
 
     V = await B.post("/api/auth/verify-email", json={"token": Link(A, "dana@example.com")})
     assert V.status_code == 200 and V.json()["created"] is True and "atelier_session" in V.headers["set-cookie"]
@@ -144,15 +200,41 @@ async def test_an_email_sign_up_is_no_account_until_its_link_is_used_and_then_ca
     assert (await Browser(A).post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})).status_code == 200
 
 
+async def test_signing_in_before_the_link_asks_to_confirm_and_sends_the_link_again(A):
+    B = Browser(A)
+    await SignUp(A, B)
+    First = Link(A, "dana@example.com")
+    Early = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})
+    assert Early.status_code == 403 and Early.json()["error"]["code"] == "email_unverified"
+    Wrong = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw + "x"})
+    assert Wrong.status_code == 401 and Wrong.json()["error"]["code"] == "invalid_credentials"
+    # "Send the confirmation link again": a new link for the same sign-up (its name, password and acceptance)
+    Sent = len(Mails(A))
+    Again = await B.post("/api/auth/resend-verification", json={"email": "dana@example.com"})
+    assert Again.status_code == 200 and len(Mails(A)) == Sent + 1 and AccountsFor(A, "dana@example.com") == []
+    Second = Link(A, "dana@example.com")
+    assert Second != First and len(A.Ctx.Accounts.Consent.ListPending()) == 2
+    V = await Browser(A).post("/api/auth/verify-email", json={"token": Second})
+    assert V.status_code == 200 and V.json()["created"] is True
+    (Acc,) = AccountsFor(A, "dana@example.com")
+    assert Acc["display_name"] == "Dana" and [C["method"] for C in Consents(A, Acc["account_id"])] == ["password"]
+    assert (await Browser(A).post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})).status_code == 200
+    assert A.Ctx.Accounts.Consent.ListPending() == []                           # the earlier link went with it
+    # An address nobody signed up with gets the same answer and no message
+    Sent = len(Mails(A))
+    Nobody = await B.post("/api/auth/resend-verification", json={"email": "nobody@example.com"})
+    assert Nobody.json()["message"] == Again.json()["message"] and len(Mails(A)) == Sent
+
+
 async def test_a_change_of_the_terms_during_a_sign_up_asks_for_the_new_version(A):
     B = Browser(A)
     L1 = await SignUp(A, B)
-    PublishDesignUse(A)                                                         # the Terms change before the link is opened
+    ChangeTerms(A)                                                              # the Terms change before the link is opened
     Secret = Link(A, "dana@example.com")
     V = await B.post("/api/auth/verify-email", json={"token": Secret})
     assert V.status_code == 409 and V.json()["error"]["code"] == "terms_changed"
     L2 = V.json()["error"]["legal"]
-    assert L2["terms"]["version"] == 2 and L2["design_use"] is True and AccountsFor(A, "dana@example.com") == []
+    assert L2["terms"]["version"] == 2 and AccountsFor(A, "dana@example.com") == []
     Stale = await B.post("/api/auth/verify-email", json={"token": Secret, **Accept(L1)})
     assert Stale.status_code == 409                                             # the old version is no longer accepted
     Ok = await B.post("/api/auth/verify-email", json={"token": Secret, **Accept(L2)})
@@ -380,9 +462,10 @@ async def test_the_older_sign_up_asks_again_when_the_terms_changed_before_its_li
     L1 = await Legal(B)
     await B.post("/api/register", json={"Name": "Ari", "Email": "ari@example.com", **Accept(L1)})
     Secret = re.search(r"/verify\?token=([A-Za-z0-9_\-]+)", Mails(L)[-1]["html"]).group(1)
-    PublishDesignUse(L)
+    ChangeTerms(L)
     Page = await B.get(f"/verify?token={Secret}")
-    assert "Accept the updated Terms" in Page.text and "royalty-free" in Page.text and AccountsFor(L, "ari@example.com") == []
+    assert "Accept the updated Terms" in Page.text and AccountsFor(L, "ari@example.com") == []
+    assert html.escape(DesignUseAcceptance) in Page.text                       # with the commercial use of designs
     Fields = dict(re.findall(r'<input type="hidden" name="([a-z_0-9]+)" value="([^"]*)">', Page.text))
     NotTicked = await B.post("/verify", data=Fields)
     assert "Please tick the box" in NotTicked.text and AccountsFor(L, "ari@example.com") == []
@@ -412,7 +495,7 @@ async def test_the_admin_sees_each_status_read_only_and_masked_pending_sign_ups(
     (P,) = T["pending_registrations"]
     assert P["email"] == MaskEmail("waiting.person@example.com") == "w***@e***.com" and P["method"] == "password"
     assert set(P) == {"id", "method", "email", "created_at", "expires_at"}    # no password hash, secret or provider id
-    assert T["current"]["terms"]["version"] == 1 and T["design_use_published"] is False
+    assert T["current"]["terms"]["version"] == 1 and set(T) == {"pending_registrations", "current", "archive"}
     assert all("text" not in R for R in T["archive"]) and {R["doc"] for R in T["archive"]} == {"terms", "privacy"}
     for Method in ("post", "put", "delete"):                                  # read only
         assert (await getattr(A.Client, Method)("/api/admin/terms", headers=AdminHeaders)).status_code == 405

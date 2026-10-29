@@ -284,6 +284,21 @@ class ConsentStore:
                           "AND expires_at >= ? ORDER BY created_at LIMIT 1", (Method, (Email or "").strip().lower(), _Iso(_Utc())))
         return Row["display_name"] if Row else ""
 
+    def Waiting(self, Method: str, Email: str | None) -> dict | None:
+        """An address's latest live sign-up of this kind (not used, not expired), or None."""
+        return self.Db.One("SELECT * FROM pending_registrations WHERE method = ? AND email = ? AND used_at IS NULL AND "
+                           "expires_at >= ? ORDER BY created_at DESC LIMIT 1", (Method, (Email or "").strip().lower(), _Iso(_Utc())))
+
+    def Renew(self, Method: str, Email: str | None) -> dict | None:
+        """"Send the confirmation link again" for a sign-up waiting for its link: a new link (a new 24 hours) for the
+        address's latest one, with its name, password and acceptance; earlier links work until theirs end. Returns
+        {"secret", "name"}, or None when nothing waits."""
+        P = self.Waiting(Method, Email)
+        if P is None:
+            return None
+        Secret = self.NewPending(Method, P["email"], P["display_name"], PasswordHash=P["password_hash"], Accepted=AcceptedOf(P))
+        return {"secret": Secret, "name": P["display_name"]}
+
     def UsedBy(self, Secret: str | None) -> str | None:
         """The account a used sign-up's link became (while its record lasts), or None."""
         if not Secret or len(Secret) > 200:

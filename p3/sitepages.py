@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import itertools
 import json
 import re
 
@@ -47,13 +48,17 @@ FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "
                "bag": "checkout", "checkout": "order"}
 _LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
-# What a customer accepts besides the Terms when the design-use clause is published (P3_TERMS_DESIGN_USE): the owner's
-# business-approved wording of 29 Oct 2026, pending legal counsel's review — published only with the owner's separate
-# approval. The same sentence is in web/index.html between <!--designuse--> marks (the sign-up forms and the Terms dialog).
-DesignUseAcceptance = ("By accepting, you also grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to show, "
-                       "promote, make and sell jewelry based on the designs you create, including in our public gallery and "
-                       "to other customers, as the Terms of Service describe. What you upload stays yours, and we ask your "
-                       "separate permission before we publicly use an identifiable photo, likeness or personal information.")
+# The commercial use of a customer's designs, said beside every Terms acceptance (the Terms' "Your designs."): the
+# owner's business-approved wording of 29 Oct 2026, pending legal counsel's review (Legal Review Pack T11). The same
+# sentence is in web/index.html under each Terms checkbox (the sign-up forms and the Terms dialog).
+DesignUseAcceptance = ("By accepting, you agree that XJet may display and promote the designs you create, including in our "
+                       "public gallery, and manufacture and sell jewelry based on them to other customers, without royalties "
+                       "to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays "
+                       "yours, we ask your separate permission before we publicly use an identifiable photo, likeness or "
+                       "personal information, and other people's intellectual property stays theirs.")
+# Each set of products a site can offer, every product first: a legal page's sentence that follows the products on offer
+# is archived in each of its forms (LegalText)
+_Offers = tuple(C for N in range(len(Products.All), -1, -1) for C in itertools.combinations(Products.All, N))
 _OpenTag = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*/?>""")
 
 
@@ -522,10 +527,21 @@ def _LiveCopy(Html: str, View: str) -> str:
 
 
 def LegalText(Html: str, View: str, Base: str = "") -> str:
-    """What a reader of a legal page gets from it (the page's live copy: its words, link targets and pictures), without
-    the base path, so the same wording is the same text on every copy of the site: the text a Terms acceptance is for
-    (p3/accounts/consent.py archives it and its hash)."""
-    Text = _Readable(_LiveCopy(Html, View))
+    """The wording of a legal page (the Terms of Service, the Privacy Policy): the text a Terms acceptance is for
+    (p3/accounts/consent.py archives it and its hash as a version). Html: index.html as served (_VersionedPage). Only the
+    page's own words, link targets and pictures — not the site's frame, header or footer, the markup or its comments — and
+    without the base path, so the same wording is the same text on every copy of the site. A sentence that follows the
+    products on offer is there in each of its forms ("[rings on offer] …"): turning a product on or off, or changing a
+    price (these pages name none), is the same version; changing any of their words is a new one."""
+    Open = f"""<template x-if="view === '{View}'">"""
+    S, End = _Span(Html, Open)
+    Copy = re.sub(r"<!--.*?-->", "", Html[S + len(Open):End - len("</template>")], flags=re.S)
+    for Expr in dict.fromkeys(re.findall(r'x-text="([^"]*)"', Copy)):
+        Forms = [(Offer, _PageFallbacks(View, None, Offer, {}).get(Expr)) for Offer in _Offers]
+        if any(Form for _, Form in Forms):
+            Copy = _Fill(Copy, Expr, " ".join(f"[{' and '.join(Products.Plurals[P].lower() for P in Offer) or 'no product'} "
+                                              f"on offer] {Form}" for Offer, Form in Forms if Form))
+    Text = _Readable(Copy)
     return Text.replace(Base + "/", "/") if Base else Text
 
 

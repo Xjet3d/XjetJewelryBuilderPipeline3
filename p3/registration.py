@@ -98,8 +98,7 @@ class RegistrationService:
         # A link is used once: opened again it confirms the verification and reveals nothing (the code was emailed)
         return RenderVerifyPage(R["status"], R.get("token") if R["status"] == "verified" else None, R["name"], Studio,
                                 self.Ctx.Settings.BasePath, self.Ctx.Settings.SupportEmail,
-                                Legal=R.get("legal"), Secret=Secret, DesignUse=self.Ctx.Settings.TermsDesignUse,
-                                NotTicked=bool(Form) and Given is None)
+                                Legal=R.get("legal"), Secret=Secret, NotTicked=bool(Form) and Given is None)
 
 
 def MaskEmail(Email: str) -> str:
@@ -128,10 +127,10 @@ def RegisterMessage(Email: str) -> str:
 
 
 def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, BasePath: str, Support: str = "",
-                     Legal: dict | None = None, Secret: str = "", DesignUse: bool = False, NotTicked: bool = False) -> str:
+                     Legal: dict | None = None, Secret: str = "", NotTicked: bool = False) -> str:
     """P2 templates/verify.html, rendered without a template engine (all values escaped). terms_changed: the Terms or
     the Privacy Policy changed after the sign-up, so the page asks for the acceptance again (Legal: the versions shown,
-    posted back with the link's secret) before the account is made."""
+    posted back with the link's secret), with the commercial use of designs it includes, before the account is made."""
     E = lambda V: html.escape(V or "", quote=True)
     Ok = Status in ("verified", "already")
     if Ok and Token:
@@ -175,7 +174,7 @@ def RenderVerifyPage(Status: str, Token: str | None, Name: str, StudioUrl: str, 
     elif Status == "terms_changed" and Legal:
         Hidden = "".join(f'<input type="hidden" name="{D}_{K}" value="{E(str(Legal[D][K]))}">'
                          for D in ("terms", "privacy") for K in ("version", "sha256"))
-        Permission = f'<p class="note">{E(DesignUseAcceptance)}</p>' if DesignUse else ""
+        Permission = f'<p class="note">{E(DesignUseAcceptance)}</p>'
         Missing = '<p class="note err">Please tick the box to accept.</p>' if NotTicked else ""
         Body = f"""
       <h1>Accept the updated Terms</h1>

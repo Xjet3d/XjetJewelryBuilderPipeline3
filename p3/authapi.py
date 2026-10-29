@@ -58,13 +58,12 @@ def CookiePath(Ctx: Context) -> str:
 
 
 def LegalNow(Ctx: Context) -> dict:
-    """The versions of the Terms and the Privacy Policy the site serves now (archived automatically), and whether the
-    design-use permission is part of the Terms (P3_TERMS_DESIGN_USE)."""
-    return {**Ctx.Accounts.Consent.Current(), "design_use": Ctx.Settings.TermsDesignUse}
+    """The versions of the Terms and the Privacy Policy the site serves now (archived automatically)."""
+    return Ctx.Accounts.Consent.Current()
 
 
 def TermsChangedError(Ctx: Context, Current: dict) -> HttpError:
-    return HttpError(409, "terms_changed", TermsChangedMessage, {"legal": {**Current, "design_use": Ctx.Settings.TermsDesignUse}})
+    return HttpError(409, "terms_changed", TermsChangedMessage, {"legal": Current})
 
 
 def RequireAcceptance(Ctx: Context, Body_: dict) -> dict:
@@ -285,6 +284,10 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
         Pw = Id.PasswordIdentity(Email)
         if Pw and not Pw["email_verified"] and Id.Usable(Pw["account_id"]):
             Send(Background.add_task, Email, Mail.AuthVerifyEmail("", Link(Req, "verify", Id.NewToken("verify_email", Pw["account_id"], Email))))
+        elif not Pw and not Id.AccountsByEmail(Email):    # a sign-up waiting for its link: a new link for the same sign-up
+            Again = Consent.Renew("password", Email)
+            if Again:
+                Send(Background.add_task, Email, Mail.AuthVerifyEmail(Again["name"], Link(Req, "verify", Again["secret"])))
         return {"ok": True, "message": Generic}
 
     @App_.post("/api/auth/verify-email")
@@ -620,8 +623,7 @@ def Install(App_: "FastAPI", Ctx: Context, Mailer) -> None:      # noqa: F821
             raise HttpError(404, "not_found", "Not found.")
         Title, Button = PageModes[Mode]
         Page = (WebDir / "authpage.html").read_text(encoding="utf-8")
-        # The design-use permission is part of the acceptance only once it is published (P3_TERMS_DESIGN_USE)
-        DesignUse = f'<p class="hint">{html.escape(SitePages.DesignUseAcceptance)}</p>' if S.TermsDesignUse else ""
+        DesignUse = f'<p class="hint">{html.escape(SitePages.DesignUseAcceptance)}</p>'     # part of every acceptance
         for K, V in {"{{MODE}}": Mode, "{{TITLE}}": html.escape(Title), "{{BUTTON}}": html.escape(Button),
                      "{{DESIGN_USE}}": DesignUse, "{{BASE}}": Base}.items():
             Page = Page.replace(K, V)

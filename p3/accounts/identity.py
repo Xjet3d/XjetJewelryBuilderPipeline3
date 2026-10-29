@@ -375,19 +375,23 @@ class IdentityStore:
 
     def VerifyPassword(self, Email: str, Password: str) -> dict:
         """{"account_id", "verified"} for a right password, else raises IdentityError('invalid'). Unknown addresses cost the
-        same time as wrong passwords, and the answer is the same."""
+        same time as wrong passwords, and the answer is the same. The right password of a sign-up still waiting for its
+        emailed link is an address not confirmed yet ({"account_id": None, "verified": False}), as before sign-ups waited."""
         Row = self.Db.One("SELECT i.account_id, i.email_verified, p.hash FROM login_identities i JOIN password_credentials p "
                           "ON p.account_id = i.account_id WHERE i.provider = 'password' AND lower(i.email) = ?",
                           (NormalizeEmail(Email),))
-        Hash = Row["hash"] if Row else _DummyHash
+        Waiting = None if Row else self.Accounts.Consent.Waiting("password", NormalizeEmail(Email))
+        Hash = Row["hash"] if Row else (Waiting or {}).get("password_hash") or _DummyHash
         try:
             _Hasher.verify(Hash, Password or "")
-            Right = Row is not None
+            Right = Row is not None or Hash != _DummyHash
         except (VerificationError, InvalidHashError):
             Right = False
         if not Right:
             raise IdentityError("invalid", "The email or password is not right.")
-        if Row and _Hasher.check_needs_rehash(Row["hash"]):
+        if Row is None:
+            return {"account_id": None, "verified": False}
+        if _Hasher.check_needs_rehash(Row["hash"]):
             self.Db.Execute("UPDATE password_credentials SET hash = ?, updated_at = ? WHERE account_id = ?",
                             (self.HashPassword(Password), Now(), Row["account_id"]))
         return {"account_id": Row["account_id"], "verified": bool(Row["email_verified"])}

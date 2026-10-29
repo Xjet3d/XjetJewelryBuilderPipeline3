@@ -146,22 +146,19 @@ def AdminBuild() -> str:
 
 
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
-                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None,
-                   DesignUse: bool | None = None) -> str:
+                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None) -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
     (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description, "{{SITE_FOOTER}}"
     the site's footer (web/partials/site-footer.html: one footer, at the end of every public page). Mock False: the
     parts between <!--mock--> and <!--/mock--> (the mock-mode banner and badges) are left out. Dev False: the developer
     tools between <!--dev--> and <!--/dev--> (R-34: no internal tool, key name or vendor in a customer's page);
-    Legacy False: the six-letter-code dialog between <!--legacy--> and <!--/legacy-->; DesignUse False: the design-use
-    clause of the Terms and its line in the acceptances, between <!--designuse--> and <!--/designuse--> (unpublished until
-    the owner approves it: P3_TERMS_DESIGN_USE)."""
+    Legacy False: the six-letter-code dialog between <!--legacy--> and <!--/legacy-->."""
     Html = (WebDir / Name).read_text(encoding="utf-8")
     if "{{SITE_FOOTER}}" in Html:                 # the partial's own leading comment stays in the partial
         Footer = re.sub(r"^\s*<!--.*?-->\s*", "", (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8"), count=1, flags=re.S)
         Html = Html.replace("{{SITE_FOOTER}}", Footer.strip())
-    for Tag, On in (("mock", Mock), ("dev", Dev), ("legacy", Legacy), ("designuse", DesignUse)):
+    for Tag, On in (("mock", Mock), ("dev", Dev), ("legacy", Legacy)):
         if On is not None:
             Html = re.sub(f"<!--{Tag}-->.*?<!--/{Tag}-->", "", Html, flags=re.S) if not On else Html.replace(f"<!--{Tag}-->", "").replace(f"<!--/{Tag}-->", "")
     for Asset in ("app.js", "consent.js", "admin.js", "products.js", "metal.js", "showcase.js", "showcase.css", "styles.css", "vendor/tailwind.css", "vendor/fonts.css", "vendor/alpine.min.js",
@@ -486,7 +483,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
-                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy", DesignUse=S.TermsDesignUse)
+                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Before = {}
         if View in ("home", "inspiration") and not Flow:
@@ -534,19 +531,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     LegalCache: dict = {}
 
     def LegalTexts() -> dict:
-        """The Terms of Service and the Privacy Policy as a customer reads them here now (the products on offer, the
-        design-use clause when published): what a Terms acceptance is for (p3/accounts/consent.py versions and archives
-        them). Made again only when the page, the products on offer or the clause's switch changed."""
-        Visible = Products.VisibleProducts(Ctx, None)
-        Key = ((WebDir / "index.html").stat().st_mtime_ns, Visible, S.TermsDesignUse)
+        """The wording of the Terms of Service and the Privacy Policy on this site (SitePages.LegalText): what a Terms
+        acceptance is for (p3/accounts/consent.py versions and archives it). Made again only when the page changed — the
+        products on offer and the prices are not part of it."""
+        Key = (WebDir / "index.html").stat().st_mtime_ns
         if LegalCache.get("key") != Key:
-            Html = _VersionedPage("index.html", Base, {}, Mock=False, Dev=False, Legacy=S.AuthMode == "legacy",
-                                  DesignUse=S.TermsDesignUse)
-            Texts = {}
-            for View in ("terms", "privacy"):
-                Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible))
-                Texts[View] = SitePages.LegalText(SitePages.ServerView(Html, View, Fill), View, Base)
-            LegalCache.update(key=Key, texts=Texts)
+            Html = _VersionedPage("index.html", Base, {}, Mock=False, Dev=False, Legacy=S.AuthMode == "legacy")
+            LegalCache.update(key=Key, texts={View: SitePages.LegalText(Html, View, Base) for View in ("terms", "privacy")})
         return LegalCache["texts"]
 
     Ctx.Accounts.Consent.Texts = LegalTexts

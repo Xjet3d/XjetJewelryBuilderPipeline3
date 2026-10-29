@@ -77,11 +77,6 @@ class Settings:
     AppleTeamId: str = ""            # P3_APPLE_PRIVATE_KEY (the .p8 text, "\n" allowed) or P3_APPLE_PRIVATE_KEY_PATH
     AppleKeyId: str = ""
     ApplePrivateKey: str = ""
-    # The design-use clause of the Terms and its line in every acceptance (2026-10-29): business-approved by the owner,
-    # pending legal counsel's review. OFF everywhere until the owner separately approves publishing it; turning it on
-    # changes the Terms text, so new sign-ups accept a new version (p3/accounts/consent.py) and accounts made before keep
-    # what they accepted
-    TermsDesignUse: bool = False     # P3_TERMS_DESIGN_USE
     # ── the Atelier ↔ Fulfillment integration (docs/FULFILLMENT.md); off by default: nothing of it exists then ──
     FulfillmentIntegration: bool = False      # P3_FULFILLMENT_INTEGRATION: the bridge routes, the Admin action, the triggers
     FulfillmentServiceKey: str | None = None  # P3_FULFILLMENT_SERVICE_KEY: the credential Fulfillment presents (never the Admin key)
@@ -200,7 +195,6 @@ def LoadSettings(**Overrides) -> Settings:
         AppleTeamId=os.environ.get("P3_APPLE_TEAM_ID", "").strip(),
         AppleKeyId=os.environ.get("P3_APPLE_KEY_ID", "").strip(),
         ApplePrivateKey=_ApplePrivateKey(),
-        TermsDesignUse=_Bool("P3_TERMS_DESIGN_USE"),
         FulfillmentIntegration=_Bool("P3_FULFILLMENT_INTEGRATION"),
         FulfillmentServiceKey=os.environ.get("P3_FULFILLMENT_SERVICE_KEY") or None,
         FulfillmentCustomerNotifications=_Bool("P3_FULFILLMENT_CUSTOMER_NOTIFICATIONS"),

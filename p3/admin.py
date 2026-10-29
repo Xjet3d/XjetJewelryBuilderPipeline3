@@ -651,8 +651,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Privacy Policy served now and every archived version (each account's own status is on its row: users[].terms)."""
         Admin(authorization)
         Consent = Ctx.Accounts.Consent
-        return {"pending_registrations": Consent.ListPending(), "current": Consent.Current(), "archive": Consent.Archive(),
-                "design_use_published": Ctx.Settings.TermsDesignUse}
+        return {"pending_registrations": Consent.ListPending(), "current": Consent.Current(), "archive": Consent.Archive()}
 
     @App_.post("/api/admin/users")
     async def CreateUser(Body_: dict = Body(...), authorization: str | None = Header(None)):

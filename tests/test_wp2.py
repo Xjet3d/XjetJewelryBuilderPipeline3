@@ -171,8 +171,9 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
     (R-06); Your content asks for respect of other people's intellectual property and protects the customer's photos and
     personal details; the email sign-up's form has the Terms checkbox (it links the Terms of Service and the Privacy
     Policy) and Create account promises no number of credits (R-16). Since 29 Oct (tests/test_consent.py) Google and Apple
-    are not held before identification — a new customer accepts afterwards, before the account exists — and the
-    design-use clause is in the page only between its unpublished marks. The Terms still carry no warranty clause (R-31)."""
+    are not held before identification — a new customer accepts afterwards, before the account exists — and the Terms
+    carry Your designs, the commercial use of customers' designs (T11, business-approved, pending counsel), with those
+    protections kept. The Terms still carry no warranty clause (R-31)."""
     Root = Path(__file__).resolve().parents[1]
     Index = (Root / "web" / "index.html").read_text(encoding="utf-8")
     App = (Root / "web" / "app.js").read_text(encoding="utf-8")
@@ -186,8 +187,8 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
             and "We never show the photos you upload in the gallery or use them to promote Atelier." in Terms
             and "We do not display, promote or make for anyone else a design that shows an identifiable person or carries "
                 "personal details such as a name, initials or a date, unless you allow it." in Terms)
-    Published = re.sub(r"<!--designuse-->.*?<!--/designuse-->", "", Terms, flags=re.S)
-    assert "royalt" not in Published.lower() and "royalty-free license" in Terms and "Warranty." not in Terms
+    assert ("worldwide, non-exclusive, royalty-free license" in Terms and "other people's intellectual property stays theirs" in Terms
+            and "designuse" not in Index and "Warranty." not in Terms)
     Dialog = Index[Index.index('<div x-show="!legacyAuth">'):]
     Dialog = Dialog[:Dialog.index("<!--legacy-->")]
     Box = Dialog[Dialog.index('<input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms"'):]

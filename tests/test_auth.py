@@ -116,10 +116,10 @@ async def test_register_verify_login_and_logout(A):
     assert "dana@example.com" in R.json()["message"]
     Sent = Mails(A)
     assert len(Sent) == 1 and Sent[0]["to"] == "dana@example.com" and "Confirm your email" in Sent[0]["subject"]
-    # an unconfirmed sign-up is no account yet (2026-10-29): it cannot sign in, and the answer for a wrong password is the
-    # same as for an unknown address
+    # an unconfirmed address cannot sign in (since 29 Oct it is no account yet, only a sign-up waiting for its link), and
+    # the answer for a wrong password is the same as for an unknown address
     Bad = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": Pw})
-    assert Bad.status_code == 401 and Bad.json()["error"]["code"] == "invalid_credentials"
+    assert Bad.status_code == 403 and Bad.json()["error"]["code"] == "email_unverified"
     Wrong = await B.post("/api/auth/login", json={"email": "dana@example.com", "password": "nope-nope-nope"})
     Unknown = await B.post("/api/auth/login", json={"email": "nobody@example.com", "password": "nope-nope-nope"})
     assert Wrong.status_code == Unknown.status_code == 401 and Wrong.json() == Unknown.json()
