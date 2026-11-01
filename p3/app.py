@@ -907,6 +907,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def GalleryStart(ItemId: str, request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
+        Products.RequirePreviewAccount(Ctx, Products.OfGalleryItem(Ctx.Db, ItemId), request, Who)
         return Svc.Designs.Get(Who, Svc.Gallery.Start(Who, ItemId, Body_.get("client_request_id") or None, Seen(request)[0],
                                                       Products.PausedProducts(Ctx, request)))
 
@@ -943,8 +944,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             # What the Design screen offers (Admin → Settings → Products). Absent while rings are the only product on
             # offer — the ring-only site of before. "previewed": hidden products an Admin's browser sees anyway.
             Previewed = Products.PreviewedProducts(Ctx, request)
+            # "paused": the previewed products that were on offer before (switched OFF after their launch)
             Out["products"] = {"available": list(Visible), "default": Products.DefaultProduct(Visible),
                                "preview": bool(Previewed), "previewed": list(Previewed),
+                               "paused": [P for P in Previewed if Ctx.Products.Launched(P)],
                                "names": {P: {"label": Products.Labels[P], "plural": Products.Plurals[P]} for P in Products.All}}
             if Products.Charm in Visible:
                 Sizes = Ctx.Products.CharmSizeOptions()
@@ -991,6 +994,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
         Visible = Products.VisibleProducts(Ctx, request)
         Product = Products.RequireVisible(Ctx, Products.Normalize(product, Products.DefaultProduct(Visible)), request)
+        Products.RequirePreviewAccount(Ctx, Product, request, Who)        # before the prompt check and the credits
         ReferencePng = None
         if reference is not None and reference.filename:
             if not rights_confirmed:
@@ -1025,13 +1029,14 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Visible, Instruction, RequestId = Products.VisibleProducts(Ctx, request), Body_.get("instruction", ""), Body_.get("client_request_id")
+        D = Svc.Images.RequireDesign(Who, DesignId, Visible)              # the design refined: its product and its words
+        Products.RequirePreviewAccount(Ctx, D.get("product_type") or Products.Ring, request, Who)
         Check = None
         # A request that is only "more variations" (the phrase list, nothing else in it) never reaches the model: the
         # fixed instruction does, so it is not checked (the charm check refused these words, 25 Oct). Anything more
         # in the request is an ordinary refinement and is checked as usual.
         if (any(PromptCheck.State(Ctx).values()) and not MoreVariations.IsMoreVariations(Instruction)
                 and not PromptCheck.Repeated(Ctx, Who, RequestId, DesignId)):
-            D = Svc.Images.RequireDesign(Who, DesignId, Visible)          # the design refined: its product and its words
             Check = await PromptCheck.Before(Ctx, Who, Instruction, D.get("product_type") or Products.Ring, Kind="refinement",
                                              Previous=D["prompt"], SourceDesignId=DesignId)
         Batch = Svc.Images.CreateRefinement(Who, DesignId, Body_.get("parent_candidate_id"), Instruction, RequestId, Visible)
@@ -1047,7 +1052,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def RetryFailed(BatchId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
-        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Images._OwnedBatch(Who, BatchId)["design_id"]), request)
+        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Images._OwnedBatch(Who, BatchId)["design_id"]), request, Who)
         return await Svc.Images.RetryFailed(Who, BatchId)
 
     @App_.post("/api/candidates/{CandidateId}/retry")
@@ -1055,16 +1060,17 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Svc.Images._OwnedCandidate(Who, CandidateId)
-        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request)   # another option: a production step
+        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request, Who)   # another option: a production step
         return Svc.Images.RetryCandidate(Who, CandidateId)
 
     # A production step — choosing an option, Customize, changing or bagging a customization — on a design of a product
-    # not on offer to this browser is refused (409 design_unavailable); the design itself stays viewable
+    # not on offer to this browser is refused (409 design_unavailable; an Admin's preview on a customer's own account:
+    # 409 preview_test_account_only); the design itself stays viewable
     def _Making(Who, DesignId: str, request: Request) -> None:
-        Products.RequireOnOffer(Ctx, Svc.Images.RequireDesign(Who, DesignId).get("product_type") or Products.Ring, request)
+        Products.RequireOnOffer(Ctx, Svc.Images.RequireDesign(Who, DesignId).get("product_type") or Products.Ring, request, Who)
 
     def _CustomizationOnOffer(Who, CustomizationId: str, request: Request) -> None:
-        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Customize._Owned(Who, CustomizationId)["design_id"]), request)
+        Products.RequireOnOffer(Ctx, Products.Of(Ctx.Db, Svc.Customize._Owned(Who, CustomizationId)["design_id"]), request, Who)
 
     @App_.put("/api/designs/{DesignId}/selection")
     async def Select(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
@@ -1095,42 +1101,46 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Cand, _Batch = Svc.Images._OwnedCandidate(Who, CandidateId)
-        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request)   # a movie is a production step
+        Products.RequireOnOffer(Ctx, Products.OfCandidate(Ctx.Db, CandidateId), request, Who)   # a movie is a production step
         if Cand["status"] != "ready":
             raise HttpError(409, "candidate_not_ready", "That image is not ready yet.")
         if not Products.MovieAvailable(Ctx, Products.OfCandidate(Ctx.Db, CandidateId)):
             raise HttpError(409, "movie_off", "360° movies are not available for this product right now.")
         return Svc.Movies.Ensure(Who, CandidateId)
 
-    # ── bag ──────────────────────────────────────────────────────────────
+    # ── bag (OfferedTo: an Admin's preview orders a hidden product only on a test account) ──
     @App_.get("/api/bag")
     async def GetBag(request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.Bag(Tok(x_access_token), Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Customize.Bag(Who, Products.OfferedTo(Ctx, request, Who)), request)
 
     @App_.post("/api/bag")
     async def AddToBag(request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         _CustomizationOnOffer(Who, str(Body_.get("customization_id") or ""), request)
-        return RingOnly(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.VisibleProducts(Ctx, request)), request)
+        return RingOnly(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.OfferedTo(Ctx, request, Who)), request)
 
     @App_.patch("/api/bag/{LineId}")
     async def SetBagQuantity(LineId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.SetBagQuantity(Tok(x_access_token), LineId, Body_.get("quantity"),
-                                                     Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Customize.SetBagQuantity(Who, LineId, Body_.get("quantity"), Products.OfferedTo(Ctx, request, Who)), request)
 
     @App_.delete("/api/bag/{LineId}")
     async def RemoveFromBag(LineId: str, request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Customize.RemoveFromBag(Tok(x_access_token), LineId, Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Customize.RemoveFromBag(Who, LineId, Products.OfferedTo(Ctx, request, Who)), request)
 
     # ── checkout & orders (fixed-price materials); gold asks for a quote ──
     @App_.get("/api/checkout")
     async def CheckoutInfo(request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.CheckoutInfo(Tok(x_access_token), Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Orders.CheckoutInfo(Who, Products.OfferedTo(Ctx, request, Who)), request)
 
     @App_.post("/api/checkout/quote")
     async def CheckoutQuote(request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.Quote(Tok(x_access_token), Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"),
-                                         Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Orders.Quote(Who, Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"),
+                                         Products.OfferedTo(Ctx, request, Who)), request)
 
     @App_.post("/api/checkout/address")
     async def CheckoutAddress(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
@@ -1139,7 +1149,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/orders")
     async def PlaceOrder(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.Create(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request),
+        Who = Tok(x_access_token)
+        return RingOnly(Svc.Orders.Create(Who, Body_, Background.add_task, Products.OfferedTo(Ctx, request, Who),
                                           Origin=S.PublicBaseUrl or PublicOrigin(request)), request)
 
     @App_.get("/api/orders")
@@ -1180,7 +1191,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.post("/api/quote-requests")
     async def RequestQuote(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Orders.RequestQuote(Tok(x_access_token), Body_, Background.add_task, Products.VisibleProducts(Ctx, request)), request)
+        Who = Tok(x_access_token)
+        Products.RequirePreviewAccount(Ctx, Products.Of(Ctx.Db, str(Body_.get("design_id") or "")), request, Who)
+        return RingOnly(Svc.Orders.RequestQuote(Who, Body_, Background.add_task, Products.OfferedTo(Ctx, request, Who)), request)
 
     # ── developer-only mesh tools ────────────────────────────────────────
     @App_.get("/api/dev/status")

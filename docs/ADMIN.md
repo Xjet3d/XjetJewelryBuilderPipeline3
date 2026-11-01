@@ -340,6 +340,13 @@ own stage of the part with its detail: *Approved for production* once the manufa
   note for the history. Sending emails the quote with **Approve the quote** and **Decline the quote** on the
   customer's own link (stored hashed). A revised quote replaces the link: the earlier email's buttons then say a newer
   quote exists. The link can be copied from the workspace (useful while mail delivery is not active).
+- **Only what is quoted becomes an order** (WP1, 1 Nov 2026). A quote needs its product on offer to customers
+  (Settings → Products) and a material without a fixed price (gold; `orders.QuoteOfferProblem`). Otherwise **Send** is
+  disabled with the reason (`offer_problem`) and the server refuses it (409 `quote_not_offerable`); the customer's page
+  says the quote can't be approved online, and Approve and the order made from a quote refuse too
+  (409 `quote_not_orderable`), also for a quote sent before the switch. The request, its quote and history are kept,
+  and switched back ON, the same link works again. A request for a fixed-price material (Sterling Silver, Stainless
+  Steel, 14K Gold over SS) is refused (409 `not_quotable`): it is ordered from Customize at its price.
 - **An unsent quote is a draft.** Adding a note or changing the request's status never touches it (size, weight,
   price per g, price, quantity, validity, message, internal note); leaving the request with unsent changes asks
   *Discard the unsent quote?*, and closing or reloading the tab makes the browser warn.
@@ -613,7 +620,10 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
     the product did not exist. Before charms are launched their designs stay hidden. Once launched and then switched
     OFF, charm designs keep their pages, links, favorites and share links, read-only (above).
   - **Admin preview:** a browser signed in to the Admin sees and can test charms on the customer site while they are
-    OFF.
+    OFF — on a test account only (an address at a reserved test domain, such as example.com). On a customer's own
+    account every design, refinement, option, movie, Customize, bag, Make it yours and quote step of a hidden product
+    is refused (409 `preview_test_account_only`) before any credit or AI call, and its bag lines can't be ordered. A
+    preview order or quote request must use a test address too (409 `preview_test_address`), so it is a Test record.
   - **A simple switch.** Turning it on asks *Enable Charms for customers?* (Enable Charms | Cancel); turning it off asks
     *Switch Charms off for customers?* (Switch Charms off | Cancel). No phrase is typed. Charm designs, orders and
     settings are kept when charms are off.
@@ -626,7 +636,7 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
 
     While OFF, all of this is absent, and the customer API answers carry no product fields. A customer who already
     holds charms still sees their own charm orders correctly. The Admin preview shows the ON experience marked "Admin
-    preview · charms are hidden from customers".
+    preview · charms are hidden from customers" ("… are paused for customers" once they were on offer), phones included.
   - Every change is logged with its date and the Admin who made it.
 - **Charm sizes** are the charm's **total height, including the attachment loop** at the top: a 14 mm charm is 14 mm
   from its lowest point to the top of its loop. This applies everywhere: Customize, the bag, checkout, orders, emails,

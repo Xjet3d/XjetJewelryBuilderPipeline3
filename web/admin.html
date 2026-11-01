@@ -1900,8 +1900,9 @@
             <textarea class="inp mt-1" rows="9" x-model="qForm.message"></textarea></label>
           <label class="lbl block">Internal note — kept in the history, not sent
             <textarea class="inp mt-1" rows="2" x-model="qForm.note"></textarea></label>
+          <p x-show="qd.offer_problem" class="text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2" x-text="'No quote can be sent: ' + qd.offer_problem"></p>
           <div class="flex flex-wrap items-center gap-3">
-            <button class="btn" :disabled="qdBusy || !(qForm.unit_price > 0)" @click="sendQuote()" x-text="qd.offer ? 'Send the revised quote' : 'Send the quote'"></button>
+            <button class="btn" :disabled="qdBusy || !(qForm.unit_price > 0) || !!qd.offer_problem" :title="qd.offer_problem || ''" @click="sendQuote()" x-text="qd.offer ? 'Send the revised quote' : 'Send the quote'"></button>
             <span class="text-[12px] text-zinc-500" x-text="'To ' + qd.email_to + (qd.mail_mode === 'smtp' ? '' : ' · mail delivery is not active here: the email stays in the outbox, so copy the customer link below')"></span>
           </div>
         </div>

@@ -76,6 +76,34 @@ QuoteStatuses = ("new", "quoted", "answered", "approved", "rejected", "closed")
 CustomerQuoteLabels = {"new": "Requested", "quoted": "Quote sent", "answered": "Answered", "approved": "Approved",
                        "rejected": "Declined", "closed": "Closed"}
 QuoteManualStatuses = ("new", "quoted", "answered", "rejected", "closed")   # "approved" only by the customer (it creates the order)
+# What a customer reads when an order or quote request includes a product hidden from customers (an Admin's preview, on a
+# test account): its address must be a test address too, so the order or request is a Test record (p3/testrecords.py)
+PreviewTestAddressError = ("Admin preview: an order or quote request for a product hidden from customers must use a test address "
+                           "(a reserved test domain, such as example.com), so it stays a Test record.")
+
+
+def QuoteMaterialProblem(Ctx: Context, Product: str, MaterialId: str) -> str | None:
+    """Why this material can't be quoted for this product, or None. Today's rule, until the material statuses: only a
+    material without a fixed price (gold) is quoted; a fixed-price one is ordered from Customize at its price, never
+    quoted — no request, and no offer above or below the price table."""
+    Mat = Ctx.Catalog.Get(MaterialId or "")
+    if Mat is None:
+        return "This material is not in the catalog."
+    if Product == Products.Charm and not CharmPrices.IsOffered(Ctx.Catalog, Mat.Id):
+        return "This material is not offered for charms."
+    if Ctx.Catalog.IsPurchasableGroup(Mat.Group):
+        return f"{CharmPrices.MaterialLabel(Ctx, Product, Mat.Id)} has a fixed price: it is ordered from Customize, not quoted."
+    return None
+
+
+def QuoteOfferProblem(Ctx: Context, R: dict) -> str | None:
+    """Why a quote request can't be sent an offer, have its offer approved or become an order now, or None: its product
+    must be on offer to customers (Admin → Settings → Products) and its material quotable (QuoteMaterialProblem). The one
+    check behind the Admin's Send, the customer's quote page, Approve and the order made from a quote."""
+    Product = R.get("product_type") or Products.Ring
+    if not Ctx.Products.Available(Product):
+        return f"{Products.Plurals[Product]} are not on offer to customers (Admin → Settings → Products)."
+    return QuoteMaterialProblem(Ctx, Product, R.get("material_id"))
 
 
 def QuoteEvent(DbOrConn, RequestId: str, Kind: str, Data: dict | None = None, By: str = "system") -> None:
@@ -239,6 +267,11 @@ class OrderService:
         if not Q["ok"]:
             Bad = next(L for L in Q["lines"] if L["problem"])
             raise HttpError(409, "bag_not_orderable", Bad["problem"])
+        # A line of a product hidden from customers is orderable only in an Admin's preview on a test account: the order
+        # is a Test order too (its address at a reserved test domain), never a real one
+        Hidden = [L for L in Q["lines"] if L["product_type"] not in self.Ctx.Products.AvailableProducts()]
+        if Hidden and not ReservedEmail(Customer["email"]):
+            raise HttpError(409, "preview_test_address", PreviewTestAddressError)
         if len(Q["lines"]) > MaxLines:
             raise HttpError(409, "bag_too_large", f"An order can hold up to {MaxLines} lines.")
         # The validation service's verdict travels with the order; a confirmed suggestion replaces the address.
@@ -475,13 +508,16 @@ class OrderService:
             raise _Invalid(Problems)
         DesignId, CandidateId = str(Body.get("design_id") or ""), str(Body.get("candidate_id") or "")
         D = self.Customize.Images.RequireDesign(Who, DesignId)
+        Product = D.get("product_type") or Products.Ring
         if Visible is not None:                                       # a quote is an order step: not while switched OFF
-            Products.RequireOffered(D.get("product_type") or Products.Ring, Visible)
+            Products.RequireOffered(Product, Visible)
+        if Product not in self.Ctx.Products.AvailableProducts() and not ReservedEmail(Customer["email"]):
+            raise HttpError(409, "preview_test_address", PreviewTestAddressError)    # an Admin's preview: a Test request only
         C = self.Customize.Images.RequireReadyCandidate(DesignId, CandidateId)
         Mat = self.Ctx.Catalog.Get(str(Body.get("material_id") or ""))
         if Mat is None:
             raise HttpError(400, "unknown_material", "Unknown material.")
-        Charm = (D.get("product_type") or Products.Ring) == Products.Charm
+        Charm = Product == Products.Charm
         if Charm:
             if not CharmPrices.IsOffered(self.Ctx.Catalog, Mat.Id):
                 raise HttpError(400, "material_not_offered", "This material is not offered for charms.")
@@ -492,6 +528,9 @@ class OrderService:
             Size = Body.get("ring_size")
             if Size is not None and not self.Ctx.Catalog.IsValidSize(Size):
                 raise HttpError(400, "invalid_ring_size", "Please choose a standard ring size.")
+        Problem = QuoteMaterialProblem(self.Ctx, Product, Mat.Id)
+        if Problem:                                                   # a fixed-price material is ordered, never quoted
+            raise HttpError(409, "not_quotable", Problem)
         Qty = Body.get("quantity", 1)
         if not isinstance(Qty, int) or isinstance(Qty, bool) or not 1 <= Qty <= 10:
             raise HttpError(400, "invalid_quantity", "Quantity must be between 1 and 10.")
@@ -1283,6 +1322,8 @@ class OrderService:
         Existing = Db.One("SELECT id FROM orders WHERE owner_account_id = ? AND client_request_id = ?", (Q["owner_account_id"], Rid))
         if Existing:
             return self._OrderJson(Existing["id"])
+        if QuoteOfferProblem(self.Ctx, Q):            # never an order for a product off for customers or a material not quoted
+            raise HttpError(409, "quote_not_orderable", "This quote can no longer become an order. Please contact us.")
         Addr = self.ValidateAddress(AddressRaw)
         Problems = list(Addr["problems"])
         if Method not in ShippingOptions:

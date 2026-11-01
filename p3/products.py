@@ -17,7 +17,9 @@ viewable — their pages and old links, Favorites, Share and the sitemap — rea
 2026-10-15). A product never yet on offer stays hidden from customers. While rings are the only product
 on, the customer site is the ring-only site of before. The Admin configures every product regardless,
 and a browser signed in to the Admin sees the hidden products on the customer site (a preview), so a
-product can be built and tested internally before customers see it.
+product can be built and tested internally before customers see it. A preview is only for testing: a hidden
+product is designed, bagged, ordered and quoted only on a test account (an address at a reserved test domain,
+p3/testrecords.py), never on a customer's own, so it never places a real order or spends a customer's credits.
 
 The charm size definition lives here, in one place (CharmSizeDefinition, Charm3DHeight): for now the
 selected size is the charm's TOTAL height in millimetres, the attachment loop included — a 20 mm charm is
@@ -41,6 +43,9 @@ MovieKeys = {P: f"{Plurals[P].lower()}_movie" for P in All}               # ring
 # What a customer reads where a design of a product switched OFF can be seen but not made (RequireOffered)
 UnavailableText = "Currently unavailable for customization or ordering."
 UnavailableError = "This design is currently unavailable for customization or ordering."
+# What an Admin's browser reads when it previews a hidden product on an account that is not a test account
+PreviewOnlyError = ("Admin preview: this product is hidden from customers. Try it on a test account (an address at a reserved "
+                    "test domain, such as example.com), so no real order is placed and no customer credits are spent.")
 
 
 def DefaultProduct(Visible) -> str:
@@ -137,6 +142,11 @@ def Of(Db, DesignId: str) -> str:
 def OfCandidate(Db, CandidateId: str) -> str:
     R = Db.One("SELECT d.product_type FROM candidates c JOIN batches b ON b.id = c.batch_id JOIN designs d ON d.id = b.design_id "
                "WHERE c.id = ?", (CandidateId,))
+    return (R or {}).get("product_type") or Ring
+
+
+def OfGalleryItem(Db, ItemId: str) -> str:
+    R = Db.One("SELECT d.product_type FROM gallery_items g JOIN designs d ON d.id = g.design_id WHERE g.id = ?", (ItemId,))
     return (R or {}).get("product_type") or Ring
 
 
@@ -374,9 +384,35 @@ def RequireOffered(Product: str, Visible: tuple) -> str:
     return Product
 
 
-def RequireOnOffer(Ctx: Context, Product: str, Request=None) -> str:
-    """RequireOffered for this browser: the products on offer to it (an Admin's browser previews the hidden ones)."""
-    return RequireOffered(Product, VisibleProducts(Ctx, Request))
+def TestAccount(Ctx: Context, Who) -> bool:
+    """The caller's account is a test account: its address is at a domain reserved for tests (p3/testrecords.py)."""
+    from p3.testrecords import ReservedEmail
+    return Who is not None and ReservedEmail(Ctx.Accounts.Profile(Who).get("email"))
+
+
+def RequirePreviewAccount(Ctx: Context, Product: str, Request=None, Who=None) -> str:
+    """A product this browser sees only as an Admin's preview (hidden from customers) is designed, bagged, ordered and
+    quoted only on a test account — never on a customer's own, so a preview never places a real order or spends a
+    customer's credits (409 preview_test_account_only)."""
+    if (Product or Ring) in PreviewedProducts(Ctx, Request) and not TestAccount(Ctx, Who):
+        raise HttpError(409, "preview_test_account_only", PreviewOnlyError)
+    return Product
+
+
+def RequireOnOffer(Ctx: Context, Product: str, Request=None, Who=None) -> str:
+    """RequireOffered for this browser: the products on offer to it (an Admin's browser previews the hidden ones, on a
+    test account only: RequirePreviewAccount)."""
+    RequireOffered(Product, VisibleProducts(Ctx, Request))
+    return RequirePreviewAccount(Ctx, Product, Request, Who)
+
+
+def OfferedTo(Ctx: Context, Request=None, Who=None) -> tuple:
+    """The products this caller may bag, order and ask a quote for: the ones this browser sees, less those it sees only
+    as an Admin's preview unless the account is a test account (RequirePreviewAccount)."""
+    Visible, Available = VisibleProducts(Ctx, Request), _Available(Ctx)
+    if Visible == Available or TestAccount(Ctx, Who):
+        return Visible
+    return tuple(P for P in Visible if P in Available)
 
 
 def CharmsVisible(Ctx: Context, Request=None) -> bool:

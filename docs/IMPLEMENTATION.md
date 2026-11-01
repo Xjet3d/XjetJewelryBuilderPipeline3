@@ -598,8 +598,10 @@ charm (they read "US 20" before). Rings read as before. Tested in `tests/test_ch
   unchanged.
 - **Copy.** The FAQ (what you can create, price, sizes) and the Terms service sentence name rings and charms only
   while products are offered.
-- **Admin preview.** A small fixed indicator ("Admin preview · charms are hidden from customers") on tablet and
-  desktop, and a line in the product choice on a phone, while `catalog.products.preview` is true.
+- **Admin preview.** A small fixed indicator ("Admin preview · charms are hidden from customers", or "… are paused for
+  customers" for a product in `catalog.products.paused`) on every screen size, phones included, while
+  `catalog.products.preview` is true. A hidden product is tried only on a test account (`products.RequirePreviewAccount`,
+  `products.OfferedTo`; tests/test_order_quote_safety.py).
 - **Tests:** `tests/test_charm_customer.py`. It checks:
   - ring-only answers while hidden, and the product fields in Admin preview;
   - a customer holding charms keeps them after charms are hidden;

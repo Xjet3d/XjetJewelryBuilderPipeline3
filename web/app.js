@@ -1524,8 +1524,15 @@ function p3App() {
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
     get nothingOnOffer() { return (!!this.catalog || !!SERVER_PRODUCTS) && this.productsList.length === 0; },
     get previewedProducts() { return this.catalog?.products?.previewed || []; },  // hidden products an Admin's browser sees
+    get pausedPreview() { return this.catalog?.products?.paused || []; },         // … of those, the ones switched OFF after their launch
     get charmPreview() { return this.previewedProducts.length > 0; },
-    get previewText() { return this.previewedProducts.map(p => this.productPlural(p).toLowerCase()).join(' and ') + ' are hidden from customers'; },
+    get previewText() {
+      const names = list => list.map(p => this.productPlural(p).toLowerCase()).join(' and ');
+      const paused = this.previewedProducts.filter(p => this.pausedPreview.includes(p));
+      const hidden = this.previewedProducts.filter(p => !this.pausedPreview.includes(p));
+      return [paused.length ? names(paused) + ' are paused for customers' : '', hidden.length ? names(hidden) + ' are hidden from customers' : '']
+        .filter(Boolean).join('; ');
+    },
     productLabel(p) { return window.P3Products ? window.P3Products.label(p) : (p === 'charm' ? 'Charm' : 'Ring'); },
     productPlural(p) { return window.P3Products ? window.P3Products.plural(p) : (p === 'charm' ? 'Charms' : 'Rings'); },
     productIcon(p, cls = 'w-4 h-4') { return window.P3Products ? window.P3Products.icon(p, cls) : ''; },

@@ -11,6 +11,10 @@ quote replaces it, so only the latest quote can be decided). Approve asks for th
 turns the quote into an order at the quoted price — payment is arranged after, as for every order. Decline marks the
 quote rejected. Every step — the request, its emails, notes, each quote sent, the decision and the customer's note —
 is kept in the quote's history (quote_events).
+
+Every step towards an order — the Admin's Send, the customer's quote page, Approve and the order made from the quote —
+first checks that the product is on offer to customers and the material is quoted (orders.QuoteOfferProblem): a quote
+never turns a switched-off product or a fixed-price material into an order.
 """
 
 import hashlib
@@ -29,7 +33,7 @@ from p3 import ringids as RingIds
 from p3.context import Context, HttpError
 from p3.db import Dumps, Now
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
-from p3.orders import OrderRef, QuoteEvent, QuoteManualStatuses, QuoteOpen, QuoteRef, ShippingOptions
+from p3.orders import OrderRef, QuoteEvent, QuoteManualStatuses, QuoteOfferProblem, QuoteOpen, QuoteRef, ShippingOptions
 from p3.settings import WebDir
 
 DefaultValidDays = 14
@@ -217,6 +221,8 @@ class QuoteDesk:
                              "valid_until": (_Today() + timedelta(days=DefaultValidDays)).isoformat()},
                 "sizes": [float(S) for S in (self.Ctx.Products.CharmSizes if Charm else self.Ctx.Catalog.RingSizes)],
                 "statuses": list(QuoteManualStatuses), "can_send": R["status"] in QuoteOpen,
+                # why no quote can be sent for it now (product off for customers, material not quoted); None: it can
+                "offer_problem": QuoteOfferProblem(self.Ctx, R) if R["status"] in QuoteOpen else None,
                 "decision": {"at": R.get("decided_at"), "note": R.get("decision_note")} if R.get("decided_at") else None,
                 "order": Order and {"id": Order["id"], "ref": OrderRef(Order["order_no"]), "status": Order["status"],
                                     "payment_status": Order["payment_status"]}}
@@ -270,6 +276,9 @@ class QuoteDesk:
         Db, R = self.Ctx.Db, self._Row(RequestId)
         if R["status"] not in QuoteOpen:
             raise HttpError(409, "quote_decided", "This quote request is already decided or closed.")
+        Problem = QuoteOfferProblem(self.Ctx, R)
+        if Problem:
+            raise HttpError(409, "quote_not_offerable", f"No quote can be sent: {Problem}")
         Product = R.get("product_type") or Products.Ring
         Charm = Product == Products.Charm
         Size = _Num(Body.get("size"), "The size", 1000, Required=True)
@@ -374,6 +383,9 @@ class QuoteDesk:
         if Expired:
             return self._Render("This quote has expired", f"<p>The quote was valid until {_E(Offer['valid_until'])}. Contact us and "
                                                           f"quote {_E(Ref)} for a new one.</p>" + Body), 200
+        if QuoteOfferProblem(self.Ctx, R):            # the product or material is no longer quoted: no Approve, no order
+            return self._Render("This quote can't be approved online", f"<p>Please contact us about quote {_E(Ref)}; "
+                                                                       "we will help you with it.</p>" + Body), 200
         Forms = [self._ApproveForm(Token, R, Problems if Action != "reject" else None, Form),
                  self._RejectForm(Token, Problems if Action == "reject" else None, Form)]
         if Action == "reject":
@@ -474,7 +486,7 @@ class QuoteDesk:
         if R is None or State != "current" or R["status"] not in QuoteOpen:
             return self.Page(Token)
         Offer = self._Offer(R) or {}
-        if not Offer or date.fromisoformat(Offer["valid_until"]) < _Today():
+        if not Offer or date.fromisoformat(Offer["valid_until"]) < _Today() or QuoteOfferProblem(self.Ctx, R):
             return self.Page(Token)
         F = {**Form, "_form": "approve"}
         Problems = []

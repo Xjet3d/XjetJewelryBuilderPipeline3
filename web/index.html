@@ -1316,7 +1316,6 @@
                                                 <span class="text-[#8A6420]" x-html="productIcon(p)"></span><span x-text="productLabel(p)"></span></button>
                                         </template>
                                     </div>
-                                    <span x-show="charmPreview" class="sm:hidden w-full text-center text-[11px]" style="color:#8A6420;" x-text="'Admin preview — ' + previewText + '.'"></span>
                                 </div>
                                 <div x-show="!design && !productsOn" class="w-full flex items-start gap-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug justify-center text-center"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;" role="note">
@@ -2812,12 +2811,13 @@
         </div>
     </template>
 
-    <!-- ── Admin preview: this browser is signed in to the Admin and sees charms while customers do not ── -->
+    <!-- ── Admin preview: this browser is signed in to the Admin and sees products customers do not (hidden, or paused
+         after their launch); on phones too. They are tried only on a test account. ── -->
     <template x-teleport="body">
         <div x-show="charmPreview" x-cloak role="status"
-             class="hidden sm:flex fixed left-3 bottom-3 z-[590] items-center gap-2 px-3 py-1.5 rounded-full shadow-lg text-[12px]"
+             class="flex fixed left-3 bottom-3 z-[590] items-center gap-2 px-3 py-1.5 rounded-full shadow-lg text-[12px]"
              style="background:#2A2418; color:#F3E7CC; max-width:min(92vw, 440px);"
-             :title="previewText.replace(/^./, c => c.toUpperCase()) + ' (Admin → Settings → Products). This browser sees them because it is signed in to the Admin.'">
+             :title="previewText.replace(/^./, c => c.toUpperCase()) + ' (Admin → Settings → Products). This browser sees them because it is signed in to the Admin; they are tried only on a test account.'">
             <span x-html="productIcon(previewedProducts[0] || 'charm', 'w-3.5 h-3.5')"></span>
             <span><strong class="font-semibold">Admin preview</strong> · <span x-text="previewText"></span></span>
         </div>
