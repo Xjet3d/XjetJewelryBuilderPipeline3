@@ -15,11 +15,14 @@ from p3.settings import ConfigDir, LoadSettings
 
 ShippedProfile = ConfigDir / "pricing_profile.json"
 DevProfile = ConfigDir / "pricing_profile.dev-example.json"
+# An Admin's preview makes a hidden product only on a test account (p3/products.py RequirePreviewAccount): a test that
+# previews one passes AccountEmail=PreviewEmail, so the harness's account is a test account
+PreviewEmail = "harness.preview@example.com"
 
 
 class Harness:
     def __init__(self, TmpPath: Path, Profile: Path = ShippedProfile, AllowUnapproved=False,
-                 AdminKey=None, Provider=None, BasePath="", FalKey=None, Factories=None, **SettingsOverrides):
+                 AdminKey=None, Provider=None, BasePath="", FalKey=None, Factories=None, AccountEmail=None, **SettingsOverrides):
         self.TmpPath = TmpPath
         # The existing suite runs in the pre-AJW-39 sign-in mode ("legacy"); tests/test_auth*.py pass AuthMode="dual" / "modern".
         # Tests run without the per-IP / per-account throttles unless a test asks for them (RateLimits=True), and
@@ -34,7 +37,7 @@ class Harness:
         self.Ctx = self.App.state.Ctx
         self.Svc = self.App.state.Services
         # A generous allowance: the credits (4 per design) must not get in the way of tests that make several designs
-        self.Token, self.Who = self.Ctx.Accounts.IssueToken("test", MaxGenerations=100)
+        self.Token, self.Who = self.Ctx.Accounts.IssueToken("test", MaxGenerations=100, Email=AccountEmail)
         # With a base path every test request goes to http://p3.test/<Base>/..., exactly like production.
         self.Client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.App), base_url="http://p3.test" + self.Base,
                                         headers={"X-Access-Token": self.Token})

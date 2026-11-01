@@ -73,8 +73,10 @@ def _Meshes(H) -> int:
 async def _Tron(H) -> dict:
     """tron's orders as the audit found them (2026-10-14 18:15 UTC), with the same order numbers and the same shared
     designs: A (R-1012-D) in ORD-10001 and ORD-10002, B (R-1019-R1C) in ORD-10003 and ORD-10005, the charm C (C-1010-R1C)
-    in ORD-10004 and ORD-10005. The charm is 20 mm silver here (tron's is 14 mm stainless): the test catalogue's sizes."""
-    assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    in ORD-10004 and ORD-10005. The charm is 20 mm silver here (tron's is 14 mm stainless): the test catalogue's sizes.
+    Charms are on offer to customers, as on tron (an Admin's preview orders a hidden product only on a test account)."""
+    R = await H.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True}, headers=Admin)
+    assert R.status_code == 200, R.text
     await OfferCharmSizes(H, AdminKey)
     assert (await H.Client.put("/api/admin/charm-prices", json={"materials": Prices}, headers=Admin)).status_code == 200
     A, CandA = await _Design(H, "A fil twist band")

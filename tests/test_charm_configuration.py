@@ -6,7 +6,7 @@ import pytest
 
 from p3 import naming as Naming
 from p3.providers import endpoints
-from tests.conftest import Harness
+from tests.conftest import Harness, PreviewEmail
 
 AdminKey = "charm-config-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -17,7 +17,7 @@ CharmModels = ("nano-banana-pro-charm", "nano-banana-pro-edit-photo-charm", "nan
 
 @pytest.fixture
 async def HK(tmp_path):
-    Obj = Harness(tmp_path, AdminKey=AdminKey)
+    Obj = Harness(tmp_path, AdminKey=AdminKey, AccountEmail=PreviewEmail)   # a test account: the Admin's preview of charms
     yield Obj
     await Obj.Close()
 

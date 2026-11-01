@@ -18,7 +18,10 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 @pytest.fixture
 async def HP(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
-    assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # Admin preview of charms
+    assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # the Admin's browser
+    # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
+    assert (await Obj.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
+                                 headers=Admin)).status_code == 200
     await OfferCharmSizes(Obj, AdminKey)                                                           # 15–30 mm, as written
     yield Obj
     await Obj.Close()

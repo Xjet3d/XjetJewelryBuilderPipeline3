@@ -97,6 +97,9 @@ class Settings:
     # The controlled phase (the owner's authorization of 2026-10-13, §6): while set, only these orders (ids or references,
     # comma-separated) can be sent to Production — enforced by the server, not by the page; empty: every eligible order
     FulfillmentOrderAllowlist: tuple = ()        # P3_FULFILLMENT_ORDER_ALLOWLIST
+    # Whether a Test order (p3/testrecords.py) may be sent to Production: True / False; None (unset) = only on a staging
+    # copy, never on the live site (p3/fulfillment_bridge.py TestOrdersAllowed)
+    FulfillmentTestOrders: bool | None = None    # P3_FULFILLMENT_TEST_ORDERS
 
     @property
     def Production(self) -> bool:
@@ -204,6 +207,7 @@ def LoadSettings(**Overrides) -> Settings:
         TestOrderDomains=tuple(X.strip().lower() for X in os.environ.get("P3_TEST_ORDER_DOMAINS", "xjet3d.com").split(",") if X.strip()),
         FulfillmentUrl=os.environ.get("P3_FULFILLMENT_URL", "").strip().rstrip("/"),
         FulfillmentOrderAllowlist=tuple(X.strip() for X in os.environ.get("P3_FULFILLMENT_ORDER_ALLOWLIST", "").split(",") if X.strip()),
+        FulfillmentTestOrders=_Bool("P3_FULFILLMENT_TEST_ORDERS") if os.environ.get("P3_FULFILLMENT_TEST_ORDERS", "").strip() else None,
     )
     Values.update(Overrides)
     Values["BasePath"] = NormalizeBasePath(Values["BasePath"])

@@ -10,7 +10,7 @@ from PIL import Image
 
 from p3.modelconfig import ModelConfigStore, Models
 from p3.providers import endpoints
-from tests.conftest import Harness
+from tests.conftest import Harness, PreviewEmail
 
 AdminKey = "photo-reference-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -18,7 +18,7 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 
 @pytest.fixture
 async def HP(tmp_path):
-    Obj = Harness(tmp_path, AdminKey=AdminKey)
+    Obj = Harness(tmp_path, AdminKey=AdminKey, AccountEmail=PreviewEmail)   # a test account: the Admin's preview of charms
     yield Obj
     await Obj.Close()
 

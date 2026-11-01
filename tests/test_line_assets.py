@@ -52,6 +52,9 @@ async def test_a_charm_s_stl_finished_in_silver_is_the_stainless_line_s_stl_reco
     H = _On(tmp_path)
     try:
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
+        assert (await H.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
+                                   headers=Admin)).status_code == 200
         await OfferCharmSizes(H, AdminKey)
         Both = {**Prices, "stainless_steel": {"fixed_prices": {"20": 90, "25": 110}, "price_per_g": 10, "cost_per_g": 4}}
         assert (await H.Client.put("/api/admin/charm-prices", json={"materials": Both}, headers=Admin)).status_code == 200

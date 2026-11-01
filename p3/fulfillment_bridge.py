@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from p3 import assets
 from p3 import orders as OrdersModule
+from p3.sitepages import IndexKey
 from p3.testrecords import IsTestCustomer
 from p3.admin import RequireAdmin
 from p3.context import Context, HttpError
@@ -70,7 +71,10 @@ HandoverLabels = {
     "order_completed": ("Order completed — production disabled", "Reopen for Production, with a reason, if it must be made"),
     "legacy_status": ("In the existing production flow — not handed over", "its status was set by hand before the integration"),
     "not_enabled": ("Production hand-over restricted by the pilot allowlist", "only the orders on the pilot allowlist are handed over"),
+    "test_order": ("Test order — never handed over on the live site", "Test orders go to Production only on a staging copy"),
 }
+# Why a Test order can't be sent to Production here (TestOrdersAllowed)
+TestOrderReason = "a Test order is never handed over to Production on the live site"
 # Why an order line cannot be sent to Production now (docs/order-to-production-review.md §B.2) — the former single
 # verdict; kept for the codes Fulfillment's side and the history know
 ProductionReasons = {
@@ -371,6 +375,16 @@ class FulfillmentBridge:
         E = self.Enrollment(EntityType, EntityId)
         return bool(E and E["state"] == "enrolled")
 
+    def TestOrdersAllowed(self) -> bool:
+        """Whether a Test order may be sent to Production here (WP1, 1 Nov 2026): P3_FULFILLMENT_TEST_ORDERS when set;
+        otherwise only on a staging copy (proto, a local copy, the contract tests), never on the live site — a production
+        configuration, or a site open to search engines (Admin → Settings → System) — so a test (an Admin's preview
+        included) never reaches real production, while proto keeps testing the Fulfillment workflow with Test orders."""
+        S = self.Ctx.Settings
+        if S.FulfillmentTestOrders is not None:
+            return S.FulfillmentTestOrders
+        return not (S.Production or self.Ctx.Products.Get(IndexKey) is True)
+
     def OrderAllowed(self, O: dict) -> bool:
         """The controlled phase's allowlist (P3_FULFILLMENT_ORDER_ALLOWLIST, ids or references): while set, only those orders
         go to Production — the server's rule, whatever the page shows; an order already in Production stays allowed."""
@@ -403,6 +417,8 @@ class FulfillmentBridge:
             if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
                 return False, (f"In the existing production flow — its status '{OrdersModule.StatusLabels.get(O['status'], O['status'])}' was set by hand; "
                                "not handed over"), O
+            if O.get("test") and not self.TestOrdersAllowed():
+                return False, TestOrderReason, O
             if not self.OrderAllowed(O):
                 return False, NotEnabledReason, O
             return True, None, O
@@ -516,6 +532,8 @@ class FulfillmentBridge:
             return V("order_completed", reopenable=Ok, **({} if Ok else {"action": f"cannot be reopened: {Why}"}))
         if O["status"] not in EligibleOrderStatuses and not self.IsEnrolled("order", O["id"]):
             return V("legacy_status")
+        if O.get("test") and not self.TestOrdersAllowed():
+            return V("test_order")
         if not self.OrderAllowed(O):
             return V("not_enabled")
         return V("allowed")

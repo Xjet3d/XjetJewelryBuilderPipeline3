@@ -4,7 +4,7 @@ with the sizes (Settings → Products). A size is still the charm's total height
 
 import pytest
 
-from tests.conftest import Harness
+from tests.conftest import Harness, PreviewEmail
 
 AdminKey = "charm-sizes-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
@@ -12,7 +12,7 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 
 @pytest.fixture
 async def HS(tmp_path):
-    Obj = Harness(tmp_path, AdminKey=AdminKey)
+    Obj = Harness(tmp_path, AdminKey=AdminKey, AccountEmail=PreviewEmail)   # a test account
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # Admin preview of charms
     yield Obj
     await Obj.Close()

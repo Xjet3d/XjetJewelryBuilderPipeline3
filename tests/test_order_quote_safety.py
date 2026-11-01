@@ -3,17 +3,21 @@ fixed price, into an order: the Admin's Send, the customer's quote page, Approve
 refuse it (H1, M4); a quote request is accepted only for a quoted material (H3). An Admin's preview of a hidden product
 is for testing only: on a test account (an address at a reserved test domain) it works and its orders are Test orders;
 on a customer's own account every step that makes, bags, orders or quotes it is refused before any credit or AI call
-(H2). The preview marker shows on phones too and says when a product is paused rather than hidden (L6)."""
+(H2). A Test order reaches Production only on a staging copy such as proto, never on the live site. The preview
+marker shows on phones too and says when a product is paused rather than hidden (L6)."""
 
 import json
 
 import pytest
 
 from p3.context import HttpError
+from p3.fulfillment_bridge import TestOrderReason
 from p3.settings import WebDir
+from p3.sitepages import IndexKey
 from tests.conftest import Harness
 from tests.test_charm_foundation import CharmDesign
-from tests.test_orders import _Order
+from tests.test_fulfillment_bridge import Admin as BridgeAdmin, _On
+from tests.test_orders import _InBag, _Order
 from tests.test_quotes import Address, Admin, AdminKey, Customer, _Link, _Offer, _Request
 
 Preview = "preview_test_account_only"
@@ -161,6 +165,37 @@ async def test_an_admin_preview_on_a_test_account_works_and_its_orders_are_test_
         assert Ad["test"] is True                                            # a Test order: out of the figures, no customer email
     finally:
         await H.Close()
+
+
+async def test_a_test_order_reaches_production_only_on_a_staging_copy(tmp_path):
+    """The live site (open to search engines, as Atelier is) never hands a Test order to Production; a staging copy such
+    as proto does, so the Fulfillment workflow is tested with isolated Test orders. P3_FULFILLMENT_TEST_ORDERS overrides."""
+    H = _On(tmp_path)
+    try:
+        await _InBag(H, "Twisted rope band", Size=7, Material="silver", Qty=1)
+        R = await H.Client.post("/api/orders", json=_Order(client_request_id="t-1", customer={**Customer, "email": "dana@example.com"}))
+        assert R.status_code == 200, R.text
+        O = R.json()
+        State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=BridgeAdmin)).json()
+        assert State["lines"][0]["handover"]["state"] == "allowed"           # a staging copy: the hand-over is open
+        H.Ctx.Products.Set(IndexKey, True, "test")                           # the live site: open to search engines
+        State = (await H.Client.get(f"/api/admin/orders/{O['id']}/fulfillment", headers=BridgeAdmin)).json()
+        assert State["eligible"] is False and State["ineligible_reason"] == TestOrderReason
+        assert State["lines"][0]["handover"]["state"] == "test_order"
+        R = await H.Client.post(f"/api/admin/orders/{O['id']}/production", json={"line_ids": [O["lines"][0]["id"]], "note": ""},
+                                headers=BridgeAdmin)
+        assert R.status_code == 409 and R.json()["error"]["code"] == "not_eligible" and TestOrderReason in R.json()["error"]["message"]
+        assert _Count(H, "fulfillment_line_production") == 0
+    finally:
+        await H.Close()
+    for Over, Indexed in ((True, True), (False, False)):                    # the setting wins either way
+        (tmp_path / f"o{Over}").mkdir()
+        H = _On(tmp_path / f"o{Over}", FulfillmentTestOrders=Over)
+        try:
+            H.Ctx.Products.Set(IndexKey, Indexed, "test")
+            assert H.App.state.Bridge.TestOrdersAllowed() is Over
+        finally:
+            await H.Close()
 
 
 async def test_the_preview_marker_says_paused_or_hidden_and_shows_on_phones(tmp_path):
