@@ -122,8 +122,8 @@ class CustomizeService:
                             **Sessions.QuoteSnapshot(self.Ctx, Fields.get("material_id", Row["material_id"]), *Priced))
         return self.ToJson(self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ?", (Row["id"],)))
 
-    def Get(self, Who: Principal, CustomizationId: str) -> dict:
-        return self.ToJson(self._Owned(Who, CustomizationId))
+    def Get(self, Who: Principal, CustomizationId: str, Offered: tuple | None = None) -> dict:
+        return self.ToJson(self._Owned(Who, CustomizationId), Offered)
 
     def _Owned(self, Who: Principal, CustomizationId: str) -> dict:
         Row = self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ? AND owner_account_id = ?",
@@ -149,11 +149,15 @@ class CustomizeService:
             return False, "ring_size_required"
         return True, None
 
-    def ToJson(self, Row: dict) -> dict:
+    def ToJson(self, Row: dict, Offered: tuple | None = None) -> dict:
+        """Offered: the products this caller may order — a customization of any other (its product switched OFF) says
+        it can't go to the bag (design_unavailable), never "can add" (WP2). None: not checked (internal callers)."""
         Cand = self.Ctx.Db.One("SELECT * FROM candidates WHERE id = ?", (Row["candidate_id"],))
         Product = Products.Of(self.Ctx.Db, Row["design_id"])
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
         CanAdd, Reason = self.Purchasability(Row, Quote, Product)
+        if Offered is not None and Product not in Offered:
+            CanAdd, Reason = False, "design_unavailable"
         MovieOn = Products.MovieAvailable(self.Ctx, Product)       # OFF: the still image only, whatever movies exist
         Out = {
             "id": Row["id"], "design_id": Row["design_id"], "candidate_id": Row["candidate_id"],
@@ -229,9 +233,13 @@ class CustomizeService:
         bag's follow."""
         if not isinstance(Quantity, int) or isinstance(Quantity, bool) or not 1 <= Quantity <= MaxQuantity:
             raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
-        Line = self.Ctx.Db.One("SELECT design_id, quantity FROM bag_lines WHERE id = ? AND owner_account_id = ?", (LineId, Who.AccountId))
+        Line = self.Ctx.Db.One("SELECT design_id, product_type, quantity FROM bag_lines WHERE id = ? AND owner_account_id = ?",
+                               (LineId, Who.AccountId))
         if Line is None:
             raise HttpError(404, "bag_line_not_found", "Bag line not found.")
+        if Visible is not None and (Line.get("product_type") or Products.Ring) not in Visible:   # its product is OFF: locked
+            raise HttpError(409, "design_unavailable", "This piece is currently unavailable for customization or ordering — "
+                                                       "its quantity can't change. You can remove it from your bag.")
         if Line["quantity"] != Quantity:
             self.Ctx.Db.Execute("UPDATE bag_lines SET quantity = ? WHERE id = ? AND owner_account_id = ?", (Quantity, LineId, Who.AccountId))
             Sessions.Record(self.Ctx, Who.AccountId, "bag_quantity_changed", Line["design_id"], line_id=LineId, quantity=Quantity)
@@ -247,7 +255,8 @@ class CustomizeService:
 
     def Bag(self, Who: Principal, Visible: tuple | None = None) -> dict:
         """The bag at today's prices. Visible: the products on offer to this browser — a line of a product switched OFF
-        stays in the bag, marked unavailable, and is not orderable (None: every product, for internal callers)."""
+        stays in the bag, marked unavailable, and is not orderable (None: every product, for internal callers). A line
+        that can't be ordered is left out of the total and never blocks the others (WP2): the rest can be ordered."""
         Lines = []
         Paused = False
         Totals: dict[str, float] = {}
@@ -256,7 +265,7 @@ class CustomizeService:
                                "JOIN candidates c ON c.id = b.candidate_id JOIN designs d ON d.id = b.design_id "
                                "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,))
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Rows}))
-        Orderable = True
+        Count = 0                                   # the lines that can be ordered now
         for L in Rows:
             Mat = self.Ctx.Catalog.Get(L["material_id"])
             Product = L.get("product_type") or Products.Ring
@@ -275,9 +284,10 @@ class CustomizeService:
             else:
                 LineOk = Mat is not None and self.Ctx.Catalog.IsPurchasableGroup(Mat.Group) and Q.IsAvailable \
                     and L["ring_size"] is not None and self.Ctx.Catalog.IsValidSize(L["ring_size"])
-            Orderable = Orderable and LineOk
             Total = round(L["unit_price"] * L["quantity"], 2)
-            Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + Total, 2)
+            if LineOk:                                  # only what can be ordered counts in the total
+                Count += 1
+                Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + Total, 2)
             Lines.append({"id": L["id"], "design_id": L["design_id"], "title": L["title"], "ring_id": Refs.get(L["candidate_id"]),
                           "candidate_id": L["candidate_id"], "image_url": self.Ctx.AssetUrl(L["asset_path"]),
                           "material_id": L["material_id"],
@@ -291,7 +301,11 @@ class CustomizeService:
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
                           **({"unavailable": True} if Off else {}),
                           "quote": json.loads(L["quote_json"])})
-        return {"lines": Lines, "totals": Totals, "checkout_available": bool(Lines) and Orderable,
-                "checkout_note": None if Orderable else (
-                    "One of the lines is currently unavailable for customization or ordering — remove it to continue." if Paused
-                    else "One of the lines cannot be ordered yet — see the line for the reason.")}
+        Left = len(Lines) - Count
+        Note = None
+        if Left:
+            Note = (("One line is" if Left == 1 else f"{Left} lines are") + " "
+                    + ("currently unavailable for customization or ordering" if Paused else "not orderable yet — see the line for the reason")
+                    + "." + ((" It stays" if Left == 1 else " They stay") + " in your bag, left out of the total; the rest can be ordered."
+                             if Count else ""))
+        return {"lines": Lines, "totals": Totals, "checkout_available": Count > 0, "checkout_note": Note}

@@ -172,9 +172,11 @@ def Story(Ctx: Context, Design: str | None = None, Visible: tuple = Products.All
     Choices = [{"slug": S["slug"], "title": S["row"]["title"]} for S in Ranked]
     if not Ranked:
         Out = {"story": None, "choices": []}
-        Still = _Still(Ctx, Visible)
+        # The hero shows a design's still instead of an empty stage; with no product on offer, XJet's own printed pieces (WP2)
+        Still = _Still(Ctx, Visible) or (None if Visible else {"title": "Printed in real metal by XJet",
+                                                               "image_url": f"{Ctx.Settings.BasePath}/static/images/printed-jewelry.jpg"})
         if Still:
-            Out["still"] = Still                       # the hero shows the still instead of an empty stage
+            Out["still"] = Still
         return Out
     Want = ShareSlug(Design or "")
     Best = next((S for S in Ranked if Want and Want in (S["slug"], ShareSlug(S["row"]["title"]))), Ranked[0])

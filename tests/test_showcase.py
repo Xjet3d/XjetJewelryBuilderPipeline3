@@ -199,7 +199,8 @@ async def test_the_hero_tells_a_story_only_where_its_movie_may_be_shown(HG):
     # Rings not on offer: nothing of them in the hero
     await H.Client.post("/api/admin/gallery", json={"design_id": Did, "owner_kind": "xjet"}, headers=Admin)
     await H.Client.put("/api/admin/products/availability", json={"product": "ring", "available": False}, headers=Admin)
-    assert (await H.Client.get("/api/showcase")).json() == {"story": None, "choices": []}
+    Printed = {"title": "Printed in real metal by XJet", "image_url": "/static/images/printed-jewelry.jpg"}
+    assert (await H.Client.get("/api/showcase")).json() == {"story": None, "choices": [], "still": Printed}   # no product: XJet's pieces
     # The engine shows the still when there is no story
     Js = (await H.Client.get("/static/showcase.js")).text
     assert "if (A.still && A.still.image_url) showStill(A.still);" in Js

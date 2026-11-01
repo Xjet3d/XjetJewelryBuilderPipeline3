@@ -102,7 +102,8 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
     Price = ("Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the "
              "price. A charm is priced by material and size." if R and C else
              "Fashion jewelry pieces are priced per piece by material and size." if C else
-             "Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price.")
+             "Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price." if R else
+             "Fashion jewelry pieces are priced per piece by material.")             # no product on offer: no ring wording
     Ring = "Ring sizes are US sizes (see the size guide on the Customize screen)"
     Charm = "charm size is its total height in millimeters, including the loop at the top"
     Usd = "Yes — all prices are in US dollars." + (f" {Ring}; a {Charm}." if R and C else f" {Ring}." if R else
@@ -219,10 +220,12 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
     if View == "materials":
         How = ("Fashion metals have a fixed price per piece — a ring’s price does not depend on its size; a charm is priced by material and size."
                if R and C else "Fashion metals have a fixed price per charm, set by material and size — any design."
-               if C else "Fashion metals have a fixed price per ring — any size, any design.")
+               if C else "Fashion metals have a fixed price per ring — any size, any design."
+               if R else "Fashion metals have a fixed price per piece, set by material.")
         Fixed = ("Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size."
                  if R and C else "Prices in US dollars, per charm, fixed for the material and size."
-                 if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.")
+                 if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price."
+                 if R else "Prices in US dollars, per piece, fixed for the material.")
         return {"materialsTitle": "Real metal, one fixed price per " + W["noun"],
                 "materialsIntro": f"Every {W['noun']} is printed to order in the metal you choose. {How} Gold is quoted individually.",
                 "materialsNote": f"{Fixed} Each {W['noun']} is made to order, and its price does not change with its final "

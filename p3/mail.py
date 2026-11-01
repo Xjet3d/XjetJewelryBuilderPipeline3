@@ -88,7 +88,7 @@ def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
     return ("Your XJet Atelier sign-in code", _Layout("You're all set", f"""\
         <p style="margin:0 0 14px;">{_Greeting(Name)}</p>
         <p style="margin:0 0 28px;">Your email is verified and your account is ready. Click the button below to
-           start designing your ring &mdash; you'll be signed in automatically.</p>
+           start designing &mdash; you'll be signed in automatically.</p>
         {_Button(U, "Start designing")}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;">
           <tr><td style="border-top:1px solid #E5DED0;padding-top:20px;{_Font}font-size:12px;color:#8F8F8F;line-height:1.6;">

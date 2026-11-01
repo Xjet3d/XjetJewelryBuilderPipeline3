@@ -605,9 +605,19 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
   their pages `/gallery/<name>`, old `/design/` links, Share, ♥ Favorites and the sitemap. They are read-only, marked
   "Currently unavailable for customization or ordering". The server refuses every production action on a design of
   it with 409 `design_unavailable`: Make it yours, choosing an option, Customize, a customization change, a movie,
-  another option, adding to the bag, a quote request. A bag line of it stays, marked, and cannot be ordered. A product
-  never yet on offer (charms before their launch) stays hidden: its designs are only in the Admin preview.
-  `GET /api/admin/products` says `launched` per product. docs/SEO.md has the table.
+  another option, adding to the bag, a quote request. A product never yet on offer (charms before their launch) stays
+  hidden: its designs are only in the Admin preview. `GET /api/admin/products` says `launched` per product. docs/SEO.md
+  has the table.
+- **What customers keep while a product is paused (WP2, 2026-11-01).** Their own designs of it stay in My Designs, marked
+  "Currently unavailable" (`available: false`), and open read-only — refining is refused plainly (409
+  `design_unavailable`), never a 404; Customize says it can't go to the bag (`design_unavailable`). A new design of it
+  is refused plainly (409 `product_unavailable`: "Rings are currently unavailable for new designs."). Its bag lines stay,
+  marked, left out of the bag's total, with their quantity locked; they never block the rest: the other lines are
+  ordered and the paused ones stay in the bag. Checkout sends what it showed (`expected_lines`, `expected_total`): a bag
+  that changed meanwhile is refused (409 `bag_changed`) and shown again. Inspiration Gallery tiles always carry their
+  product (but on the ring-only site), so a charm is never called a ring. With no product on offer, the FAQ and
+  Materials say "per piece" and the homepage hero and share image show XJet's printed pieces. Switched back ON,
+  everything is as before (tests/test_rings_onoff.py).
 - **360° movie per product: ON / OFF** (default ON for every product; `PUT /api/admin/products/movie
   {"product", "on"}`; log keys `rings_movie` / `charms_movie`). OFF: Customize makes no movie and shows the still image
   only; an explicit movie request answers 409 `movie_off`; the movies that already exist (a gallery master's included)

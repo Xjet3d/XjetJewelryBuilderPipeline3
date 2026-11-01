@@ -89,7 +89,8 @@ async def test_a_customer_who_holds_charms_keeps_seeing_them_after_charms_are_hi
     assert "products" not in (await H.Client.get("/api/catalog")).json()
     Mine = (await H.Client.get("/api/orders")).json()["orders"][0]
     assert Mine["product_types"] == ["charm"] and Mine["lines"][0]["size_label"] == "20 mm"
-    assert (await H.Client.get(f"/api/designs/{B['design_id']}")).status_code == 404       # the design itself stays hidden
+    D = await H.Client.get(f"/api/designs/{B['design_id']}")                              # paused after launch: it opens, read-only (WP2)
+    assert D.status_code == 200 and D.json()["available"] is False and D.json()["customization"]["add_to_bag_blocked_reason"] == "design_unavailable"
 
 
 async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):

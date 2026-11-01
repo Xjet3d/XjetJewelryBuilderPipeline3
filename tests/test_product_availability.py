@@ -35,8 +35,8 @@ async def test_rings_can_be_switched_off_and_charms_carry_the_site(tmp_path):
         assert Cat["products"]["preview"] is False and Cat["products"]["previewed"] == []
         assert Cat["products"]["names"]["charm"] == {"label": "Charm", "plural": "Charms"}
         assert all(isinstance(M["prices"], list) for M in Cat["products"]["charm"]["materials"])
-        R = await H.Client.post("/api/designs", data={"prompt": "A slim band", "product": "ring"})
-        assert R.status_code == 400 and R.json()["error"]["code"] == "unknown_product"
+        R = await H.Client.post("/api/designs", data={"prompt": "A slim band", "product": "ring"})     # paused: said plainly (WP2)
+        assert R.status_code == 409 and R.json()["error"] == {"code": "product_unavailable", "message": "Rings are currently unavailable for new designs."}
         B = await H.NewDesign("A heart charm")                                               # no product named: the one on offer
         assert (await H.Design(B["design_id"]))["product_type"] == "charm"
         assert (await H.Client.get("/api/designs")).json()["designs"][0]["product_type"] == "charm"   # product fields stay
@@ -46,13 +46,15 @@ async def test_rings_can_be_switched_off_and_charms_carry_the_site(tmp_path):
         assert St["availability"] == {"ring": False, "charm": False}
         Cat = (await H.Client.get("/api/catalog")).json()
         assert Cat["products"]["available"] == [] and Cat["products"]["default"] == "ring"
-        assert (await H.Client.post("/api/designs", data={"prompt": "A slim band"})).status_code == 400
-        assert (await H.Client.get("/api/designs")).json()["designs"] == []
+        assert (await H.Client.post("/api/designs", data={"prompt": "A slim band"})).status_code == 409
+        Mine = (await H.Client.get("/api/designs")).json()["designs"]                       # paused designs stay, read-only (WP2)
+        assert B["design_id"] in [D["id"] for D in Mine] and all(D["available"] is False for D in Mine)
         assert 'content="Design custom jewelry with AI' in (await H.Client.get("/")).text
-        # Back to rings only: the ring-only answers of before; the charm design stays hidden
+        # Back to rings only: the ring-only answers of before; the charm design (paused) opens, read-only (WP2)
         await _Set(H, "ring", True)
         assert "products" not in (await H.Client.get("/api/catalog")).json()
-        assert (await H.Client.get(f"/api/designs/{B['design_id']}")).status_code == 404
+        D = await H.Client.get(f"/api/designs/{B['design_id']}")
+        assert D.status_code == 200 and D.json()["available"] is False
         # The older body still switches charms; bad values and customers are refused
         R = await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
         assert R.json()["charms_available"] is True and R.json()["availability"]["charm"] is True
@@ -84,7 +86,7 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
         await _Set(H, "ring", False)
         Api = (await H.Client.get("/api/gallery")).json()
         Tiles = Api["items"]
-        assert len(Tiles) == 1 and "product_type" not in Tiles[0]                            # one product: no label needed
+        assert len(Tiles) == 1 and Tiles[0]["product_type"] == "charm"                        # a charm is never taken for a ring (WP2)
         assert [(T["id"], T["available"], T["product_type"]) for T in Api["paused"]] == [(Items["ring"], False, "ring")]
         R = await H.Client.get(f"/api/gallery/{Items['ring']}/share")
         assert R.status_code == 200 and R.json()["available"] is False

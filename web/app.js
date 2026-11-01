@@ -1789,7 +1789,8 @@ function p3App() {
       return null;
     },
     get canActOnSelection() { return this.selectedCandidate?.status === 'ready'; },
-    get canCustomize() { return this.canActOnSelection && !this.pendingBatch; },     // never while a refinement is made (R-18)
+    // never while a refinement is made (R-18), nor for a design of a product switched OFF (WP2: viewable, read-only)
+    get canCustomize() { return this.canActOnSelection && !this.pendingBatch && !this.isOff(this.design); },
     readyCount(b) { return b ? b.candidates.filter(c => c.status === 'ready').length : 0; },
     retryableCount(b) { return b ? b.candidates.filter(c => c.status === 'failed' && c.retryable).length : 0; },
     // "Retry missing · free" or "Try again · free" is on screen for this batch: the paid option stays hidden meanwhile
@@ -1948,6 +1949,7 @@ function p3App() {
     async refine() {
       this.composeError = ''; this.composeRefusal = '';
       if (!this.canActOnSelection) { this.composeError = 'Select one of the designs to refine it.'; return; }
+      if (this.isOff(this.design)) { this.composeError = 'This design is currently unavailable for customization or ordering.'; return; }
       const text = this.userInput.trim();
       if (text.length < 3) { this.composeError = 'Describe the change you want.'; return; }
       const designId = this.design.id, product = this.design.product_type || 'ring';
@@ -2264,6 +2266,7 @@ function p3App() {
       if (!this.cust || this.quotePending) return 'Updating price…';
       switch (this.cust.add_to_bag_blocked_reason) {
         case 'luxury_preview_only': return 'Request a quote';
+        case 'design_unavailable': return 'Currently Unavailable';
         case 'price_unavailable': return 'Price Unavailable';
         case 'ring_size_required': return 'Choose your ring size';
         case 'charm_size_required': return 'Choose your charm size';
@@ -2276,6 +2279,7 @@ function p3App() {
       switch (this.cust.add_to_bag_blocked_reason) {
         case 'luxury_preview_only': return this.custIsCharm ? 'Gold charms are quoted individually.' : 'Gold rings are quoted individually.';
         case 'price_unavailable': return 'Price unavailable — this piece cannot be added to the bag yet.';
+        case 'design_unavailable': return 'This design is currently unavailable for customization or ordering.';
         case 'ring_size_required': return 'Choose your ring size to continue.';
         case 'charm_size_required': return 'Choose your charm size to continue.';
         case 'charm_size_not_offered': return 'This size is no longer offered — please choose another size.';
@@ -2523,6 +2527,9 @@ function p3App() {
           promo_code: this.co.promo_code || null, terms_accepted: this.co.terms === true,
           client_request_id: this.co.requestId, use_suggested_address: this.co.useSuggested,
           customer_note: this.co.note.trim() || null,
+          // what this page showed: a bag that changed meanwhile is reviewed again, never paid for unseen (WP2)
+          expected_lines: (this.coQuote?.lines || []).filter(l => !l.problem).map(l => l.bag_line_id),
+          expected_total: this.coQuote?.total ?? null,
         });
         this.order = o;
         this.co.note = ''; this._clearCoDraft();                       // placed: the draft has done its job
@@ -2541,6 +2548,7 @@ function p3App() {
           this._focusProblem();
         }
         if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
+        if (e.code === 'bag_changed') { await this.refreshBag(); await this.coRequote(); this.co.error = e.message; }
       } finally { this.co.busy = false; }
     },
     async loadOrders() {

@@ -431,6 +431,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Image = html.escape(f"{Origin}{Media.ThumbUrl(Tiles[0]['image_url'], 800, 'jpg')}", quote=True)
             Tags += [f'<meta property="og:image" content="{Image}">', f'<meta name="twitter:image" content="{Image}">',
                      f'<meta property="og:image:alt" content="{html.escape(Tiles[0]["title"], quote=True)} — designed with XJet Atelier">']
+        elif not Products.VisibleProducts(Ctx, request):   # no product on offer, so no gallery design: XJet's printed pieces (WP2)
+            Image = html.escape(f"{Origin}{Base}/static/images/printed-jewelry.jpg", quote=True)
+            Tags += [f'<meta property="og:image" content="{Image}">', f'<meta name="twitter:image" content="{Image}">',
+                     '<meta property="og:image:alt" content="Jewelry printed in real metal by XJet">']
         return "\n    ".join(Tags)
 
     def GalleryLinks(request: Request, IncludePaused: bool = False) -> list[dict]:
@@ -893,9 +897,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
     def Seen(request: Request) -> tuple[tuple, bool]:
-        """The products this browser may see, and whether to label tiles with their product (only with a choice)."""
+        """The products this browser may see, and whether tiles carry their product: always, but on the ring-only site of
+        before (its answers have no product fields) — a charm tile is never taken for a ring while rings are OFF (WP2)."""
         Visible = Products.VisibleProducts(Ctx, request)
-        return Visible, len(Visible) > 1
+        return Visible, Visible != (Products.Ring,)
 
     @App_.get("/api/gallery")
     async def GalleryTiles(request: Request):
@@ -993,7 +998,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # The product is fixed here, once, for the design and everything refined from it. A ring needs nothing
         # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
         Visible = Products.VisibleProducts(Ctx, request)
-        Product = Products.RequireVisible(Ctx, Products.Normalize(product, Products.DefaultProduct(Visible)), request)
+        Requested = Products.Normalize(product, Products.DefaultProduct(Visible))
+        if Requested in Products.PausedProducts(Ctx, request):          # switched OFF after its launch: said plainly (WP2)
+            raise HttpError(409, "product_unavailable", f"{Products.Plurals[Requested]} are currently unavailable for new designs.")
+        Product = Products.RequireVisible(Ctx, Requested, request)
         Products.RequirePreviewAccount(Ctx, Product, request, Who)        # before the prompt check and the credits
         ReferencePng = None
         if reference is not None and reference.filename:
@@ -1014,11 +1022,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/designs")
     async def ListDesigns(request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly({"designs": Svc.Designs.List(Tok(x_access_token), Products.VisibleProducts(Ctx, request))}, request)
+        return RingOnly({"designs": Svc.Designs.List(Tok(x_access_token), Products.VisibleProducts(Ctx, request),
+                                                     Products.PausedProducts(Ctx, request))}, request)
 
     @App_.get("/api/designs/{DesignId}")
     async def GetDesign(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request)), request)
+        return RingOnly(Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request),
+                                        Products.PausedProducts(Ctx, request)), request)
 
     @App_.delete("/api/designs/{DesignId}")
     async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):
@@ -1029,8 +1039,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
         Visible, Instruction, RequestId = Products.VisibleProducts(Ctx, request), Body_.get("instruction", ""), Body_.get("client_request_id")
-        D = Svc.Images.RequireDesign(Who, DesignId, Visible)              # the design refined: its product and its words
-        Products.RequirePreviewAccount(Ctx, D.get("product_type") or Products.Ring, request, Who)
+        # The design refined (its product and its words): a design of a product paused after its launch is found and
+        # refused plainly (409 design_unavailable), never a 404 (WP2); an Admin's preview, on a test account only
+        D = Svc.Images.RequireDesign(Who, DesignId, Visible + Products.PausedProducts(Ctx, request))
+        Products.RequireOnOffer(Ctx, D.get("product_type") or Products.Ring, request, Who)
         Check = None
         # A request that is only "more variations" (the phrase list, nothing else in it) never reaches the model: the
         # fixed instruction does, so it is not checked (the charm check refused these words, 25 Oct). Anything more
@@ -1086,8 +1098,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return Svc.Customize.Proceed(Who, DesignId, Body_.get("candidate_id"))
 
     @App_.get("/api/customizations/{CustomizationId}")
-    async def GetCustomization(CustomizationId: str, x_access_token: str | None = Header(None)):
-        return Svc.Customize.Get(Tok(x_access_token), CustomizationId)
+    async def GetCustomization(CustomizationId: str, request: Request, x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        return Svc.Customize.Get(Who, CustomizationId, Products.OfferedTo(Ctx, request, Who))
 
     @App_.patch("/api/customizations/{CustomizationId}")
     async def UpdateCustomization(CustomizationId: str, request: Request, Body_: dict = Body(...),

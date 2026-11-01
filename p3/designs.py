@@ -24,9 +24,10 @@ class DesignService:
                             "WHERE b.design_id = ? AND c.status = 'ready' ORDER BY b.created_at DESC, c.slot LIMIT 1", (DesignId,))
         return self.Ctx.AssetUrl(C["asset_path"]) if C else None
 
-    def List(self, Who: Principal, Visible: tuple = ("ring", "charm")) -> list[dict]:
+    def List(self, Who: Principal, Visible: tuple = ("ring", "charm"), Paused: tuple = ()) -> list[dict]:
         """The customer's own designs and the shared gallery designs they started, latest activity first — of the
-        products this browser can see (a charm stays out of a ring-only site)."""
+        products this browser can see (a charm stays out of a ring-only site), and of a product paused after its launch:
+        listed, marked unavailable and read-only, so they never vanish while it is OFF (WP2)."""
         Out = []
         for D in self.Ctx.Db.All("SELECT * FROM designs WHERE owner_account_id = ? AND removed_at IS NULL "
                                  "ORDER BY updated_at DESC LIMIT 100", (Who.AccountId,)):
@@ -41,7 +42,8 @@ class DesignService:
                         "thumbnail_url": self._Thumb(U["design_id"], U["selected_candidate_id"] or U["source_candidate_id"]),
                         "updated_at": U["last_active_at"], "created_at": U["started_at"], "shared": True, "origin": "gallery",
                         "product_type": U.get("product_type") or "ring"})
-        Out = [X for X in Out if X["product_type"] in Visible]
+        Out = [{**X, **({"available": False} if X["product_type"] in Paused else {})}
+               for X in Out if X["product_type"] in Visible or X["product_type"] in Paused]
         Out.sort(key=lambda X: X["updated_at"] or "", reverse=True)
         return Out[:100]
 
@@ -63,8 +65,10 @@ class DesignService:
             return {"removed": True, "shared": True}
         raise HttpError(404, "design_not_found", "Design not found.")
 
-    def Get(self, Who: Principal, DesignId: str, Visible: tuple = ("ring", "charm")) -> dict:
-        D = self.Images.RequireDesign(Who, DesignId, Visible)
+    def Get(self, Who: Principal, DesignId: str, Visible: tuple = ("ring", "charm"), Paused: tuple = ()) -> dict:
+        """A design of the customer's — of a product paused after its launch too: it opens, marked unavailable and
+        read-only (WP2: never a 404 while its product is OFF); its Customize choice says it can't go to the bag."""
+        D = self.Images.RequireDesign(Who, DesignId, Visible + Paused)
         Batches = [self.Images.GetBatch(B["id"]) for B in self.Ctx.Db.All(
             "SELECT id FROM batches WHERE design_id = ? ORDER BY created_at", (DesignId,))]
         # A shared XJet master design: the customer's own selection and choices, the images shared.
@@ -75,7 +79,7 @@ class DesignService:
         if Selected:
             Row = self.Ctx.Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
                                   (Who.AccountId, DesignId, Selected))
-            Customization = self.Customize.ToJson(Row) if Row else None
+            Customization = self.Customize.ToJson(Row, Visible) if Row else None
         SourceCandidate = Use["source_candidate_id"] if Use else D.get("source_candidate_id")
         # Derived from another design: a gallery journey when that design belongs to someone else (a customer's
         # fork of a master); the owner's own refinement of their own master is a design of their own
@@ -88,12 +92,15 @@ class DesignService:
             for B in Batches:
                 B["user_text"] = None
                 B["reference_url"] = None
-        return {"id": D["id"], "title": D["title"], "prompt": None if FromGallery else D["prompt"],
-                "product_type": D.get("product_type") or "ring",
-                "selected_candidate_id": Selected, "created_at": Use["started_at"] if Use else D["created_at"],
-                "updated_at": Use["last_active_at"] if Use else D["updated_at"], "batches": Batches,
-                "customization": Customization, "shared": bool(Use),
-                "origin": "gallery" if FromGallery else "prompt",
-                "source_ring_id": RingIds.CandidateRef(self.Ctx.Db, SourceCandidate) if SourceCandidate else None,
-                # Set once the design has a movie, 3D, order or gallery tile: a refinement is then saved as a new design
-                "refinement_creates_new_design": "shared" if Use else self.Images.CommittedReason(DesignId)}
+        Out = {"id": D["id"], "title": D["title"], "prompt": None if FromGallery else D["prompt"],
+               "product_type": D.get("product_type") or "ring",
+               "selected_candidate_id": Selected, "created_at": Use["started_at"] if Use else D["created_at"],
+               "updated_at": Use["last_active_at"] if Use else D["updated_at"], "batches": Batches,
+               "customization": Customization, "shared": bool(Use),
+               "origin": "gallery" if FromGallery else "prompt",
+               "source_ring_id": RingIds.CandidateRef(self.Ctx.Db, SourceCandidate) if SourceCandidate else None,
+               # Set once the design has a movie, 3D, order or gallery tile: a refinement is then saved as a new design
+               "refinement_creates_new_design": "shared" if Use else self.Images.CommittedReason(DesignId)}
+        if (D.get("product_type") or "ring") in Paused:
+            Out["available"] = False                   # its product is paused: viewable, read-only
+        return Out

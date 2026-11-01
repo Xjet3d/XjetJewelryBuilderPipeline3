@@ -213,7 +213,8 @@ class OrderService:
                 "subtotal": Subtotal, "discount": round(Discount, 2), "promo": Promo, "promo_error": PromoError_,
                 "shipping_method": Ship["id"] if Ship else None, "shipping": Shipping,
                 "total": round(max(0.0, Subtotal - Discount) + Shipping, 2),
-                "ok": bool(Ok) and all(not L["problem"] for L in Lines) and Ship is not None,
+                # a line that can't be ordered is left out (shown with its problem) and never blocks the rest (WP2)
+                "ok": bool(Ok) and Ship is not None, "excluded": len(Lines) - len(Ok),
                 "repriced": any(L["repriced"] for L in Ok)}
 
     # ── validation ───────────────────────────────────────────────────────
@@ -242,6 +243,22 @@ class OrderService:
                 "validation": {**Result, "provider": self.Validator.Name if self.Validator.Name != "none" else None}}
 
     # ── place an order ───────────────────────────────────────────────────
+    @staticmethod
+    def _BagChanged(Body: dict, Ordered: list[dict], Total: float) -> bool:
+        """The bag changed after Checkout showed it (WP2): the lines the page showed as ordered (expected_lines) or its
+        total (expected_total) differ from what would be ordered now — the customer reviews it again. Not sent: not
+        checked (older pages)."""
+        Lines = Body.get("expected_lines")
+        if isinstance(Lines, list) and sorted(str(X) for X in Lines) != sorted(L["bag_line_id"] for L in Ordered):
+            return True
+        Expected = Body.get("expected_total")
+        if Expected is None:
+            return False
+        try:
+            return round(float(Expected), 2) != round(float(Total), 2)
+        except (TypeError, ValueError):
+            return True
+
     def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None, Origin: str = "") -> dict:
         Db = self.Ctx.Db
         Rid = (Body.get("client_request_id") or "").strip() or None
@@ -267,12 +284,16 @@ class OrderService:
         if not Q["ok"]:
             Bad = next(L for L in Q["lines"] if L["problem"])
             raise HttpError(409, "bag_not_orderable", Bad["problem"])
+        # The order holds the lines that can be ordered now; the others stay in the bag (WP2)
+        Ordered = [L for L in Q["lines"] if not L["problem"]]
+        if self._BagChanged(Body, Ordered, Q["total"]):
+            raise HttpError(409, "bag_changed", "Your bag changed while you were checking out — please review it and place the order again.")
         # A line of a product hidden from customers is orderable only in an Admin's preview on a test account: the order
         # is a Test order too (its address at a reserved test domain), never a real one
-        Hidden = [L for L in Q["lines"] if L["product_type"] not in self.Ctx.Products.AvailableProducts()]
+        Hidden = [L for L in Ordered if L["product_type"] not in self.Ctx.Products.AvailableProducts()]
         if Hidden and not ReservedEmail(Customer["email"]):
             raise HttpError(409, "preview_test_address", PreviewTestAddressError)
-        if len(Q["lines"]) > MaxLines:
+        if len(Ordered) > MaxLines:
             raise HttpError(409, "bag_too_large", f"An order can hold up to {MaxLines} lines.")
         # The validation service's verdict travels with the order; a confirmed suggestion replaces the address.
         Validation = Addr["validation"]
@@ -290,7 +311,7 @@ class OrderService:
                          "final_amount": round(Q["subtotal"] - Promo["discount"], 2)} if Promo else None
         # Each line is pinned to the 3D version its option is made from right now (the design's current one — LIFO or the
         # Admin's choice); a later version never changes it. A design without a model yet is pinned when it is prepared.
-        Pins = {L["bag_line_id"]: (Versions.MeshFor(Db, L["design_id"], L["candidate_id"]) or {}).get("id") for L in Q["lines"]}
+        Pins = {L["bag_line_id"]: (Versions.MeshFor(Db, L["design_id"], L["candidate_id"]) or {}).get("id") for L in Ordered}
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
@@ -302,7 +323,7 @@ class OrderService:
                           Status, Method, Q["currency"], Q["subtotal"], Q["discount"], Q["shipping"], Q["total"],
                           Promo["code"] if Promo else None, Dumps(PromoSnapshot) if PromoSnapshot else None,
                           TermsVersion, T, Rid, f"Customer's note: {Note}" if Note else None, T, T))
-            for N, L in enumerate(Q["lines"], start=1):
+            for N, L in enumerate(Ordered, start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
                              "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
@@ -317,7 +338,7 @@ class OrderService:
             if Promo:
                 self.Promos.Redeem(Conn, Promo["promo_id"])
             Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
-                         (OrderId, "placed", Dumps({"total": Q["total"], "lines": len(Q["lines"]), "promo": Promo["code"] if Promo else None}),
+                         (OrderId, "placed", Dumps({"total": Q["total"], "lines": len(Ordered), "promo": Promo["code"] if Promo else None}),
                           "customer", T))
         # Payment through the adapter: today "pending" with a plain message — never a faked success.
         Order = Db.One("SELECT * FROM orders WHERE id = ?", (OrderId,))
@@ -329,7 +350,7 @@ class OrderService:
         if PayStatus == "paid":
             self._SetStatus(OrderId, "payment_confirmed", self.Payment.Name, "Paid through the provider")
         Ref = OrderRef(Db.One("SELECT order_no FROM orders WHERE id = ?", (OrderId,))["order_no"])
-        for L in Q["lines"]:
+        for L in Ordered:
             Size = {"product_type": Products.Charm, "charm_size": L["charm_size"]} if L["product_type"] == Products.Charm \
                 else {"ring_size": L["ring_size"]}
             Sessions.Record(self.Ctx, Who.AccountId, "order_placed", L["design_id"], order_id=OrderId, order_ref=Ref,

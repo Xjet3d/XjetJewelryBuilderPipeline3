@@ -89,10 +89,9 @@ async def test_a_paused_design_stays_viewable_everywhere_and_nothing_of_it_is_ma
         _Refused(await H.Client.post(f"/api/candidates/{OwnCand}/movie"), "movie")
         _Refused(await H.Client.post(f"/api/candidates/{OwnCand}/retry"), "another option")
         _Refused(await H.Client.post(f"/api/batches/{OwnBatch}/retry-failed"), "retry")
-        for Did, Who in ((D["id"], Cust), (Own["design_id"], None)):                   # refining: the design is not open to it
-            R = await H.Client.post(f"/api/designs/{Did}/batches", json={"parent_candidate_id": Cand, "instruction": "Thinner"},
-                                    **({"headers": Who} if Who else {}))
-            assert R.status_code == 404, R.text
+        for Did, Who in ((D["id"], Cust), (Own["design_id"], None)):                   # refining: refused plainly (WP2), never a 404
+            _Refused(await H.Client.post(f"/api/designs/{Did}/batches", json={"parent_candidate_id": Cand, "instruction": "Thinner"},
+                                         **({"headers": Who} if Who else {})), "refine")
         # Its bag line stays, marked, and cannot be ordered
         Bag = (await H.Client.get("/api/bag", headers=Cust)).json()
         assert Bag["checkout_available"] is False and Bag["lines"][0]["orderable"] is False and Bag["lines"][0]["unavailable"] is True
