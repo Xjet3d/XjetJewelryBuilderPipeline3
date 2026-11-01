@@ -1069,6 +1069,7 @@ class OrderService:
         Lines = self._Lines(O["id"])
         J = self.ToJson(O, Lines, ForCustomer=False)
         J["test_marking"] = self.TestMarking(dict(O))                        # may an Admin mark it Test (or unmark it) now (2026-10-16)
+        J["test_orders_to_production"] = bool(self.Ctx.Settings.FulfillmentTestOrders)   # does this site hand Test orders over (WP1)
         for L in J["lines"]:
             L.update(self._ThreeDForLine(L))
             # what the activation of a bore-corrected STL did with this line, if it concerned it (FixBore update, 2026-10-15)

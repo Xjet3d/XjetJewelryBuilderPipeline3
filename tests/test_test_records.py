@@ -31,7 +31,7 @@ def test_the_reserved_domains_are_the_test_customers():
 
 
 async def test_a_test_order_is_marked_never_emails_its_customer_and_stays_out_of_the_figures(tmp_path):
-    H = _On(tmp_path, StaffNotifyEmails=("ops@xjet3d.com",), FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones,
+    H = _On(tmp_path, FulfillmentTestOrders=True, StaffNotifyEmails=("ops@xjet3d.com",), FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones,
             FulfillmentUrl="https://tron/atelier-fulfillment")                  # every milestone: this test is about the test customer, not the selection
     try:
         DidT, T = await _PlacedAs(H, Synthetic, "click-t")

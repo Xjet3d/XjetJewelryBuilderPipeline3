@@ -738,7 +738,10 @@ function adminApp() {
       if (!this.od || this.odBusy) return;
       const yes = await this.ask({ title: (Test ? 'Mark ' : 'Unmark ') + this.od.ref + ' as a test order?',
         text: Test ? (this.od.test_marking?.internal === false ? 'Its customer is not internal: mark it only if it is a QA order placed from a customer account — a real customer’s order must stay real. ' : '')
-                   + 'For an internal trial: Fulfillment will treat it as a Test order — it can be marked shipped and delivered, its customer is never e-mailed by Fulfillment’s milestones, and it is kept out of the figures. Possible only before the order is sent to Production, and never for a paid order.'
+                   + (this.od.test_orders_to_production
+                      ? 'For an internal trial: Fulfillment will treat it as a Test order — it can be marked shipped and delivered, its customer is never e-mailed by Fulfillment’s milestones, and it is kept out of the figures.'
+                      : 'For an internal trial: it is kept out of the figures and its customer is never e-mailed by Fulfillment’s milestones. Test orders are never sent to Production on this site (WP1).')
+                   + ' Possible only before the order is sent to Production, and never for a paid order.'
                    : 'It becomes a normal order again: during the pilot Fulfillment will stop it at Packed. Possible only before it is sent to Production.',
         confirmLabel: Test ? 'Mark as test order' : 'Unmark', input: { label: 'Reason (kept in the order history)', required: true } });
       if (!yes) return;

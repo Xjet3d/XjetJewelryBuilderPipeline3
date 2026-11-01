@@ -29,7 +29,7 @@ async def _Mark(H, OrderId: str, Test: bool, Reason: str = "internal trial of th
 
 
 async def test_an_internal_order_is_test_only_once_an_admin_marks_it_and_fulfillment_receives_it(tmp_path):
-    H = _On(tmp_path)
+    H = _On(tmp_path, FulfillmentTestOrders=True)          # a staging copy (proto): Test orders go to Production
     try:
         Did, O = await _Internal(H, "t-1")
         A = await _Admin(H, O["id"])
@@ -91,7 +91,8 @@ async def test_a_qa_order_from_a_customer_account_can_be_marked_with_a_reason_a_
 
 
 async def test_fulfillment_milestones_never_email_a_marked_test_order(tmp_path):
-    H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0)
+    H = _On(tmp_path, FulfillmentCustomerNotifications=True, FulfillmentNotificationMilestones=AllMilestones, FulfillmentNotificationWindowS=0,
+            FulfillmentTestOrders=True)                     # a staging copy (proto): Test orders go to Production
     try:
         Did, O = await _Internal(H, "t-n")
         assert (await _Mark(H, O["id"], True)).status_code == 200
