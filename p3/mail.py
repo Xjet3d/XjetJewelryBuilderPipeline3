@@ -14,6 +14,7 @@ import logging
 import os
 import smtplib
 import socket
+import ssl
 import uuid
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -436,8 +437,19 @@ class OutboxMailer:
         return json.loads(F.read_text(encoding="utf-8")) if F.is_file() else None
 
 
+class RelaySmtp(smtplib.SMTP):
+    """Connects to the relay's IPv4 address but keeps its name, so STARTTLS checks the certificate against the name."""
+
+    def _get_socket(self, host, port, timeout):
+        Ip = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+        return socket.create_connection((Ip, port), timeout, self.source_address)
+
+
 class SmtpMailer:
     """P2 SendMailUtils.MailSender equivalent (xjet3d Exchange Online relay, no auth).
+
+    SMTP_STARTTLS=true encrypts the connection, with the relay's certificate and name verified; when the relay
+    cannot do that, the message is not sent at all (never in plain text instead). Off by default, as in P2.
 
     Each sent message is also recorded in the developer outbox (var/outbox, readable only via
     the admin-key /api/dev/outbox) with the relay's verdict, so delivery can be diagnosed.
@@ -449,6 +461,7 @@ class SmtpMailer:
         self.Server = os.environ.get("SMTP_SERVER", "xjet3d-com.mail.protection.outlook.com")
         self.Port = int(os.environ.get("SMTP_PORT", "25"))
         self.PreferIpv4 = os.environ.get("SMTP_PREFER_IPV4", "true").lower() in ("1", "true", "yes")
+        self.StartTls = os.environ.get("SMTP_STARTTLS", "false").lower() in ("1", "true", "yes")
         self.From = os.environ.get("MAIL_FROM", "no-reply@xjet3d.com")
         self.FromName = os.environ.get("MAIL_FROM_NAME", "XJet Atelier")
         # Replies reach the support inbox (MAIL_REPLY_TO, else P3_SUPPORT_EMAIL, else the shared inbox), never no-reply
@@ -468,8 +481,14 @@ class SmtpMailer:
         # send_message has started, a broken connection leaves the outcome unknown (spec §24.3) — the two are told apart
         Phase = "connect"
         try:
-            Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
-            with smtplib.SMTP(Host, self.Port, timeout=30) as Smtp:      # relay whitelists the IP: no auth/TLS
+            if self.StartTls:
+                Smtp = (RelaySmtp if self.PreferIpv4 else smtplib.SMTP)(self.Server, self.Port, timeout=30)
+            else:
+                Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
+                Smtp = smtplib.SMTP(Host, self.Port, timeout=30)      # relay whitelists the IP: no auth
+            with Smtp:
+                if self.StartTls:
+                    Smtp.starttls(context=ssl.create_default_context())   # a refused or unverified TLS sends nothing
                 Phase = "send"
                 Refused = Smtp.send_message(Msg)
         except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as E:   # the relay answered: the message was not taken
@@ -486,7 +505,7 @@ class SmtpMailer:
             if self.Record:
                 self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp refused: {Refused}")
             raise MailNotAccepted(f"recipients refused: {Refused}")
-        Verdict = f"smtp accepted by {self.Server}:{self.Port}"
+        Verdict = f"smtp accepted by {self.Server}:{self.Port}" + (" over TLS" if self.StartTls else "")
         if self.Record:
             self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict)
         Logger.info("SMTP mail to %s: %s — %s", _MaskTo(To), Subject, Verdict)

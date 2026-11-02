@@ -145,6 +145,7 @@ payment decision (reservation model is truthful today — see F).
 | `P3_PAYMENT_PROVIDER` | Only `none` exists | Optional | `none` | no | — (decision, F) |
 | `P3_MAIL_MODE` | `smtp` in production (`outbox` sends nothing) | **Required** | `smtp` | no | — |
 | `SMTP_SERVER` / `SMTP_PORT` / `SMTP_PREFER_IPV4` | The relay | **Required** (server) | `<relay>` / `25` / `true` | no | Microsoft 365 relay (as P2) |
+| `SMTP_STARTTLS` | Encrypt the relay connection; certificate and relay name verified, nothing sent if TLS fails | Recommended | `true` | no | `false` (as P2) |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender | **Required** | `no-reply@xjet3d.com` / `XJet Atelier` | no | — |
 | `MAIL_REPLY_TO` | Where replies go (a read mailbox) | Optional | unset = the support address | no | — |
 | `P3_SUPPORT_EMAIL` | The support address shown on the site and in emails | Optional | unset = `atelier@xjet3d.com` | no | — |
