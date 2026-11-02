@@ -235,7 +235,7 @@ async def test_the_privacy_page_tells_customers_what_is_used_with_no_draft_notic
     try:
         Live = _Live((await H.Client.get("/privacy")).text, "privacy")
         assert "Draft pending legal review" not in Live and "adapted for this preview" not in Live
-        for Text in ("with Google or Apple", "with a password", "Cookies and similar technologies", "Essential — always active.",
+        for Text in ("with Google (we receive", "with a password", "Cookies and similar technologies", "Essential — always active.",
                      "Analytics &amp; Performance — only with your consent.", "Google Analytics 4", "Microsoft Clarity",
                      "configured to mask sensitive information", "Atelier does not currently use marketing or advertising cookies.",
                      ">Technology<", ">Purpose<", ">How long<", "Cookies: up to 2 years. Detailed data: 14 months.",
