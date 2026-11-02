@@ -222,6 +222,8 @@ function adminApp() {
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
     pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
+    // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
+    mstat: null, mstatEdit: {}, mstatNote: '', mstatBusy: false, mstatMsg: '', mstatErr: false,
     sizesEdit: null, sizeAdd: '', sizeAddName: '', sizeNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
@@ -403,7 +405,7 @@ function adminApp() {
       if (this.tab === 'gallery') await this.loadGallery();
       if (this.tab === 'settings') {
         if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
-        if (this.sub === 'pricing') await this.loadCharmPrices();
+        if (this.sub === 'pricing') { await this.loadCharmPrices(); await this.loadMaterialStatuses(); }
         if (this.sub === 'promos') await this.loadPromos();
         if (this.sub === 'products') await this.loadProducts();
         if (this.sub === 'keys') {
@@ -2398,6 +2400,37 @@ function adminApp() {
         this.mprices = await this.api('PUT', '/api/admin/material-prices', { materials, note: this.mpNote || 'Edited in Admin' });
         this.mpEdit = null; this.mpMsg = 'Saved as ' + this.mprices.version + '. New 3D calculations and the website use it now.';
       } catch (e) { this.mpErr = true; this.mpMsg = e.message; } finally { this.mpBusy = false; }
+    },
+    // ── Customer status per metal (WP3): Available, Preview Only, Quote Only, Hidden — set per product, saved apart
+    // from the prices (no price version) and logged; the confirmation lists the customer records each change touches ──
+    async loadMaterialStatuses() { this.mstat = await this.api('GET', '/api/admin/material-statuses').catch(() => null); },
+    statusRow(p, id) { return (this.mstat?.products?.[p] || []).find(r => r.id === id); },
+    statusOf(p, id) { return this.mstatEdit[p + ':' + id] ?? this.statusRow(p, id)?.status; },
+    statusBlocked(p, id, s) { return this.statusRow(p, id)?.blocked?.[s] || ''; },
+    statusLabel(s) { return (this.mstat?.statuses || []).find(x => x.id === s)?.label || s; },
+    setStatus(p, id, s) {
+      const k = p + ':' + id, edit = { ...this.mstatEdit };
+      if (s === this.statusRow(p, id)?.status) delete edit[k]; else edit[k] = s;
+      this.mstatEdit = edit; this.mstatMsg = ''; this.mstatErr = false;
+    },
+    get mstatPending() { return Object.keys(this.mstatEdit).length; },
+    async saveMaterialStatuses() {
+      const changes = Object.entries(this.mstatEdit).map(([k, status]) => { const [product, material_id] = k.split(':'); return { product, material_id, status }; });
+      const n = (v, one) => v + ' ' + one + (v === 1 ? '' : 's');
+      this.mstatBusy = true; this.mstatMsg = ''; this.mstatErr = false;
+      try {
+        const plan = await this.api('PUT', '/api/admin/material-statuses', { changes, dry_run: true });
+        const lines = plan.changes.map(c => {
+          const a = c.affected, quotes = a.open_quotes.map(q => q.ref + (q.offer ? ' (quote sent)' : '')).join(', ');
+          return this.pLabel(c.product) + ' · ' + c.label + ': ' + this.statusLabel(c.from) + ' → ' + this.statusLabel(c.to) + ' — '
+            + n(a.customizations, 'saved customization') + ', ' + n(a.bag_lines, 'bag line') + (quotes ? ', open quotes: ' + quotes : '');
+        });
+        this.mstatBusy = false;
+        if (!await this.confirmChanges(lines, 'Change what customers can do with these metals?', 'Customize, the bag, checkout, quotes and the Materials page follow at once. No price changes; orders already placed are not affected.', 'Save the statuses')) return;
+        this.mstatBusy = true;
+        this.mstat = await this.api('PUT', '/api/admin/material-statuses', { changes, note: this.mstatNote || 'Customer statuses changed in Admin' });
+        this.mstatEdit = {}; this.mstatNote = ''; this.mstatMsg = 'Saved. Customers see the new statuses now.';
+      } catch (e) { this.mstatErr = true; this.mstatMsg = e.message; } finally { this.mstatBusy = false; }
     },
     // ── charm pricing: a fixed price per material and size, price and cost per gram (never a ring price) ──
     async loadCharmPrices() { this.cprices = await this.api('GET', '/api/admin/charm-prices').catch(() => null); },

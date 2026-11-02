@@ -7,6 +7,7 @@ import json
 import re
 
 from p3 import sitepages as SitePages
+from p3.config import LoadCatalog
 from p3.settings import WebDir
 from tests.conftest import Harness
 
@@ -311,11 +312,8 @@ def test_every_sentence_the_server_writes_is_still_on_the_page():
     """The server writes a page's computed sentences (p3/sitepages.py Fallbacks) into the bindings that show them: each
     binding must still exist in web/index.html (a renamed getter would otherwise leave the server's text unused)."""
     Source = (WebDir / "index.html").read_text(encoding="utf-8") + (WebDir / "partials" / "site-footer.html").read_text(encoding="utf-8")
-    class Ctx:                                       # what Fallbacks reads: the catalog's metal names
-        class Catalog:
-            @staticmethod
-            def ToJson():
-                return {"groups": [{"id": "fashion", "materials": [{"label": "Silver"}]}, {"id": "luxury", "materials": [{"label": "18K Yellow Gold"}]}]}
+    class Ctx:                                       # what Fallbacks reads: the catalog's metals by status (none set: today's)
+        Catalog = LoadCatalog()
     for View in SitePages.Paths:
         for Products_ in (("ring",), ("charm",), ("ring", "charm")):
             for Expr in SitePages.Fallbacks(View, Ctx, Products_, SitePages.HeroCollection(Products_)):
@@ -366,7 +364,9 @@ async def test_the_materials_page_keeps_its_cards_room_until_the_catalog_answers
         Groups = {G["id"]: len(G["materials"]) for G in H.Ctx.Catalog.ToJson()["groups"]}
         Fashion, Gold = Live.count('<div class="material-ph"></div>'), Live.count('gold-ph" aria-hidden="true" data-ssr-placeholder x-show="!catalog"')
         assert Fashion == Groups["fashion"] >= 1 and Gold == Groups["luxury"] >= 1
-        for Group, Loop in SitePages.MaterialLoops.items():
+        Shown = {G: L for G, L in SitePages.MaterialLoops.items() if L in Live}
+        assert set(Shown) == {"fashion", "luxury"}                    # no metal is Preview Only: that section is left out (WP3)
+        for Group, Loop in Shown.items():
             I = Live.index(Loop)
             assert Live.rindex("data-ssr-placeholder", 0, I) > Live.rindex('<div class="grid', 0, I), Group    # inside the grid, before the loop
         assert Page.count('<div class="material-ph"></div>') == Fashion                        # not in the template the app keeps

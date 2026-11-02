@@ -281,8 +281,10 @@ def Summaries(Ctx: Context, DesignIds: list[str] | None = None, OwnerAccountId: 
         Size = (Line or Cust or {}).get("ring_size")
         Product = D.get("product_type") or "ring"
         CharmSize = (Line or Cust or {}).get("charm_size")
-        # A charm opens without a size, so any size on it was chosen by the customer
-        CharmChosen = bool(Line) or any(X.get("charm_size") is not None for X in Changed) or bool(Cust and Cust.get("charm_size") is not None)
+        # A charm opens on the recommended size since WP3 (before: without a size), so, as for a ring, only a bag line or an
+        # explicit change is a choice — and a size on a charm opened before event tracking
+        CharmChosen = bool(Line) or any(X.get("charm_size") is not None for X in Changed) or bool(
+            Cust and Cust.get("charm_size") is not None and Cust["candidate_id"] not in Tracked)
         Fixed = FixedPrice(Ctx, Line, Ev, Material, Product, CharmSize)
         Thumb = next((X for X in Ready if X["id"] == Selected), Ready[0] if Ready else None)
         Last3D = T3[Did][-1] if T3[Did] else None

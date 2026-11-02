@@ -54,7 +54,7 @@ async def test_a_paused_design_stays_viewable_everywhere_and_nothing_of_it_is_ma
         assert (await H.Client.put(f"/api/designs/{D['id']}/selection", json={"candidate_id": Cand}, headers=Cust)).status_code == 200
         C = (await H.Client.post(f"/api/designs/{D['id']}/customize", json={"candidate_id": Cand}, headers=Cust)).json()
         await H.Idle()
-        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14}, headers=Cust)).status_code == 200
+        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14, "material_id": "silver"}, headers=Cust)).status_code == 200
         Bag = (await H.Client.post("/api/bag", json={"customization_id": C["id"]}, headers=Cust)).json()
         assert Bag["checkout_available"] is True and Bag["lines"][0]["orderable"] is True
 
@@ -195,4 +195,5 @@ def test_the_customer_page_shows_a_paused_design_read_only_from_every_entry_poin
     assert '<div x-show="!isOff(galleryItem)" class="order-last md:order-none max-md:sticky max-md:bottom-0' in Page   # with its sign-in note
     assert "Love this design? Make it yours." not in Page                  # one display heading: the design's name (2026-10-20)
     assert "x-text=\"isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'\"" in Page
-    assert "x-text=\"l.unavailable ? 'Currently unavailable for customization or ordering' : 'Cannot be ordered yet'\"" in Page
+    assert ("x-text=\"l.unavailable ? 'Currently unavailable for customization or ordering' : (l.material_status === 'preview' ? "
+            "'Preview only — not available to order' : 'Cannot be ordered yet')\"") in Page          # WP3: a Preview Only metal

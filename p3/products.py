@@ -175,6 +175,7 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize,
             "prompt_check": {"ring": False, "charm": False},                          # p3/promptcheck.py: off
             "site_indexing": False,                                                  # p3/sitepages.py: search engines kept out
+            "material_statuses": {},                                                 # p3/materialstatus.py: none = today's behaviour
             "google_site_verification": "",                                          # Search Console's meta tag (public, not a secret)
             "analytics": {"enabled": False, "host": "", "providers": {}},  # p3/analytics.py: off, no tool, nothing loads
             "ai_spend_warning": {"threshold_usd": None, "to": ""},                  # p3/spendwarning.py: off

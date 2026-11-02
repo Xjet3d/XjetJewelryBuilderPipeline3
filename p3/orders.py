@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from p3 import addressing as Addressing
 from p3 import assets
 from p3 import charmprices as CharmPrices
+from p3 import materialstatus as MaterialStatus
 from p3 import payments as Payments
 from p3 import products as Products
 from p3 import ringids as RingIds
@@ -83,17 +84,32 @@ PreviewTestAddressError = ("Admin preview: an order or quote request for a produ
 
 
 def QuoteMaterialProblem(Ctx: Context, Product: str, MaterialId: str) -> str | None:
-    """Why this material can't be quoted for this product, or None. Today's rule, until the material statuses: only a
-    material without a fixed price (gold) is quoted; a fixed-price one is ordered from Customize at its price, never
-    quoted — no request, and no offer above or below the price table."""
+    """Why this material can't be quoted for this product, or None: only a Quote Only metal is quoted
+    (p3/materialstatus.py, WP3). An available one is ordered from Customize at its price, never quoted — no request,
+    and no offer above or below the price table; a Preview Only or hidden one is neither ordered nor quoted."""
     Mat = Ctx.Catalog.Get(MaterialId or "")
     if Mat is None:
         return "This material is not in the catalog."
     if Product == Products.Charm and not CharmPrices.IsOffered(Ctx.Catalog, Mat.Id):
         return "This material is not offered for charms."
-    if Ctx.Catalog.IsPurchasableGroup(Mat.Group):
-        return f"{CharmPrices.MaterialLabel(Ctx, Product, Mat.Id)} has a fixed price: it is ordered from Customize, not quoted."
+    Status, Label = MaterialStatus.Of(Ctx, Product, Mat.Id), CharmPrices.MaterialLabel(Ctx, Product, Mat.Id)
+    if Status == MaterialStatus.Available:
+        return f"{Label} has a fixed price: it is ordered from Customize, not quoted."
+    if Status == MaterialStatus.Preview:
+        return f"{Label} is preview only: it is not available to order or quote."
+    if Status == MaterialStatus.Hidden:
+        return f"{Label} is no longer offered."
     return None
+
+
+def MaterialProblems(Ctx: Context, Product: str, Status: str) -> str:
+    """Why a bag line in a metal that is not Available is not ordered (WP3): it stays in the bag."""
+    Noun = Products.Plurals[Product]
+    if Status == MaterialStatus.Quote:                       # gold, as always: a quote request instead
+        return f"Gold {Noun.lower()} are quoted individually — remove this line and use Request a quote."
+    if Status == MaterialStatus.Preview:
+        return MaterialStatus.PreviewText(Ctx, Product)
+    return MaterialStatus.HiddenText() + " Remove this line from your bag."
 
 
 def QuoteOfferProblem(Ctx: Context, R: dict) -> str | None:
@@ -149,27 +165,27 @@ class OrderService:
 
     def _BagLines(self, Who: Principal, Visible: tuple | None = None) -> list[dict]:
         """The bag at today's prices: a line is orderable only with a product on offer (Visible: to this browser; None:
-        every product), a purchasable material, an available price and a standard size. The snapshot price is kept for
-        the "repriced" flag only."""
+        every product), a metal Available for it (p3/materialstatus.py, WP3), an available price and a standard size. The
+        snapshot price is kept for the "repriced" flag only."""
         Out = []
+        Statuses = {P: MaterialStatus.Map(self.Ctx, P) for P in Products.All}
         for L in self.Ctx.Db.All("SELECT b.*, c.asset_path, d.title FROM bag_lines b JOIN candidates c ON c.id = b.candidate_id "
                                  "JOIN designs d ON d.id = b.design_id WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,)):
             Mat = self.Ctx.Catalog.Get(L["material_id"])
             Product = L.get("product_type") or Products.Ring
             Q = CharmPrices.QuoteFor(self.Ctx, Product, L["material_id"], L.get("charm_size")) if Mat else None
             Problem = None
+            Status = Statuses[Product].get(L["material_id"], MaterialStatus.Hidden) if Mat else MaterialStatus.Hidden
             if Visible is not None and Product not in Visible:      # its product is switched OFF: kept, never ordered
                 Problem = Products.UnavailableText
+            elif Status != MaterialStatus.Available:                 # kept in the bag, never ordered (WP3)
+                Problem = MaterialProblems(self.Ctx, Product, Status)
             elif Product == Products.Charm:
                 # a charm's price depends on its size: the size is checked first
-                if Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
-                    Problem = "Gold charms are quoted individually — remove this line and use Request a quote."
-                elif L["charm_size"] is None or not self.Ctx.Products.IsValidCharmSize(L["charm_size"]):
+                if L["charm_size"] is None or not self.Ctx.Products.IsValidCharmSize(L["charm_size"]):
                     Problem = "Please choose one of the charm sizes."
                 elif not Q.IsAvailable:
                     Problem = "The price for this charm in this size and material is not available right now."
-            elif Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
-                Problem = "Gold rings are quoted individually — remove this line and use Request a quote."
             elif not Q.IsAvailable:
                 Problem = "The price for this material is not available right now."
             elif L["ring_size"] is None or not self.Ctx.Catalog.IsValidSize(L["ring_size"]):

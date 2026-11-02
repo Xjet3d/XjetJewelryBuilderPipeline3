@@ -2801,6 +2801,17 @@
       <p class="text-[12px] text-zinc-500 flex-1 min-w-[260px]" x-text="pProduct === 'charm' ? 'Charm prices: a fixed price per material and size. Completely separate from ring prices \u2014 a charm never uses a ring price.' : 'Ring prices: one fixed price per material (the ring size never changes it). Saving here never changes a charm price.'"></p>
     </section>
 
+    <!-- Customer status changes (WP3): pending in either table, saved together after a confirmation of what they touch -->
+    <section class="card p-4 space-y-2" x-show="sub === 'pricing' && mstat && (mstatPending || mstatMsg)" aria-label="Customer status changes">
+      <p class="text-[13px] font-semibold" x-show="mstatPending" x-text="mstatPending + ' customer status change' + (mstatPending === 1 ? '' : 's') + ' to save (Ring and Charm together)'"></p>
+      <div x-show="mstatPending" class="flex flex-wrap items-center gap-3">
+        <input class="inp flex-1 min-w-[220px]" placeholder="Why (optional, kept in the log)" x-model="mstatNote">
+        <button class="btn" @click="saveMaterialStatuses()" :disabled="mstatBusy">Save the statuses</button>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="mstatEdit = {}; mstatMsg = ''">Discard</button>
+      </div>
+      <p x-show="mstatMsg" class="text-sm" :class="mstatErr ? 'text-red-600' : 'text-emerald-700'" x-text="mstatMsg"></p>
+    </section>
+
     <!-- Material pricing: one table for weight, 3D cost / price and the website's fixed price -->
     <section class="card p-5 space-y-3" x-show="sub === 'pricing' && pProduct === 'ring' && mprices">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
@@ -2809,7 +2820,7 @@
       </div>
       <div class="overflow-x-auto">
       <table class="w-full !text-xs">
-        <thead><tr><th>Material</th><th class="text-right">Sintered density (g/cc)</th><th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th><th class="text-right">Fixed price $</th></tr></thead>
+        <thead><tr><th>Material</th><th class="text-right">Sintered density (g/cc)</th><th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th><th class="text-right">Fixed price $</th><th>Customer status</th></tr></thead>
         <tbody>
           <template x-if="!mpEdit"><template x-for="r in (mprices?.rows || [])" :key="r.id"><tr>
             <td class="whitespace-nowrap"><span class="inline-block w-2.5 h-2.5 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(r.id)"></span><span x-text="r.label"></span></td>
@@ -2817,12 +2828,14 @@
             <td class="text-right tabular-nums" x-text="num(r.price_per_g)"></td>
             <td class="text-right tabular-nums" x-text="num(r.cost_per_g)"></td>
             <td class="text-right tabular-nums" :class="r.fixed_price == null ? 'text-zinc-500' : 'font-semibold'" x-text="r.fixed_price == null ? 'NA' : '$' + num(r.fixed_price)"></td>
+            <td><select class="inp !py-1 !px-2 !text-xs" :aria-label="r.label + ' customer status'" @change="setStatus('ring', r.id, $event.target.value)" :style="mstatEdit['ring:' + r.id] ? 'outline: 2px solid #D97706' : ''"><template x-for="s in (mstat?.statuses || [])" :key="s.id"><option :value="s.id" :selected="statusOf('ring', r.id) === s.id" :disabled="!!statusBlocked('ring', r.id, s.id) && statusRow('ring', r.id)?.status !== s.id" :title="statusBlocked('ring', r.id, s.id)" x-text="s.label"></option></template></select></td>
           </tr></template></template>
           <template x-if="mpEdit"><template x-for="r in mpEdit" :key="r.id"><tr>
             <td class="whitespace-nowrap" x-text="r.label"></td>
             <template x-for="k in ['density_g_cm3', 'price_per_g', 'cost_per_g', 'fixed_price']">
               <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-24 text-right tabular-nums" x-model="r[k]" :placeholder="k === 'fixed_price' ? 'NA' : '—'"></td>
             </template>
+            <td></td>
           </tr></template></template>
         </tbody>
       </table>
@@ -2834,6 +2847,7 @@
       <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
         <li><strong>Fixed price</strong> is what the website shows for the material (empty = NA, "Price unavailable"). Update it once there is enough data.</li>
         <li><strong>Weight</strong> = 3D volume × sintered density · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>
+        <li><strong>Customer status</strong>: Available — sold at the fixed price · Preview Only — seen in Customize, never priced, added to the bag or quoted · Quote Only — by quote request · Hidden — offered nowhere (what was made in it still opens). Available needs a fixed price, density and cost; Stainless Steel stays Available while Customize opens on it. Saved apart from the prices (no new price version) and logged.</li>
       </ul>
       <p class="text-[12px] text-zinc-500" x-text="'Version ' + mprices?.version + ' · updated ' + dateTime(mprices?.updated_at) + ' by ' + mprices?.updated_by + (mprices?.update_note ? ' — ' + mprices.update_note : '')"></p>
       <p x-show="mpMsg" class="text-sm" :class="mpErr ? 'text-red-600' : 'text-emerald-700'" x-text="mpMsg"></p>
@@ -2849,7 +2863,7 @@
       <table class="w-full !text-xs">
         <thead><tr><th>Material</th>
           <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="s + ' mm' + (charmSizeName(s) ? ' ' + charmSizeName(s) : '') + ' $' + ((cprices?.sizes || []).includes(s) ? '' : ' (not offered)')"></th></template>
-          <th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th></tr></thead>
+          <th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th><th>Customer status</th></tr></thead>
         <tbody>
           <template x-if="!cpEdit"><template x-for="r in (cprices?.rows || [])" :key="r.id"><tr>
             <td class="whitespace-nowrap"><span class="inline-block w-2.5 h-2.5 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(r.id)"></span><span x-text="r.label"></span></td>
@@ -2859,6 +2873,7 @@
             </template>
             <td class="text-right tabular-nums" x-text="num(r.price_per_g)"></td>
             <td class="text-right tabular-nums" x-text="num(r.cost_per_g)"></td>
+            <td><select class="inp !py-1 !px-2 !text-xs" :aria-label="r.label + ' customer status'" @change="setStatus('charm', r.id, $event.target.value)" :style="mstatEdit['charm:' + r.id] ? 'outline: 2px solid #D97706' : ''"><template x-for="s in (mstat?.statuses || [])" :key="s.id"><option :value="s.id" :selected="statusOf('charm', r.id) === s.id" :disabled="!!statusBlocked('charm', r.id, s.id) && statusRow('charm', r.id)?.status !== s.id" :title="statusBlocked('charm', r.id, s.id)" x-text="s.label"></option></template></select></td>
           </tr></template></template>
           <template x-if="cpEdit"><template x-for="r in cpEdit" :key="r.id"><tr>
             <td class="whitespace-nowrap" x-text="r.label"></td>
@@ -2870,6 +2885,7 @@
             </template>
             <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.price_per_g" placeholder="—" :aria-label="r.label + ' price per gram'"></td>
             <td class="text-right"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.cost_per_g" placeholder="—" :aria-label="r.label + ' cost per gram'"></td>
+            <td></td>
           </tr></template></template>
         </tbody>
       </table>
@@ -2881,7 +2897,8 @@
       <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
         <li><strong>Fixed price</strong> is what the website shows for a charm in that material and size. Empty = NA: "Price unavailable". A ring price is never used for a charm.</li>
         <li><strong>Size</strong>: <span x-text="cprices?.size_definition?.text"></span> The sizes on offer are set in Settings → Products.</li>
-        <li><strong>Gold</strong> charms are quoted individually (Request a quote), like gold rings.</li>
+        <li><strong>Gold</strong> charms have no fixed price: Quote Only (Request a quote) or Preview Only, like gold rings.</li>
+        <li><strong>Customer status</strong>: Available — sold at the fixed price · Preview Only — seen in Customize, never priced, added to the bag or quoted · Quote Only — by quote request · Hidden — offered nowhere (what was made in it still opens). Available needs a fixed price, density and cost; Stainless Steel stays Available while Customize opens on it. Saved apart from the prices (no new price version) and logged.</li>
         <li><strong>Weight</strong> = 3D volume × the material's sintered density (Ring view, Pricing · materials) · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>
       </ul>
       <p class="text-[12px] text-zinc-500" x-text="'Version ' + cprices?.version + ' · updated ' + dateTime(cprices?.updated_at) + ' by ' + cprices?.updated_by + (cprices?.update_note ? ' — ' + cprices.update_note : '')"></p>

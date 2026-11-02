@@ -567,6 +567,17 @@ CREATE TABLE IF NOT EXISTS candidates (
 
 """ + CustomizationsDdl("customizations") + """
 
+-- Customize entered again on a saved customization (p3/customize.py, WP3): it opens on the default metal (and a charm's
+-- default size) while the saved choices stay exactly as they are; the customer's first change or Add to Bag makes them
+-- the saved choices and ends the entry.
+CREATE TABLE IF NOT EXISTS customize_entries (
+    customization_id  TEXT PRIMARY KEY,           -- customizations.id (no foreign key: that table is rebuilt by a migration)
+    owner_account_id  TEXT NOT NULL,
+    material_id       TEXT NOT NULL,
+    charm_size        REAL,
+    created_at        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS movies (
     id                   TEXT PRIMARY KEY,
     candidate_id         TEXT NOT NULL REFERENCES candidates(id),

@@ -163,7 +163,7 @@ def test_headings_follow_each_other_in_order():
     Legal = Public[Public.index("""<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""):]
     assert '<h3 class="text-lg font-semibold' not in Legal and Legal.count('<h2 class="text-lg font-semibold text-zinc-900">') == 17
     Materials = Public[Public.index("<template x-if=\"view === 'materials'\">"):Public.index("<!-- ── Legal & support pages")]
-    assert "<h4" not in Materials and Materials.count('<h2 class="brand-font text-2xl text-zinc-900">') == 3   # + the strip
+    assert "<h4" not in Materials and Materials.count('<h2 class="brand-font text-2xl text-zinc-900">') == 4   # + preview, the strip
     assert '<h3 class="h-inter text-[14px] font-semibold text-zinc-900" x-text="m.label"></h3>' in Materials       # gold: Inter
 
 

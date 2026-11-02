@@ -29,10 +29,10 @@ async def test_the_sizes_on_offer_are_delicate_classic_and_bold_with_classic_rec
     assert Cat["sizes"] == [10.0, 14.0, 18.0] and Cat["recommended_size"] == 14.0
     assert [(O["size"], O["name"], O["recommended"]) for O in Cat["size_options"]] == \
         [(10.0, "Delicate", False), (14.0, "Classic", True), (18.0, "Bold", False)]
-    # Customize: the choices with their prices (none set yet), the recommended size suggested, no size chosen yet
+    # Customize: the choices with their prices (none set yet); a new charm opens on the recommended size (WP3)
     B = await H.NewDesign("A crescent moon charm with a small star", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
-    assert C["charm_size"] is None and C["recommended_size"] == 14.0 and C["add_to_bag_blocked_reason"] == "charm_size_required"
+    assert C["charm_size"] == C["recommended_size"] == 14.0 and C["add_to_bag_blocked_reason"] == "price_unavailable"
     assert [(S["label"], S["unit_price"]) for S in C["charm_sizes"]] == \
         [("10 mm — Delicate", None), ("14 mm — Classic · Recommended", None), ("18 mm — Bold", None)]
     # A size no longer on offer is refused; the recommended one is a normal choice with the plain size label

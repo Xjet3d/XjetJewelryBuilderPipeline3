@@ -48,6 +48,12 @@ class PricingProfileError(ValueError):
     pass
 
 
+def UnpricedReason(Status: str) -> str | None:
+    """Why a metal of this status has no price (p3/materialstatus.py), or None for an available metal. Quote Only keeps
+    the reason gold always had."""
+    return {"available": None, "quote": "luxury_pricing_unavailable", "preview": "material_preview_only"}.get(Status, "material_not_offered")
+
+
 class PricingService:
     def __init__(self, CatalogObj: Catalog, ProfilePath: Path, AllowUnapproved: bool):
         self.Catalog = CatalogObj
@@ -56,6 +62,7 @@ class PricingService:
         self.Profile = None
         self.ProfileError = None
         self.Book = None                         # MaterialPriceBook: fixed price per material (Admin table)
+        self.Status = None                       # material id → its ring status (p3/materialstatus.py); None: the group rule
         try:
             self.Profile = self._LoadProfile(ProfilePath)
         except (OSError, ValueError) as E:
@@ -93,8 +100,10 @@ class PricingService:
         Mat = self.Catalog.Get(MaterialId)
         if Mat is None:
             raise KeyError(MaterialId)
-        if not self.Catalog.IsPurchasableGroup(Mat.Group):
-            return self._Unavailable(Mat, "luxury_pricing_unavailable")
+        Reason = UnpricedReason(self.Status(Mat.Id) if self.Status else
+                                ("available" if self.Catalog.IsPurchasableGroup(Mat.Group) else "quote"))
+        if Reason:                                   # a price only for an available metal (WP3)
+            return self._Unavailable(Mat, Reason)
         Fixed = self._BookPrice(Mat)
         if Fixed is not None:
             return Fixed

@@ -19,7 +19,7 @@ import math
 
 from p3 import products as Products
 from p3.db import Database, Dumps, Now
-from p3.pricing.service import Quote
+from p3.pricing.service import Quote, UnpricedReason
 
 Schema = """
 CREATE TABLE IF NOT EXISTS charm_price_lists (
@@ -114,6 +114,7 @@ class CharmPriceBook:
         self.Db = Db
         self.Catalog = Catalog
         self.Settings = Settings                 # products.ProductSettings: the charm sizes on offer
+        self.Status = None                       # material id → its charm status (p3/materialstatus.py); None: the group rule
         self.OnSave = []                         # callbacks after a new version (e.g. price charm 3D results that had no price)
         with Db.Connect() as Conn:
             Conn.executescript(Schema)
@@ -153,8 +154,10 @@ class CharmPriceBook:
                          profile_approved=True, unavailable_reason=Reason)
         if not IsOffered(self.Catalog, Mat.Id):
             return Unavailable("material_not_offered")
-        if not self.Catalog.IsPurchasableGroup(Mat.Group):
-            return Unavailable("luxury_pricing_unavailable")
+        Reason = UnpricedReason(self.Status(Mat.Id) if self.Status else
+                                ("available" if self.Catalog.IsPurchasableGroup(Mat.Group) else "quote"))
+        if Reason:                                   # a price only for an available metal (WP3)
+            return Unavailable(Reason)
         if Size is None:
             return Unavailable("charm_size_required")
         if not self.Settings.IsValidCharmSize(Size):

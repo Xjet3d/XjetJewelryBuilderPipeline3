@@ -101,7 +101,7 @@ async def test_an_admin_preview_on_a_customer_account_makes_nothing_and_spends_n
         assert (await H.Client.put(f"/api/designs/{Cid}/selection", json={"candidate_id": Cands[0]})).status_code == 200
         C = (await H.Client.post(f"/api/designs/{Cid}/customize", json={"candidate_id": Cands[0]})).json()
         await H.Idle()
-        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14})).status_code == 200
+        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14, "material_id": "silver"})).status_code == 200
         assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).json()["lines"][0]["orderable"] is True
         await _Set(H, "charm", False)
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # this browser previews charms
@@ -149,7 +149,7 @@ async def test_an_admin_preview_on_a_test_account_works_and_its_orders_are_test_
         assert (await H.Client.put(f"/api/designs/{Did}/selection", json={"candidate_id": Cand}, headers=Qa)).status_code == 200
         C = (await H.Client.post(f"/api/designs/{Did}/customize", json={"candidate_id": Cand}, headers=Qa)).json()
         await H.Idle()
-        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14}, headers=Qa)).status_code == 200
+        assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 14, "material_id": "silver"}, headers=Qa)).status_code == 200
         Bag = (await H.Client.post("/api/bag", json={"customization_id": C["id"]}, headers=Qa)).json()
         assert [L["orderable"] for L in Bag["lines"]] == [True]
         R = await H.Client.post("/api/orders", json=_Order(), headers=Qa)    # a customer's address: never a real order

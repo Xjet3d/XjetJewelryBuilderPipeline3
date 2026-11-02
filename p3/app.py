@@ -53,6 +53,7 @@ from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
 from p3.charmprices import CharmPriceBook
 from p3 import charmprices as CharmPrices
+from p3 import materialstatus as MaterialStatus
 from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
@@ -227,6 +228,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
     Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
+    # A price only for a metal Available for that product (Admin → Pricing & Materials → Customer status, WP3)
+    Ctx.Pricing.Status = lambda Mid: MaterialStatus.Of(Ctx, Products.Ring, Mid)
+    Ctx.CharmPrices.Status = lambda Mid: MaterialStatus.Of(Ctx, Products.Charm, Mid)
     Ctx.AiPrices = PriceBook(Ctx.Db)              # fal.ai list prices: every submission is recorded with its estimate
     Ctx.RateLimiter = RateLimiter(Enabled=S.RateLimits)
     Ctx.Oidc = BuildOidcProviders(S)
@@ -506,6 +510,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
                               Dev=S.DevTools, Legacy=S.AuthMode == "legacy")
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
+        Html = SitePages.StripMaterialSections(Html, Ctx, Visible)     # /materials' gold and preview only parts (WP3)
         Before = {}
         if View in ("home", "inspiration") and not Flow:
             Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
@@ -515,7 +520,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if View == "inspiration":                      # the grid's room from the first paint (CLS)
             Before[SitePages.GalleryLoading] = SitePages.GalleryPlaceholders(Config["gallery_count"])
         if View == "materials":
-            Before["<!-- Gold: by request until gold pricing is enabled -->"] = SitePages.MaterialList(Ctx)
+            Before[SitePages.MaterialListAnchor] = SitePages.MaterialList(Ctx, Visible)
             for Group, Loop in SitePages.MaterialLoops.items():     # the cards' room from the first paint (CLS)
                 Before[Loop] = SitePages.MaterialPlaceholders(Ctx, Group, Visible)
         if Design:
@@ -961,6 +966,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/catalog")
     async def CatalogRoute(request: Request):
         Out = Ctx.Catalog.ToJson()
+        # The metals by their customer status (WP3): "fashion" sold at a fixed price, "luxury" quoted, "preview" seen only
+        Out["groups"], Hidden = MaterialStatus.CatalogGroups(Ctx)
+        if Hidden:                                       # offered nowhere; what was made in them still renders
+            Out["hidden_materials"] = Hidden
         Visible = Products.VisibleProducts(Ctx, request)
         if Visible != (Products.Ring,):
             # What the Design screen offers (Admin → Settings → Products). Absent while rings are the only product on
@@ -973,15 +982,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                                "names": {P: {"label": Products.Labels[P], "plural": Products.Plurals[P]} for P in Products.All}}
             if Products.Charm in Visible:
                 Sizes = Ctx.Products.CharmSizeOptions()
+                Statuses = MaterialStatus.Map(Ctx, Products.Charm)        # a charm's own statuses, set apart from a ring's
                 Out["products"]["charm"] = {
                     "sizes": Ctx.Products.CharmSizes, "size_options": Sizes, "recommended_size": Ctx.Products.CharmDefaultSize,
                     "size_definition": Products.CharmSizeDefinition,
-                    "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": M.Group,
-                                   "purchasable": Ctx.Catalog.IsPurchasableGroup(M.Group),
+                    "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": MaterialStatus.GroupOf(Statuses[M.Id]),
+                                   "purchasable": Statuses[M.Id] == MaterialStatus.Available,
                                    # the fixed price per size (the Materials page); None while no price is set
                                    "prices": [{"size": O["size"], "label": O["label"], "price": Q.unit_price, "currency": Q.currency}
                                               for O in Sizes for Q in (Ctx.CharmPrices.QuoteFor(M.Id, O["size"]),)]}
-                                  for M in CharmPrices.Offered(Ctx.Catalog)]}
+                                  for M in CharmPrices.Offered(Ctx.Catalog) if Statuses[M.Id] != MaterialStatus.Hidden]}
         Checked = [P for P in Products.All if PromptCheck.Enabled(Ctx, P)]
         if Checked:                                      # the design screen says "Checking your description…" meanwhile
             Out["prompt_check"] = Checked

@@ -40,7 +40,7 @@ async def _Shop(H):
     Charm = await H.NewDesign("A crescent moon charm", product="charm")
     CharmCu = await H.Proceed(Charm["design_id"], Charm["candidates"][0]["id"])
     await H.Idle()
-    assert (await H.Client.patch(f"/api/customizations/{CharmCu['id']}", json={"charm_size": 14})).status_code == 200
+    assert (await H.Client.patch(f"/api/customizations/{CharmCu['id']}", json={"charm_size": 14, "material_id": "silver"})).status_code == 200
     assert (await H.Client.post("/api/bag", json={"customization_id": CharmCu["id"]})).status_code == 200
     Items = {}
     for Prompt, Product in (("A signet with a hexagon face", "ring"), ("A heart charm", "charm")):

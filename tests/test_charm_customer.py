@@ -79,7 +79,7 @@ async def test_a_customer_who_holds_charms_keeps_seeing_them_after_charms_are_hi
     B = await H.NewDesign("A crescent moon charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "c1"})).json()
@@ -130,7 +130,7 @@ async def test_promo_messages_are_product_neutral(HC5):
     B = await H.NewDesign("A heart charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     Charm = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
     assert Charm == Ring

@@ -705,6 +705,39 @@ above, unchanged. The Charm table is completely separate:
   - A ring line is never repriced by a charm change, and the reverse is also true.
 - **Seed:** the table starts empty. No charm price was invented.
 
+## Customer status per metal (Settings → Pricing & Materials, WP3)
+
+**Code:** `p3/materialstatus.py`, product setting `material_statuses` (logged in `product_settings_log`).
+**API:** `GET` / `PUT /api/admin/material-statuses` — `{"changes": [{"product", "material_id", "status"}], "note",
+"dry_run"}`; a dry run answers what would change and the customer records each change touches.
+
+The *Customer status* column of the Ring table and of the Charm table sets, per product and metal, what customers may do:
+
+| Status | Customers |
+|---|---|
+| Available | Sold at its fixed price: Customize prices it; Add to Bag, checkout and the order take it. |
+| Preview Only | Seen in Customize (the render keeps its gold look) — no price, no Add to Bag, no order, no quote: "Preview only — not available to order. Order it in Sterling Silver or Stainless Steel." |
+| Quote Only | No fixed price: a quote request, the Admin's quote and its approval (the gold flow of before). |
+| Hidden | Offered nowhere; what was made in it still opens and renders. |
+
+- **Release = today.** Until a status is saved, every metal keeps its behaviour of before: Stainless Steel, Sterling
+  Silver and 14K Gold over Stainless Steel Available, the six solid golds Quote Only. Customers see no change.
+- **Activation** (gold Preview Only) is one save: change the seven gold-family metals in both tables, then *Save the
+  statuses* — the confirmation lists each change with its saved customizations, bag lines and open quote requests.
+- **Rules.** Available needs a fixed price (a charm: one for every size on offer), the density and the cost per gram;
+  gold charms have no fixed price. Stainless Steel stays Available while Customize opens on it.
+- **Statuses gate actions only.** No metal leaves the catalog or the price books, a change is no new price version, and
+  no Terms text reads a status (no new Terms version). An Admin's browser gets no exception; orders already placed are
+  never checked against a status.
+- **The bag** keeps a line whose metal is no longer Available, marked ("Preview only — not available to order"), left out
+  of the total; the rest is ordered (WP2's exclusion). Quote requests, quotes and approvals follow the status
+  (`orders.QuoteMaterialProblem`).
+- **Customize** always opens on Stainless Steel (a new charm at the recommended size, 14 mm). Entered again on a saved
+  customization in another metal it shows Stainless Steel and leaves the saved choice untouched (`customize_entries`) until
+  the customer changes something or adds to the bag.
+- **The Materials page, the FAQ, the page description and the crawler list** are written from the statuses: a section for
+  gold by request only while a metal is Quote Only, one for Preview Only while one is.
+
 ## AI cost estimates (Sessions)
 
 **Code:** `p3/aipricing.py`. **Admin:** *AI Prompts & Params → AI prices*.

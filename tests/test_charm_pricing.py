@@ -27,10 +27,16 @@ async def HP(tmp_path):
     await Obj.Close()
 
 
-async def CharmCustomize(H, Prompt="A crescent moon charm with a small star"):
+async def CharmCustomize(H, Prompt="A crescent moon charm with a small star", Material="silver"):
+    """A charm in Customize, in Sterling Silver (the metal these tests price) — or as Customize opens it (Material=None:
+    Stainless Steel at the recommended size, WP3)."""
     B = await H.NewDesign(Prompt, product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
+    if Material:
+        R = await H.Client.patch(f"/api/customizations/{C['id']}", json={"material_id": Material})
+        assert R.status_code == 200, R.text
+        C = R.json()
     return B, C
 
 
@@ -68,8 +74,9 @@ async def test_charm_prices_start_empty_and_never_fall_back_to_ring_prices(HP):
     Q = (await H.Client.get("/api/quote?material_id=silver&product=charm&charm_size=20")).json()
     assert Q["pricing_status"] == "unavailable" and Q["unit_price"] is None and Q["unavailable_reason"] == "charm_price_not_set"
     assert Q["pricing_version"] == "charms-v1" and Q["product"] == "charm"
-    _B, C = await CharmCustomize(H)
-    assert C["can_add_to_bag"] is False and C["add_to_bag_blocked_reason"] == "charm_size_required"
+    _B, C = await CharmCustomize(H)                         # Customize opens a charm on the recommended size (WP3)
+    assert C["charm_size"] == C["recommended_size"] == 20.0
+    assert C["can_add_to_bag"] is False and C["add_to_bag_blocked_reason"] == "price_unavailable"
     C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})).json()
     assert C["quote"]["unit_price"] is None and C["add_to_bag_blocked_reason"] == "price_unavailable" and C["line_total"] is None
     R = await H.Client.post("/api/bag", json={"customization_id": C["id"]})
@@ -96,10 +103,10 @@ async def test_charm_prices_differ_by_material_and_size_and_leave_ring_prices_al
         [("15 mm", None), ("20 mm · Recommended", 145.0), ("25 mm", 165.0), ("30 mm", None)]    # the middle size is recommended
     C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 25, "quantity": 2})).json()
     assert C["quote"]["unit_price"] == 165.0 and C["line_total"] == 330.0 and C["can_add_to_bag"] is True and C["size_label"] == "25 mm"
-    # A ring is priced exactly as before
+    # A ring is priced exactly as before, from the ring table (it opens on Stainless Steel: WP3)
     B = await H.NewDesign()
     R = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
-    assert R["quote"]["unit_price"] == 200.0 and R["quote"]["pricing_version"] == RingTable["version"] and "charm_sizes" not in R
+    assert R["quote"]["unit_price"] == 90.0 and R["quote"]["pricing_version"] == RingTable["version"] and "charm_sizes" not in R
 
 
 async def test_the_charm_price_table_refuses_what_it_cannot_sell(HP):
@@ -152,9 +159,9 @@ async def test_charm_sizes_are_set_in_admin_and_checked_everywhere(HP):
 
 async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     H = HP
-    B, C = await CharmCustomize(H)
+    B, C = await CharmCustomize(H, Material=None)         # as Customize opens it: Stainless Steel, the recommended size (WP3)
     assert (C["product_type"], C["ring_size"], C["charm_size"], C["material_id"], C["material_label"]) == \
-        ("charm", None, None, "silver", "Sterling Silver")
+        ("charm", None, 20.0, "stainless_steel", "Stainless Steel")
     assert C["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
     assert [M["label"] for M in C["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     assert all(not M["purchasable"] for M in C["materials"][3:])                      # gold: the quote flow
@@ -169,7 +176,7 @@ async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     assert RC["ring_size"] == 10.0 and "product_type" not in RC                      # a ring opens on US 10, as before
     Ev = [json.loads(E["data_json"]) for E in H.Ctx.Db.All("SELECT data_json FROM session_events WHERE kind = 'customize_opened' "
                                                             "AND design_id = ?", (B["design_id"],))]
-    assert Ev[0]["product_type"] == "charm" and Ev[0]["charm_size"] is None and "ring_size" not in Ev[0]
+    assert Ev[0]["product_type"] == "charm" and Ev[0]["charm_size"] == 20.0 and "ring_size" not in Ev[0]
 
 
 async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):

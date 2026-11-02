@@ -2,14 +2,18 @@
 
 The bag is a server-side, per-account list of quote snapshots; checkout (p3/orders.py) turns it into
 an order at today's fixed prices. Purchase rules are enforced here, not just in the browser (spec 4.6):
-  * Luxury → never purchasable, never priced;
-  * Fashion → purchasable only with a valid server quote and a chosen standard size;
+  * only a metal Available for the product is priced and purchasable (p3/materialstatus.py, WP3): a Quote Only metal
+    asks for a quote, a Preview Only one is seen only, a hidden one is offered no more;
+  * an available metal is purchasable only with a valid server quote and a chosen standard size;
   * ring size and quantity never change the unit price.
+Customize always opens on Stainless Steel (a new charm at its default size); entered again on a saved customization it
+shows the same, the saved record untouched until the customer changes something or adds to the bag (WP3).
 """
 
 import json
 
 from p3 import charmprices as CharmPrices
+from p3 import materialstatus as MaterialStatus
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
@@ -24,6 +28,9 @@ MaxQuantity = 10
 
 # Customize opens on US 10 (product-owner decision 2026-10-01); the customer can change it.
 DefaultRingSize = 10.0
+# Why a metal that is not Available can't go to the bag (Quote Only keeps the reason gold always had)
+BlockedReasons = {MaterialStatus.Quote: "luxury_preview_only", MaterialStatus.Preview: "preview_only",
+                  MaterialStatus.Hidden: "material_not_offered"}
 
 
 class CustomizeService:
@@ -59,29 +66,63 @@ class CustomizeService:
             raise HttpError(409, "refinement_running", "Wait for the refinement to finish.")
         Db = self.Ctx.Db
         Charm = (D.get("product_type") or Products.Ring) == Products.Charm
-        self._SetSelection(Who, D, CandidateId)
+        if self._Selected(Who, D) != CandidateId:              # the saved design is written only when its pick changes
+            self._SetSelection(Who, D, CandidateId)
         Existing = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
                           (Who.AccountId, DesignId, CandidateId))
+        # Customize opens on Stainless Steel (WP3); a charm on its default size (14 mm), so its price shows at once
+        Metal, CharmSize = self.Ctx.Catalog.DefaultMaterialId, self.Ctx.Products.CharmDefaultSize if Charm else None
         if Existing is None:
             T = Now()
             # A ring opens on the size the customer already chose for this design (on another of its options: R-21),
-            # otherwise on US 10; a charm opens without a size (its price depends on the size the customer picks)
+            # otherwise on US 10
             Known = None if Charm else Db.One("SELECT ring_size FROM customizations WHERE owner_account_id = ? AND design_id = ? "
                                               "AND size_confirmed_at IS NOT NULL AND ring_size IS NOT NULL "
                                               "ORDER BY size_confirmed_at DESC LIMIT 1", (Who.AccountId, DesignId))
             Db.Execute("INSERT OR IGNORE INTO customizations (id, owner_account_id, design_id, candidate_id, material_id, "
-                       "ring_size, quantity, created_at, updated_at, size_confirmed_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                       (NewId("cus"), Who.AccountId, DesignId, CandidateId, self.Ctx.Catalog.DefaultMaterialId,
-                        None if Charm else (Known["ring_size"] if Known else DefaultRingSize), 1, T, T, T if Known else None))
+                       "ring_size, charm_size, quantity, created_at, updated_at, size_confirmed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                       (NewId("cus"), Who.AccountId, DesignId, CandidateId, Metal,
+                        None if Charm else (Known["ring_size"] if Known else DefaultRingSize), CharmSize, 1, T, T, T if Known else None))
+        else:
+            # Entered again: it shows the same; the saved choices stay exactly as they are until the customer acts
+            Size = (Existing["charm_size"] if Existing["charm_size"] is not None else CharmSize) if Charm else None
+            if Existing["material_id"] != Metal or (Charm and Existing["charm_size"] is None):
+                Db.Execute("INSERT INTO customize_entries (customization_id, owner_account_id, material_id, charm_size, created_at) "
+                           "VALUES (?,?,?,?,?) ON CONFLICT(customization_id) DO UPDATE SET material_id = excluded.material_id, "
+                           "charm_size = excluded.charm_size, created_at = excluded.created_at",
+                           (Existing["id"], Who.AccountId, Metal, Size, Now()))
+            else:
+                Db.Execute("DELETE FROM customize_entries WHERE customization_id = ?", (Existing["id"],))
         if Products.MovieAvailable(self.Ctx, D.get("product_type") or Products.Ring):
             self.Movies.Ensure(Who, CandidateId)                # the product's movie switch is ON: start or reuse its movie
         Row = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
                      (Who.AccountId, DesignId, CandidateId))
-        Size = {"product_type": Products.Charm, "charm_size": Row["charm_size"]} if Charm else {"ring_size": Row["ring_size"]}
+        View = self._View(Row)
+        Size = {"product_type": Products.Charm, "charm_size": View["charm_size"]} if Charm else {"ring_size": View["ring_size"]}
+        Saved = {"saved_material_id": Row["material_id"]} if Row["material_id"] != View["material_id"] else {}
         Sessions.Record(self.Ctx, Who.AccountId, "customize_opened", DesignId, candidate_id=CandidateId,
-                        material_id=Row["material_id"], **Size, defaults=Existing is None,
-                        **Sessions.QuoteSnapshot(self.Ctx, Row["material_id"], *((Products.Charm, Row["charm_size"]) if Charm else ())))
+                        material_id=View["material_id"], **Size, **Saved, defaults=Existing is None,
+                        **Sessions.QuoteSnapshot(self.Ctx, View["material_id"], *((Products.Charm, View["charm_size"]) if Charm else ())))
         return self.ToJson(Row)
+
+    def _Selected(self, Who: Principal, D: dict) -> str | None:
+        """The design's pick as saved: the owner's on the design, a gallery customer's on their use row."""
+        if D["owner_account_id"] == Who.AccountId:
+            return D.get("selected_candidate_id")
+        U = self.Ctx.Db.One("SELECT selected_candidate_id FROM gallery_uses WHERE design_id = ? AND owner_account_id = ?",
+                            (D["id"], Who.AccountId))
+        return U["selected_candidate_id"] if U else None
+
+    def _Entry(self, CustomizationId: str) -> dict | None:
+        return self.Ctx.Db.One("SELECT material_id, charm_size FROM customize_entries WHERE customization_id = ?", (CustomizationId,))
+
+    def _View(self, Row: dict) -> dict:
+        """What Customize shows for a customization: its saved choices — or, entered again and not acted on since, the
+        metal Customize opens on (and a charm's default size), the saved record untouched (WP3)."""
+        E = self._Entry(Row["id"])
+        if E is None:
+            return Row
+        return {**Row, "material_id": E["material_id"], **({"charm_size": E["charm_size"]} if E["charm_size"] is not None else {})}
 
     def Update(self, Who: Principal, CustomizationId: str, Changes: dict) -> dict:
         Row = self._Owned(Who, CustomizationId)
@@ -92,6 +133,8 @@ class CustomizeService:
                 raise HttpError(400, "unknown_material", "Unknown material.")
             if Charm and not CharmPrices.IsOffered(self.Ctx.Catalog, Changes["material_id"]):
                 raise HttpError(400, "material_not_offered", "This material is not offered for charms.")
+            if MaterialStatus.Of(self.Ctx, Products.Charm if Charm else Products.Ring, Changes["material_id"]) == MaterialStatus.Hidden:
+                raise HttpError(400, "material_not_offered", MaterialStatus.HiddenText())
             Fields["material_id"] = Changes["material_id"]
         if "ring_size" in Changes and Charm:
             raise HttpError(400, "invalid_size", "A charm has a charm size in mm, not a ring size.")
@@ -112,6 +155,11 @@ class CustomizeService:
             if not isinstance(Qty, int) or isinstance(Qty, bool) or not 1 <= Qty <= MaxQuantity:
                 raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
             Fields["quantity"] = Qty
+        Entry = self._Entry(Row["id"])
+        if Entry:      # the first change after Customize opened again keeps what it showed: its metal (and a charm's size)
+            Fields.setdefault("material_id", Entry["material_id"])
+            if Charm and Entry["charm_size"] is not None:
+                Fields.setdefault("charm_size", Entry["charm_size"])
         if Fields:
             # A ring size the customer picks, the suggested one included, is their confirmed size (R-21)
             Confirmed = {"size_confirmed_at": Now() if Fields["ring_size"] is not None else None} if "ring_size" in Fields else {}
@@ -120,6 +168,8 @@ class CustomizeService:
             Sessions.Record(self.Ctx, Who.AccountId, "customization_changed", Row["design_id"],
                             customization_id=Row["id"], **Fields, **({"product_type": Products.Charm} if Charm else {}),
                             **Sessions.QuoteSnapshot(self.Ctx, Fields.get("material_id", Row["material_id"]), *Priced))
+        if Entry:                                       # what it showed is now the saved choice: the entry ends
+            self.Ctx.Db.Execute("DELETE FROM customize_entries WHERE customization_id = ?", (Row["id"],))
         return self.ToJson(self.Ctx.Db.One("SELECT * FROM customizations WHERE id = ?", (Row["id"],)))
 
     def Get(self, Who: Principal, CustomizationId: str, Offered: tuple | None = None) -> dict:
@@ -133,9 +183,9 @@ class CustomizeService:
         return Row
 
     def Purchasability(self, Row: dict, Quote, Product: str = Products.Ring) -> tuple[bool, str | None]:
-        Mat = self.Ctx.Catalog.Get(Row["material_id"])
-        if Mat is None or not self.Ctx.Catalog.IsPurchasableGroup(Mat.Group):
-            return False, "luxury_preview_only"
+        Status = MaterialStatus.Of(self.Ctx, Product, Row["material_id"])
+        if Status != MaterialStatus.Available:                 # only an available metal goes to the bag (WP3)
+            return False, BlockedReasons[Status]
         if Product == Products.Charm:
             # A charm's price depends on its size, so the size comes first
             if Row.get("charm_size") is None:
@@ -151,7 +201,9 @@ class CustomizeService:
 
     def ToJson(self, Row: dict, Offered: tuple | None = None) -> dict:
         """Offered: the products this caller may order — a customization of any other (its product switched OFF) says
-        it can't go to the bag (design_unavailable), never "can add" (WP2). None: not checked (internal callers)."""
+        it can't go to the bag (design_unavailable), never "can add" (WP2). None: not checked (internal callers). What it
+        shows is what Customize shows (_View: entered again, the default metal; the saved record untouched)."""
+        Row = self._View(Row)
         Cand = self.Ctx.Db.One("SELECT * FROM candidates WHERE id = ?", (Row["candidate_id"],))
         Product = Products.Of(self.Ctx.Db, Row["design_id"])
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
@@ -176,8 +228,9 @@ class CustomizeService:
 
     def _CharmJson(self, Row: dict) -> dict:
         """What Customize shows for a charm: its sizes (each with today's price in the chosen material), what a
-        size measures, and the materials a charm is made in."""
+        size measures, and the materials a charm is made in — grouped by the charm's own statuses (a hidden one left out)."""
         Cat = self.Ctx.Catalog
+        Statuses = MaterialStatus.Map(self.Ctx, Products.Charm)
         Sizes = []
         for O in self.Ctx.Products.CharmSizeOptions():       # '14 mm — Classic · Recommended', each with its price
             Q = self.Ctx.CharmPrices.QuoteFor(Row["material_id"], O["size"])
@@ -187,12 +240,16 @@ class CustomizeService:
                 "recommended_size": self.Ctx.Products.CharmDefaultSize,     # suggested until the customer picks a size
                 "material_label": CharmPrices.Label(Cat, Row["material_id"]),
                 "charm_sizes": Sizes, "size_definition": Products.CharmSizeDefinition,
-                "materials": [{"id": M.Id, "label": CharmPrices.Label(Cat, M.Id), "group": M.Group,
-                               "purchasable": Cat.IsPurchasableGroup(M.Group)} for M in CharmPrices.Offered(Cat)]}
+                "materials": [{"id": M.Id, "label": CharmPrices.Label(Cat, M.Id), "group": MaterialStatus.GroupOf(Statuses[M.Id]),
+                               "purchasable": Statuses[M.Id] == MaterialStatus.Available}
+                              for M in CharmPrices.Offered(Cat) if Statuses[M.Id] != MaterialStatus.Hidden]}
 
     # ── bag ──────────────────────────────────────────────────────────────
     def AddToBag(self, Who: Principal, CustomizationId: str, Visible: tuple | None = None) -> dict:
         Row = self._Owned(Who, CustomizationId)
+        if self._Entry(Row["id"]):                  # adding what Customize shows: it becomes the saved choice first
+            self.Update(Who, CustomizationId, {})
+            Row = self._Owned(Who, CustomizationId)
         Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
         CanAdd, Reason = self.Purchasability(Row, Quote, Product)
@@ -208,6 +265,8 @@ class CustomizeService:
             return self.Bag(Who, Visible)
         if not CanAdd:
             Messages = {"luxury_preview_only": "Luxury materials are preview-only for now.",
+                        "preview_only": MaterialStatus.PreviewText(self.Ctx, Product),
+                        "material_not_offered": MaterialStatus.HiddenText(),
                         "price_unavailable": "Price unavailable — this item cannot be added to the bag.",
                         "ring_size_required": "Please choose a ring size.",
                         "charm_size_required": "Please choose a charm size.",
@@ -266,23 +325,25 @@ class CustomizeService:
                                "WHERE b.owner_account_id = ? ORDER BY b.created_at", (Who.AccountId,))
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Rows}))
         Count = 0                                   # the lines that can be ordered now
+        Statuses = {P: MaterialStatus.Map(self.Ctx, P) for P in Products.All}     # each product's metal statuses (WP3)
         for L in Rows:
-            Mat = self.Ctx.Catalog.Get(L["material_id"])
             Product = L.get("product_type") or Products.Ring
+            Status = Statuses[Product].get(L["material_id"], MaterialStatus.Hidden)
             Key = (Product, L["material_id"], L.get("charm_size") if Product == Products.Charm else None)
             if Key not in Current:
                 Current[Key] = CharmPrices.QuoteFor(self.Ctx, Product, L["material_id"], L.get("charm_size"))
             Q = Current[Key]
-            # Orderable: a purchasable material with a price today and a standard size (checked again at checkout)
+            # Orderable: an available metal with a price today and a standard size (checked again at checkout); a line in
+            # a Preview Only, Quote Only or hidden metal stays in the bag, left out (WP2's exclusion, WP3)
             Off = Visible is not None and Product not in Visible        # its product is switched OFF: kept, not orderable
             Paused = Paused or Off
             if Off:
                 LineOk = False
             elif Product == Products.Charm:
-                LineOk = Mat is not None and self.Ctx.Catalog.IsPurchasableGroup(Mat.Group) and Q.IsAvailable \
+                LineOk = Status == MaterialStatus.Available and Q.IsAvailable \
                     and L["charm_size"] is not None and self.Ctx.Products.IsValidCharmSize(L["charm_size"])
             else:
-                LineOk = Mat is not None and self.Ctx.Catalog.IsPurchasableGroup(Mat.Group) and Q.IsAvailable \
+                LineOk = Status == MaterialStatus.Available and Q.IsAvailable \
                     and L["ring_size"] is not None and self.Ctx.Catalog.IsValidSize(L["ring_size"])
             Total = round(L["unit_price"] * L["quantity"], 2)
             if LineOk:                                  # only what can be ordered counts in the total
@@ -300,6 +361,8 @@ class CustomizeService:
                           "price_is_stale": L["pricing_version"] != Q.pricing_version,
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
                           **({"unavailable": True} if Off else {}),
+                          # the metal's status when it is not Available ("preview": the bag says Preview only)
+                          **({"material_status": Status} if Status != MaterialStatus.Available else {}),
                           "quote": json.loads(L["quote_json"])})
         Left = len(Lines) - Count
         Note = None

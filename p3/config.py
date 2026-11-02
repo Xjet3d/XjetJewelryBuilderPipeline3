@@ -135,6 +135,7 @@ def LoadCatalog() -> Catalog:
         Groups=tuple(Raw["groups"]), Materials=Materials,
         RingSizeSystem=Raw["ring_sizes"]["system"],
         RingSizes=tuple(float(V) for V in Raw["ring_sizes"]["values"]))
-    if Cat.DefaultMaterialId != "silver":
-        raise ValueError("default_material_id must be 'silver' (confirmed product requirement)")
+    if Cat.DefaultMaterialId != "stainless_steel":
+        # Customize opens on Stainless Steel (the owner's decision of 2026-11-01, WP3; Sterling Silver before)
+        raise ValueError("default_material_id must be 'stainless_steel' (confirmed product requirement)")
     return Cat

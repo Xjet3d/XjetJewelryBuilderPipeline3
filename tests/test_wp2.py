@@ -65,7 +65,7 @@ async def test_checkout_names_a_charm_by_its_size(HW):
     B = await H.NewDesign("A crescent moon charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     Info = (await H.Client.get("/api/checkout")).json()
     assert Info["quote"]["lines"][0]["size_label"] == "20 mm"

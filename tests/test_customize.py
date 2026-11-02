@@ -94,7 +94,7 @@ async def test_proceed_shows_selected_image_immediately_and_starts_one_movie(H):
     Cus = await H.Proceed(DesignId, Cand["id"])
     assert Cus["image_url"] == Cand["image_url"]
     assert Cus["candidate_id"] == Cand["id"]
-    assert Cus["material_id"] == "silver" and Cus["ring_size"] == 10.0          # opens on US 10
+    assert Cus["material_id"] == "stainless_steel" and Cus["ring_size"] == 10.0     # opens on Stainless Steel (WP3), US 10
     assert Cus["movie"]["status"] in ("queued", "running")
     assert (await H.Design(DesignId))["selected_candidate_id"] == Cand["id"]
     await H.Idle()
@@ -157,7 +157,7 @@ async def test_different_candidate_gets_its_own_customization_and_movie(H):
 async def test_catalog_groups_and_default():
     from p3.config import LoadCatalog
     Cat = LoadCatalog().ToJson()
-    assert Cat["default_material_id"] == "silver"
+    assert Cat["default_material_id"] == "stainless_steel"                # Customize opens on it (WP3)
     Groups = {G["id"]: G for G in Cat["groups"]}
     assert [M["label"] for M in Groups["fashion"]["materials"]] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     assert Groups["fashion"]["purchasable"] and not Groups["luxury"]["purchasable"]
@@ -194,7 +194,7 @@ async def test_luxury_clears_price_and_blocks_bag_then_fashion_restores(HDevPric
     H = HDevPricing
     DesignId, Cand = await _Ready(H)
     Cus = await H.Proceed(DesignId, Cand["id"])
-    Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7})).json()
+    Cus = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": 7, "material_id": "silver"})).json()
     SilverPrice = Cus["quote"]["unit_price"]
     assert Cus["can_add_to_bag"]
 

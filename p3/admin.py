@@ -29,6 +29,7 @@ from p3 import analytics as Analytics
 from p3 import merge as Merge
 from p3 import naming as Naming
 from p3 import charmprices as CharmPrices
+from p3 import materialstatus as MaterialStatus
 from p3.charmprices import CharmPriceError
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
@@ -1459,6 +1460,20 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         except CharmPriceError as E:
             raise HttpError(400, "invalid_charm_prices", str(E)) from E
         return Ctx.CharmPrices.AdminTable()
+
+    # ── Customer status per metal and product (WP3): Available, Preview Only, Quote Only, Hidden — gates what customers may
+    # do; never a price version. One save may change several metals of both products (activation is one change) ──────
+    @App_.get("/api/admin/material-statuses")
+    async def GetMaterialStatuses(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return MaterialStatus.Admin(Ctx)
+
+    @App_.put("/api/admin/material-statuses")
+    async def SaveMaterialStatuses(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"changes": [{"product": "ring" | "charm", "material_id": …, "status": …}], "note": …, "dry_run": true | false}:
+        dry_run answers what would change and the customer records each change touches (the Admin's confirmation)."""
+        Who = Admin(authorization)
+        return MaterialStatus.Save(Ctx, Body_.get("changes"), Who.Id, str(Body_.get("note") or "")[:300], bool(Body_.get("dry_run")))
 
     # ── Inspiration Gallery: curated XJet designs shown on the customer site ──────
     @App_.get("/api/admin/gallery")

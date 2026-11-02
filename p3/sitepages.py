@@ -19,6 +19,7 @@ import itertools
 import json
 import re
 
+from p3 import materialstatus as MaterialStatus
 from p3 import media as Media
 from p3 import products as Products
 from p3.credits import StartingCredits
@@ -83,8 +84,17 @@ def Words(Visible: tuple) -> dict:
             "title": (", ".join(Plurals[:-1]) + " & " + Plurals[-1]) if len(Plurals) > 1 else (Plurals[0] if Plurals else "Jewelry")}
 
 
-def _Labels(Ctx, Group: str) -> list[str]:
-    return [M["label"] for G in Ctx.Catalog.ToJson()["groups"] if G["id"] == Group for M in G["materials"]]
+def _Labels(Ctx, Group: str, Visible: tuple) -> list[str]:
+    """The labels of the metals the Materials page lists in a group (p3/materialstatus.py PageGroups, WP3)."""
+    return [M.Label for M in MaterialStatus.PageGroups(Ctx, Visible)[Group]]
+
+
+def _Phrase(Ctx, Mats: list) -> str:
+    """Metals as a sentence names them: "14K Gold over Stainless Steel and solid gold in 10K Yellow, 14K Yellow…"."""
+    Solid = [M for M in Mats if not Ctx.Catalog.IsPurchasableGroup(M.Group)]
+    Parts = [M.Label for M in Mats if M not in Solid] + \
+            (["solid gold in " + ", ".join(M.Label.replace(" Gold", "") for M in Solid)] if Solid else [])
+    return (", ".join(Parts[:-1]) + " and " + Parts[-1]) if len(Parts) > 1 else (Parts[0] if Parts else "")
 
 
 # ── the FAQ: the page, its accordion and its FAQPage data come from here ─────────────────────────────────────────────
@@ -94,10 +104,12 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
     What = ("No product is available at the moment." + Tail if W["none"] else
             W["list"] + ": choose one when you start a design." + Tail if W["many"] else
             "Currently, XJet Atelier supports " + W["Nouns"] + " only." + Tail)
-    Fashion = ", ".join(_Labels(Ctx, "fashion"))
-    Gold = ", ".join(L.replace(" Gold", "") for L in _Labels(Ctx, "luxury"))
-    Metals = (f"Fashion jewelry: {Fashion}. Luxury: solid gold in {Gold} — luxury pieces can be previewed but are not yet "
-              "available to order.")
+    # The metals by their status (WP3): sold at a fixed price, quoted, preview only — never one the page does not list
+    G = MaterialStatus.PageGroups(Ctx, Visible)
+    Metals = " ".join(([f"Fashion jewelry: {', '.join(M.Label for M in G['fashion'])}."] if G["fashion"] else [])
+                      + ([f"Luxury: {_Phrase(Ctx, G['luxury'])} — by request (quoted individually)."] if G["luxury"] else [])
+                      + ([f"Preview only: {_Phrase(Ctx, G['preview'])} — not available to order."] if G["preview"] else [])) \
+        or "No metal is available to order at the moment."
     R, C = W["ring"], W["charm"]
     Price = ("Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the "
              "price. A charm is priced by material and size." if R and C else
@@ -158,8 +170,14 @@ def FaqHtml(Items: list[tuple[str, str]]) -> str:
 # ── each page's title and description (unique, true, following the products on offer) ───────────────────────────────
 def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str]:
     W = Words(Visible)
-    Fashion = _Labels(Ctx, "fashion")
-    Metals = (", ".join(Fashion[:-1]) + " and " + Fashion[-1]) if len(Fashion) > 1 else (Fashion[0] if Fashion else "metal")
+    if View == "materials":                            # the metals by their status (WP3), read for this page only
+        G = MaterialStatus.PageGroups(Ctx, Visible)
+        Fashion = [M.Label for M in G["fashion"]]
+        Metals = (", ".join(Fashion[:-1]) + " and " + Fashion[-1]) if len(Fashion) > 1 else (Fashion[0] if Fashion else "metal")
+        Gold = ", and solid gold by quote" if G["luxury"] else ", and gold as a preview only" if G["preview"] else ""
+        return ("Materials & Pricing — Real Metal, Fixed Prices · XJet Atelier",
+                f"The metals XJet Atelier prints in — {Metals} — at a fixed price per {W['noun']}{Gold}: "
+                "appearance, finish, wear and care.")        # ≤ 200 characters with the longer names (R-04)
     return {
         "home": ("XJet Atelier — Custom AI Jewelry, Designed by You", HomeDescription),
         "inspiration": (f"Inspiration Gallery — {W['title']} Designed with AI · XJet Atelier",
@@ -168,9 +186,6 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
         "faq": ("FAQ — Designing Custom Jewelry with AI · XJet Atelier",
                 f"Answers about designing {W['text']} with AI at XJet Atelier: what you can create, the metals, how "
                 "prices work, production in 7–10 business days and delivery."),
-        "materials": ("Materials & Pricing — Real Metal, Fixed Prices · XJet Atelier",
-                      f"The metals XJet Atelier prints in — {Metals} — at a fixed price per {W['noun']}, and solid gold "
-                      "by quote: appearance, finish, wear and care."),        # ≤ 200 characters with the longer names (R-04)
         "technology": ("NanoParticle Jetting™ — How XJet Prints in Metal · XJet Atelier",
                        "XJet's NanoParticle Jetting™ prints metal from a liquid ink in layers of about 8 microns, with "
                        f"soluble support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
@@ -226,10 +241,19 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                  if R and C else "Prices in US dollars, per charm, fixed for the material and size."
                  if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price."
                  if R else "Prices in US dollars, per piece, fixed for the material.")
+        G = MaterialStatus.PageGroups(Ctx, Visible)                    # the metals by their status (WP3)
+        Gold = (" Gold is quoted individually." if G["luxury"] else "") + \
+               (" Gold can be previewed in Customize but is not available to order." if G["preview"] else "")
+        Vermeil = " 14K Gold over Stainless Steel is stainless steel plated with 14K gold." \
+            if any(M.Id == "vermeil" for Ms in G.values() for M in Ms) else ""
+        Order = [M.Label for I in MaterialStatus.SentenceOrder for M in G["fashion"] if M.Id == I] + \
+                [M.Label for M in G["fashion"] if M.Id not in MaterialStatus.SentenceOrder]
         return {"materialsTitle": "Real metal, one fixed price per " + W["noun"],
-                "materialsIntro": f"Every {W['noun']} is printed to order in the metal you choose. {How} Gold is quoted individually.",
+                "materialsIntro": f"Every {W['noun']} is printed to order in the metal you choose. {How}{Gold}",
                 "materialsNote": f"{Fixed} Each {W['noun']} is made to order, and its price does not change with its final "
-                                 "weight. 14K Gold over Stainless Steel is stainless steel plated with 14K gold.",
+                                 f"weight.{Vermeil}",
+                "previewIntro": f"See your {W['noun']} in each gold option in Customize — a preview only: gold is not available "
+                                "to order." + (f" Order your {W['noun']} in {MaterialStatus.Names(Order)}." if Order else ""),
                 "goldIntro": f"Solid gold {W['nouns']} are priced per piece. Design your {W['noun']}, choose a gold option in "
                              "Customize and send a quote request. We confirm it right away, review it within one business day "
                              "and aim to send your price within three business days; if your design needs longer, we tell you. "
@@ -425,8 +449,22 @@ def DesignLinks(Base: str, Items: list[dict], Exclude: str = "") -> str:
 # placeholder card per metal, of the cards' size (measured 2026-10-17 from 360 to 1600 px; index.html .material-ph and
 # .gold-ph), so the notes and the gold section stay where they will be (no layout shift); they hide as the catalog
 # arrives, in the frame the real cards take their place.
-MaterialLoops = {"fashion": """<template x-for="m in materialsOf('fashion')" :key="m.id">""",
-                 "luxury": """<template x-for="m in materialsOf('luxury')" :key="m.id">"""}
+MaterialLoops = {"fashion": """<template x-for="m in pageMetals('fashion')" :key="m.id">""",
+                 "luxury": """<template x-for="m in pageMetals('luxury')" :key="m.id">""",
+                 "preview": """<template x-for="m in pageMetals('preview')" :key="m.id">"""}
+# The gold (quote only) and preview only sections of /materials, between these marks in index.html: one without metals is
+# left out of the page as served (StripMaterialSections), so it never shows, not even before the scripts start
+MaterialSections = {"luxury": ("<!-- metals:luxury -->", "<!-- /metals:luxury -->"),
+                    "preview": ("<!-- metals:preview -->", "<!-- /metals:preview -->")}
+MaterialListAnchor = "<!-- metals:list -->"            # where a crawler's list of every metal and its status goes
+
+
+def StripMaterialSections(Html: str, Ctx, Visible: tuple) -> str:
+    G = MaterialStatus.PageGroups(Ctx, Visible)
+    for Group, (Open, Close) in MaterialSections.items():
+        if not G[Group]:
+            Html = re.sub(re.escape(Open) + r".*?" + re.escape(Close), "", Html, flags=re.S)
+    return Html
 _MaterialCard = ('<article class="rounded-2xl border border-zinc-100 bg-white overflow-hidden flex flex-col" aria-hidden="true" '
                  'data-ssr-placeholder x-show="!catalog"><div class="aspect-[4/3] shimmer"></div><div class="material-ph"></div></article>')
 _GoldCard = '<div class="rounded-xl border border-zinc-100 bg-white gold-ph" aria-hidden="true" data-ssr-placeholder x-show="!catalog"></div>'
@@ -436,13 +474,24 @@ def MaterialPlaceholders(Ctx, Group: str, Visible: tuple = (Products.Ring,)) -> 
     """With rings and charms both on offer a fashion card also gives its charm price, one line more (.ph-charm)."""
     W = Words(Visible)
     Card = _MaterialCard.replace('class="material-ph"', 'class="material-ph ph-charm"') if W["ring"] and W["charm"] else _MaterialCard
-    return (Card if Group == "fashion" else _GoldCard) * len(_Labels(Ctx, Group))
+    return (Card if Group == "fashion" else _GoldCard) * len(_Labels(Ctx, Group, Visible))
 
 
-def MaterialList(Ctx) -> str:
-    Fashion = "".join(f"<li>{E(L)} — available to order</li>" for L in _Labels(Ctx, "fashion"))
-    Gold = "".join(f"<li>{E(L)} — by request (quoted individually)</li>" for L in _Labels(Ctx, "luxury"))
-    return CrawlerBlock(f"<ul>{Fashion}{Gold}</ul>")
+StatusWords = {MaterialStatus.Available: "available to order", MaterialStatus.Quote: "by request (quoted individually)",
+               MaterialStatus.Preview: "preview only (not available to order)", MaterialStatus.Hidden: "not offered"}
+
+
+def MaterialList(Ctx, Visible: tuple = (Products.Ring,)) -> str:
+    """The metals as a crawler reads them, by status; a metal whose status differs between the products on offer says
+    it per product ("available to order for rings; preview only (not available to order) for charms")."""
+    Items = []
+    for Group, Mats in MaterialStatus.PageGroups(Ctx, Visible).items():
+        for M in Mats:
+            Per = MaterialStatus.PageStatuses(Ctx, Visible, M.Id)
+            Words_ = StatusWords[next(iter(Per.values()))] if len(set(Per.values())) == 1 else \
+                "; ".join(f"{StatusWords[S]} for {Products.Plurals[P].lower()}" for P, S in Per.items())
+            Items.append(f"<li>{E(M.Label)} — {E(Words_)}</li>")
+    return CrawlerBlock(f"<ul>{''.join(Items)}</ul>")
 
 
 # ── structured data (JSON-LD): only what is true ─────────────────────────────────────────────────────────────────────

@@ -234,8 +234,8 @@ function p3App() {
 
     // ── customize ────────────────────────────────────────────────────
     cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '',
-    lastMaterialByGroup: { fashion: 'silver', luxury: null },
-    groupOpen: { fashion: true, luxury: false },
+    lastMaterialByGroup: { fashion: 'stainless_steel', luxury: null, preview: null },
+    groupOpen: { fashion: true, luxury: false, preview: false },
     showSizeGuide: false,
 
     // ── bag ──────────────────────────────────────────────────────────
@@ -285,8 +285,7 @@ function p3App() {
       gallery.then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
       if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
-      const lux = this.materialsOf('luxury');
-      this.lastMaterialByGroup.luxury = lux.length ? lux[0].id : null;
+      for (const g of ['luxury', 'preview']) { const ms = this.materialsOf(g); this.lastMaterialByGroup[g] = ms.length ? ms[0].id : null; }
       try {
         const P = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
         if (P) this.userProfile = { name: P.name || '', email: P.email || '' };
@@ -1487,16 +1486,44 @@ function p3App() {
     signOutFromAccount() { this.closeAccountPanel(); this.signOut(); },
 
     // ── catalog helpers ───────────────────────────────────────────────
+    // The catalog's groups are the metals' customer statuses for a ring (WP3): 'fashion' sold at a fixed price, 'luxury'
+    // quoted, 'preview' seen only; a charm's metals carry their own (charmMaterial(id).group). Hidden metals are in no
+    // group but still render what was made in them (hidden_materials).
     group(id) { return this.catalog?.groups.find(g => g.id === id); },
     materialsOf(groupId) { return this.group(groupId)?.materials || []; },
     material(id) {
       for (const g of this.catalog?.groups || []) for (const m of g.materials) if (m.id === id) return m;
-      return null;
+      return (this.catalog?.hidden_materials || []).find(m => m.id === id) || null;
     },
     groupOfMaterial(id) { return this.material(id)?.group; },
+    openGroup(g) { return { fashion: g === 'fashion', luxury: g === 'luxury', preview: g === 'preview' }; },
     copy(id) { return MATERIAL_COPY[id] || {}; },
     info(id) { return MATERIAL_INFO[id] || {}; },
-    get allMaterials() { return (this.catalog?.groups || []).flatMap(g => g.materials.map(m => ({ ...m, groupLabel: g.label }))); },
+    get allMaterials() {
+      return [...(this.catalog?.groups || []).flatMap(g => g.materials.map(m => ({ ...m, groupLabel: g.label }))),
+              ...(this.catalog?.hidden_materials || [])];
+    },
+    // Customize's metal groups for the piece being customized: a ring's are the catalog's groups, a charm's come from its
+    // own metals and statuses (set apart from a ring's) — each metal with its swatch from the catalog
+    get custGroups() {
+      if (!this.custIsCharm) return this.catalog?.groups || [];
+      const own = this.catalog?.products?.charm?.materials || this.cust?.materials || [];
+      return ['fashion', 'luxury', 'preview'].map(id => ({ id, label: this.group(id)?.label || 'Preview only', purchasable: id === 'fashion',
+        materials: own.filter(m => m.group === id).map(m => ({ ...(this.material(m.id) || {}), ...m })) })).filter(g => g.materials.length);
+    },
+    custGroupOf(id) { for (const g of this.custGroups) if (g.materials.some(m => m.id === id)) return g.id; return null; },
+    custMaterialsOf(groupId) { return this.custGroups.find(g => g.id === groupId)?.materials || []; },
+    // The Materials page lists a metal under its best status for the products on offer (both, when none is): available
+    // for any of them → 'fashion', else quoted → 'luxury', else preview only → 'preview' (p3/materialstatus.py PageGroups)
+    pageGroupOf(id) {
+      const list = this.productsList.length ? this.productsList : ['ring', 'charm'];
+      const groups = list.map(p => p === 'charm' ? this.charmMaterial(id)?.group : this.groupOfMaterial(id)).filter(Boolean);
+      return ['fashion', 'luxury', 'preview'].find(g => groups.includes(g)) || null;
+    },
+    pageMetals(groupId) {
+      const seen = new Set();
+      return this.allMaterials.filter(m => !seen.has(m.id) && seen.add(m.id) && this.pageGroupOf(m.id) === groupId);
+    },
     // Materials & Pricing: the fixed price per metal is public (no sign-in needed to see what a ring costs)
     materialQuotes: {}, materialQuotesState: 'idle',
     async loadMaterialQuotes() {
@@ -1511,7 +1538,9 @@ function p3App() {
     // A Materials card's price: "$90 · any ring size" — the figure (in the display face) and its words; charms alone:
     // "from $49 · by charm size". Whole dollars without cents.
     materialPrice(id) {
-      if (this.soleProduct === 'charm') {                                             // charms only: the fixed price per size
+      // a ring's fixed price where the metal is available for rings; else (charms only, or a metal available for charms
+      // alone) the charm's prices
+      if (this.soleProduct === 'charm' || this.groupOfMaterial(id) !== 'fashion') {                                             // charms only: the fixed price per size
         const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
         return prices.length ? { before: 'from', figure: this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true), words: 'by charm size' }
                              : { before: '', figure: 'Price on request', words: '' };
@@ -1523,6 +1552,8 @@ function p3App() {
     },
     charmMaterial(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id); },
     charmPriceText(id, prefix = 'Charm: ') {
+      const g = this.charmMaterial(id)?.group;                                      // the charm's own status (WP3)
+      if (g !== 'fashion') { const t = g === 'preview' ? 'preview only' : g === 'luxury' ? 'by request' : 'not offered'; return prefix ? prefix + t : t[0].toUpperCase() + t.slice(1); }
       const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
       const text = prices.length ? 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true) + ' per charm, by size' : 'price on request';
       return prefix ? prefix + text : text[0].toUpperCase() + text.slice(1);
@@ -1657,14 +1688,25 @@ function p3App() {
       const how = r && c ? 'Fashion metals have a fixed price per piece — a ring’s price does not depend on its size; a charm is priced by material and size.'
                 : c ? 'Fashion metals have a fixed price per charm, set by material and size — any design.'
                 : 'Fashion metals have a fixed price per ring — any size, any design.';
-      return 'Every ' + this.wording.noun + ' is printed to order in the metal you choose. ' + how + ' Gold is quoted individually.';
+      // the metals by their status (WP3): a sentence only for a group the page lists (p3/sitepages.py, the same words)
+      const gold = (this.pageMetals('luxury').length ? ' Gold is quoted individually.' : '')
+                 + (this.pageMetals('preview').length ? ' Gold can be previewed in Customize but is not available to order.' : '');
+      return 'Every ' + this.wording.noun + ' is printed to order in the metal you choose. ' + how + gold;
     },
     get materialsNote() {
       const r = this.wording.ring, c = this.wording.charm;
       const fixed = r && c ? 'Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size.'
                   : c ? 'Prices in US dollars, per charm, fixed for the material and size.'
                   : 'Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.';
-      return fixed + ' Each ' + this.wording.noun + ' is made to order, and its price does not change with its final weight. 14K Gold over Stainless Steel is stainless steel plated with 14K gold.';
+      return fixed + ' Each ' + this.wording.noun + ' is made to order, and its price does not change with its final weight.'
+             + (this.pageGroupOf('vermeil') ? ' 14K Gold over Stainless Steel is stainless steel plated with 14K gold.' : '');
+    },
+    get previewIntro() {
+      const order = ['silver', 'stainless_steel', 'vermeil'], own = this.pageMetals('fashion');
+      const names = [...order.map(id => own.find(m => m.id === id)).filter(Boolean), ...own.filter(m => !order.includes(m.id))].map(m => m.label);
+      const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1] : names[0];
+      return 'See your ' + this.wording.noun + ' in each gold option in Customize — a preview only: gold is not available to order.'
+             + (list ? ' Order your ' + this.wording.noun + ' in ' + list + '.' : '');
     },
     get goldIntro() { return 'Solid gold ' + this.wording.nouns + ' are priced per piece. Design your ' + this.wording.noun + ', choose a gold option in Customize and send a quote request. We confirm it right away, review it within one business day and aim to send your price within three business days; if your design needs longer, we tell you. Nothing is ordered or charged until you confirm.'; },
     get termsService() {
@@ -2162,11 +2204,11 @@ function p3App() {
       this.actionError = '';
       const designId = this.design.id, candidateId = this.selectedId;
       // Show the selected image immediately; the server returns the authoritative customization.
-      this.cust = { candidate_id: candidateId, image_url: this.selectedCandidate.image_url, material_id: 'silver',
+      this.cust = { candidate_id: candidateId, image_url: this.selectedCandidate.image_url, material_id: 'stainless_steel',
                     quote: null, movie: { status: 'queued' }, ring_size: null, quantity: 1,
                     product_type: this.design?.product_type || 'ring', charm_size: null };
       this.mediaTab = 'movie'; this.custError = ''; this.bagMessage = '';
-      this.groupOpen = { fashion: true, luxury: false };
+      this.groupOpen = this.openGroup('fashion');
       this.navigateTo('review');                                    // Customize's page view, then the event at its address
       this.measure('customize_opened', { product_type: this.design?.product_type || 'ring', source: this.design?.shared ? 'gallery' : 'results' });
       try {
@@ -2186,9 +2228,9 @@ function p3App() {
       // the design (R-21); a charm has no suggestion — its size was chosen
       if (!same) this.sizeConfirmed = this.isCharm(c) ? c.charm_size != null : !!c.size_confirmed;
       this.mediaTab = 'movie';          // the movie is the default Customize view
-      const g = this.groupOfMaterial(c.material_id) || 'fashion';
+      const g = this.custGroupOf(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
-      this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
+      this.groupOpen = this.openGroup(g);
       if (this.view !== 'review') this.navigateTo('review', { history });
       if (!same && ['queued', 'running'].includes(c.movie?.status)) this.measure('movie_generation_started', { product_type: c.product_type || 'ring', retry: false });
       this.pollCustomization();
@@ -2241,7 +2283,7 @@ function p3App() {
     get movieStatus() { return this.cust?.movie?.status || null; },
     get movieBusy() { return this.movieStatus === 'queued' || this.movieStatus === 'running'; },
     get movieFailed() { return this.movieStatus === 'failed' || this.movieStatus === 'interrupted'; },
-    get currentGroup() { return this.groupOfMaterial(this.cust?.material_id) || 'fashion'; },
+    get currentGroup() { return this.custGroupOf(this.cust?.material_id) || 'fashion'; },
     get currentMaterial() { return this.material(this.cust?.material_id); },
     get tint() { return this.metalFilter(this.cust?.material_id); },
     // Metal colour preview. The former CSS filters (sepia/hue-rotate) recoloured the whole picture,
@@ -2255,18 +2297,19 @@ function p3App() {
       // Selecting a group reveals its options and selects that group's last-used option;
       // clicking the active group again just collapses/expands it.
       if (this.currentGroup === groupId) { this.groupOpen[groupId] = !this.groupOpen[groupId]; return; }
-      this.groupOpen = { fashion: groupId === 'fashion', luxury: groupId === 'luxury' };
-      const target = this.lastMaterialByGroup[groupId] || this.materialsOf(groupId)[0]?.id;
+      this.groupOpen = this.openGroup(groupId);
+      const own = this.custMaterialsOf(groupId), last = this.lastMaterialByGroup[groupId];
+      const target = own.some(m => m.id === last) ? last : own[0]?.id;
       if (target) this.chooseMaterial(target);
     },
 
     async chooseMaterial(materialId) {
       if (!this.cust?.id || this.cust.material_id === materialId) return;
       const custId = this.cust.id;
-      const g = this.groupOfMaterial(materialId);
+      const g = this.custGroupOf(materialId);
       this.measure('material_selected', { product_type: this.cust.product_type || 'ring', material_id: materialId, material_group: g });
       this.lastMaterialByGroup[g] = materialId;
-      this.groupOpen = { fashion: g === 'fashion', luxury: g === 'luxury' };
+      this.groupOpen = this.openGroup(g);
       // Never leave a previous fashion price visible while the new quote loads.
       this.cust.material_id = materialId;
       this.cust.quote = null; this.cust.line_total = null; this.cust.can_add_to_bag = false;
@@ -2306,9 +2349,18 @@ function p3App() {
     },
 
     get isLuxury() { return this.currentGroup === 'luxury'; },
-    get priceAvailable() { return !this.isLuxury && this.cust?.quote?.pricing_status === 'available'; },
+    // Preview Only (WP3): seen in Customize, never priced, bagged or quoted — the metals it can be ordered in instead
+    get isPreview() { return this.currentGroup === 'preview'; },
+    get previewText() {
+      const order = ['silver', 'stainless_steel', 'vermeil'], own = this.custMaterialsOf('fashion');
+      const names = [...order.map(id => own.find(m => m.id === id)).filter(Boolean), ...own.filter(m => !order.includes(m.id))].map(m => this.matName(m));
+      const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1] : names[0];
+      return 'Preview only — not available to order.' + (list ? ' Order it in ' + list + '.' : '');
+    },
+    get priceAvailable() { return !this.isLuxury && !this.isPreview && this.cust?.quote?.pricing_status === 'available'; },
     get priceText() {
       if (this.isLuxury) return 'Price on request';                                   // gold: quoted individually (R-22)
+      if (this.isPreview) return 'Preview only';                                       // never priced (WP3)
       if (this.custIsCharm && this.cust?.charm_size == null) return 'Choose a size';     // a charm's price depends on its size
       const q = this.cust?.quote;
       if (!q) return '—';
@@ -2324,6 +2376,8 @@ function p3App() {
       if (!this.cust || this.quotePending) return 'Updating price…';
       switch (this.cust.add_to_bag_blocked_reason) {
         case 'luxury_preview_only': return 'Request a quote';
+        case 'preview_only': return 'Preview only';
+        case 'material_not_offered': return 'No longer offered';
         case 'design_unavailable': return 'Currently Unavailable';
         case 'price_unavailable': return 'Price Unavailable';
         case 'ring_size_required': return 'Choose your ring size';
@@ -2336,6 +2390,8 @@ function p3App() {
       if (!this.cust) return '';
       switch (this.cust.add_to_bag_blocked_reason) {
         case 'luxury_preview_only': return this.custIsCharm ? 'Gold charms are quoted individually.' : 'Gold rings are quoted individually.';
+        case 'preview_only': return this.previewText;
+        case 'material_not_offered': return 'This metal is no longer offered — please choose another.';
         case 'price_unavailable': return 'Price unavailable — this piece cannot be added to the bag yet.';
         case 'design_unavailable': return 'This design is currently unavailable for customization or ordering.';
         case 'ring_size_required': return 'Choose your ring size to continue.';
@@ -2357,7 +2413,7 @@ function p3App() {
     // The price the purchase summary shows: the total for the quantity chosen ("×2 · $218.00"), never the unit price alone
     get purchaseTotalText() {
       const q = this.cust?.quote;
-      if (this.isLuxury || !q || q.pricing_status !== 'available' || (this.custIsCharm && this.cust?.charm_size == null)) return this.priceText;
+      if (this.isLuxury || this.isPreview || !q || q.pricing_status !== 'available' || (this.custIsCharm && this.cust?.charm_size == null)) return this.priceText;
       const n = this.cust?.quantity || 1;
       return (n > 1 ? '×' + n + ' · ' : '') + this.money(this.cust?.line_total ?? q.unit_price * n, q.currency);
     },
@@ -2370,6 +2426,7 @@ function p3App() {
     // The summary's second line: what the price means — never the price again
     get purchaseSubline() {
       if (this.isLuxury) return 'Quoted individually';
+      if (this.isPreview) return 'Not available to order';
       if (!this.sizeConfirmed) return 'Confirm your size to continue';
       return this.custIsCharm ? (this.currentMaterialLabel || '') : 'Fixed price, any size';
     },

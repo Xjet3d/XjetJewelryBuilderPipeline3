@@ -2,7 +2,7 @@
   "_comment_ramps": "ramp = 9 evenly spaced luminance stops (shadow to highlight) that recolour the ring image and the 360 movie per metal on the website: deep shadows, the alloy colour in the mid-tones, highlights towards white so sparkle survives (brushed steel stops just short of white)",
   "_comment": "Pipeline 3 material catalog. Groups and customer labels are confirmed product requirements (spec section 3). The cpp_metal mappings for Silver/Vermeil are continuity defaults from Pipeline 2 (spec 4.5). The Luxury list is the gold set Pipeline 2 offered in Customize; it is preview-only and must not be extended without product-owner confirmation.",
   "version": "materials-2026-09-29",
-  "default_material_id": "silver",
+  "default_material_id": "stainless_steel",
   "groups": [
     { "id": "fashion", "label": "Fashion jewelry", "purchasable": true },
     { "id": "luxury",  "label": "Luxury",          "purchasable": false }
