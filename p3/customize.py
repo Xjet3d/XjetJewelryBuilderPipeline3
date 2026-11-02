@@ -253,6 +253,16 @@ class CustomizeService:
         Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
         CanAdd, Reason = self.Purchasability(Row, Quote, Product)
+        # Refused first: the same line already in the bag (bagged while it could be) is no reason to answer "added" (WP3)
+        if not CanAdd:
+            Messages = {"luxury_preview_only": "Luxury materials are preview-only for now.",
+                        "preview_only": MaterialStatus.PreviewText(self.Ctx, Product),
+                        "material_not_offered": MaterialStatus.HiddenText(),
+                        "price_unavailable": "Price unavailable — this item cannot be added to the bag.",
+                        "ring_size_required": "Please choose a ring size.",
+                        "charm_size_required": "Please choose a charm size.",
+                        "charm_size_not_offered": "This charm size is no longer offered — please choose another size."}
+            raise HttpError(409, Reason, Messages[Reason])
         # The very same configuration again (a double click) adds no second line; a changed size, material or
         # quantity is a new line, as before
         Already = self.Ctx.Db.One("SELECT id FROM bag_lines WHERE owner_account_id = ? AND customization_id = ? AND material_id = ? "
@@ -263,15 +273,6 @@ class CustomizeService:
                                    Row.get("charm_size") if Product == Products.Charm else None, Row["quantity"]))
         if Already:
             return self.Bag(Who, Visible)
-        if not CanAdd:
-            Messages = {"luxury_preview_only": "Luxury materials are preview-only for now.",
-                        "preview_only": MaterialStatus.PreviewText(self.Ctx, Product),
-                        "material_not_offered": MaterialStatus.HiddenText(),
-                        "price_unavailable": "Price unavailable — this item cannot be added to the bag.",
-                        "ring_size_required": "Please choose a ring size.",
-                        "charm_size_required": "Please choose a charm size.",
-                        "charm_size_not_offered": "This charm size is no longer offered — please choose another size."}
-            raise HttpError(409, Reason, Messages[Reason])
         LineId = NewId("bag")
         self.Ctx.Db.Execute(
             "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, product_type, material_id, "

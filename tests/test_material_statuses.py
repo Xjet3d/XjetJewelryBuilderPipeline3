@@ -147,6 +147,10 @@ async def test_preview_only_has_no_price_bag_order_or_quote_and_the_bag_orders_t
         Login = await H.Client.post("/api/admin/login", json={"key": AdminKey})
         Cookie = {"Cookie": "; ".join(f"{K}={V}" for K, V in Login.cookies.items())}
         assert (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]}, headers=Cookie)).status_code == 409
+        # The very line bagged before activation, added again: refused too (never "already in the bag")
+        Before = H.Ctx.Db.One("SELECT customization_id FROM bag_lines WHERE material_id = 'vermeil'")["customization_id"]
+        R = await H.Client.post("/api/bag", json={"customization_id": Before})
+        assert R.status_code == 409 and R.json()["error"]["code"] == "preview_only", R.text
         # No quote: no new request, no new offer on the open one, and its sent offer is not approved
         Body = {"design_id": B["design_id"], "candidate_id": B["candidates"][0]["id"], "ring_size": 7, "quantity": 1, "customer": Customer}
         R = await H.Client.post("/api/quote-requests", json={**Body, "material_id": "gold_14k_yellow"})
