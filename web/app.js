@@ -2364,6 +2364,8 @@ function p3App() {
     // ── bag ───────────────────────────────────────────────────────────
     get bagLines() { return this.bag?.lines || []; },
     get bagCount() { return this.bagLines.reduce((n, l) => n + l.quantity, 0); },
+    // the pieces the subtotal counts: a line that can't be ordered stays in the bag, left out (WP2)
+    get bagOrderableCount() { return this.bagLines.filter(l => l.orderable !== false).reduce((n, l) => n + l.quantity, 0); },
     async refreshBag() { if (!this.token) return; try { this.bag = await this.api('GET', '/api/bag'); } catch { /* ignore */ } },
     async removeLine(l) {
       try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); this.showToast('Removed from your bag'); }

@@ -1931,7 +1931,7 @@
                     </template>
                 </div>
                 <div x-show="bagLines.length > 0" class="border-t border-zinc-100 pt-6 space-y-3 mb-8">
-                    <div class="flex justify-between text-sm"><span class="text-zinc-500">Items</span><span class="text-zinc-800" x-text="bagCount"></span></div>
+                    <div class="flex justify-between text-sm"><span class="text-zinc-500">Items</span><span class="text-zinc-800" x-text="bagOrderableCount"></span></div>
                     <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
                         <div class="flex justify-between font-semibold text-base pt-3 border-t border-zinc-100 brand-font"><span>Subtotal</span><span x-text="money(total, cur)"></span></div>
                     </template>
@@ -1941,7 +1941,7 @@
                     <button @click="continueFromBag()" class="flex-1 min-h-[44px] border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
                     <button @click="startCheckout()" :disabled="!bag?.checkout_available || co.busy" class="flex-1 btn-gold py-3.5 stream-glow" x-text="co.busy ? 'Opening checkout…' : 'Checkout'"></button>
                 </div>
-                <p x-show="bag && !bag.checkout_available && bagLines.length" class="mt-3 text-[13px] text-center" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
+                <p x-show="bag?.checkout_note && bagLines.length" class="mt-3 text-[13px] text-center" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
                 <p x-show="co.error && view === 'checkout'" class="err-line justify-center text-center mt-3" role="alert" x-text="co.error"></p>
             </div>
         </main>
@@ -2078,7 +2078,7 @@
                                     <p class="text-zinc-500"><span x-text="l.quantity"></span> × <span x-text="money(l.unit_price, l.currency)"></span></p>
                                     <p x-show="l.problem" class="text-red-700" x-text="'Not in this order — it stays in your bag: ' + l.problem"></p>
                                 </div>
-                                <p class="text-[13px] shrink-0" :class="l.problem ? 'line-through text-zinc-400' : 'text-zinc-900'" x-text="money(l.line_total, l.currency)"></p>
+                                <p class="text-[13px] shrink-0" :class="l.problem ? 'text-zinc-400' : 'text-zinc-900'" :style="l.problem ? 'text-decoration: line-through' : ''" x-text="money(l.line_total, l.currency)"></p>
                             </li>
                         </template>
                     </ul>
