@@ -2407,7 +2407,7 @@ function adminApp() {
     statusRow(p, id) { return (this.mstat?.products?.[p] || []).find(r => r.id === id); },
     statusOf(p, id) { return this.mstatEdit[p + ':' + id] ?? this.statusRow(p, id)?.status; },
     statusBlocked(p, id, s) { return this.statusRow(p, id)?.blocked?.[s] || ''; },
-    statusLabel(s) { return (this.mstat?.statuses || []).find(x => x.id === s)?.label || s; },
+    metalStatusLabel(s) { return (this.mstat?.statuses || []).find(x => x.id === s)?.label || s; },
     setStatus(p, id, s) {
       const k = p + ':' + id, edit = { ...this.mstatEdit };
       if (s === this.statusRow(p, id)?.status) delete edit[k]; else edit[k] = s;
@@ -2422,7 +2422,7 @@ function adminApp() {
         const plan = await this.api('PUT', '/api/admin/material-statuses', { changes, dry_run: true });
         const lines = plan.changes.map(c => {
           const a = c.affected, quotes = a.open_quotes.map(q => q.ref + (q.offer ? ' (quote sent)' : '')).join(', ');
-          return this.pLabel(c.product) + ' · ' + c.label + ': ' + this.statusLabel(c.from) + ' → ' + this.statusLabel(c.to) + ' — '
+          return this.pLabel(c.product) + ' · ' + c.label + ': ' + this.metalStatusLabel(c.from) + ' → ' + this.metalStatusLabel(c.to) + ' — '
             + n(a.customizations, 'saved customization') + ', ' + n(a.bag_lines, 'bag line') + (quotes ? ', open quotes: ' + quotes : '');
         });
         this.mstatBusy = false;

@@ -2351,7 +2351,7 @@ function p3App() {
     get isLuxury() { return this.currentGroup === 'luxury'; },
     // Preview Only (WP3): seen in Customize, never priced, bagged or quoted — the metals it can be ordered in instead
     get isPreview() { return this.currentGroup === 'preview'; },
-    get previewText() {
+    get materialPreviewText() {
       const order = ['silver', 'stainless_steel', 'vermeil'], own = this.custMaterialsOf('fashion');
       const names = [...order.map(id => own.find(m => m.id === id)).filter(Boolean), ...own.filter(m => !order.includes(m.id))].map(m => this.matName(m));
       const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1] : names[0];
@@ -2390,7 +2390,7 @@ function p3App() {
       if (!this.cust) return '';
       switch (this.cust.add_to_bag_blocked_reason) {
         case 'luxury_preview_only': return this.custIsCharm ? 'Gold charms are quoted individually.' : 'Gold rings are quoted individually.';
-        case 'preview_only': return this.previewText;
+        case 'preview_only': return this.materialPreviewText;
         case 'material_not_offered': return 'This metal is no longer offered — please choose another.';
         case 'price_unavailable': return 'Price unavailable — this piece cannot be added to the bag yet.';
         case 'design_unavailable': return 'This design is currently unavailable for customization or ordering.';
