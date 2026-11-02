@@ -2297,7 +2297,7 @@
                                     <!-- Password -->
                                     <form @submit.prevent="secSetPassword()" novalidate>
                                         <label for="sec-pw" class="flbl" x-text="sec.data.has_password ? 'Change your password' : 'Add a password'"></label>
-                                        <p x-show="!sec.data.email_verified" class="text-[12px] text-zinc-500 mb-2">A password needs a confirmed email address on your account. Sign in once with Google or Apple using that address, or use “Forgot password” on the sign-in page.</p>
+                                        <p x-show="!sec.data.email_verified" class="text-[12px] text-zinc-500 mb-2">A password needs a confirmed email address on your account. Sign in once with Google using that address, or use “Forgot password” on the sign-in page.</p>
                                         <div class="flex flex-wrap gap-2 items-start">
                                             <div class="flex-1" style="min-width:12rem">
                                                 <input id="sec-pw" :type="sec.showPw ? 'text' : 'password'" x-model="sec.newPw" autocomplete="new-password" minlength="10" aria-describedby="sec-pw-hint" class="fld" :disabled="!sec.data.email_verified">

@@ -1068,7 +1068,7 @@ function p3App() {
     AUTH_MESSAGES: {
       failed: "That sign-in didn't complete. Please try again.", cancelled: 'Sign-in was cancelled.',
       unavailable: 'That sign-in method is not available right now.', blocked: 'This account is not active. Please contact us to restore access.',
-      expired: 'That step took too long. Please start again.', already_linked: 'That Google or Apple account is already connected to a different XJet Atelier account.',
+      expired: 'That step took too long. Please start again.', already_linked: 'That Google account is already connected to a different XJet Atelier account.',
       provider_present: 'A different account of that kind is already connected. Disconnect it first.', wrong_account: "That isn't the account connected here.",
       reauth_required: 'Please confirm it\'s you first.', confirm_sent: 'We emailed you a link to confirm connecting that sign-in. Open it to continue.',
       connected: 'Connected.', reauthenticated: 'Confirmed.',

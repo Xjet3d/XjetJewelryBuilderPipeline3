@@ -853,7 +853,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return {**Ctx.Accounts.Profile(TokAny(x_access_token)), "tariff": Credits.Tariff(Ctx)}
 
     # ── sign-in / registration (Pipeline 2 JewelryB2C2 flow) ─────────────
-    LegacyGone = HttpError(410, "sign_in_changed", "Sign-in has changed: create an account or sign in with Google, Apple or your email.")
+    LegacyGone = HttpError(410, "sign_in_changed", "Sign-in has changed: create an account or sign in with Google or your email.")
 
     @App_.post("/api/register")
     async def Register(Req: Request, Background: BackgroundTasks, Body_: dict = Body(...)):
