@@ -18,7 +18,7 @@ from tests.test_orders import _Order
 
 
 async def _Design(H, Prompt: str, Charm: bool = False) -> tuple[str, str]:
-    B = await H.NewDesign(Prompt, **({"product": "charm"} if Charm else {}))
+    B = await H.NewDesign(Prompt, product="charm" if Charm else "ring")
     return B["design_id"], B["candidates"][0]["id"]
 
 

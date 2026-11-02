@@ -24,7 +24,7 @@ def _Days(N: int) -> str:
 
 
 async def _Request(H, Size=7, Material="gold_18k_yellow", Prompt="A signet ring with a crescent"):
-    B = await H.NewDesign(Prompt)
+    B = await H.NewDesign(Prompt, product="ring")
     R = await H.Client.post("/api/quote-requests", json={"design_id": B["design_id"], "candidate_id": B["candidates"][0]["id"],
                                                          "material_id": Material, "ring_size": Size, "quantity": 2,
                                                          "customer": Customer, "message": "Engrave D&L inside"})

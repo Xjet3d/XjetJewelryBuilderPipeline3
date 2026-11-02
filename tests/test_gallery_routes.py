@@ -162,7 +162,7 @@ async def test_the_gallery_keeps_its_room_from_the_first_paint(tmp_path):
         for Path_ in ("/gallery", f"/gallery/{Charm['slug']}"):
             Page = (await H.Client.get(Path_)).text
             assert _LiveGallery(Page).count(SitePages.GallerySquare) == 2, Path_            # one per design
-            assert '"products": ["ring", "charm"]' in Page and '"gallery_count": 2' in Page, Path_
+            assert '"products": ["charm", "ring"]' in Page and '"gallery_count": 2' in Page, Path_
         await _Set(H, "ring", False)
         Page = (await H.Client.get("/gallery")).text
         assert _LiveGallery(Page).count(SitePages.GallerySquare) == 1 and '"products": ["charm"]' in Page and '"gallery_count": 1' in Page

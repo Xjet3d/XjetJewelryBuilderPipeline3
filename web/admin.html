@@ -657,7 +657,7 @@
         <div class="card p-4"><p class="lbl mb-1">Sessions</p><p class="text-2xl font-semibold" x-text="dash.sessions"></p>
           <p class="text-[12px] text-zinc-500" x-text="dash.active_sessions + ' active now'"></p>
           <p x-show="dash.by_product" class="text-[12px] text-zinc-600 flex items-center gap-2 mt-1">
-            <template x-for="p in ['ring', 'charm']" :key="'dk' + p"><span class="inline-flex items-center gap-1" :title="pPlural(p)"><span :class="p === 'charm' ? 'text-[#8A6420]' : 'text-zinc-500'" x-html="pIcon(p, 'w-3.5 h-3.5')"></span><span class="tabular-nums" x-text="dash.by_product?.[p]?.sessions ?? 0"></span><span x-text="pPlural(p)"></span></span></template></p></div>
+            <template x-for="p in ['charm', 'ring']" :key="'dk' + p"><span class="inline-flex items-center gap-1" :title="pPlural(p)"><span :class="p === 'charm' ? 'text-[#8A6420]' : 'text-zinc-500'" x-html="pIcon(p, 'w-3.5 h-3.5')"></span><span class="tabular-nums" x-text="dash.by_product?.[p]?.sessions ?? 0"></span><span x-text="pPlural(p)"></span></span></template></p></div>
         <div class="card p-4"><p class="lbl mb-1">New Design clicks</p><p class="text-2xl font-semibold" x-text="dash.new_design_clicks"></p>
           <p class="text-[12px] text-zinc-500">Recorded from 1 Oct 2026 · incl. no prompt</p></div>
         <div class="card p-4"><p class="lbl mb-1">Avg refinements</p><p class="text-2xl font-semibold" x-text="dash.avg_refinements ?? '—'"></p>
@@ -696,14 +696,14 @@
 
       <!-- Rings and charms apart: shown once charms have sessions -->
       <section class="card p-6" x-show="dash.by_product && dash.by_product.charm && dash.by_product.charm.sessions">
-        <p class="lbl mb-3">By product — rings and charms</p>
+        <p class="lbl mb-3">By product — charms and rings</p>
         <div class="overflow-x-auto">
           <table class="w-full !text-xs">
             <thead><tr><th>Stage</th>
-              <template x-for="p in ['ring', 'charm']" :key="'fh' + p"><th class="text-right"><span class="inline-flex items-center gap-1"><span x-html="pIcon(p, 'w-3.5 h-3.5')"></span><span x-text="pPlural(p) + ' (' + (dash.by_product?.[p]?.sessions ?? 0) + ')'"></span></span></th></template></tr></thead>
+              <template x-for="p in ['charm', 'ring']" :key="'fh' + p"><th class="text-right"><span class="inline-flex items-center gap-1"><span x-html="pIcon(p, 'w-3.5 h-3.5')"></span><span x-text="pPlural(p) + ' (' + (dash.by_product?.[p]?.sessions ?? 0) + ')'"></span></span></th></template></tr></thead>
             <tbody><template x-for="(f, i) in dash.funnel" :key="'fp' + f.stage"><tr>
               <td x-text="f.label"></td>
-              <template x-for="p in ['ring', 'charm']" :key="'fc' + p + f.stage"><td class="text-right tabular-nums"><span x-text="dash.by_product?.[p]?.funnel?.[i]?.sessions ?? 0"></span> <span class="text-zinc-500" x-text="dash.by_product?.[p]?.funnel?.[i]?.pct == null ? '' : '· ' + dash.by_product[p].funnel[i].pct + '%'"></span></td></template>
+              <template x-for="p in ['charm', 'ring']" :key="'fc' + p + f.stage"><td class="text-right tabular-nums"><span x-text="dash.by_product?.[p]?.funnel?.[i]?.sessions ?? 0"></span> <span class="text-zinc-500" x-text="dash.by_product?.[p]?.funnel?.[i]?.pct == null ? '' : '· ' + dash.by_product[p].funnel[i].pct + '%'"></span></td></template>
             </tr></template></tbody>
           </table>
         </div>
@@ -1633,7 +1633,7 @@
             <tr class="row-link align-top" @click="go('#/orders/' + encodeURIComponent(o.id))" tabindex="0" @keydown.enter="go('#/orders/' + encodeURIComponent(o.id))" :aria-label="'Open order ' + o.ref">
               <td><p class="font-mono font-semibold" x-text="o.ref"></p><p class="text-[12px] text-zinc-500 whitespace-nowrap" x-text="dateTime(o.created_at)"></p>
                 <span x-show="o.mock" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800 mt-1">Mock</span><span x-show="o.test" class="badge !text-[10px] !px-1.5 border border-dashed border-zinc-400 bg-white text-zinc-600" title="A synthetic test order (its customer is at a reserved test domain): no customer email, kept out of the figures">Test</span>
-                <p x-show="orderProducts(o).length > 1" class="text-[11px] text-[#7A5A10] font-semibold mt-1" title="This order holds rings and charms">Mixed · Ring + Charm</p></td>
+                <p x-show="orderProducts(o).length > 1" class="text-[11px] text-[#7A5A10] font-semibold mt-1" title="This order holds charms and rings">Mixed · Charm + Ring</p></td>
               <td><p class="font-medium" x-text="(o.customer.first_name + ' ' + o.customer.last_name).trim() || '—'"></p><p class="text-[12px] text-zinc-500" x-text="o.customer.email"></p></td>
               <td><template x-for="l in o.lines" :key="l.id">
                   <p class="whitespace-nowrap"><span class="inline-flex align-middle mr-1" :class="isCharm(l) ? 'text-[#8A6420]' : 'text-zinc-500'" :title="pLabel(l.product_type)" x-html="pIcon(l.product_type, 'w-3.5 h-3.5')"></span><span class="font-medium" x-text="l.title"></span> <span class="font-mono text-[12px] text-zinc-500" x-text="l.ring_id || ''"></span>
@@ -1676,7 +1676,7 @@
           <input class="inp !w-64 !py-1.5" x-model="pf.q" placeholder="Order, customer, part, MP number, build…" aria-label="Search">
           <select class="inp !w-auto !py-1.5" x-model="pf.stage" @change="loadProduction()" aria-label="Stage"><option value="">Every stage</option><template x-for="s in pr.stages" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></select>
           <select class="inp !w-auto !py-1.5" x-model="pf.material" @change="loadProduction()" aria-label="Material"><option value="">Every material</option><template x-for="m in pr.materials" :key="m.id"><option :value="m.id" x-text="m.label"></option></template></select>
-          <select class="inp !w-auto !py-1.5" x-model="pf.product" @change="loadProduction()" aria-label="Product"><option value="">Rings and charms</option><template x-for="p in pr.products" :key="p"><option :value="p" x-text="pLabel(p)"></option></template></select>
+          <select class="inp !w-auto !py-1.5" x-model="pf.product" @change="loadProduction()" aria-label="Product"><option value="">Charms and rings</option><template x-for="p in pr.products" :key="p"><option :value="p" x-text="pLabel(p)"></option></template></select>
           <input class="inp !w-28 !py-1.5" x-model="pf.build" placeholder="Build B-…" aria-label="Build">
           <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" x-model="pf.attention" @change="loadProduction()"> Needs attention</label>
           <input class="inp !w-auto !py-1.5" type="date" x-model="pf.since" @change="loadProduction()" aria-label="Sent from"><input class="inp !w-auto !py-1.5" type="date" x-model="pf.until" @change="loadProduction()" aria-label="Sent until">
@@ -2216,8 +2216,8 @@
 
       <!-- Lines: what to make -->
       <section class="card">
-        <div class="px-6 py-4 border-b border-zinc-100 flex items-center gap-3"><p class="lbl" x-text="(orderProducts(od).length > 1 ? 'Rings and charms' : pPlural(orderProducts(od)[0])) + ' to make (' + od.count + ')'"></p>
-          <span x-show="orderProducts(od).length > 1" class="prod-chip is-charm" title="This order holds rings and charms">Mixed order · Ring + Charm</span></div>
+        <div class="px-6 py-4 border-b border-zinc-100 flex items-center gap-3"><p class="lbl" x-text="(orderProducts(od).length > 1 ? 'Charms and rings' : pPlural(orderProducts(od)[0])) + ' to make (' + od.count + ')'"></p>
+          <span x-show="orderProducts(od).length > 1" class="prod-chip is-charm" title="This order holds charms and rings">Mixed order · Charm + Ring</span></div>
         <table class="w-full">
           <thead><tr><th></th><th>Design</th><th>Material · size</th><th class="text-right">Qty</th><th class="text-right">Unit</th><th class="text-right">Total</th><th>3D</th><th class="text-right">Files</th></tr></thead>
           <tbody>
@@ -2335,7 +2335,7 @@
   <!-- ══════════════════════════ Settings: pricing & materials · promo codes · AI models & prompts · system ══════════════════════════ -->
   <main x-show="ok && tab === 'settings'" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
     <nav class="card flex flex-wrap" aria-label="Settings sections">
-      <template x-for="s in [['pricing','Pricing & Materials','Website fixed prices, densities, 3D cost / price, AI list prices'],['promos','Promo codes','Discounts: percent or fixed, dates, limits, materials'],['models','AI models & prompts','Versioned prompts and parameters per model and product'],['products','Products','Rings and charms: what customers can see'],['keys','Keys','Admin key and fal.ai API key'],['system','System health','Mode, storage, versions']]" :key="s[0]">
+      <template x-for="s in [['pricing','Pricing & Materials','Website fixed prices, densities, 3D cost / price, AI list prices'],['promos','Promo codes','Discounts: percent or fixed, dates, limits, materials'],['models','AI models & prompts','Versioned prompts and parameters per model and product'],['products','Products','Charms and rings: what customers can see'],['keys','Keys','Admin key and fal.ai API key'],['system','System health','Mode, storage, versions']]" :key="s[0]">
         <a :href="'#/settings/' + s[0]" class="px-4 py-3 text-left border-r border-zinc-100 last:border-r-0 flex-1 min-w-[170px] transition block" :class="sub === s[0] ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'">
           <span class="block text-[13px] font-semibold" x-text="s[1]"></span>
           <span class="block text-[12px] mt-0.5" :class="sub === s[0] ? 'text-zinc-300' : 'text-zinc-500'" x-text="s[2]"></span>
@@ -2629,10 +2629,10 @@
       <p class="text-[12px] text-zinc-500">Developer tools (mesh experiments, AI mode switch, outbox) stay on the <a class="underline" :href="BASE + '/dev'">/dev</a> page.</p>
     </section>
 
-    <!-- Products: rings and charms — what customers can see (separate from which configuration is being edited) -->
+    <!-- Products: charms and rings — what customers can see (separate from which configuration is being edited) -->
     <section class="card p-6 space-y-5" x-show="sub === 'products'">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
-        <p class="lbl">Rings and charms</p>
+        <p class="lbl">Charms and rings</p>
         <p class="text-[12px] text-zinc-500">Which products customers can design and order — one switch per product, independent of the others. The Ring | Charm selector in AI models &amp; prompts only chooses which configuration you edit.</p>
       </div>
       <p x-show="productsMsg" class="text-sm" :class="productsErr ? 'text-red-600' : 'text-emerald-700'" x-text="productsMsg"></p>
@@ -2757,11 +2757,11 @@
       </div>
     </section>
 
-    <!-- AI models: which product's configuration (Ring | Charm) — each has its own models, versions and history -->
+    <!-- AI models: which product's configuration (Charm | Ring) — each has its own models, versions and history -->
     <section class="card p-4 flex flex-wrap items-center gap-4" x-show="sub === 'models'" aria-label="Product configuration">
       <p class="lbl">Product configuration</p>
       <div class="inline-flex border border-zinc-300 bg-white" role="group" aria-label="Product configuration">
-        <template x-for="p in ['ring', 'charm']" :key="'cfg' + p">
+        <template x-for="p in ['charm', 'ring']" :key="'cfg' + p">
           <button type="button" class="px-4 py-2 text-[13px] font-semibold inline-flex items-center gap-2 border-l border-zinc-300 first:border-l-0"
                   :class="mProduct === p ? (p === 'charm' ? 'bg-[#7A5A10] text-white' : 'bg-zinc-900 text-white') : 'text-zinc-700 hover:bg-zinc-50'"
                   :aria-pressed="mProduct === p" @click="chooseConfigProduct(p)"><span x-html="pIcon(p, 'w-4 h-4')"></span><span x-text="pLabel(p)"></span></button>
@@ -2788,11 +2788,11 @@
       <button class="underline" @click="exportModels('all', 'json')">JSON</button>
     </div>
 
-    <!-- Pricing & Materials: which product's prices (Ring | Charm) — two separate tables, never mixed -->
+    <!-- Pricing & Materials: which product's prices (Charm | Ring) — two separate tables, never mixed -->
     <section class="card p-4 flex flex-wrap items-center gap-4" x-show="sub === 'pricing'" aria-label="Product pricing">
       <p class="lbl">Material pricing for</p>
       <div class="inline-flex border border-zinc-300 bg-white" role="group" aria-label="Product pricing">
-        <template x-for="p in ['ring', 'charm']" :key="'prc' + p">
+        <template x-for="p in ['charm', 'ring']" :key="'prc' + p">
           <button type="button" class="px-4 py-2 text-[13px] font-semibold inline-flex items-center gap-2 border-l border-zinc-300 first:border-l-0"
                   :class="pProduct === p ? (p === 'charm' ? 'bg-[#7A5A10] text-white' : 'bg-zinc-900 text-white') : 'text-zinc-700 hover:bg-zinc-50'"
                   :aria-pressed="pProduct === p" @click="pProduct = p; if (p === 'charm' && !cprices) loadCharmPrices()"><span x-html="pIcon(p, 'w-4 h-4')"></span><span x-text="pLabel(p)"></span></button>
@@ -2803,7 +2803,7 @@
 
     <!-- Customer status changes (WP3): pending in either table, saved together after a confirmation of what they touch -->
     <section class="card p-4 space-y-2" x-show="sub === 'pricing' && mstat && (mstatPending || mstatMsg)" aria-label="Customer status changes">
-      <p class="text-[13px] font-semibold" x-show="mstatPending" x-text="mstatPending + ' customer status change' + (mstatPending === 1 ? '' : 's') + ' to save (Ring and Charm together)'"></p>
+      <p class="text-[13px] font-semibold" x-show="mstatPending" x-text="mstatPending + ' customer status change' + (mstatPending === 1 ? '' : 's') + ' to save (Charm and Ring together)'"></p>
       <div x-show="mstatPending" class="flex flex-wrap items-center gap-3">
         <input class="inp flex-1 min-w-[220px]" placeholder="Why (optional, kept in the log)" x-model="mstatNote">
         <button class="btn" @click="saveMaterialStatuses()" :disabled="mstatBusy">Save the statuses</button>

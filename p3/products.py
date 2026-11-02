@@ -33,8 +33,11 @@ from p3.context import Context, HttpError
 from p3.db import Dumps, Now
 
 Ring, Charm = "ring", "charm"
-All = (Ring, Charm)
-Default = Ring
+All = (Charm, Ring)                 # the order customers meet them in everywhere: charms first, rings one tap away (WP4)
+Default = Ring                      # the product of a record that names none: everything made before charms is a ring
+# The Terms of Service name the products in their first order, rings then charms (M7): their wording, and so the
+# version a customer accepted (p3/accounts/consent.py hashes it), stays the same
+TermsOrder = (Ring, Charm)
 Labels = {Ring: "Ring", Charm: "Charm"}
 Plurals = {Ring: "Rings", Charm: "Charms"}
 Prefixes = {Ring: "R", Charm: "C"}          # customer-facing IDs: R-1001 … and C-1001 … (separate sequences)
@@ -48,10 +51,12 @@ PreviewOnlyError = ("Admin preview: this product is hidden from customers. Try i
                     "test domain, such as example.com), so no real order is placed and no customer credits are spent.")
 
 
-def DefaultProduct(Visible) -> str:
-    """The product a design is when the request names none: a ring while rings are on offer, else the first product
-    on offer (a ring when there is none — the request is then refused, the product being invisible)."""
-    return Ring if Ring in Visible else (Visible[0] if Visible else Ring)
+def DefaultProduct(Visible, Previewed=()) -> str:
+    """The product a design is when the request names none, and the one Design opens on: the first product on offer —
+    a charm while charms are on offer (WP4); one an Admin's browser only previews comes after those customers can design
+    — else a ring (the request is then refused, the product being invisible)."""
+    On = [P for P in All if P in Visible]
+    return next((P for P in On if P not in Previewed), On[0] if On else Ring)
 
 # ── the charm size: one central definition (the only place to change it) ──────
 # Decision of 2026-10-05: a charm's size is its total height, the loop included. Customize, the bag, checkout,
@@ -264,7 +269,7 @@ class ProductSettings:
         return self.Get(AvailabilityKeys[Product]) is True
 
     def AvailableProducts(self) -> tuple:
-        """The products customers may design and order, in the canonical order (rings, then charms)."""
+        """The products customers may design and order, in the canonical order (charms, then rings)."""
         return tuple(P for P in All if self.Available(P))
 
     def Launched(self, Product: str) -> bool:

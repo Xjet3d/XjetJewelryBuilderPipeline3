@@ -589,9 +589,19 @@ none: switch to mock first). The AI mode is not changed by saving a key. **In pr
 configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file is ignored. API:
 `GET|PUT|DELETE /api/admin/fal-key` (`PUT {"key"}`), `POST /api/admin/fal-key/check`.
 
-## Products — rings and charms (Settings → Products)
+## Products — charms and rings (Settings → Products)
 
 **Code:** `p3/products.py`. **API:** `GET /api/admin/products` and `PUT /api/admin/products/availability`.
+
+- **Charms first (WP4, 2026-11-02).** The products come in the order charms, rings everywhere (`products.All`): the
+  catalog, the Design screen's choice, the Inspiration Gallery's filters, page titles, the site's sentences and the Admin.
+  Design opens on **Charm**, the default product — the first product on offer (`products.DefaultProduct`; a product an
+  Admin's browser only previews comes after those customers can design), and a design request that names no product is
+  a charm while charms are on offer (a ring on the ring-only site). Every Design entry names its product: Start
+  Designing opens on the default, an entry of its own on its product (Design a Ring: `resetAIFlow('ring')`), kept through
+  sign-in. Rings stay on, one tap away. **The Terms keep rings first** (`products.TermsOrder`, M7): their text and
+  version hash are those customers accepted. The Inspiration Gallery's order is the Admin's (Gallery → Move up/down):
+  charm designs first.
 
 - **One switch per product, independent of the others:** *Rings available to customers* (ON by default) and *Charms
   available to customers* (OFF by default). A future product joins the same list (`products.All`; its availability
@@ -638,11 +648,11 @@ configuration (`/etc/xjet-atelier/env`): the card is read-only and a saved file 
     *Switch Charms off for customers?* (Switch Charms off | Cancel). No phrase is typed. Charm designs, orders and
     settings are kept when charms are off.
   - **What customers see while ON:**
-    - "What would you like to design? Ring / Charm" on the Design screen (Ring is the default);
+    - "What would you like to design? Charm / Ring" on the Design screen (Charm is the default, WP4);
     - charm sizes with their prices in Customize;
     - "Charm ID … · 20 mm" lines in the bag, checkout, confirmation and emails;
-    - *All · Rings · Charms* in the Inspiration Gallery;
-    - FAQ and Terms that name rings and charms.
+    - *All · Charms · Rings* in the Inspiration Gallery;
+    - an FAQ that names charms and rings, and Terms that name rings and charms (their order of before, M7).
 
     While OFF, all of this is absent, and the customer API answers carry no product fields. A customer who already
     holds charms still sees their own charm orders correctly. The Admin preview shows the ON experience marked "Admin

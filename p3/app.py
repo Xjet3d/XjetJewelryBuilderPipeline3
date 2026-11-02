@@ -976,7 +976,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             # offer — the ring-only site of before. "previewed": hidden products an Admin's browser sees anyway.
             Previewed = Products.PreviewedProducts(Ctx, request)
             # "paused": the previewed products that were on offer before (switched OFF after their launch)
-            Out["products"] = {"available": list(Visible), "default": Products.DefaultProduct(Visible),
+            Out["products"] = {"available": list(Visible), "default": Products.DefaultProduct(Visible, Previewed),
                                "preview": bool(Previewed), "previewed": list(Previewed),
                                "paused": [P for P in Previewed if Ctx.Products.Launched(P)],
                                "names": {P: {"label": Products.Labels[P], "plural": Products.Plurals[P]} for P in Products.All}}
@@ -1022,10 +1022,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                            product: str | None = Form(None), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         Ctx.RateLimiter.Start(request, Who)
-        # The product is fixed here, once, for the design and everything refined from it. A ring needs nothing
-        # new (no product sent = a ring, exactly as before); a charm only when charms are visible to this browser.
+        # The product is fixed here, once, for the design and everything refined from it. No product sent = the
+        # default: a charm while charms are on offer (WP4), a ring on the ring-only site, exactly as before.
         Visible = Products.VisibleProducts(Ctx, request)
-        Requested = Products.Normalize(product, Products.DefaultProduct(Visible))
+        Requested = Products.Normalize(product, Products.DefaultProduct(Visible, Products.PreviewedProducts(Ctx, request)))
         if Requested in Products.PausedProducts(Ctx, request):          # switched OFF after its launch: said plainly (WP2)
             raise HttpError(409, "product_unavailable", f"{Products.Plurals[Requested]} are currently unavailable for new designs.")
         Product = Products.RequireVisible(Ctx, Requested, request)

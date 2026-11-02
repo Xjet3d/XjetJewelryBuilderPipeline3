@@ -32,7 +32,7 @@ async def _Shop(H):
     await _Set(H, "charm", True)
     R = await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"14": 109}}}}, headers=Admin)
     assert R.status_code == 200, R.text
-    Ring = await H.NewDesign("A slim twisted band")
+    Ring = await H.NewDesign("A slim twisted band", product="ring")
     RingCu = await H.Proceed(Ring["design_id"], Ring["candidates"][0]["id"])
     await H.Idle()
     assert (await H.Client.patch(f"/api/customizations/{RingCu['id']}", json={"ring_size": 7, "material_id": "silver"})).status_code == 200

@@ -20,16 +20,17 @@ async def test_rings_can_be_switched_off_and_charms_carry_the_site(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         St = (await H.Client.get("/api/admin/products", headers=Admin)).json()
-        assert St["availability"] == {"ring": True, "charm": False} and [P["id"] for P in St["products"]] == ["ring", "charm"]
-        assert St["products"][0]["available"] and St["products"][0]["configuration_ready"] and St["products"][0]["plural"] == "Rings"
+        assert St["availability"] == {"ring": True, "charm": False} and [P["id"] for P in St["products"]] == ["charm", "ring"]
+        Ring = St["products"][1]
+        assert Ring["available"] and Ring["configuration_ready"] and Ring["plural"] == "Rings"
         assert "products" not in (await H.Client.get("/api/catalog")).json()                 # the ring-only site of before
         assert 'content="Design custom rings with AI' in (await H.Client.get("/")).text
         # Charms on, rings off: the catalog offers charms alone, a charm is the default, and a ring cannot be started
         await _Set(H, "charm", True)
-        assert 'content="Design custom rings and charms with AI' in (await H.Client.get("/")).text
+        assert 'content="Design custom charms and rings with AI' in (await H.Client.get("/")).text
         St = await _Set(H, "ring", False)
         assert St["availability"] == {"ring": False, "charm": True}
-        assert St["log"][0]["key"] == "rings_available" and St["log"][0]["value"] is False and St["products"][0]["changed"]["updated_by"]
+        assert St["log"][0]["key"] == "rings_available" and St["log"][0]["value"] is False and St["products"][1]["changed"]["updated_by"]
         Cat = (await H.Client.get("/api/catalog")).json()
         assert Cat["products"]["available"] == ["charm"] and Cat["products"]["default"] == "charm"
         assert Cat["products"]["preview"] is False and Cat["products"]["previewed"] == []
@@ -104,7 +105,7 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test") as Browser:
             assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
             Cat = (await Browser.get("/api/catalog")).json()
-            assert Cat["products"]["available"] == ["ring", "charm"] and Cat["products"]["previewed"] == ["ring"] and Cat["products"]["preview"] is True
+            assert Cat["products"]["available"] == ["charm", "ring"] and Cat["products"]["previewed"] == ["ring"] and Cat["products"]["preview"] is True
             assert len((await Browser.get("/api/gallery")).json()["items"]) == 2
             assert (await Browser.get(f"/api/gallery/{Items['ring']}/share")).status_code == 200   # (the Admin cookie reaches the API only)
     finally:
@@ -112,7 +113,7 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
 
 
 async def test_the_line_under_start_designing_follows_the_products_customers_can_design(tmp_path):
-    """Rings only: "Rings — the first XJet Atelier collection, …"; Charms only: "Charms — …"; both: "Rings & Charms —
+    """Rings only: "Rings — the first XJet Atelier collection, …"; Charms only: "Charms — …"; both: "Charms & Rings —
     XJet Atelier collections, …". Computed on the page from the catalog's products (the availability switches), never
     from an Admin's preview. The page as served (its markup, read before the script runs) carries the line of the products
     on offer; the template keeps the rings line."""
@@ -133,9 +134,9 @@ async def test_the_line_under_start_designing_follows_the_products_customers_can
         # The products it reads are the switches: the catalog lists what customers can design
         assert "products" not in (await H.Client.get("/api/catalog")).json()                    # rings only → ['ring']
         await _Set(H, "charm", True)
-        assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["ring", "charm"]
+        assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["charm", "ring"]
         Live = (await H.Client.get("/")).text
-        assert 'x-text="heroCollection.label">Rings &amp; Charms</span>' in Live and "> — XJet Atelier collections, made to order in real metal.</span>" in Live
+        assert 'x-text="heroCollection.label">Charms &amp; Rings</span>' in Live and "> — XJet Atelier collections, made to order in real metal.</span>" in Live
         await _Set(H, "ring", False)
         assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["charm"]
         assert 'x-text="heroCollection.label">Charms</span>' in (await H.Client.get("/")).text

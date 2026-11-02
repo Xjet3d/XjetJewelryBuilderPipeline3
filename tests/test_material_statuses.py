@@ -57,7 +57,7 @@ async def test_the_release_maps_today_exactly(tmp_path):
             [(M, "fashion", True) for M in ("stainless_steel", "silver", "vermeil")] + [(M, "luxury", False) for M in Solid]
         assert Cat["default_material_id"] == "stainless_steel"                        # Customize opens on it (WP3)
         # Gold is quoted, the fashion metals ordered, exactly as before
-        B = await H.NewDesign("A signet ring with a crescent")
+        B = await H.NewDesign("A signet ring with a crescent", product="ring")
         Body = {"design_id": B["design_id"], "candidate_id": B["candidates"][0]["id"], "ring_size": 7, "quantity": 1, "customer": Customer}
         assert (await H.Client.post("/api/quote-requests", json={**Body, "material_id": "gold_14k_rose"})).status_code == 200
         assert (await H.Client.post("/api/quote-requests", json={**Body, "material_id": "vermeil"})).status_code == 409
@@ -137,7 +137,7 @@ async def test_preview_only_has_no_price_bag_order_or_quote_and_the_bag_orders_t
         Charm = {M["id"]: M for M in Cat["products"]["charm"]["materials"]}
         assert (Charm["vermeil"]["group"], Charm["vermeil"]["purchasable"], [P["price"] for P in Charm["vermeil"]["prices"]]) == ("preview", False, [None] * 3)
         # Customize: seen, never priced or bagged
-        B = await H.NewDesign("A twisted band")
+        B = await H.NewDesign("A twisted band", product="ring")
         Cus = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
         V = (await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"material_id": "vermeil", "ring_size": 7})).json()
         assert (V["quote"]["unit_price"], V["can_add_to_bag"], V["add_to_bag_blocked_reason"]) == (None, False, "preview_only")
@@ -207,7 +207,7 @@ async def test_customize_opens_on_stainless_steel_and_never_rewrites_a_saved_cho
     try:
         await _Charms(H)
         # A new ring opens on Stainless Steel at its fixed price; a new charm at 14 mm, $69
-        B = await H.NewDesign("A twisted band")
+        B = await H.NewDesign("A twisted band", product="ring")
         Cus = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
         assert (Cus["material_id"], Cus["quote"]["unit_price"]) == ("stainless_steel", 90.0)
         C = await H.NewDesign("A heart charm", product="charm")
@@ -260,7 +260,7 @@ async def test_the_materials_page_faq_description_and_crawler_list_follow_the_st
         # A metal whose status differs between the products says so, per product
         assert (await _Statuses(H, [{"product": "ring", "material_id": "vermeil", "status": "available"}])).status_code == 200
         Page = (await H.Client.get("/materials")).text
-        assert "<li>14K Gold over Stainless Steel — available to order for rings; preview only (not available to order) for charms</li>" in Page
+        assert "<li>14K Gold over Stainless Steel — preview only (not available to order) for charms; available to order for rings</li>" in Page
         assert H.Ctx.Accounts.Consent.Current() == Terms and (await H.Client.get("/terms")).status_code == 200
     finally:
         await H.Close()

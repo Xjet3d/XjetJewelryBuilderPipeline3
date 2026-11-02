@@ -58,8 +58,8 @@ DesignUseAcceptance = ("By accepting, you agree that XJet may display and promot
                        "yours, we ask your separate permission before we publicly use an identifiable photo, likeness or "
                        "personal information, and other people's intellectual property stays theirs.")
 # Each set of products a site can offer, every product first: a legal page's sentence that follows the products on offer
-# is archived in each of its forms (LegalText)
-_Offers = tuple(C for N in range(len(Products.All), -1, -1) for C in itertools.combinations(Products.All, N))
+# is archived in each of its forms (LegalText), in the Terms' own product order (M7: the archived text stays the same)
+_Offers = tuple(C for N in range(len(Products.TermsOrder), -1, -1) for C in itertools.combinations(Products.TermsOrder, N))
 _OpenTag = re.compile(r"""<[a-zA-Z][\w:-]*(?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*/?>""")
 
 
@@ -111,15 +111,15 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
                       + ([f"Preview only: {_Phrase(Ctx, G['preview'])} — not available to order."] if G["preview"] else [])) \
         or "No metal is available to order at the moment."
     R, C = W["ring"], W["charm"]
-    Price = ("Fashion jewelry pieces are priced per piece. A ring is priced by material — its size does not change the "
-             "price. A charm is priced by material and size." if R and C else
+    Price = ("Fashion jewelry pieces are priced per piece. A charm is priced by material and size. A ring is priced by "
+             "material — its size does not change the price." if R and C else
              "Fashion jewelry pieces are priced per piece by material and size." if C else
              "Fashion jewelry pieces are priced per piece by material. Your ring size does not change the price." if R else
              "Fashion jewelry pieces are priced per piece by material.")             # no product on offer: no ring wording
     Ring = "Ring sizes are US sizes (see the size guide on the Customize screen)"
     Charm = "charm size is its total height in millimeters, including the loop at the top"
-    Usd = "Yes — all prices are in US dollars." + (f" {Ring}; a {Charm}." if R and C else f" {Ring}." if R else
-                                                  f" A {Charm}." if C else "")
+    Usd = "Yes — all prices are in US dollars." + (f" A {Charm}; {Ring[:1].lower() + Ring[1:]}." if R and C else
+                                                  f" {Ring}." if R else f" A {Charm}." if C else "")
     Preview = ("Yes. You choose from four designs and can refine your favorite before adding it to your bag; rings also "
                "come with a 360° movie preview." if R and C else
                "Yes. You choose from four designs, refine your favorite and preview your ring in a 360° movie before adding "
@@ -233,11 +233,11 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                  + " — real XJet designs. Open one to see it large; make it yours to start from its four options.")
         return {"galleryIntro": Intro}
     if View == "materials":
-        How = ("Fashion metals have a fixed price per piece — a ring’s price does not depend on its size; a charm is priced by material and size."
+        How = ("Fashion metals have a fixed price per piece — a charm is priced by material and size; a ring’s price does not depend on its size."
                if R and C else "Fashion metals have a fixed price per charm, set by material and size — any design."
                if C else "Fashion metals have a fixed price per ring — any size, any design."
                if R else "Fashion metals have a fixed price per piece, set by material.")
-        Fixed = ("Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size."
+        Fixed = ("Prices in US dollars, fixed for the material — a charm is priced by size; a ring’s size does not change its price."
                  if R and C else "Prices in US dollars, per charm, fixed for the material and size."
                  if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price."
                  if R else "Prices in US dollars, per piece, fixed for the material.")
@@ -268,10 +268,11 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                 f"If your {W['noun']} arrives damaged, or does not match the design or the size you selected, contact us within "
                 "14 days of delivery and we will remake it or refund you."}
     if View == "terms":
-        Names = [Products.Labels[P].lower() for P in Visible]
+        Named = [P for P in Products.TermsOrder if P in Visible]     # M7: the Terms keep their product order (rings first)
+        Names = [Products.Labels[P].lower() for P in Named]
         Idea = " or ".join("a " + N for N in Names) if Names else "a piece of jewelry"
-        Supports = (" and ".join(Products.Plurals[P].lower() for P in Visible) if len(Visible) > 1 else
-                    Products.Plurals[Visible[0]].lower() + " only" if Visible else "no products at the moment")
+        Supports = (" and ".join(Products.Plurals[P].lower() for P in Named) if len(Named) > 1 else
+                    Products.Plurals[Named[0]].lower() + " only" if Named else "no products at the moment")
         Fixed = ("fixed per piece and material (a charm’s price also depends on its size)" if R and C else
                  "fixed per charm, material and size" if C else "fixed per ring and material")
         Movie = (" with AI (and a 360° preview movie for rings)" if C else " and a 360° preview movie with AI") if R else " with AI"
@@ -286,7 +287,7 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
         Ring = ("Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or "
                 "send us your finger circumference in mm.")
         Charm = "A charm size is its total height in millimeters, including the loop — ask us if you are unsure which size suits you."
-        return {"sizingHelp": " ".join(X for X in (Ring if R else "", Charm if C else "") if X)
+        return {"sizingHelp": " ".join(X for X in (Charm if C else "", Ring if R else "") if X)
                 or "Ask us anything about sizes and a specialist will help."}
     return {}
 
@@ -483,7 +484,7 @@ StatusWords = {MaterialStatus.Available: "available to order", MaterialStatus.Qu
 
 def MaterialList(Ctx, Visible: tuple = (Products.Ring,)) -> str:
     """The metals as a crawler reads them, by status; a metal whose status differs between the products on offer says
-    it per product ("available to order for rings; preview only (not available to order) for charms")."""
+    it per product, charms first ("preview only (not available to order) for charms; available to order for rings")."""
     Items = []
     for Group, Mats in MaterialStatus.PageGroups(Ctx, Visible).items():
         for M in Mats:

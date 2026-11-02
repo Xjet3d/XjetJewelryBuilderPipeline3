@@ -11,7 +11,7 @@
   const Plurals = { ring: 'Rings', charm: 'Charms' };
   const Known = P => (P === 'charm' ? 'charm' : 'ring');
   window.P3Products = {
-    all: ['ring', 'charm'],
+    all: ['charm', 'ring'],                 // charms first (WP4)
     icon: (P, Cls) => `<svg class="${Cls || 'w-4 h-4'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" `
       + `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${Paths[Known(P)]}</svg>`,
     label: P => Labels[Known(P)],

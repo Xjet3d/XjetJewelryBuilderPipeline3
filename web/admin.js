@@ -199,7 +199,7 @@ function adminApp() {
     live3d: {}, exports3d: {}, clock: Date.now(), skew: 0, storage: null,
     dash: null, dashDays: 0, sessions: [], idleMinutes: 30, sq: '', sStage: '', sBag: '', s3d: '', sGallery: '', sMock: false, mockSessions: 0,
     sProduct: '', oProduct: '', gProduct: '',         // product filters: '' = All · 'ring' · 'charm'
-    productFilters: ['', 'ring', 'charm'],
+    productFilters: ['', 'charm', 'ring'],
     sAttention: false, sSort: 'started', attention: null, _listScroll: 0,
     sessionId: '', sd: null, sdError: '', g3: { size: 10, material: '', busy: false, error: '' },
     sect: { gallery: true, pipeline: false, choice: true, designs: false, journey: false },   // session sections (collapsed by default: secondary)
@@ -677,7 +677,7 @@ function adminApp() {
     },
     sessionSizeChosen(x) { return this.isCharm(x) ? !!x.charm_size_chosen : !!x.ring_size_chosen; },
     orderProducts(o) { return (o && o.product_types && o.product_types.length) ? o.product_types : ['ring']; },
-    productMix(o) { const p = this.orderProducts(o); return p.length > 1 ? 'Ring + Charm' : this.pLabel(p[0]); },
+    productMix(o) { const p = this.orderProducts(o); return p.length > 1 ? 'Charm + Ring' : this.pLabel(p[0]); },
     orderLineText(o) {
       const l = o.lines[0]; if (!l) return '—';
       return l.title + (o.lines.length > 1 ? ' +' + (o.lines.length - 1) : '');

@@ -24,7 +24,7 @@ async def HO(tmp_path):
 
 
 async def _InBag(H, Prompt="Twisted rope band", Size=7, Material="silver", Qty=1, Headers=None):
-    Batch = await H.NewDesign(Prompt) if Headers is None else await _NewDesignAs(H, Prompt, Headers)
+    Batch = await H.NewDesign(Prompt, product="ring") if Headers is None else await _NewDesignAs(H, Prompt, Headers)
     Cand = Batch["candidates"][0]
     Hd = Headers or {}
     Cus = (await H.Client.post(f"/api/designs/{Batch['design_id']}/customize", json={"candidate_id": Cand["id"]}, headers=Hd)).json()
@@ -36,7 +36,7 @@ async def _InBag(H, Prompt="Twisted rope band", Size=7, Material="silver", Qty=1
 
 
 async def _NewDesignAs(H, Prompt, Headers):
-    R = await H.Client.post("/api/designs", data={"prompt": Prompt}, headers=Headers)
+    R = await H.Client.post("/api/designs", data={"prompt": Prompt, "product": "ring"}, headers=Headers)
     assert R.status_code == 200, R.text
     await H.Idle()
     return (await H.Client.get(f"/api/batches/{R.json()['id']}", headers=Headers)).json()

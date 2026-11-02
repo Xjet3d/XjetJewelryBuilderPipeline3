@@ -74,7 +74,7 @@ async def Session(H, Key):
 
 async def ModelledRing(H, Prompt="A slim twisted band"):
     """A ring design with its Hi3D model (mock) — version 1."""
-    B = await H.NewDesign(Prompt)
+    B = await H.NewDesign(Prompt, product="ring")
     Did = B["design_id"]
     R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)
     assert R.status_code == 200, R.text
@@ -83,7 +83,7 @@ async def ModelledRing(H, Prompt="A slim twisted band"):
 
 
 async def Ordered(H, Prompt="Aurora twist band", Size=7):
-    B = await H.NewDesign(Prompt)
+    B = await H.NewDesign(Prompt, product="ring")
     Cus = (await H.Client.post(f"/api/designs/{B['design_id']}/customize", json={"candidate_id": B["candidates"][0]["id"]})).json()
     await H.Idle()
     await H.Client.patch(f"/api/customizations/{Cus['id']}", json={"ring_size": Size, "material_id": "silver"})
@@ -401,7 +401,7 @@ async def test_external_parts_join_existing_sessions_and_are_ordinary_parts_of_t
     assert (await H.Client.post("/api/admin/sessions", json={"owner_account_id": H.Who.AccountId}, headers=Admin)).status_code in (404, 405)
     # A session with no finished part yet (every image failed): the part is attached to it as a new design
     H.Provider.Script(endpoints.ImageGenerate, "fail", "fail", "fail", "fail")
-    Empty = (await H.NewDesign("A band that did not come out"))["design_id"]
+    Empty = (await H.NewDesign("A band that did not come out", product="ring"))["design_id"]
     U = await Upload(H, Torus(Us7), "band.stl")
     R = await H.Client.post(f"/api/admin/designs/{Empty}/versions", json={"upload_id": U["id"]}, headers=Admin)
     assert (R.status_code, R.json()["error"]["code"]) == (409, "no_option")              # no finished part to add a version to

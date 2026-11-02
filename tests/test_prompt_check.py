@@ -227,4 +227,4 @@ async def test_each_product_has_its_own_switch(HP):
     [C] = Checks(H)
     assert C["product_type"] == "charm" and C["config_version"].startswith("any-llm-charm@")
     assert "charm" in H.Provider.SubmissionsFor(endpoints.Llm)[-1][1]["system_prompt"]
-    assert (await H.Client.get("/api/catalog")).json()["prompt_check"] == ["ring", "charm"]
+    assert (await H.Client.get("/api/catalog")).json()["prompt_check"] == ["charm", "ring"]

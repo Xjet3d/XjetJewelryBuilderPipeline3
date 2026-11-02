@@ -27,7 +27,8 @@ async def test_the_movie_switch_hides_and_stops_movies_per_product(tmp_path):
         # Rings OFF: Customize makes no movie, shows none; the explicit request is refused; no credit for a movie
         St = await _Movie(H, "ring", False)
         assert St["movies"] == {"ring": False, "charm": True} and St["log"][0]["key"] == "rings_movie" and St["log"][0]["value"] is False
-        assert St["products"][0]["movie"] is False and St["products"][0]["movie_changed"]["updated_by"]
+        Ring = next(P for P in St["products"] if P["id"] == "ring")
+        assert Ring["movie"] is False and Ring["movie_changed"]["updated_by"]
         Batch = await H.NewDesign("A slim band")
         Cand = Batch["candidates"][0]["id"]
         Cus = await H.Proceed(Batch["design_id"], Cand)

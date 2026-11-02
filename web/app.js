@@ -228,9 +228,9 @@ function p3App() {
     _returnFocus: null,                // element to focus again when a modal closes
     _sizeGuideReturn: null,            // the same for the size guide
 
-    // ── rings and charms: offered only while the catalog lists them (charms visible to this browser) ──
-    newProduct: 'ring',                // what a new design will be (Design screen; Ring by default; kept through sign-in)
-    galleryProduct: '',                // Inspiration Gallery filter: '' all · 'ring' · 'charm'
+    // ── charms and rings: offered only while the catalog lists them (charms visible to this browser) ──
+    newProduct: 'charm',               // what a new design will be (Design screen; Charm by default, WP4; kept through sign-in)
+    galleryProduct: '',                // Inspiration Gallery filter: '' all · 'charm' · 'ring'
 
     // ── customize ────────────────────────────────────────────────────
     cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '',
@@ -281,7 +281,7 @@ function p3App() {
                                                    this.api('GET', '/api/catalog', null, { noAuth: true })]);
       this.health = health; this.catalog = catalog;
       // The product a new design will be: the one chosen before sign-in while it is still on offer, else the default on offer
-      this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : (this.catalog?.products?.default || this.productsList[0] || 'ring');
+      this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : this.defaultProduct;
       gallery.then(() => { this._openSharedGallery(); this.startHeroRotation(); });
       // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
       if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
@@ -513,8 +513,10 @@ function p3App() {
       this.$nextTick(() => setTimeout(() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }), 80));
     },
 
-    // Start Designing (P2 resetAIFlow): sign in if needed, then open a fresh studio.
-    resetAIFlow() {
+    // Start Designing (P2 resetAIFlow): the product it opens on — the default, Charm (WP4), unless the entry names its own
+    // (Design a Ring: resetAIFlow('ring')) — kept through sign-in; sign in if needed, then open a fresh studio.
+    resetAIFlow(product) {
+      this.chooseProduct(typeof product === 'string' ? product : this.defaultProduct);
       if (!this.userSession) { this.openRegModal(); return; }
       this._doResetAIFlow();
     },
@@ -1516,7 +1518,7 @@ function p3App() {
     // The Materials page lists a metal under its best status for the products on offer (both, when none is): available
     // for any of them → 'fashion', else quoted → 'luxury', else preview only → 'preview' (p3/materialstatus.py PageGroups)
     pageGroupOf(id) {
-      const list = this.productsList.length ? this.productsList : ['ring', 'charm'];
+      const list = this.productsList.length ? this.productsList : ['charm', 'ring'];
       const groups = list.map(p => p === 'charm' ? this.charmMaterial(id)?.group : this.groupOfMaterial(id)).filter(Boolean);
       return ['fashion', 'luxury', 'preview'].find(g => groups.includes(g)) || null;
     },
@@ -1609,6 +1611,8 @@ function p3App() {
     // ── the products on offer (Admin → Settings → Products). The catalog's products block is absent while rings are
     //    the only product on offer (the ring-only site); otherwise it lists what this browser may design. ──
     get productsList() { return this.catalog?.products?.available || SERVER_PRODUCTS || ['ring']; },
+    // The product Design opens on: the server's default — the first product on offer, charms first (WP4)
+    get defaultProduct() { return this.catalog?.products?.default || this.productsList[0] || 'ring'; },
     get productsOn() { return this.productsList.length > 1; },                 // a choice to make: selector, filters, badges
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
     get nothingOnOffer() { return (!!this.catalog || !!SERVER_PRODUCTS) && this.productsList.length === 0; },
@@ -1634,7 +1638,7 @@ function p3App() {
                sizeWord: sole === 'ring' ? 'ring size' : 'size' };
     },
     // The line under Start Designing: the collections customers can design now (Admin → Settings → Products), never a
-    // product only an Admin's preview shows. Rings · Charms · "Rings & Charms" (more products: "A, B & C").
+    // product only an Admin's preview shows. Charms · Rings · "Charms & Rings" (more products: "A, B & C").
     get heroCollection() {
       const on = this.productsList.filter(p => !this.previewedProducts.includes(p)).map(p => this.productPlural(p));
       if (!on.length) return { label: '', text: '' };
@@ -1656,7 +1660,7 @@ function p3App() {
       if (this.nothingOnOffer) return 'Real XJet designs. Open one to see it large.';
       return (this.productsOn ? this.wording.list : this.soleProduct === 'charm' ? 'Charms' : 'Bands, signets, statement and stackable rings') + tail;
     },
-    // The products on offer in a sentence: "rings", "charms", "rings and charms" (more: "rings, charms and pendants")
+    // The products on offer in a sentence: "charms", "rings", "charms and rings" (more: "charms, rings and pendants")
     get productsText() {
       const n = this.productsList.map(p => this.productPlural(p).toLowerCase());
       return n.length ? (n.length === 1 ? n[0] : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1]) : 'jewelry';
@@ -1674,7 +1678,7 @@ function p3App() {
       const kinds = new Set((this.bagLines || []).map(l => l.product_type || 'ring'));
       const ring = kinds.has('ring'), charm = kinds.has('charm');
       const per = ring && charm ? 'piece' : charm ? 'charm' : 'ring';
-      const sizes = ring && charm ? 'Ring sizes are US sizes; charm sizes are in millimeters.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
+      const sizes = ring && charm ? 'Charm sizes are in millimeters; ring sizes are US sizes.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
       return 'Fixed prices per ' + per + ' and material, in US dollars. ' + sizes + ' Delivery and any promo code are added at checkout.';
     },
     get composerNote() {
@@ -1685,7 +1689,7 @@ function p3App() {
     get materialsTitle() { return 'Real metal, one fixed price per ' + this.wording.noun; },
     get materialsIntro() {
       const r = this.wording.ring, c = this.wording.charm;
-      const how = r && c ? 'Fashion metals have a fixed price per piece — a ring’s price does not depend on its size; a charm is priced by material and size.'
+      const how = r && c ? 'Fashion metals have a fixed price per piece — a charm is priced by material and size; a ring’s price does not depend on its size.'
                 : c ? 'Fashion metals have a fixed price per charm, set by material and size — any design.'
                 : 'Fashion metals have a fixed price per ring — any size, any design.';
       // the metals by their status (WP3): a sentence only for a group the page lists (p3/sitepages.py, the same words)
@@ -1695,7 +1699,7 @@ function p3App() {
     },
     get materialsNote() {
       const r = this.wording.ring, c = this.wording.charm;
-      const fixed = r && c ? 'Prices in US dollars, fixed for the material — a ring’s size does not change its price; a charm is priced by size.'
+      const fixed = r && c ? 'Prices in US dollars, fixed for the material — a charm is priced by size; a ring’s size does not change its price.'
                   : c ? 'Prices in US dollars, per charm, fixed for the material and size.'
                   : 'Prices in US dollars, per ring, fixed for the material — the ring size does not change the price.';
       return fixed + ' Each ' + this.wording.noun + ' is made to order, and its price does not change with its final weight.'
@@ -1710,7 +1714,10 @@ function p3App() {
     },
     get goldIntro() { return 'Solid gold ' + this.wording.nouns + ' are priced per piece. Design your ' + this.wording.noun + ', choose a gold option in Customize and send a quote request. We confirm it right away, review it within one business day and aim to send your price within three business days; if your design needs longer, we tell you. Nothing is ordered or charged until you confirm.'; },
     get termsService() {
-      const list = this.productsList, names = list.map(p => this.productLabel(p).toLowerCase()), plurals = list.map(p => this.productPlural(p).toLowerCase());
+      // M7: the Terms name the products in their first order, rings then charms (p3/products.py TermsOrder), so the words
+      // a customer reads are the version they accept
+      const list = ['ring', 'charm'].filter(p => this.productsList.includes(p));
+      const names = list.map(p => this.productLabel(p).toLowerCase()), plurals = list.map(p => this.productPlural(p).toLowerCase());
       const idea = names.length ? names.map(n => 'a ' + n).join(' or ') : 'a piece of jewelry';
       const supports = plurals.length > 1 ? plurals.join(' and ') : plurals.length === 1 ? plurals[0] + ' only' : 'no products at the moment';
       const movie = this.wording.ring ? (this.wording.charm ? ' with AI (and a 360° preview movie for rings)' : ' and a 360° preview movie with AI') : ' with AI';
@@ -1725,7 +1732,7 @@ function p3App() {
       const r = this.wording.ring, c = this.wording.charm;
       const ring = 'Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.';
       const charm = 'A charm size is its total height in millimeters, including the loop — ask us if you are unsure which size suits you.';
-      return [r ? ring : '', c ? charm : ''].filter(Boolean).join(' ') || 'Ask us anything about sizes and a specialist will help.';
+      return [c ? charm : '', r ? ring : ''].filter(Boolean).join(' ') || 'Ask us anything about sizes and a specialist will help.';
     },
     // The bag's and an order's wording: "ring" when every line is a ring, "charm" — or "piece(s)" for a mix
     kindOf(types, count = 1) {

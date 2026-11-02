@@ -41,7 +41,7 @@ async def CharmCustomize(H, Prompt="A crescent moon charm with a small star", Ma
 
 
 async def RingInBag(H, Size=7, Material="silver"):
-    B = await H.NewDesign()
+    B = await H.NewDesign(product="ring")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
     assert (await H.Client.patch(f"/api/customizations/{C['id']}", json={"ring_size": Size, "material_id": Material})).status_code == 200
@@ -104,7 +104,7 @@ async def test_charm_prices_differ_by_material_and_size_and_leave_ring_prices_al
     C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 25, "quantity": 2})).json()
     assert C["quote"]["unit_price"] == 165.0 and C["line_total"] == 330.0 and C["can_add_to_bag"] is True and C["size_label"] == "25 mm"
     # A ring is priced exactly as before, from the ring table (it opens on Stainless Steel: WP3)
-    B = await H.NewDesign()
+    B = await H.NewDesign(product="ring")
     R = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     assert R["quote"]["unit_price"] == 90.0 and R["quote"]["pricing_version"] == RingTable["version"] and "charm_sizes" not in R
 
@@ -170,7 +170,7 @@ async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     Gold = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"material_id": "gold_14k_yellow", "charm_size": 20})).json()
     assert Gold["add_to_bag_blocked_reason"] == "luxury_preview_only"
     # A ring customization never takes a charm size
-    RB = await H.NewDesign()
+    RB = await H.NewDesign(product="ring")
     RC = await H.Proceed(RB["design_id"], RB["candidates"][0]["id"])
     assert (await H.Client.patch(f"/api/customizations/{RC['id']}", json={"charm_size": 20})).status_code == 400
     assert RC["ring_size"] == 10.0 and "product_type" not in RC                      # a ring opens on US 10, as before
@@ -192,7 +192,7 @@ async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):
     assert Bag["totals"] == {"USD": 345.0} and Bag["checkout_available"] is True
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "mixed"})).json()
-    assert O["product_types"] == ["ring", "charm"] and O["subtotal"] == 345.0
+    assert O["product_types"] == ["charm", "ring"] and O["subtotal"] == 345.0
     assert [L["size_label"] for L in O["lines"]] == ["US 7", "20 mm"]
     Rows = H.Ctx.Db.All("SELECT * FROM order_lines ORDER BY position")
     assert [(R["product_type"], R["ring_size"], R["charm_size"]) for R in Rows] == [("ring", 7.0, None), ("charm", None, 20.0)]
@@ -254,7 +254,7 @@ async def test_a_gold_charm_is_quoted_with_its_charm_size(HP):
     Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
     assert Rows[0]["size_label"] == "25 mm" and Rows[0]["product_type"] == "charm"
     # A ring request reads as before
-    RB = await H.NewDesign()
+    RB = await H.NewDesign(product="ring")
     RC = await H.Proceed(RB["design_id"], RB["candidates"][0]["id"])
     R = (await H.Client.post("/api/quote-requests", json={**Body, "design_id": RB["design_id"], "candidate_id": RC["candidate_id"],
                                                           "charm_size": None, "ring_size": 7})).json()

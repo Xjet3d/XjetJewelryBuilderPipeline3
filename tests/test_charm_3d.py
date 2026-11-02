@@ -141,7 +141,7 @@ async def test_a_waiting_charm_result_is_priced_from_the_charm_book_only(H3):
 
 async def test_the_ring_3d_path_is_unchanged_beside_a_charm(H3):
     H = H3
-    Ring = await H.NewDesign("Plain band")
+    Ring = await H.NewDesign("Plain band", product="ring")
     await H.Proceed(Ring["design_id"], Ring["candidates"][0]["id"])
     B, _C = await CharmJourney(H, 25)
     for Did in (Ring["design_id"], B["design_id"]):
