@@ -168,19 +168,43 @@ async def test_only_xjets_published_masters_move_and_the_gallery_and_story_work_
         assert sum(Again["insert"].values()) == sum(Again["update"].values()) == Again["files_write"] == 0 and not Again["unpublish"]
         assert [T.Ctx.Db.One(f"SELECT COUNT(*) AS n FROM {Tab}")["n"] for Tab in Sync.Order] == Before
 
-        # The target's own tile stays, after the synced ones; a change on proto arrives; a tile proto took off goes
+        # The target keeps its own gallery (2 Nov): its tile where its Admin put it, the order it chose; proto's new
+        # order and the tile proto took off never reach it unasked — a change of a design on proto does
         Own = await T.NewDesign("Atelier's own plain band")
         await T.Proceed(Own["design_id"], Own["candidates"][0]["id"])
         await T.Idle()
         OwnItem = await _Publish(T, Own["design_id"])
+        assert (await T.Client.post(f"/api/admin/gallery/{OwnItem['id']}/move", json={"direction": "up"}, headers=Admin)).status_code == 200
+        Mine = [X["item"]["id"], OwnItem["id"], X["var_item"]["id"]]
+        assert [I["id"] for I in (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]] == Mine
         H.Ctx.Db.Execute("UPDATE designs SET title = 'Heart Lattice' WHERE id = ?", (X["master"],))
-        assert (await H.Client.delete(f"/api/admin/gallery/{X['var_item']['id']}", headers=Admin)).status_code == 200
-        Sync.Export(H.Settings.DataDir, tmp_path / "bundle2", "proto")
+        assert (await H.Client.post(f"/api/admin/gallery/{X['var_item']['id']}/move", json={"direction": "up"}, headers=Admin)).status_code == 200
+        Sync.Export(H.Settings.DataDir, tmp_path / "bundle2", "proto")            # proto: the variation first now
         R = Sync.Import(tmp_path / "bundle2", T.Settings.DataDir, Apply=True)
-        assert R["update"]["designs"] == 1 and R["unpublish"] == [X["var_item"]["id"]] and R["insert"]["designs"] == 0
+        assert R["update"]["designs"] == 1 and R["order"] == "kept" and not R["unpublish"] and R["insert"]["designs"] == 0
         Tiles = (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]
-        assert [I["id"] for I in Tiles] == [X["item"]["id"], OwnItem["id"]] and Tiles[0]["title"] == "Heart Lattice"
+        assert [I["id"] for I in Tiles] == Mine and Tiles[0]["title"] == "Heart Lattice"
+        assert (await H.Client.delete(f"/api/admin/gallery/{X['var_item']['id']}", headers=Admin)).status_code == 200
+        Sync.Export(H.Settings.DataDir, tmp_path / "bundle3", "proto")            # proto took the variation off
+        R = Sync.Import(tmp_path / "bundle3", T.Settings.DataDir, Apply=True)
+        assert not R["unpublish"] and [I["id"] for I in (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]] == Mine
+        # Only on purpose: the source's order (the synced tiles first, as proto has them), then proto's removal
+        R = Sync.Import(tmp_path / "bundle2", T.Settings.DataDir, Apply=True, SourceOrder=True)
+        assert R["order"] == "source"
+        assert [I["id"] for I in (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]] == \
+            [X["var_item"]["id"], X["item"]["id"], OwnItem["id"]]
+        R = Sync.Import(tmp_path / "bundle3", T.Settings.DataDir, Apply=True, KeepRemoved=False)
+        assert R["unpublish"] == [X["var_item"]["id"]] and R["order"] == "kept"
+        assert [I["id"] for I in (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]] == [X["item"]["id"], OwnItem["id"]]
         assert T.Ctx.Db.One("SELECT id FROM designs WHERE id = ?", (X["var"],))       # the design stays: customers may use it
+        # A tile proto re-published (a new id for the same design) takes the old one's place here
+        assert (await T.Client.post(f"/api/admin/gallery/{OwnItem['id']}/move", json={"direction": "up"}, headers=Admin)).status_code == 200
+        assert (await H.Client.delete(f"/api/admin/gallery/{X['item']['id']}", headers=Admin)).status_code == 200
+        Again = await _Publish(H, X["master"])
+        Sync.Export(H.Settings.DataDir, tmp_path / "bundle4", "proto")
+        R = Sync.Import(tmp_path / "bundle4", T.Settings.DataDir, Apply=True)
+        assert R["replace_items"] == [X["item"]["id"]]
+        assert [I["id"] for I in (await T.Client.get("/api/gallery", headers=Anon)).json()["items"]] == [OwnItem["id"], Again["id"]]
     finally:
         await H.Close()
         await T.Close()
@@ -530,6 +554,17 @@ def test_without_ssh_to_the_sites_server_the_push_stops_before_anything_is_expor
                   "push")
     assert Run.returncode == 1 and "/srv/no-such-checkout is the site's checkout there" in Run.stderr, Run.stderr
     assert (Other / "ssh.log").read_text(encoding="utf-8").splitlines() == _OnServer(Checkout="'/srv/no-such-checkout'")[:1]
+
+
+def test_a_push_changes_the_sites_order_or_takes_tiles_off_only_with_a_flag_it_knows(tmp_path, Bash):
+    """P3_GALLERY_IMPORT_FLAGS carries --source-order / --remove-unpublished to the site's import, and nothing else: an
+    unknown flag stops the push before any ssh; so does one given to an import by hand."""
+    Run = _Script(Bash, tmp_path, {"P3_TARGET_SSH": "atelier", "P3_GALLERY_IMPORT_FLAGS": "--source-order --everything"}, "push")
+    assert Run.returncode == 2 and "unknown flag --everything" in Run.stderr and not (tmp_path / "ssh.log").exists()
+    Run = _Script(Bash, tmp_path, {}, "import", str(tmp_path), "--force")
+    assert Run.returncode == 2 and "unknown import flag: --force" in Run.stderr
+    Script = (RepoRoot / "scripts" / "gallery-sync.sh").read_text(encoding="utf-8")
+    assert "gallery-sync.sh import '$TargetDir'${ImportFlags:+ $ImportFlags};" in Script
 
 
 def test_the_scripts_help_is_its_whole_header(tmp_path, Bash):

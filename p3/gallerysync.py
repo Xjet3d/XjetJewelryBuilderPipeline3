@@ -20,15 +20,19 @@ holds what the site keeps private (prompts, refinement words, reference images).
 
 Import is idempotent. Rows are matched by id and written only when they differ, files only when their content differs, and
 every row the sync wrote is recorded (gallery_sync_items), so a second run changes nothing and a later run brings what
-changed on the source, and takes off the site the synced items the source no longer publishes (their designs stay:
-customers may be using them). A row that exists on the target but did not come from this sync is never touched: the
-import stops and names it. Ring IDs and share link names are kept when they are free on the target and never change once
-given. The synced tiles come first, in the source's order.
+changed on the source. A row that exists on the target but did not come from this sync is never touched: the import stops
+and names it. Ring IDs and share link names are kept when they are free on the target and never change once given.
+
+The target keeps its own gallery (2026-11-02, the owner: proto's changes never reach atelier unintentionally): its order
+stays as its Admin set it — a tile new here goes to the end, one the source re-published under a new id takes the old
+one's place — and a synced tile the source no longer publishes stays. Only on purpose: --source-order puts the synced
+tiles first, in the source's order (the behaviour before), and --remove-unpublished takes those tiles off the gallery
+here (their designs stay: customers may be using them).
 
     python -m p3.gallerysync export DIR [--data-dir D] [--source proto]
     python -m p3.gallerysync check DIR
     python -m p3.gallerysync push DIR BASE_URL          (the target's Admin key: P3_TARGET_ADMIN_KEY_FILE, or asked for)
-    python -m p3.gallerysync import DIR [--data-dir D] [--apply] [--keep-removed] [--json]
+    python -m p3.gallerysync import DIR [--data-dir D] [--apply] [--source-order] [--remove-unpublished] [--json]
     python -m p3.gallerysync status [--data-dir D]
     python -m p3.gallerysync verify BASE_URL [--expect N]
 """
@@ -398,7 +402,7 @@ def _Plan(Conn, M: dict, Rows: dict, Assets: Path | None, KeepRemoved: bool) -> 
     Source = M["source"]["name"]
     Prov = {(R["kind"], R["id"]) for R in _All(Conn, "SELECT kind, id FROM gallery_sync_items WHERE source = ?", (Source,))}
     P = {"insert": {T: [] for T in Order}, "update": {T: [] for T in Order}, "same": {T: 0 for T in Order},
-         "conflicts": [], "replace_items": [], "unpublish": [], "numbers": {}, "slugs": {},
+         "conflicts": [], "replace_items": [], "replaced_by": {}, "unpublish": [], "numbers": {}, "slugs": {},
          "files_write": [], "files_same": 0, "bytes_write": 0}
     for T in Order:
         for R in Rows.get(T, []):
@@ -419,6 +423,7 @@ def _Plan(Conn, M: dict, Rows: dict, Assets: Path | None, KeepRemoved: bool) -> 
         if Other:
             if ("gallery_items", Other["id"]) in Prov:
                 P["replace_items"].append(Other["id"])           # re-published on the source under a new id
+                P["replaced_by"][Other["id"]] = R["id"]          # … which takes the old tile's place here
             else:
                 P["conflicts"].append(f"gallery_items {Other['id']}: this site shows the design {R['design_id']} in a tile of "
                                       "its own; take it off the gallery here first")
@@ -471,8 +476,9 @@ def _WriteFiles(BundleDir: Path, Assets: Path, Files: list[dict]) -> None:
             Tmp.unlink(missing_ok=True)
 
 
-def _Apply(Conn, M: dict, Rows: dict, P: dict, RunId: str, T: str) -> None:
+def _Apply(Conn, M: dict, Rows: dict, P: dict, RunId: str, T: str, SourceOrder: bool = False) -> None:
     Source = M["source"]["name"]
+    Here = [R["id"] for R in _All(Conn, "SELECT id FROM gallery_items ORDER BY position, created_at")]   # the order before
     Conn.execute("PRAGMA defer_foreign_keys = ON")          # rows of one design refer to each other: checked at COMMIT
     for Id in P["replace_items"] + P["unpublish"]:
         Conn.execute("DELETE FROM gallery_items WHERE id = ?", (Id,))
@@ -503,15 +509,22 @@ def _Apply(Conn, M: dict, Rows: dict, P: dict, RunId: str, T: str) -> None:
                          "ON CONFLICT(kind, id) DO UPDATE SET source = excluded.source, run_id = excluded.run_id, "
                          "last_at = excluded.last_at", (Tab, R["id"], Source, RunId, T, T))
     Synced = [R["id"] for R in Rows["gallery_items"]]
-    Others = [R["id"] for R in _All(Conn, "SELECT id FROM gallery_items ORDER BY position, created_at") if R["id"] not in set(Synced)]
-    for N, Id in enumerate(Synced + Others, start=1):
+    Now_ = [R["id"] for R in _All(Conn, "SELECT id FROM gallery_items ORDER BY position, created_at")]
+    if SourceOrder:                                          # on purpose only: the synced tiles first, in the source's order
+        Ids = Synced + [I for I in Now_ if I not in set(Synced)]
+    else:                                                    # the site's own order; a re-published tile in the old one's place,
+        Kept = [P["replaced_by"].get(I, I) for I in Here]    # the tiles new here at the end, in the source's order
+        Ids = [I for I in Kept if I in set(Now_)]
+        Ids += [I for I in Synced if I not in set(Ids)] + [I for I in Now_ if I not in set(Ids) and I not in set(Synced)]
+    for N, Id in enumerate(Ids, start=1):
         Conn.execute("UPDATE gallery_items SET position = ? WHERE id = ?", (N, Id))
 
 
-def _Report(M: dict, P: dict, Conn=None) -> dict:
+def _Report(M: dict, P: dict, Conn=None, SourceOrder: bool = False) -> dict:
     Out = {"source": M["source"], "content_id": M["content_id"], "counts": M["counts"],
            "insert": {T: len(V) for T, V in P["insert"].items()}, "update": {T: len(V) for T, V in P["update"].items()},
            "same": P["same"], "unpublish": P["unpublish"], "replace_items": P["replace_items"], "conflicts": P["conflicts"],
+           "order": "source" if SourceOrder else "kept",
            "files_write": len(P["files_write"]), "files_same": P["files_same"], "bytes_write": P["bytes_write"],
            "skipped_on_source": M.get("skipped", [])}
     if Conn is not None:                                     # after an import: the IDs and link names the items have here
@@ -522,11 +535,12 @@ def _Report(M: dict, P: dict, Conn=None) -> dict:
     return Out
 
 
-def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: bool = False, Ref: str | None = None,
-           By: str = "gallery-sync", Db=None) -> dict:
+def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: bool = True, Ref: str | None = None,
+           By: str = "gallery-sync", Db=None, SourceOrder: bool = False) -> dict:
     """Plan (dry run) or apply a bundle on the target whose data directory is DataDir (inside the running app, its own
     Db, so the import shares the app's write lock). Raises SyncError when the bundle is invalid or the target has rows in
-    the way (nothing is written then)."""
+    the way (nothing is written then). The target keeps its order and the tiles the source took off unless SourceOrder /
+    KeepRemoved=False ask otherwise (the module's docstring)."""
     M, Rows = Load(BundleDir)
     DataDir = Path(DataDir)
     Assets = DataDir / "assets"
@@ -538,7 +552,7 @@ def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: boo
     if P["conflicts"]:
         raise SyncError("; ".join(P["conflicts"][:5]) + (f" (and {len(P['conflicts']) - 5} more)" if len(P["conflicts"]) > 5 else ""))
     if not Apply:
-        return {**_Report(M, P), "applied": False}
+        return {**_Report(M, P, SourceOrder=SourceOrder), "applied": False}
     Need = 2 * P["bytes_write"] + MinFreeBytes                # the files, a backup of what they replace, and room to spare
     Free = shutil.disk_usage(Assets if Assets.is_dir() else DataDir).free
     if P["bytes_write"] and Free < Need:
@@ -551,8 +565,8 @@ def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: boo
             if Fresh["conflicts"]:
                 raise SyncError("; ".join(Fresh["conflicts"][:5]))
             Fresh.update({K: P[K] for K in ("files_write", "files_same", "bytes_write")})
-            _Apply(Conn, M, Rows, Fresh, RunId, Started)
-            Report = {**_Report(M, Fresh, Conn), "applied": True, "run_id": RunId}
+            _Apply(Conn, M, Rows, Fresh, RunId, Started, SourceOrder)
+            Report = {**_Report(M, Fresh, Conn, SourceOrder), "applied": True, "run_id": RunId}
             Conn.execute("INSERT INTO gallery_sync_runs (id, source, bundle_ref, content_id, exported_at, started_at, finished_at, "
                          "status, summary_json, error, by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                          (RunId, M["source"]["name"], Ref, M["content_id"], M["source"].get("exported_at"), Started, Now(),
@@ -571,7 +585,7 @@ def Import(BundleDir: Path, DataDir: Path, Apply: bool = False, KeepRemoved: boo
 
 def _Summary(R: dict) -> dict:
     return {"items": len(R.get("items") or []), "insert": R["insert"], "update": R["update"], "unpublished": len(R["unpublish"]),
-            "files_written": R["files_write"], "bytes_written": R["bytes_write"]}
+            "order": R.get("order", "kept"), "files_written": R["files_write"], "bytes_written": R["bytes_write"]}
 
 
 def LastRun(Db) -> dict | None:
@@ -959,6 +973,8 @@ def _Print(Report: dict, Out=sys.stdout) -> None:
     print(f"  files          to write {Report['files_write']} ({_Mb(Report['bytes_write'])}) | unchanged {Report['files_same']}", file=Out)
     if Report["unpublish"]:
         print(f"  taken off the gallery here (no longer published on {S['name']}): {', '.join(Report['unpublish'])}", file=Out)
+    print("  order: the synced tiles first, in the source's order (--source-order)" if Report.get("order") == "source" else
+          "  order: this site's own, kept (new tiles at the end)", file=Out)
     for X in Report.get("skipped_on_source") or []:
         print(f"  left behind on {S['name']}: {X.get('title') or X.get('gallery_item_id') or X.get('candidate_id')}: {X['why']}", file=Out)
     for I in Report.get("items") or []:
@@ -978,7 +994,11 @@ def Main(Argv=None) -> int:
     Pu.add_argument("bundle"); Pu.add_argument("base_url"); Pu.add_argument("--chunk-mb", type=int, default=8)
     I = Sub.add_parser("import", help="plan (default) or apply a bundle on this site")
     I.add_argument("bundle"); I.add_argument("--data-dir"); I.add_argument("--apply", action="store_true")
-    I.add_argument("--keep-removed", action="store_true", help="keep synced tiles the source no longer publishes")
+    I.add_argument("--keep-removed", action="store_true", help="(the default) keep synced tiles the source no longer publishes")
+    I.add_argument("--remove-unpublished", action="store_true", help="take off the gallery here the synced tiles the source "
+                                                                     "no longer publishes (on purpose only)")
+    I.add_argument("--source-order", action="store_true", help="put the synced tiles first, in the source's order (on purpose "
+                                                               "only; the default keeps this site's order)")
     I.add_argument("--ref", help="the git commit the bundle came from (recorded)"); I.add_argument("--json", action="store_true")
     St = Sub.add_parser("status", help="the latest imports on this site")
     St.add_argument("--data-dir")
@@ -1003,7 +1023,8 @@ def Main(Argv=None) -> int:
             _Print(R)
             return 0 if Verify(A.base_url) else 1
         elif A.cmd == "import":
-            R = Import(Path(A.bundle), _DataDir(A.data_dir), Apply=A.apply, KeepRemoved=A.keep_removed, Ref=A.ref)
+            R = Import(Path(A.bundle), _DataDir(A.data_dir), Apply=A.apply, KeepRemoved=not A.remove_unpublished, Ref=A.ref,
+                       SourceOrder=A.source_order)
             print(json.dumps(R, indent=1, sort_keys=True)) if A.json else _Print(R)
         elif A.cmd == "status":
             Db = Database(_DataDir(A.data_dir) / "pipeline3.db")

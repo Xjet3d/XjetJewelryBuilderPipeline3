@@ -141,9 +141,15 @@ line, in shell history or over the web.
   anything made in mock mode or still in progress, who asked for a movie, provider upload URLs.
 - **Idempotent.** Rows are matched by id and written only when they differ, files only when their content differs. Every
   row it wrote is recorded on atelier (`gallery_sync_items`; each import in `gallery_sync_runs`). A later import brings
-  what changed on proto and takes off atelier's gallery the synced tiles proto no longer publishes; their designs stay,
-  because customers may be using them. A tile atelier added itself stays, after the synced ones, which keep proto's order.
-  A row on atelier that did not come from a sync stops the import, and nothing is written.
+  what changed on proto in the designs it moved. A row on atelier that did not come from a sync stops the import, and
+  nothing is written.
+- **Atelier keeps its own gallery (2026-11-02).** Proto's gallery order and the tiles proto took off never reach atelier
+  unasked: an import keeps atelier's order as its Admin set it (a tile new to atelier goes to the end; one proto
+  re-published under a new id takes the old tile's place), and keeps a synced tile proto no longer publishes. Only on
+  purpose: `--source-order` puts the synced tiles first, in proto's order, and `--remove-unpublished` takes those tiles
+  off atelier's gallery (their designs stay, because customers may be using them) — by hand
+  (`bash scripts/gallery-sync.sh import DIR --source-order`) or for a push in `P3_GALLERY_IMPORT_FLAGS`. The plan and
+  the run say which order was used (`order: kept | source`).
 - **IDs and links.** A design keeps proto's Ring ID and share link name when they are free on atelier, and keeps what it
   was given there on every later import.
 - **Safety.** The bundle is checked before anything is written: allow-listed tables and columns, safe ids and paths, the

@@ -24,12 +24,17 @@
 #                                                  site's Admin key, or reads it from the file P3_TARGET_ADMIN_KEY_FILE
 #                                                  names.
 #   bash scripts/gallery-sync.sh export DIR        on the source: write a bundle directory
-#   bash scripts/gallery-sync.sh import DIR        on a target with a shell: plan, back up, import, check the local site
+#   bash scripts/gallery-sync.sh import DIR [--source-order] [--remove-unpublished]
+#                                                  on a target with a shell: plan, back up, import, check the local site.
+#                                                  The site keeps its own order and its tiles; each flag changes that on
+#                                                  purpose (p3/gallerysync.py): the source's order / take off the tiles the
+#                                                  source no longer publishes. A push passes them from P3_GALLERY_IMPORT_FLAGS.
 #   bash scripts/gallery-sync.sh verify BASE_URL [N]   from anywhere: the gallery (N tiles), the homepage story, its files
 #
 # Environment: P3_GALLERY_SOURCE (proto), P3_GALLERY_SOURCE_HOST (tron; "local" exports here), P3_GALLERY_SOURCE_CHECKOUT
 # (/home/yakir/git/XjetJewelryBuilderPipeline3), P3_GALLERY_SOURCE_DATA_DIR (the source app's own setting),
 # P3_TARGET_SSH, P3_TARGET_CHECKOUT (the site's checkout on its server: ~/git/XjetJewelryBuilderPipeline3),
+# P3_GALLERY_IMPORT_FLAGS (empty: the site keeps its order and its tiles; "--source-order", "--remove-unpublished"),
 # P3_TARGET_ADMIN_KEY_FILE, P3_LOCAL_URL (http://127.0.0.1:8340/JewelryB2C3), P3_DATA_DIR (the site's data directory;
 # default: the app's own setting), P3_PYTHON.
 set -euo pipefail
@@ -97,12 +102,16 @@ case "$Cmd" in
     ;;
 
   import)
-    Bundle="${2:?usage: gallery-sync.sh import DIR}"
+    Bundle="${2:?usage: gallery-sync.sh import DIR [--source-order] [--remove-unpublished]}"
+    Flags=("${@:3}")
+    for F in "${Flags[@]}"; do
+        [[ "$F" == "--source-order" || "$F" == "--remove-unpublished" ]] || { echo "unknown import flag: $F" >&2; exit 2; }
+    done
     Data="$(DataDir)"
     echo "plan for $Data:"
-    "$PY" -m p3.gallerysync import "$Bundle" --data-dir "$Data"           # stops on any row this site made itself
+    "$PY" -m p3.gallerysync import "$Bundle" --data-dir "$Data" "${Flags[@]}"   # stops on any row this site made itself
     P3_DATA_DIR="$Data" bash scripts/backup.sh | sed 's/^/  backup: /'
-    "$PY" -m p3.gallerysync import "$Bundle" --data-dir "$Data" --apply
+    "$PY" -m p3.gallerysync import "$Bundle" --data-dir "$Data" --apply "${Flags[@]}"
     "$PY" -m p3.gallerysync verify "$LOCAL"
     ;;
 
@@ -118,6 +127,10 @@ case "$Cmd" in
     Local="$(mktemp -d)"
     Remote="/tmp/p3-gallery-export-$$"
     trap 'CleanTarget; rm -rf "$Local"' EXIT
+    ImportFlags="${P3_GALLERY_IMPORT_FLAGS:-}"         # empty: the site keeps its own order and its tiles
+    for F in $ImportFlags; do
+        [[ "$F" == "--source-order" || "$F" == "--remove-unpublished" ]] || { echo "P3_GALLERY_IMPORT_FLAGS: unknown flag $F" >&2; exit 2; }
+    done
     if [[ -n "${P3_TARGET_SSH:-}" ]]; then
         PrepareTarget                   # first: without a way to the site's server nothing is exported
     fi
@@ -141,7 +154,7 @@ case "$Cmd" in
         # One connection copies, imports and removes the temporary directory (ssh asks for a password, if it uses one,
         # here and in step 0 only); CleanTarget tries again only when this connection did not finish
         Backups="P3_BACKUP_DIR=\"\${P3_BACKUP_DIR:-\$HOME/p3-backups}\""     # where the server's auto-deploy keeps them
-        tar -C "$Local/bundle" -cf - . | ssh "$P3_TARGET_SSH" "tar -C '$TargetDir' -xf - && $(TargetCd) && $Backups bash scripts/gallery-sync.sh import '$TargetDir'; Rc=\$?; rm -rf '$TargetDir'; exit \$Rc"
+        tar -C "$Local/bundle" -cf - . | ssh "$P3_TARGET_SSH" "tar -C '$TargetDir' -xf - && $(TargetCd) && $Backups bash scripts/gallery-sync.sh import '$TargetDir'${ImportFlags:+ $ImportFlags}; Rc=\$?; rm -rf '$TargetDir'; exit \$Rc"
         TargetDir=""
         if [[ -n "$Public" ]]; then
             echo "5. check the public pages at $Public"
@@ -160,7 +173,7 @@ case "$Cmd" in
     ;;
 
   *)
-    sed -n '2,34p' "$0"
+    sed -n '2,39p' "$0"
     exit 2
     ;;
 esac
