@@ -6,6 +6,9 @@ after Checkout showed it is reviewed again; ring quote requests are refused; the
 the Admin is told the effects (L4); the Terms version never moves. Switched back ON, every customer answer and the data
 are exactly as before. No product on offer: neutral wording and XJet's own picture (L5)."""
 
+import re
+
+from p3 import app as P3App
 from p3.mail import TokenEmail
 from p3.settings import WebDir
 from tests.conftest import Harness
@@ -54,9 +57,14 @@ async def _Snapshot(H, Ring, RingCu) -> dict:
     Out = {}
     for Path in ("/api/catalog", "/api/gallery", "/api/designs", f"/api/designs/{Ring['design_id']}", f"/api/customizations/{RingCu['id']}",
                  "/api/bag", "/api/checkout", "/api/quote-requests", "/api/orders", "/api/favorites", "/api/showcase", "/api/auth/terms",
-                 "/", "/gallery", "/faq", "/materials", "/terms", "/sitemap.xml"):
+                 "/", "/gallery", "/faq", "/materials", "/terms"):
         A = await H.Client.get(Path)
         Out[Path] = (A.status_code, A.text)
+    P3App.SitemapCache.clear()                          # its one-minute cache would answer with the read before
+    Map = await H.Client.get("/sitemap.xml")
+    # The pages listed are the same; their <lastmod> dates move with any change of a page's content — the switch too,
+    # when the sitemap is read meanwhile (a crawler then re-reads the pages that changed back)
+    Out["/sitemap.xml"] = (Map.status_code, re.sub(r"<lastmod>[^<]*</lastmod>", "", Map.text))
     for T in Tables:
         Out[T] = H.Ctx.Db.All(f"SELECT * FROM {T} ORDER BY rowid")
     return Out

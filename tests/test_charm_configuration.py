@@ -141,7 +141,9 @@ async def test_customers_create_charms_only_while_charms_are_available(HK):
     assert Cat["products"]["charm"]["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
     assert Cat["products"]["charm"]["size_definition"]["includes_loop"] is True
     Off = await H.Client.put("/api/admin/products/availability", json={"charms_available": False}, headers=Admin)
-    assert Off.json()["charms_available"] is False and (await Try()).status_code == 400
+    Paused = await Try()                     # launched, then OFF: said plainly (WP2), no longer "Unknown product"
+    assert Off.json()["charms_available"] is False and Paused.status_code == 409
+    assert Paused.json()["error"]["code"] == "product_unavailable"
     assert (await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Customer)).status_code == 403
 
 
