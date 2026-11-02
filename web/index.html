@@ -1784,7 +1784,7 @@
                     <!-- Configuration summary -->
                     <div class="border border-zinc-100 rounded-sm p-5 space-y-3 bg-zinc-50/50">
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterialLabel"></span></div>
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : 'Luxury'"></span></div>
+                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : (currentGroup === 'preview' ? 'Preview only' : 'Luxury')"></span></div>
                         <div class="flex justify-between text-sm"><span class="text-zinc-500" x-text="custIsCharm ? 'Charm Size' : 'Ring Size'"></span><span class="font-medium text-zinc-800" x-text="custIsCharm ? (cust?.size_label || '—') : (cust?.ring_size != null ? 'US ' + cust?.ring_size : '—')"></span></div>
                     </div>
 
