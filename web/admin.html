@@ -2914,6 +2914,7 @@
           <button class="underline text-zinc-500" @click="pricesEdit = pricesEdit ? null : JSON.stringify(pricesDoc(), null, 2)" x-text="pricesEdit ? 'Cancel edit' : 'Edit'"></button>
         </div>
       </div>
+      <div class="overflow-x-auto"><!-- on a phone the table scrolls in its card; the page keeps the screen's width -->
       <table class="w-full !text-xs">
         <thead><tr><th>Endpoint</th><th>Price</th><th>How a P3 request is priced</th></tr></thead>
         <tbody><template x-for="(p, ep) in (prices?.endpoints || {})" :key="ep"><tr>
@@ -2922,6 +2923,7 @@
           <td class="text-zinc-500" x-text="p.note"></td>
         </tr></template></tbody>
       </table>
+      </div>
       <p class="text-[12px] text-zinc-500" x-text="'Version ' + prices?.version + ' · ' + prices?.source + ' · updated ' + dateTime(prices?.updated_at) + ' by ' + prices?.updated_by + (prices?.update_note ? ' — ' + prices.update_note : '')"></p>
       <div x-show="pricesEdit !== null" class="space-y-2">
         <textarea class="inp font-mono !text-[12px]" rows="18" x-model="pricesEdit"></textarea>
