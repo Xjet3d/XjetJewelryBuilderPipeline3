@@ -1723,10 +1723,11 @@ function p3App() {
       const movie = this.wording.ring ? (this.wording.charm ? ' with AI (and a 360° preview movie for rings)' : ' and a 360° preview movie with AI') : ' with AI';
       return 'XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for ' + idea + ', generates four design options' + movie + ', and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
     },
+    // The orders sentence (p3/sitepages.py, the same words); the materials follow in the Terms' own static paragraph (WP5)
     get termsOrders() {
       const r = this.wording.ring, c = this.wording.charm;
-      const fixed = r && c ? 'fixed per piece and material (a charm’s price also depends on its size)' : c ? 'fixed per charm, material and size' : 'fixed per ring and material';
-      return 'Prices are in US dollars and are ' + fixed + '. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. Each ' + this.wording.noun + ' is made to order (design and size) and is not returnable for change of mind; your design is not exclusive. Gold ' + this.wording.nouns + ' are quoted individually.';
+      const fixed = r && c ? 'fixed per piece and material (a charm’s price also depends on its size)' : c ? 'fixed per charm, material and size' : r ? 'fixed per ring and material' : 'fixed per piece and material';
+      return 'Prices are in US dollars and are ' + fixed + '. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. Each ' + this.wording.noun + ' is made to order (design and size) and is not returnable for change of mind; your design is not exclusive.';
     },
     get sizingHelp() {
       const r = this.wording.ring, c = this.wording.charm;
