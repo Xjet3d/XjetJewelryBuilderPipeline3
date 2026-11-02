@@ -138,7 +138,7 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
             ("Can I see the design before I buy?", Preview),
             ("How do credits work?", Credits),
             ("How is the price calculated?", Price),
-            ("How long does production take?", "Design happens the same day. Production takes 7–10 business days. "
+            ("How long does production take?", "Design happens the same day. Production takes up to 14 days. "
              "Shipping adds about 5 business days with Express or up to 14 with free Standard delivery."),
             ("Are prices in USD?", Usd),
             ("What is NanoParticle Jetting™?", "It is XJet's proprietary metal printing technology. It jets ultra-fine "
@@ -185,7 +185,7 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                         "metal and make it yours — or use it as the spark for your own."),
         "faq": ("FAQ — Designing Custom Jewelry with AI · XJet Atelier",
                 f"Answers about designing {W['text']} with AI at XJet Atelier: what you can create, the metals, how "
-                "prices work, production in 7–10 business days and delivery."),
+                "prices work, production in up to 14 days and delivery."),
         "technology": ("NanoParticle Jetting™ — How XJet Prints in Metal · XJet Atelier",
                        "XJet's NanoParticle Jetting™ prints metal from a liquid ink in layers of about 8 microns, with "
                        f"soluble support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
@@ -193,7 +193,7 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "XJet Atelier is the jewelry service of XJet Ltd., developer of NanoParticle Jetting™ — "
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
-                             "Production takes 7–10 business days. Standard delivery is free (up to 14 business days), "
+                             "Production takes up to 14 days. Standard delivery is free (up to 14 business days), "
                              "Express is $45 (about 5). Prices in US dollars; returns and the two-year warranty."),
         "terms": ("Terms of Service · XJet Atelier",
                   "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: the "

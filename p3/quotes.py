@@ -186,7 +186,7 @@ class QuoteDesk:
             f"Hello {Name}," if Name else "Hello,",
             f"Thank you for your interest in {R['title']} in {R['material_label']}. Our quote for your {Noun} is below.",
             "To go ahead, approve the quote with the button below: we will ask for your shipping address and confirm your "
-            "order. Payment is arranged with you before production starts, and production takes 7–10 business days.",
+            "order. We arrange payment with you separately, and production takes up to 14 days.",
             "If you would like a change, decline the quote and tell us what you have in mind: we will gladly prepare a new one.",
             "Kind regards,\nThe XJet Atelier team"])
 
@@ -371,7 +371,7 @@ class QuoteDesk:
             O = self.Ctx.Db.One("SELECT order_no FROM orders WHERE id = ?", (R["order_id"],)) if R.get("order_id") else None
             return self._Render("You approved this quote",
                                 f"<p>Your order <strong>{_E(OrderRef(O['order_no']) if O else '')}</strong> was placed from quote "
-                                f"{_E(Ref)}. We will contact you to arrange payment before production starts.</p>"), 200
+                                f"{_E(Ref)}. We will contact you to arrange payment.</p>"), 200
         if R["status"] == "rejected" and R.get("decided_at"):
             return self._Render("You declined this quote", f"<p>Thank you for letting us know. If you would like a new quote for "
                                                            f"{_E(R['title'])}, contact us and quote {_E(Ref)}.</p>"), 200
@@ -428,7 +428,7 @@ class QuoteDesk:
 <form method="post" action="{_E(self.Ctx.Settings.BasePath)}/quote/approve" class="panel" id="approve">
   <input type="hidden" name="token" value="{_E(Token)}">
   <h2>Approve the quote</h2>
-  <p>We turn the quote into an order at the price above and contact you to arrange payment before production starts.</p>
+  <p>We turn the quote into an order at the price above and contact you to arrange payment.</p>
   {General}
   <div class="grid">
     <label>Recipient<input name="recipient" value="{_E(Recipient)}" autocomplete="name">{self._Err(Problems, 'recipient')}</label>

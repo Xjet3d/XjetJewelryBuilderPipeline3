@@ -32,7 +32,7 @@ class NoPaymentProvider:
     Name = "none"
     Available = False
     Message = ("Online payment is not available yet. Your order has been received and reserved; "
-               "we will contact you to arrange payment before production starts.")
+               "we will contact you to arrange payment.")
 
     def Begin(self, Order: dict) -> dict:
         return {"status": "pending", "ref": None, "client": None, "message": self.Message}

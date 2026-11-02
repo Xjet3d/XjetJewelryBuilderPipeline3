@@ -87,7 +87,7 @@ async function copyText(text) {
 
 // Customer copy per material id (from P2's metals[] descriptions).
 const MATERIAL_COPY = {
-  stainless_steel: { sub: 'Durable brushed steel', desc: 'Durable, hypoallergenic stainless steel with a cool brushed finish. Everyday strength at an accessible price.' },
+  stainless_steel: { sub: 'Durable brushed steel', desc: 'Durable stainless steel with a cool brushed finish. Everyday strength at an accessible price.' },
   silver:          { sub: 'Sterling Silver 925', desc: 'Classic 92.5% pure silver, digitally jetted for a crisp mirror finish and exceptional detail resolution.' },
   vermeil:         { sub: 'Stainless steel · 14K gold plating', desc: 'Stainless steel core with 14K gold plating. Luxury look and feel at an accessible price point.' },
   gold_10k_yellow: { desc: '41.7% pure gold — hardest gold alloy, ideal for everyday fine jewelry.' },
@@ -101,8 +101,8 @@ const MATERIAL_COPY = {
 // Materials page: what each metal looks like, how it wears, how to care for it (wording may be refined later).
 const MATERIAL_INFO = {
   stainless_steel: { appearance: 'Cool, light gray metal with a soft sheen.', finish: 'Brushed matte as standard; a polished finish on request.',
-                     durability: 'Very hard and scratch-resistant, hypoallergenic, does not tarnish — the most carefree metal for everyday wear.',
-                     care: 'Wipe with a soft cloth. Fine for water, sport and daily wear.' },
+                     durability: 'Very hard and scratch-resistant, and keeps its color with everyday wear — the most carefree metal for daily wear.',
+                     care: 'Wipe with a soft cloth. Fine for water, sport and daily wear. If you have a metal allergy, check the material with your doctor before ordering.' },
   silver:          { appearance: 'Bright white precious metal with a classic, cool shine.', finish: 'Mirror polish.',
                      durability: 'A soft precious metal: it picks up fine marks over time and can tarnish slowly, but polishes back to new easily.',
                      care: 'Store dry, polish with a silver cloth; take it off for swimming and chlorinated water.' },
@@ -1735,7 +1735,7 @@ function p3App() {
     },
     get bagKind() { return this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), 1); },
     get bagReserved() { const n = this.bagLines.length || 1; return 'Your ' + this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), n) + (n > 1 ? ' are' : ' is') + ' reserved'; },
-    orderMade(o) { const n = o?.count || 1; return 'Your ' + this.kindOf(o?.product_types || ['ring'], n) + (n > 1 ? ' are' : ' is') + ' printed to order in real metal — 7–10 business days.'; },
+    orderMade(o) { const n = o?.count || 1; return 'Your ' + this.kindOf(o?.product_types || ['ring'], n) + (n > 1 ? ' are' : ' is') + ' printed to order in real metal — production takes up to 14 days.'; },
     isCharm(x) { return (x?.product_type || 'ring') === 'charm'; },
     get custIsCharm() { return this.isCharm(this.cust); },
     charmMaterialLabel(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id)?.label; },

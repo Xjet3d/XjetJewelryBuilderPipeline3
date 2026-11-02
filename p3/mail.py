@@ -202,7 +202,7 @@ def _Made(Order: dict) -> str:
     Kinds = {"charm" if _IsCharm(L) else "ring" for L in Order.get("lines") or []} or {"ring"}
     Count = sum(int(L.get("quantity") or 1) for L in Order.get("lines") or []) or 1
     Noun = ("pieces" if Count > 1 else "piece") if len(Kinds) > 1 else Kinds.pop() + ("s" if Count > 1 else "")
-    return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — 7–10 business days."
+    return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — production takes up to 14 days."
 
 
 def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") -> tuple[str, str]:
@@ -537,7 +537,7 @@ def FulfillmentEmail(Milestone: str, Order: dict, View: dict, Payload: dict, Acc
     Foot = f'<p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Ref)}</p>'
     if Milestone == "review_approved":
         Pay = ("" if Order.get("payment_status") == "paid" else
-               '<p style="margin:0 0 12px;">Production starts once your payment is confirmed — nothing happens to your card or account until then.</p>')
+               '<p style="margin:0 0 12px;">We will contact you separately to arrange payment.</p>')   # payment never holds production (O1)
         Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">We reviewed <strong>{_Esc(Items)}</strong> '
                 f'(order {_Esc(Ref)}) for production and approved it.</p>{Pay}{Stages}{Button}{Foot}')
         return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("Approved for production", Body)
