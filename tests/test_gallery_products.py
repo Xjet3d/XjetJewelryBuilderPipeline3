@@ -1,7 +1,7 @@
 """Inspiration Gallery — every card and the View lightbox say Ring or Charm (one badge, the same for both products,
 shown only while products are offered) and show three metal swatches: Stainless Steel, Silver and Gold. The swatches
 are a visual preview through the existing metal filters — no request, no AI, and the design, the customer's material
-and every price stay as they are. The homepage showcase is unchanged."""
+and every price stay as they are. The homepage hero changes only on purpose (HeroSha256)."""
 
 import hashlib
 import re
@@ -14,7 +14,7 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "8ed3081d10f7be50ff82ed5b99e58801a7fe7fbf4bff048e36e5bcf7bf279daa"      # the homepage showcase since f7723c2; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "12861e68d0d8cd6f667f730156ed85fd865cb255b29c58736b673b4ddef992e5"      # the homepage hero; the showcase from f7723c2 to WP6; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)
@@ -25,6 +25,8 @@ HeroSha256 = "8ed3081d10f7be50ff82ed5b99e58801a7fe7fbf4bff048e36e5bcf7bf279daa" 
 #   2026-10-26: the stage's label says Sterling Silver (R-14)
 #   2026-11-02: audit ACC-02 — a Pause / Play button for the moving story (while it plays; none with reduced motion), a
 #               mouse over it holds it
+#   2026-11-02: WP6 — Version A (the owner's choice of 1 Nov 2026): the pearl-and-gold photograph, the same headline, one
+#               START DESIGN (the default product), the collections line; no story, no price
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Sterling Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 
@@ -39,7 +41,7 @@ async def HG(tmp_path):
 def CardBlocks(Page: str) -> list[str]:
     """Each card template: the homepage strip, the Gallery page and the Gallery dialog."""
     Out = []
-    for Loop in ('x-for="g in homeGallery"', 'x-for="g in galleryShown"'):
+    for Loop in ('x-for="g in homeCards"', 'x-for="g in galleryShown"'):
         for M in re.finditer(re.escape(Loop), Page):
             Fav = Page.index('@click.stop="toggleFav(g)"', M.start())
             Out.append(Page[M.start():Page.index("</template>", Fav)])
@@ -149,11 +151,11 @@ async def test_the_full_gallery_dialog_starts_at_the_top_when_it_is_taller_than_
     assert "md:items-center" not in Dlg and "shadow-2xl p-6 md:p-8 my-auto fade-in" in Dlg
 
 
-async def test_the_homepage_showcase_is_unchanged(HG):
+async def test_the_homepage_hero_changes_only_on_purpose(HG):
     Source = (Web / "index.html").read_text(encoding="utf-8")
     S = Source.index('<template x-if="view === \'home\'">')
-    Hero = Source[S:Source.index('<section class="py-24 px-8 md:px-20 bg-white">', S)]
+    Hero = Source[S:Source.index('<section class="hv-sec">', S)]
     assert hashlib.sha256(Hero.encode("utf-8")).hexdigest() == HeroSha256
-    assert "metal-swatch" not in Hero and "product-badge" not in Hero
+    assert "metal-swatch" not in Hero and "product-badge" not in Hero and "$" not in Hero.replace("$el", "")   # no price
     Page = (await HG.Client.get("/")).text
-    assert 'data-testid="hero-showcase"' in Page
+    assert '<section class="hero-section">' in Page and 'data-testid="hero-showcase"' not in Page

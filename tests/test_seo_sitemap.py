@@ -145,7 +145,7 @@ async def test_the_gallery_description_reads_well():
 
 
 def test_the_lightbox_picture_and_the_story_keep_their_room_from_the_first_paint():
-    """Design pages on a phone (CLS): nothing below moves when the story starts or the design's picture arrives."""
+    """Design pages on a phone (CLS): nothing below moves when the design's picture arrives."""
     from p3 import sitepages as SitePages
     Page = (WebDir / "index.html").read_text(encoding="utf-8")
     Img = re.search(r'<img :srcset="srcsetFor\(galleryItem\.image_url\)"[^>]*>', Page).group(0)
@@ -153,7 +153,6 @@ def test_the_lightbox_picture_and_the_story_keep_their_room_from_the_first_paint
     assert 'class="gallery-shot ' in Img and ":src=\"thumb(galleryItem.image_url, 800)\"" in Img   # a thumbnail, not the original
     assert ".gallery-shot { width: 100%; max-width: 42vh; height: auto; aspect-ratio: 1 / 1; }" in Page
     assert "@media (min-width: 768px) { .gallery-shot { max-width: 72vh; } }" in Page
-    assert re.search(r'<div class="sc-stage" role="img"[^>]*\n\s*data-sc-design="[^"]+" x-init="\$nextTick\(\(\) => window\.P3Showcase', Page)
 
 
 def test_the_story_waits_while_the_lightbox_covers_it():

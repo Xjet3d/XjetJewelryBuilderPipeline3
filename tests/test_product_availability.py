@@ -123,9 +123,9 @@ async def test_the_line_under_start_designing_follows_the_products_customers_can
         Bound = ('<span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span '
                  'x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span>')
         Template = Index[Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">"):]
-        assert Template.count(Bound) == 2 and Template.count('x-show="heroCollection.label"') == 2   # desktop and phone
+        assert Template.count(Bound) == 1 and Template.count('x-show="heroCollection.label"') == 1   # one line at every width (WP6)
         Live = Index[Index.index('data-ssr-view="home"'):Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">")]
-        assert Live.count(Bound) == 2 and Live.count('x-cloak x-show="heroCollection.label"') == 2    # hidden until the script decides
+        assert Live.count(Bound) == 1 and Live.count('x-cloak x-show="heroCollection.label"') == 1    # hidden until the script decides
         App = (await H.Client.get("/static/app.js")).text
         Getter = App[App.index("get heroCollection()"):App.index("chooseProduct(p)")]
         assert "this.productsList.filter(p => !this.previewedProducts.includes(p))" in Getter    # customers' products only

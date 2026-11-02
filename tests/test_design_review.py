@@ -108,8 +108,8 @@ def test_one_label_starts_a_design_and_the_team_is_one_click_away():
     assert "Start Your Design" not in Public and "Start Designing Now" not in Public
     assert ".btn-outline {" in Index and "font-weight: 600 !important; font-size: 14px !important; letter-spacing: 0.08em !important;" in Index
     Home = Public[Public.index("<template x-if=\"view === 'home'\">"):Public.index("<template x-if=\"view === 'inspiration'\">")]
-    Support = Home[Home.index("Expert Design Support"):Home.index("Production &amp; Delivery")]
-    assert '<a href="{{BASE}}/contact" @click="pageLink($event, \'contact\')" class="btn-outline mt-6 px-7 py-3">Contact us</a>' in Support
+    # Version A (WP6, the owner's choice of 1 Nov 2026) has no support card: Contact is in the header and the footer
+    assert "Expert Design Support" not in Home and "Production &amp; Delivery" not in Home
     Faq = Public[Public.index("<template x-if=\"view === 'faq'\">"):Public.index("<template x-if=\"view === 'designers'\">")]
     End = Faq[Faq.index("Still have questions?"):]
     assert End.index(">Contact us</a>") < End.index('class="btn-outline px-10 py-4 transition">Start Designing</button>')
@@ -168,8 +168,10 @@ def test_headings_follow_each_other_in_order():
 
 
 def test_gold_reads_on_dark_and_the_chips_on_cream():
-    """F14: gold labels on the dark bands in #C9A96E (7.9:1); the gallery filter's chips in #5F5F5F (5.6:1)."""
-    assert 'style="color:#C9A96E">Technology</span>' in Index and '<span class="italic" style="color:#C9A96E">Your Design.</span>' in Index
+    """F14: gold labels on the dark bands in #C9A96E (7.9:1); the gallery filter's chips in #5F5F5F (5.6:1). Version A
+    (WP6): the technology band's label and the closing "Your Design." keep that gold."""
+    assert ".hv-band-copy .hv-eyebrow { color: #C9A96E; }" in Index and '<p class="hv-eyebrow">Technology</p>' in Index
+    assert ".hv-final h2 em { color: #C9A96E; }" in Index and "<h2 class=\"hv-display\">Your Jewelry. <em>Your Design.</em></h2>" in Index
     assert Index.count("'text-[#5F5F5F] hover:text-[#1A1A1A]'") == 2 and "'text-[#6F6F6F] hover:text-[#1A1A1A]'" not in Index
 
 
@@ -200,10 +202,14 @@ async def test_materials_loading_cards_follow_the_products_on_offer(tmp_path):
 
 
 def test_the_home_band_shows_xjets_photograph_of_printed_jewelry():
-    """F16: the technology band shows XJet's own photograph of printed rings and charms (the brand book's PR picture,
-    cropped, its watermark left out), sized; the bottles picture stays on Technology."""
+    """F16, then Version A (WP6): the technology band's words over XJet's photograph of a printed charm, sized, in WebP
+    with a JPEG fallback; the printed-jewelry picture stays the site's social image; the bottles picture stays on
+    Technology."""
     for Name in ("printed-jewelry.webp", "printed-jewelry.jpg"):
         assert Image.open(WebDir / "images" / Name).size == (960, 740), Name
+    for Name, Size in (("home-tech-1440.webp", (1440, 960)), ("home-tech-1440.jpg", (1440, 960)), ("home-tech-780.webp", (780, 520))):
+        assert Image.open(WebDir / "images" / Name).size == Size, Name
     Home = Index[Index.index("<template x-if=\"view === 'home'\">"):Index.index("<template x-if=\"view === 'inspiration'\">")]
-    assert '<source srcset="{{BASE}}/static/images/printed-jewelry.webp" type="image/webp"><img width="960" height="740" src="{{BASE}}/static/images/printed-jewelry.jpg"' in Home
-    assert "Ink.JPG" not in Home
+    Band = Home[Home.index('<section class="hv-band">'):Home.index('<section class="hv-final">')]
+    assert '<img src="{{BASE}}/static/images/home-tech-1440.jpg" width="1440" height="960" loading="lazy"' in Band
+    assert "Made with XJet<br>NanoParticle Jetting™" in Band and "Ink.JPG" not in Home

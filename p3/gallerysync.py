@@ -903,7 +903,7 @@ def Verify(Base: str, Expect: int | None = None, Out=sys.stdout) -> bool:
     for I in Items:
         Media(f"tile {I.get('title')!r} thumbnail", (I.get("image_url") or "").replace("/assets/", "/thumb/", 1) + "?w=320", "image")
     Code, _, Home = _Fetch(Base + "/")
-    Check("homepage answers with the hero", Code == 200 and b'data-testid="hero-showcase"' in Home, f"{Code}")
+    Check("homepage answers with the hero", Code == 200 and b'<section class="hero-section' in Home, f"{Code}")
     Asked = re.search(rb"P3Showcase\.mount\(\$el,\s*\{\s*design:\s*'([a-z0-9-]+)'", Home)
     Slug = Asked.group(1).decode() if Asked else ""
     Code, _, Body = _Fetch(Base + "/api/showcase" + (f"?design={Slug}" if Slug else ""))

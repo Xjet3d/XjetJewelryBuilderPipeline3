@@ -105,9 +105,12 @@ def test_every_design_entry_names_its_product_and_keeps_it_through_sign_in():
     assert "this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : this.defaultProduct;" in App
     assert "get defaultProduct() { return this.catalog?.products?.default || this.productsList[0] || 'ring'; }" in App
     assert "newProduct: 'charm'," in App
-    # Every Start Designing opens on the default product: called with no argument (never an event taken for a product)
+    # Every Start Designing opens on the default product: called with no argument (never an event taken for a product);
+    # only the homepage's Design a Charm / Design a Ring (WP6) name a product, and their labels say which
     Calls = re.findall(r'@click="resetAIFlow\(([^)]*)\)"', Index)
-    assert len(Calls) >= 8 and set(Calls) == {""}, Calls
+    assert Calls.count("") >= 7 and set(Calls) == {"", "'charm'", "'ring'"}, Calls
+    Named = re.findall(r"""@click="resetAIFlow\('(charm|ring)'\)"[^>]*>([^<]+)<""", Index)
+    assert len(Named) == 4 and all(Label == "Design a " + P.title() for P, Label in Named), Named
     assert not re.search(r'@click="resetAIFlow"', Index)
     # The Admin lists charms first too
     Admin_ = (Web / "admin.html").read_text(encoding="utf-8")

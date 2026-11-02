@@ -215,7 +215,8 @@ function p3App() {
     cardMetal: {},                                                             // Gallery cards: the metal each card is previewed in (visual only)
     favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
     panelRoute: '', _pendingRoute: '',     // the side panel's own address when opened as such; a step asked for before sign-in
-    homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
+    homeGallery: [],                                                           // the gallery in this visit's order (shuffled per page load)
+    homeShow: '',                                                              // the homepage's product chip ('' = the default product)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
     storyPaused: false, _storyHeld: false, storyReady: false,   // the home story: paused by its button / held under a mouse / playing (ACC-02)
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
@@ -539,12 +540,12 @@ function p3App() {
       catch (_) { this.galleryState = 'failed'; }
       this.homeGallery = this._pickHome(this.gallery);
     },
-    // The homepage features at most 8 gallery designs, chosen at random on every page load (a quiet shuffle,
-    // so returning visitors see different rings); with 8 or fewer, all of them. "View all designs" opens the rest.
+    // The homepage features six gallery designs of the chosen product, in an order shuffled on every page load (a quiet
+    // shuffle, so returning visitors see different designs). "View All Designs" opens the Inspiration Gallery.
     _pickHome(list) {
       const a = [...list];
       for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-      return a.slice(0, 8);
+      return a;
     },
     // A My Designs thumbnail enlarges on hover: a floating preview beside the list, on whichever side has room
     showZoom(ev, src, label) {
@@ -1671,6 +1672,40 @@ function p3App() {
       if (this.nothingOnOffer) return 'Real XJet designs you can make your own, or the spark for one of yours.';
       if (this.soleProduct === 'ring') return 'Bands, signets, statement and stackable rings' + tail;
       return this.productsText[0].toUpperCase() + this.productsText.slice(1) + tail;
+    },
+    // The homepage's gallery (WP6): a chip per product on offer, the default product's first, then All
+    get homeChips() { return [...this.productsList.map(p => [p, this.productPlural(p)]), ['all', 'All']]; },
+    get homeShowNow() {
+      if (!this.productsOn) return 'all';
+      return this.homeShow === 'all' || this.productsList.includes(this.homeShow) ? this.homeShow : this.defaultProduct;
+    },
+    get homeCards() {
+      const p = this.homeShowNow;
+      return (p === 'all' ? this.homeGallery : this.homeGallery.filter(g => (g.product_type || 'ring') === p)).slice(0, 6);
+    },
+    // "Prefer a Ring?": the first three rings in the gallery's own order
+    get homeRings() { return this.gallery.filter(g => (g.product_type || 'ring') === 'ring').slice(0, 3); },
+    // The charm section's facts, as the site has them: the sizes on offer, the metals a charm can be ordered in, and gold
+    // while it is not one of them (preview only, or by request)
+    get charmFacts() {
+      const c = this.catalog?.products?.charm, mats = c?.materials || [];
+      const sizes = (c?.sizes || []).map(s => String(+s));
+      const gold = mats.filter(m => /gold|vermeil/.test(m.id) && m.group !== 'fashion').map(m => m.group);
+      return {
+        sizes: sizes.length ? (sizes.length > 1 ? sizes.slice(0, -1).join(', ') + ' or ' + sizes[sizes.length - 1] : sizes[0]) + ' mm' : '',
+        made: this._sentenceOrder(mats.filter(m => m.group === 'fashion')).map(m => m.label).join(' · '),
+        gold: !gold.length ? '' : gold.every(g => g === 'preview') ? 'Preview only' : gold.every(g => g === 'luxury') ? 'By request' : 'By request or preview only',
+      };
+    },
+    // "Made in Sterling Silver or Stainless Steel": the metals a ring can be ordered in (no price on the homepage)
+    get ringMetalsText() {
+      const n = this._sentenceOrder(this.materialsOf('fashion')).map(m => m.label);
+      return n.length ? 'Made in ' + (n.length > 1 ? n.slice(0, -1).join(', ') + ' or ' + n[n.length - 1] : n[0]) : '';
+    },
+    // Metals in the order the site's sentences name them (p3/materialstatus.py SentenceOrder), any others after
+    _sentenceOrder(mats) {
+      const order = ['silver', 'stainless_steel', 'vermeil'];
+      return [...order.map(id => mats.find(m => m.id === id)).filter(Boolean), ...mats.filter(m => !order.includes(m.id))];
     },
     get footerLine() { return 'Custom ' + this.productsText + ' designed with AI, made in real metal with NanoParticle Jetting™.'; },
     // The bag's price note names what is in the bag: ring sizes are US sizes, charm sizes millimeters

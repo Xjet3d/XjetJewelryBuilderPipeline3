@@ -24,14 +24,12 @@
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
-    <link rel="stylesheet" href="{{BASE}}/static/showcase.css">
     <!-- deferred: they run in this order once the page is parsed (Alpine last, so p3App() exists when it starts).
          consent.js first: the cookie banner and Cookie Settings, and the analytics that run only after consent (docs/ANALYTICS.md) -->
     <script defer src="{{BASE}}/static/consent.js"></script>
     <script defer src="{{BASE}}/static/metal.js"></script>
     <script defer src="{{BASE}}/static/products.js"></script>
     <script defer src="{{BASE}}/static/app.js"></script>
-    <script defer src="{{BASE}}/static/showcase.js"></script>
     <script defer src="{{BASE}}/static/vendor/alpine.min.js"></script>
 
     <!-- Visual system carried over from Pipeline 2 (index-p2.html) -->
@@ -40,19 +38,105 @@
         h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
         [x-cloak] { display: none !important; }
         .ssr-view { display: contents; }      /* the server's copy of the page asked for (p3/sitepages.py) */
-        /* Phones: the headline, Start Designing and the moving ring share the first screen (a smaller headline, the
-           eyebrow on one line, tighter spacing, the showcase a little narrower). Two classes, so they win over the
-           single-class utilities; from 768 px the hero is exactly as before. */
-        @media (max-width: 767px) {
-            .hero-section .hero-text { padding-top: 1rem; }
-            .hero-section .hero-eyebrow { flex-direction: row; flex-wrap: wrap; column-gap: .75rem; margin-bottom: .75rem; }
-            .hero-section .hero-eyebrow > span + span::before { content: '·'; margin-right: .75rem; }
-            .hero-section .hero-eyebrow > span { letter-spacing: .16em; }
-            .hero-section .hero-title { font-size: 2.25rem; line-height: 1.06; margin-bottom: .75rem; }
-            .hero-section .hero-sub { font-size: 16px; margin-bottom: 1.25rem; }
-            .hero-section .hero-cta > button { padding-top: .85rem; padding-bottom: .85rem; }
-            .hero-section .hero-visual { padding-top: .25rem; }
-            .hero-section .hero-visual > [data-testid="hero-showcase"] { width: 82%; }
+        /* The homepage, Version A (WP6, the owner's FINAL choice of 1 Nov 2026; the mockup's rules, prefixed hv-). The
+           pearl-and-gold photo is exactly 2:1: from 1100 px the hero keeps that shape, the copy over a light veil on the
+           plain fabric at the right; narrower screens stack the photo above the copy. Text over the photos keeps 4.5:1
+           (darker hero text, stronger veils); tap targets are 44 px or more. */
+        .hv-wrap { width: min(1200px, 100% - 64px); margin-inline: auto; }
+        .hv-display { font-family: 'Cinzel', Georgia, serif; font-weight: 400; letter-spacing: .02em; line-height: 1.12; margin: 0; }
+        .hv-display em { font-style: italic; }
+        .hv-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8A561B; margin: 0 0 16px; }
+        .hv-h2 { font-size: clamp(28px, 3.2vw, 40px); }
+        .hv-sub { color: #66666E; font-size: 15px; max-width: 560px; margin: 14px auto 0; }
+        .hv-sec { padding: 96px 0; background: #fff; }
+        .hv-head { text-align: center; margin-bottom: 48px; }
+        .hv-btn { min-height: 52px; padding: 0 30px !important; font-size: 13px !important; letter-spacing: .2em !important; border-radius: 4px; white-space: nowrap; }
+        .hv-btn-sm { min-height: 44px; padding: 0 22px !important; font-size: 12px !important; }
+        .hv-btn-light { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.7); color: #fff;
+            font-weight: 600; text-transform: uppercase; background: transparent; }
+        .hv-btn-light:hover { background: rgba(255,255,255,.08); }
+        .hero-section { position: relative; aspect-ratio: 1440 / 720; display: flex; align-items: center; overflow: hidden; background: #FBF8F3; }
+        .hv-hero-media { position: absolute; inset: 0; }
+        .hv-hero-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .hv-hero-veil { position: absolute; inset: 0; background: linear-gradient(270deg, rgba(251,248,243,.92) 0%, rgba(251,248,243,.82) 24%, rgba(251,248,243,.35) 36%, rgba(251,248,243,0) 46%); }
+        .hv-hero-copy { position: relative; margin-left: 64%; margin-right: 48px; max-width: 470px; }
+        .hero-section .hv-eyebrow { color: #6E4310; }
+        .hero-section .hero-title { font-size: clamp(34px, 3.4vw, 50px); margin-bottom: 22px; color: #1A1A1A; }
+        .hero-section .hero-title em { color: #7A4A14; }
+        .hv-lead { font-size: 17px; color: #2F2F35; margin: 0 0 28px; line-height: 1.6; }
+        .hv-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+        .hv-fine { font-size: 14px; color: #45454C; margin: 0; }
+        .hv-chips { display: inline-flex; gap: 8px; margin-top: 26px; padding: 5px; border: 1px solid #E8E0D2; border-radius: 999px; background: #fff; }
+        .hv-chip { min-height: 44px; padding: 0 20px; border-radius: 999px !important; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #66666E; }
+        .hv-chip[aria-pressed="true"] { background: #1A1A1A; color: #fff; }
+        .hv-split { display: grid; grid-template-columns: 1fr 1fr; background: #FBF8F3; }
+        .hv-split-img { position: relative; min-height: 640px; }
+        .hv-split-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .hv-split-copy { padding: 96px clamp(32px, 6vw, 110px); display: flex; flex-direction: column; justify-content: center; }
+        .hv-split-copy > p { color: #45454C; margin: 22px 0 30px; max-width: 470px; line-height: 1.6; }
+        .hv-facts { list-style: none; margin: 0 0 36px; padding: 0; border-top: 1px solid #E8E0D2; max-width: 470px; }
+        .hv-facts li { display: flex; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid #E8E0D2; font-size: 14.5px; }
+        .hv-facts span { color: #66666E; }
+        .hv-facts b { font-weight: 600; text-align: right; }
+        .hv-ring { background: #fff; padding: 76px 0; border-bottom: 1px solid #F0EBE2; }
+        .hv-ring-in { display: grid; grid-template-columns: 1fr 1.25fr; gap: 56px; align-items: center; }
+        .hv-ring-copy > p { color: #45454C; margin: 16px 0 18px; max-width: 440px; line-height: 1.6; }
+        .hv-ring-copy .hv-display { font-size: clamp(26px, 2.6vw, 34px); }
+        .hv-ring-copy .hv-fine { margin: 0 0 24px; }
+        .hv-ring-imgs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+        .hv-ring-imgs figure { margin: 0; }
+        .hv-ring-imgs img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 14px; border: 1px solid #EEE8DD; background: #F7F5F1; }
+        .hv-ring-imgs figcaption { font-family: 'Cinzel', Georgia, serif; letter-spacing: .02em; font-size: 14px; text-align: center; margin-top: 10px; }
+        .hv-band { position: relative; min-height: 620px; display: flex; align-items: center; background: #F4F1EC; overflow: hidden; }
+        .hv-band > picture img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 40%; }
+        .hv-band-veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(25,25,28,.92) 0%, rgba(25,25,28,.86) 40%, rgba(25,25,28,.2) 66%); }
+        .hv-band-copy { position: relative; width: min(1200px, 100% - 64px); margin-inline: auto; color: #fff; }
+        .hv-band-copy > * { max-width: 500px; }
+        .hv-band-copy .hv-eyebrow { color: #C9A96E; }
+        .hv-band-copy > p { color: #D4D4D8; line-height: 1.6; }
+        .hv-ticks { list-style: none; padding: 0; margin: 0 0 28px; display: grid; gap: 12px; color: #D4D4D8; }
+        .hv-ticks li { display: flex; align-items: center; gap: 12px; }
+        .hv-ticks li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #C9A96E; flex: none; }
+        .hv-final { position: relative; overflow: hidden; color: #fff; text-align: center; padding: 120px 20px; background: #19191C; }
+        .hv-final > picture img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .hv-final::after { content: ''; position: absolute; inset: 0; background: rgba(25,25,28,.72); }
+        .hv-final > div { position: relative; z-index: 1; }
+        .hv-final h2 { font-size: clamp(32px, 4vw, 52px); }
+        .hv-final h2 em { color: #C9A96E; }
+        .hv-final p { color: #D4D4D8; max-width: 520px; margin: 22px auto 36px; line-height: 1.6; }
+        .hv-final-ctas { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+        @media (max-width: 1100px) {
+            .hero-section { aspect-ratio: auto; flex-direction: column; align-items: stretch; }
+            .hv-hero-media { position: relative; aspect-ratio: 1440 / 720; }
+            .hv-hero-veil { display: none; }
+            .hv-hero-copy { margin: 0; max-width: none; padding: 40px 32px 52px; }
+            .hv-hero-copy > * { max-width: 560px; }
+        }
+        @media (max-width: 860px) {
+            .hv-hero-media { aspect-ratio: 4 / 3; }
+            .hv-hero-media img { object-position: 37% 50%; }
+            .hv-hero-copy { padding: 32px 20px 44px; }
+            .hero-section .hero-title { font-size: 38px; margin-bottom: 18px; }
+            .hv-cta { flex-direction: column; }
+            .hv-split { grid-template-columns: 1fr; }
+            .hv-split-img { min-height: 0; aspect-ratio: 1 / 1; }
+            .hv-split-copy { padding: 52px 20px 60px; }
+            .hv-ring { padding: 56px 0; }
+            .hv-ring-in { grid-template-columns: 1fr; gap: 28px; }
+            .hv-ring-imgs { gap: 10px; }
+            .hv-ring-imgs figcaption { font-size: 12px; }
+            .hv-band { flex-direction: column; align-items: stretch; min-height: 0; background: #19191C; }
+            .hv-band > picture img { position: relative; height: auto; aspect-ratio: 3 / 2; object-position: 74% 40%; }
+            .hv-band-veil { display: none; }
+            .hv-band-copy { width: auto; padding: 44px 20px 60px; }
+            .hv-final { padding: 84px 20px; }
+            .hv-final-ctas { flex-direction: column; }
+        }
+        @media (max-width: 640px) {
+            .hv-wrap { width: calc(100% - 40px); }
+            .hv-sec { padding: 64px 0; }
+            .hv-head { margin-bottom: 32px; }
+            .hv-btn { width: 100%; }
         }
         /* The Inspiration Gallery lightbox's picture holds its square from the first paint (gallery pictures are square):
            as wide as its column, at most 42vh (72vh from 768 px) — the size it has once loaded, so nothing moves when it
@@ -129,7 +213,6 @@
         .skip-link { position: fixed; left: 12px; top: 8px; z-index: 2147483647; padding: 10px 16px; background: #1A1A1A; color: #FFFFFF;
                      font-size: 14px; font-weight: 600; border-radius: 6px; transform: translateY(-160%); transition: transform .12s; }
         .skip-link:focus { transform: none; outline: 2px solid #C9A96E; outline-offset: 2px; }
-        .sc-toggle:focus-visible { outline: 2px solid #8A6420; outline-offset: 2px; }
         #p3-composer-input::placeholder { color: #666666; opacity: 1; }
         .ai-grid-bg { background-color: #F8F8F8; }
         button:not([class*="rounded"]):not([class*="border-b"]) { border-radius: 6px; }
@@ -252,7 +335,7 @@
            The Design screen (.is-studio): one row — XJet Atelier · Design — Customize — Bag · account · Exit.
            XJet Atelier: XJet's own logo (web/images/xjet-logo.png, never redrawn) with its clearspace — the height of its
            T — before the divider, then ATELIER in the site's display face. */
-        :root { --hdr: 64px; }                                      /* the header's height on the site's pages (the hero's room) */
+        :root { --hdr: 64px; }                                      /* the header's height on the site's pages */
         @media (min-width: 768px) { :root { --hdr: 117px; } }
         @media (min-width: 1280px) { :root { --hdr: 74px; } }
         .site-header { display: grid; align-items: center; column-gap: .375rem; padding: 1rem .5rem;
@@ -493,73 +576,51 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'home'">
         <main class="flex-1 overflow-y-auto fade-in">
-            <section class="hero-section flex flex-col md:flex-row min-h-[calc(100dvh-64px)] md:min-h-[calc(100vh_-_var(--hdr))] bg-white">
-                <div class="hero-text md:w-[46%] px-6 pt-6 pb-3 sm:px-8 md:p-10 lg:py-14 lg:px-12 2xl:p-20 flex flex-col justify-center">
-                    <div class="hero-eyebrow flex flex-col gap-1 mb-4 md:mb-7 md:mt-8">
-                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Bespoke Jewelry</span>
-                        <span class="text-[12px] uppercase tracking-[0.22em] font-semibold" style="color:#8A6420">Powered by AI</span>
-                    </div>
-                    <!-- "by You" never splits: "You" is never a line of its own -->
-                    <h1 class="hero-title text-5xl lg:text-[4rem] leading-[1.08] text-zinc-900 mb-4 md:mb-6 brand-font" style="text-wrap:balance">
-                        Custom Jewelry,<br><span class="italic font-normal" style="color:#B08040">Designed by&nbsp;You</span>
-                    </h1>
-                    <p class="hero-sub text-zinc-700 text-[18px] leading-relaxed mb-6 md:mb-10 max-w-[420px]" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
-                    <!-- side by side where both fit on one line each (640–767 and from 1280 px), stacked otherwise -->
-                    <div class="hero-cta flex flex-col sm:flex-row md:flex-col xl:flex-row gap-3 sm:gap-4 md:gap-3 xl:gap-4">
-                        <button @click="resetAIFlow()" class="btn-gold px-10 py-4 whitespace-nowrap stream-glow transition">Start Designing</button>
-                        <button @click="scrollToHowItWorks()" class="btn-outline px-10 py-4 whitespace-nowrap transition">How It Works</button>
-                    </div>
-                    <div class="hidden md:block">
-                        <p x-show="heroCollection.label" class="mt-5 text-[14px] leading-snug text-zinc-600 max-w-[420px]"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
-                        <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
-                        <!--mock--><p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
-                           style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
-                        </p><!--/mock-->
-                    </div>
+            <!-- The hero (WP6, Version A): the pearl-and-gold photograph, the site's headline, one START DESIGN — Design opens on
+                 the default product, Charm while charms are on offer (WP4) — and the collections line. No price on the
+                 homepage. The photo is the page's largest picture: the page's head preloads it (p3/sitepages.py HomePreload). -->
+            <section class="hero-section">
+                <div class="hv-hero-media">
+                    <picture>
+                        <source type="image/webp" srcset="{{BASE}}/static/images/home-hero-780.webp 780w, {{BASE}}/static/images/home-hero-1440.webp 1440w" sizes="100vw">
+                        <img src="{{BASE}}/static/images/home-hero-1440.jpg" width="1440" height="720" fetchpriority="high" decoding="async"
+                             alt="Gold charm bracelets with a seahorse, a shell, an NYC tag, a heart and a cross, stacked with pearl and gold bead bracelets on a wrist">
+                    </picture>
                 </div>
-                <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
-                     (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
-                     On phones it comes after the headline and the buttons. -->
-                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh_-_var(--hdr))] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);"
-                     @pointerenter="holdStory(true, $event)" @pointerleave="holdStory(false, $event)"
-                     @sc-ready="storyReady = true" x-init="$nextTick(() => { if (_story()?.plan) storyReady = true })">
-                    <!-- Pause / Play for the moving story (ACC-02, WCAG 2.2.2): only while a story plays; none with reduced
-                         motion, which shows it still, nor for the still picture shown when no story may be told -->
-                    <button type="button" x-show="storyReady && !reducedMotion" x-cloak @click="toggleStory()" class="sc-toggle absolute right-3 bottom-3 z-10 inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full text-[12px] font-semibold uppercase tracking-[0.12em]"
-                            style="background:rgba(255,255,255,0.88);color:#1A1A1A;border:1px solid #D4D4D4;" :aria-label="storyPaused ? 'Play the animation' : 'Pause the animation'">
-                        <svg x-show="!storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
-                        <svg x-show="storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-                        <span x-text="storyPaused ? 'Play' : 'Pause'" aria-hidden="true">Pause</span>
-                    </button>
-                    <div class="w-full md:w-[min(100%,700px,calc(100vh_-_var(--hdr)_-_80px))]" data-testid="hero-showcase">
-                        <!-- sc-stage from the first paint: the story's room is kept before the scripts start (nothing below moves) -->
-                        <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Sterling Silver and Yellow Gold"
-                             data-sc-design="aurora-mesh" x-init="$nextTick(() => window.P3Showcase && !$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' }))"></div>
-                    </div>
-                    <div class="md:hidden w-full px-2">
-                        <p x-show="heroCollection.label" class="mt-5 text-[14px] leading-snug text-zinc-600"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
-                        <!--mock--><p x-show="isMock" x-cloak class="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
-                           style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
-                        </p><!--/mock-->
-                    </div>
+                <div class="hv-hero-veil"></div>
+                <div class="hv-hero-copy">
+                    <p class="hv-eyebrow">Bespoke Jewelry · Powered by AI</p>
+                    <!-- "by You" never splits: "You" is never a line of its own -->
+                    <h1 class="hero-title hv-display">Custom Jewelry,<br><em>Designed by&nbsp;You</em></h1>
+                    <p class="hv-lead" x-text="'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'"></p>
+                    <div class="hv-cta"><button type="button" @click="resetAIFlow()" class="btn-gold hv-btn">Start Design</button></div>
+                    <p x-show="heroCollection.label" class="hv-fine"><span class="font-semibold text-zinc-800" x-text="heroCollection.label">Rings</span><span x-text="heroCollection.text"> — the first XJet Atelier collection, made to order in real metal.</span></p>
+                    <!-- Internal testing mode is always marked; live mode is the normal state and needs no badge -->
+                    <!--mock--><p x-show="isMock" x-cloak class="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] px-2.5 py-1 rounded w-fit"
+                       style="background:#FFF4DB;color:#7A4D00;border:1px solid #F0D9A8" data-testid="home-ai-mode">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Mock Mode</span>
+                    </p><!--/mock-->
                 </div>
             </section>
 
-            <section class="py-24 px-8 md:px-20 bg-white">
-                <div class="text-center mb-12">
-                    <span class="text-[12px] uppercase tracking-[0.4em] mb-3 block" style="color:#8A6420">Inspiration Gallery</span>
-                    <h2 class="text-3xl md:text-4xl brand-font mb-4">What Will You Create?</h2>
-                    <p class="text-zinc-600 text-[16px] max-w-xl mx-auto" x-text="homeGalleryIntro">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
-                </div>
-                <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-                    <template x-if="galleryState === 'loading'"><template x-for="i in 8" :key="i"><div class="g-card" aria-hidden="true"><div class="h-11"></div><div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div></template></template>
+            <section class="hv-sec">
+                <div class="hv-wrap">
+                    <div class="hv-head">
+                        <p class="hv-eyebrow">Inspiration Gallery</p>
+                        <h2 class="hv-display hv-h2">What Will You Create?</h2>
+                        <p class="hv-sub" x-text="homeGalleryIntro">Bands, signets, statement and stackable rings — real XJet designs you can make your own, or the spark for one of yours.</p>
+                        <!-- one product's designs at a time while there is a choice, the default product's first; All shows both -->
+                        <div x-show="productsOn" x-cloak class="hv-chips" role="group" aria-label="Show designs">
+                            <template x-for="f in homeChips" :key="'hc-' + f[0]"><button type="button" class="hv-chip" :aria-pressed="homeShowNow === f[0] ? 'true' : 'false'" @click="homeShow = f[0]" x-text="f[1]"></button></template>
+                        </div>
+                    </div>
+                    <!-- Real XJet designs: one tap opens the design; "Make it yours" links the customer to the shared master design -->
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-6xl mx-auto">
+                        <template x-if="galleryState === 'loading'"><template x-for="i in 6" :key="i"><div class="g-card" aria-hidden="true"><div class="h-11"></div><div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div></template></template>
                     <!-- One card: the badge and the heart above the picture, the picture whole on white, the name, then the
                          swatches and "Make it yours", which starts the design directly (app.js makeItYoursFromCard). The
                          rest of the card opens the design's dialog (the link's ::after covers it). -->
-                    <template x-for="g in homeGallery" :key="g.id">
+                    <template x-for="g in homeCards" :key="g.id">
                         <div class="g-card group">
                             <div class="g-over flex items-center h-11 pl-2.5">
                                 <span x-show="productsOn" x-cloak class="product-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(g.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(g.product_type || 'ring')"></span></span>
@@ -569,7 +630,7 @@
                                 </button>
                             </div>
                             <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
-                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 42vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 310px, (min-width:768px) 26vw, 42vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
                                 <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
                             </a>
                             <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
@@ -585,15 +646,42 @@
                     </template>
                     <div x-show="galleryState === 'loaded' && !gallery.length" class="col-span-full py-10 text-center text-sm text-zinc-500">New designs are being added to the gallery — start with your own idea below.</div>
                     <div x-show="galleryState === 'failed'" x-cloak class="col-span-full py-10 text-center text-sm text-zinc-500">The gallery could not be loaded. <button @click="loadGallery()" class="underline underline-offset-2 font-semibold" style="color:#8A6420;">Try again</button></div>
+                    </div>
+                    <p x-show="gallery.length" x-cloak class="text-center" style="margin:40px 0 0"><a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="btn-outline hv-btn" x-text="'View All ' + gallery.length + ' Designs'">View All Designs</a></p>
                 </div>
-                <!-- More than the featured eight: the whole gallery opens in its own grid -->
-                <div x-show="gallery.length > 8" x-cloak class="text-center mt-8">
-                    <button type="button" @click="galleryGridOpen = true" class="inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.2em] font-semibold px-6 py-3 rounded-full border transition focus:outline-none focus:ring-2 focus:ring-[#C9A96E]" style="color:#8A6420; border-color:#E8DCC4;" onmouseover="this.style.borderColor='#C9A96E'; this.style.background='#FBF7EF'" onmouseout="this.style.borderColor='#E8DCC4'; this.style.background='transparent'">
-                        <span x-text="'View all ' + gallery.length + ' designs'"></span><span aria-hidden="true">→</span>
-                    </button>
+            </section>
+
+            <!-- Charms (WP6): their own story; the facts are the site's own (Admin → Settings: the sizes, the metals and their
+                 statuses; production as the FAQ says it) -->
+            <section x-show="wording.charm" x-cloak class="hv-split">
+                <div class="hv-split-img"><picture><source type="image/webp" srcset="{{BASE}}/static/images/home-charms-480.webp 480w, {{BASE}}/static/images/home-charms-960.webp 960w" sizes="(min-width: 861px) 50vw, 100vw"><img src="{{BASE}}/static/images/home-charms-960.jpg" width="960" height="960" loading="lazy" decoding="async" alt="Seven charms in silver and gold tones: heart, moon, flower, star, shell, letter O and a round wave charm"></picture></div>
+                <div class="hv-split-copy">
+                    <p class="hv-eyebrow">Charms</p>
+                    <h2 class="hv-display hv-h2">Small Charms,<br>Personal Stories</h2>
+                    <p>Initials, shells, stars and hearts — or something only you would think of. Describe it in your own words or start from a photo, then refine your favorite of four designs.</p>
+                    <ul class="hv-facts">
+                        <li x-show="charmFacts.sizes"><span>Sizes</span><b x-text="charmFacts.sizes"></b></li>
+                        <li x-show="charmFacts.made"><span>Made in</span><b x-text="charmFacts.made"></b></li>
+                        <li x-show="charmFacts.gold"><span>Gold</span><b x-text="charmFacts.gold"></b></li>
+                        <li><span>Production</span><b>Up to 14 days</b></li>
+                    </ul>
+                    <div><button type="button" @click="resetAIFlow('charm')" class="btn-gold hv-btn">Design a Charm</button></div>
                 </div>
-                <div class="text-center mt-10">
-                    <button @click="resetAIFlow()" class="btn-gold px-10 py-4 stream-glow transition">Start Designing</button>
+            </section>
+
+            <!-- Rings (WP6): one step away while both products are on offer -->
+            <section x-show="wording.ring && productsOn" x-cloak class="hv-ring">
+                <div class="hv-wrap hv-ring-in">
+                    <div class="hv-ring-copy">
+                        <p class="hv-eyebrow">Rings</p>
+                        <h2 class="hv-display">Prefer a Ring?</h2>
+                        <p>The same four-design process, made in your US size, with a 360° movie of your selected ring.</p>
+                        <p x-show="ringMetalsText" class="hv-fine" x-text="ringMetalsText"></p>
+                        <button type="button" @click="resetAIFlow('ring')" class="btn-outline hv-btn hv-btn-sm">Design a Ring</button>
+                    </div>
+                    <div class="hv-ring-imgs">
+                        <template x-for="g in homeRings" :key="'hr-' + g.id"><figure><a :href="galleryHref(g)" @click="galleryClick($event, g)" :aria-label="'Open ' + g.title"><img width="320" height="320" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 861px) 220px, 30vw" :src="thumb(g.image_url, 320)" :alt="galleryAlt(g)" loading="lazy" decoding="async"></a><figcaption x-text="g.title"></figcaption></figure></template>
+                    </div>
                 </div>
             </section>
 
@@ -620,68 +708,31 @@
                 <p class="text-center text-sm text-zinc-400 italic">You see your design before anything is made.</p>
             </section>
 
-            <section class="py-24 px-8 md:px-20 bg-zinc-900 text-white">
-                <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-16 items-center">
-                    <div class="md:w-1/2">
-                        <span class="text-[12px] uppercase tracking-[0.4em] mb-4 block" style="color:#C9A96E">Technology</span>
-                        <h2 class="text-3xl md:text-4xl brand-font mb-6">Made with XJet<br>NanoParticle Jetting™</h2>
-                        <p class="text-zinc-400 leading-relaxed mb-8 text-base">Your design is created digitally and made in real metal with advanced production technology. This allows more detail, more personalization, and more freedom than traditional custom jewelry.</p>
-                        <ul class="space-y-3 mb-8">
-                            <template x-for="b in ['Great for one-of-a-kind pieces','More personal shapes and forms','Fine details and surface textures','Real metals only','Digital design control — no compromises']" :key="b">
-                                <li class="flex items-center gap-3 text-base text-zinc-400"><span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:#C9A96E"></span><span x-text="b"></span></li>
-                            </template>
-                        </ul>
-                        <p class="text-[12px] uppercase tracking-widest text-zinc-400">Powered by XJet's advanced metal 3D printing technology.</p>
-                    </div>
-                    <!-- XJet's own photograph of printed pieces (the brand book's PR picture, cropped to its rings and charms; its
-                         watermark left out) -->
-                    <div class="md:w-1/2"><picture><source srcset="{{BASE}}/static/images/printed-jewelry.webp" type="image/webp"><img width="960" height="740" src="{{BASE}}/static/images/printed-jewelry.jpg" alt="Rings and jewelry pieces printed by XJet with NanoParticle Jetting" class="rounded-lg shadow-2xl w-full h-auto object-cover" loading="lazy" decoding="async" onerror="this.closest('picture').style.display='none'"></picture></div>
+            <!-- Technology (WP6): the section's own words over XJet's photograph -->
+            <section class="hv-band">
+                <picture><source type="image/webp" srcset="{{BASE}}/static/images/home-tech-780.webp 780w, {{BASE}}/static/images/home-tech-1440.webp 1440w" sizes="100vw"><img src="{{BASE}}/static/images/home-tech-1440.jpg" width="1440" height="960" loading="lazy" decoding="async" alt="A silver star charm on a fine chain, worn on a wrist"></picture>
+                <div class="hv-band-veil"></div>
+                <div class="hv-band-copy">
+                    <p class="hv-eyebrow">Technology</p>
+                    <h2 class="hv-display hv-h2">Made with XJet<br>NanoParticle Jetting™</h2>
+                    <p style="margin:22px 0 26px">Your design is created digitally and made in real metal with advanced production technology. This allows more detail, more personalization, and more freedom than traditional custom jewelry.</p>
+                    <ul class="hv-ticks"><li>Great for one-of-a-kind pieces</li><li>More personal shapes and forms</li><li>Fine details and surface textures</li><li>Real metals only</li><li>Digital design control — no compromises</li></ul>
+                    <p class="text-[12px] uppercase tracking-widest" style="color:#A1A1AA">Powered by XJet's advanced metal 3D printing technology.</p>
                 </div>
             </section>
 
-            <section class="py-16 px-8 md:px-20 bg-white border-t border-zinc-100">
-                <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-                    <template x-for="t in [
-                        {icon:'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', label:'Real Metal Production', sub:'Crafted in actual metal, never plastic.'},
-                        {icon:'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z', label:'Four Designs Per Idea', sub:'Every idea becomes four options to choose from.'},
-                        {icon:'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label:'360° Preview', sub:'See your selected ring from every angle.'},
-                        {icon:'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', label:'Made by XJet', sub:'Produced with XJet industrial NanoJetting™ printers.'}
-                    ].filter(t => t.label !== '360° Preview' || wording.ring)" :key="t.label">
-                        <div>
-                            <div class="w-11 h-11 rounded-full mx-auto mb-4 flex items-center justify-center" style="background:#F8F4EE">
-                                <svg class="w-5 h-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" :d="t.icon"/></svg>
-                            </div>
-                            <div class="text-sm font-semibold text-zinc-800 mb-1" x-text="t.label"></div>
-                            <div class="text-sm text-zinc-400 leading-relaxed" x-text="t.sub"></div>
-                        </div>
-                    </template>
-                </div>
-            </section>
-
-            <section class="py-20 px-8 md:px-20 bg-zinc-50 border-t border-zinc-100">
-                <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div class="bg-white rounded-xl p-10 border border-zinc-100 shadow-sm">
-                        <svg class="w-8 h-8 mb-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                        <h3 class="text-2xl brand-font mb-3">Expert Design Support</h3>
-                        <p class="text-zinc-500 text-base leading-relaxed">Need help? Our design team is available to assist with your custom piece. Custom jewelry should feel personal — and so should the service.</p>
-                        <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="btn-outline mt-6 px-7 py-3">Contact us</a>
-                    </div>
-                    <div class="bg-white rounded-xl p-10 border border-zinc-100 shadow-sm">
-                        <svg class="w-8 h-8 mb-5" fill="none" stroke="#C9A96E" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                        <h3 class="text-2xl brand-font mb-5">Production &amp; Delivery</h3>
-                        <div class="space-y-3">
-                            <div class="flex justify-between items-center text-sm border-b border-zinc-100 pb-3"><span class="text-zinc-500">Design</span><span class="font-semibold text-zinc-800">Same day</span></div>
-                            <div class="flex justify-between items-center text-sm border-b border-zinc-100 pb-3"><span class="text-zinc-500">Production</span><span class="font-semibold text-zinc-800">Up to 14 days</span></div>
-                            <div class="flex justify-between items-center text-sm"><span class="text-zinc-500">Shipping</span><span class="font-semibold text-zinc-800">5 days express · up to 14 standard</span></div>
-                        </div>
+            <!-- The closing call to action over the charms photograph (WP6): one button per product on offer -->
+            <section class="hv-final">
+                <picture><source type="image/webp" srcset="{{BASE}}/static/images/home-closing-494.webp 494w, {{BASE}}/static/images/home-closing-988.webp 988w" sizes="100vw"><img src="{{BASE}}/static/images/home-closing-988.jpg" width="988" height="1024" loading="lazy" decoding="async" alt=""></picture>
+                <div>
+                    <p class="hv-eyebrow" style="color:#C9A96E">XJet Atelier</p>
+                    <h2 class="hv-display">Your Jewelry. <em>Your Design.</em></h2>
+                    <p x-text="'Start with a description or an image. Choose from four designs and refine your favorite' + (!wording.ring ? '.' : wording.charm ? '; rings come with a 360° preview.' : ', then preview it in 360°.')">Start with a description or an image. Choose from four designs and refine your favorite; rings come with a 360° preview.</p>
+                    <div class="hv-final-ctas">
+                        <button type="button" x-show="wording.charm" @click="resetAIFlow('charm')" class="btn-gold hv-btn">Design a Charm</button>
+                        <button type="button" x-show="wording.ring" @click="resetAIFlow('ring')" class="hv-btn" :class="wording.charm ? 'hv-btn-light' : 'btn-gold'">Design a Ring</button>
                     </div>
                 </div>
-            </section>
-
-            <section class="py-28 px-8 text-center bg-zinc-900 text-white">
-                <h2 class="text-4xl md:text-5xl brand-font mb-6">Your Jewelry.<br><span class="italic" style="color:#C9A96E">Your Design.</span></h2>
-                <p class="text-zinc-400 mb-10 max-w-md mx-auto text-base leading-relaxed" x-text="'Start with a description or an image. Choose from four designs and refine your favorite' + (!wording.ring ? '.' : wording.charm ? '; rings come with a 360° preview.' : ', then preview it in 360°.')">Start with a description or an image. Choose from four designs and refine your favorite; rings come with a 360° preview.</p>
-                <button @click="resetAIFlow()" class="btn-gold px-12 py-5 stream-glow transition">Start Designing</button>
             </section>
 
             {{SITE_FOOTER}}

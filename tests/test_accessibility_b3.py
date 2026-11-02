@@ -48,10 +48,12 @@ def test_radio_groups_answer_the_arrow_keys():
     assert "closest('[role=\"radiogroup\"]')" in App and "ArrowRight: 1" in App and "e.key === 'Home'" in App
 
 
-async def test_the_home_story_has_a_pause_button_only_while_it_plays(Page):
-    assert 'x-show="storyReady && !reducedMotion"' in Page and '@click="toggleStory()"' in Page
-    assert "storyPaused ? 'Play the animation' : 'Pause the animation'" in Page
-    assert "new CustomEvent('sc-ready'" in (Web / "showcase.js").read_text(encoding="utf-8")
+async def test_the_homepage_has_no_moving_picture_to_pause(Page):
+    """ACC-02 (WCAG 2.2.2): the home story had its own Pause button; the homepage of Version A (WP6) shows photographs
+    only, so nothing on it moves by itself."""
+    assert 'data-testid="hero-showcase"' not in Page and "P3Showcase.mount(" not in Page and "/static/showcase.js" not in Page
+    Home = Page[Page.index('data-ssr-view="home"'):Page.index("""<template x-if="view === 'home' && ssrView !== 'home'">""")]
+    assert 'class="hero-section"' in Home and "<video" not in Home
 
 
 def test_the_consent_banner_comes_early_and_keeps_room_below_it():

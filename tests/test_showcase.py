@@ -156,20 +156,20 @@ async def test_showcase_page_is_a_standalone_noindex_reference(HG):
     assert (await H.Client.get("/static/metal.js")).status_code == 200
 
 
-async def test_the_homepage_hero_shows_the_showcase_not_a_gallery(HG):
-    """Left: the short value statement and the buttons; right: the showcase. No thumbnail strip, no copy that was
-    taken out (a second headline, the technology name, a "Design preview" caption) and no call to action inside it."""
+async def test_the_homepage_hero_is_a_photograph_and_the_story_stays_on_its_reference_page(HG):
+    """WP6 (Version A, the owner's choice of 1 Nov 2026): the hero is the pearl-and-gold photograph with the short value
+    statement, one START DESIGN and the collections line — no story, no thumbnail strip, no price. The story's engine
+    stays for the reference page (/showcase) and is no longer loaded by the site's pages."""
     H = HG
     Index = (await H.Client.get("/")).text
-    Hero = Index[Index.index('data-ssr-view="home"'):Index.index('Inspiration Gallery</span>')]     # the page as served
+    Hero = Index[Index.index('data-ssr-view="home"'):Index.index('<section class="hv-sec">')]     # the page as served
     assert "x-text=\"'Your idea. Your style. A ' + wording.noun + ' that’s uniquely yours.'\"" in Hero   # product-aware since 2026-10-07
-    assert "Describe your vision or upload a photo." not in Hero and "Choose from four AI designs" not in Hero
-    assert "Bespoke Jewelry" in Hero and "Powered by AI" in Hero and "Designed by&nbsp;You" in Hero      # "You" never alone
-    assert 'resetAIFlow()' in Hero and 'scrollToHowItWorks()' in Hero and "made to order in real metal" in Hero
-    assert 'data-testid="hero-showcase"' in Hero and 'data-sc-design="aurora-mesh"' in Hero
-    assert "!$el._sc && P3Showcase.mount($el, { design: $el.dataset.scDesign, startAt: 'final' })" in Hero
-    assert 'aria-label="Rings from the Inspiration Gallery"' not in Hero and "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
-    assert re.search(r'src="' + re.escape(H.Base) + r'/static/showcase\.js\?v=\d+"', Index)
+    assert "Bespoke Jewelry · Powered by AI" in Hero and "Designed by&nbsp;You" in Hero              # "You" never alone
+    assert '@click="resetAIFlow()" class="btn-gold hv-btn">Start Design</button>' in Hero and "made to order in real metal" in Hero
+    assert Hero.count("<button") == 1 and "scrollToHowItWorks()" not in Hero and "$" not in Hero.replace("$el", "")   # no price
+    assert re.search(r'<img src="' + re.escape(H.Base) + r'/static/images/home-hero-1440\.jpg\?v=\d+" width="1440" height="720" fetchpriority="high"', Hero)
+    assert 'data-testid="hero-showcase"' not in Index and "P3Showcase.mount(" not in Index and "/static/showcase." not in Index
+    assert "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
     Engine = (await H.Client.get("/static/showcase.js")).text
     assert "Designed with XJet Atelier" in Engine and "'Your idea', 'Four possibilities', 'Make it yours'" in Engine
     for Gone in ("From your words", "NanoParticle", "Design preview", "Design yours", "gold_18k_rose"):
@@ -217,26 +217,25 @@ async def test_a_browser_that_cannot_play_the_movie_fetches_no_video(HG):
     assert Js.count("v.src = S.movie_url") == 1                     # the fallback is the only other way to the whole movie
 
 
-async def test_the_homepage_story_opens_on_its_finished_ring_at_once(HG):
-    """Home LCP (2026-10-17): the story's finished ring is its largest picture; the homepage brings the story with it
-    (no request after the app's first calls) and fetches that picture with its first files, at the sizes showcase.js
-    gives it; the story starts on it as soon as the page is read and plays on from the idea. Other pages bring nothing."""
-    from p3 import sitepages as SitePages
+async def test_the_homepage_fetches_its_hero_photograph_with_its_first_files(HG):
+    """Home LCP: the hero's photograph is the page's largest picture; the page's head preloads it — the same WebP files
+    and sizes as the hero's <picture>, so the browser takes the picture it already has. No story in the page any more
+    (WP6). Other pages preload no hero. The engine (the /showcase reference page) opens its story on the finished ring."""
     H = HG
     await _Story(H)
     Index = (await H.Client.get("/")).text
     Cfg = json.loads(re.search(r"window\.__p3 = (\{.*?\});</script>", Index).group(1))
-    S = Cfg["story"]
-    assert S["design"] == SitePages.HeroDesign and S["data"] == (await H.Client.get(f"/api/showcase?design={SitePages.HeroDesign}")).json()
-    Still = S["data"]["story"]["still_url"].replace("/assets/", "/thumb/", 1)
+    assert "story" not in Cfg
+    Img = H.Base + "/static/images/home-hero-"
     Head = Index.split("</head>")[0]
-    assert (f'<link rel="preload" as="image" href="{Still}?w=800" imagesrcset="{Still}?w=800 800w, {Still}?w=1024 1024w" '
-            f'imagesizes="{SitePages.HeroSizes}" fetchpriority="high">') in Head
+    Preload = (f'<link rel="preload" as="image" href="{Img}1440.webp" imagesrcset="{Img}780.webp 780w, {Img}1440.webp 1440w" '
+               f'imagesizes="100vw" type="image/webp" fetchpriority="high">')
+    assert Preload in Head and f'srcset="{Img}780.webp 780w, {Img}1440.webp 1440w" sizes="100vw"' in Index
     for Other in ("/gallery", "/faq", "/design"):
         Page = (await H.Client.get(Other)).text
-        assert '"story":' not in Page.split("</head>")[0] and 'rel="preload" as="image" href="' + Still not in Page, Other
+        assert '"story":' not in Page.split("</head>")[0] and Preload not in Page, Other
     Engine = (await H.Client.get("/static/showcase.js")).text
-    assert f"const FOCUS_SIZES = '{SitePages.HeroSizes}';" in Engine and "img.sizes = FOCUS_SIZES;" in Engine
+    assert "const FOCUS_SIZES = '(max-width: 767px) 80vw, 520px';" in Engine and "img.sizes = FOCUS_SIZES;" in Engine
     assert "if (reduced || finalFirst) T = D.start[6] + 1500;" in Engine and "const finalFirst = opts.startAt === 'final';" in Engine
     assert "const imgs = finalFirst ? [X.silver, X.gold] : [" in Engine             # the first frame waits for its own pictures
     assert "const under = t >= s5 + 450;" in Engine                                 # nothing under the finished ring

@@ -322,3 +322,6 @@ Technical follow-ups, found while measuring (pre-existing, not changed):
   remove it.
 - The homepage story reveals larger pictures as it plays; a lab run with no interaction can then report the homepage's
   LCP late (about 14 s on proto). Real visitors' first tap or scroll ends LCP; worth a look if field data shows it.
+  Since WP6 (2 Nov 2026, Version A) the homepage has no story: its hero is a photograph (WebP 780/1440 px, JPEG
+  fallback), preloaded from the page's head with the same files and sizes (`p3/sitepages.py` `HomePreload`); the
+  story's engine stays for the `/showcase` reference page only.
