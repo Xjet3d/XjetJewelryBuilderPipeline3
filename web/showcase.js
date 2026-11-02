@@ -386,6 +386,7 @@
             if (reduced || finalFirst) T = D.start[6] + 1500;   // the finished ring and its name (reduced motion: still)
             render(T);
             if (opts.onReady) opts.onReady(ctl);
+            stage.dispatchEvent(new CustomEvent('sc-ready', { bubbles: true }));   // a story plays: the page shows its Pause button
             raf = requestAnimationFrame(frame);
         }).catch(e => { if (!destroyed) X.loading.textContent = opts.errorText || ''; console.error('showcase:', e); });
         return ctl;

@@ -8,6 +8,21 @@
 
 // Base path injected by the server (<meta name="p3-base">), e.g. "/JewelryB2C3" or "" at the root.
 // EVERY request goes through url() so nothing ever escapes to root /api, /static or /assets.
+const DialogReturn = {};                // where the focus goes back to when a dialog closes (dialogFocus), by dialog name
+// Every radio group (metals, sizes, product, delivery) answers the arrow keys as a radio group should: ← → ↑ ↓ move to
+// the previous / next choice and choose it, Home and End the first and the last (ACC-04)
+document.addEventListener('keydown', e => {
+  const Radio = e.target?.closest?.('[role="radio"]'), Group = Radio?.closest('[role="radiogroup"]');
+  if (!Group || e.altKey || e.ctrlKey || e.metaKey) return;
+  const Step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+  if (!Step && e.key !== 'Home' && e.key !== 'End') return;
+  const All = [...Group.querySelectorAll('[role="radio"]')].filter(R => !R.disabled && R.getClientRects().length);
+  if (All.length < 2) return;
+  const I = All.indexOf(Radio);
+  const Next = e.key === 'Home' ? All[0] : e.key === 'End' ? All[All.length - 1] : All[(I + Step + All.length) % All.length];
+  e.preventDefault(); e.stopPropagation();
+  Next.focus(); Next.click();
+});
 const ASSET_PATH = /\/assets\//;        // generated files live under BASE/assets/…; their thumbnails under BASE/thumb/…, posters under BASE/poster/…
 const BASE = (document.querySelector('meta[name="p3-base"]')?.content || '').replace(/\/+$/, '');
 const url = (path) => BASE + path;
@@ -202,6 +217,7 @@ function p3App() {
     panelRoute: '', _pendingRoute: '',     // the side panel's own address when opened as such; a step asked for before sign-in
     homeGallery: [],                                                           // the 8 gallery designs this visit features (random per page load)
     heroIndex: 0, heroPaused: false, _heroQueue: [], _heroTimer: null,       // the home hero takes turns through the featured rings
+    storyPaused: false, _storyHeld: false, storyReady: false,   // the home story: paused by its button / held under a mouse / playing (ACC-02)
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
     openedFromList: false,                                                     // a saved design opened from My Designs: images only, no prompt echo
     candIndex: 0,                                                              // phone: which of the four options is in view
@@ -731,6 +747,27 @@ function p3App() {
       if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
     },
+    // The other dialogs (the enlarged design, the quote request, the account panel, the gallery grid): an x-effect calls
+    // dialogFocus(name, open, $el), which takes the focus into the dialog as it opens and gives it back to where it was
+    // as it closes; trapTab keeps Tab inside while it is open (ACC-04). The return target lives outside Alpine's data.
+    dialogFocus(name, open, root) {
+      if (open) {
+        if (!(name in DialogReturn)) DialogReturn[name] = document.activeElement;
+        this.$nextTick(() => setTimeout(() => {
+          if (!root || !root.isConnected || root.contains(document.activeElement)) return;
+          const t = root.querySelector('[autofocus]') || this._focusables(root)[0] || root;
+          try { t.focus({ preventScroll: true }); } catch (_) {}
+        }, 30));
+        return;
+      }
+      if (!(name in DialogReturn)) return;
+      const back = DialogReturn[name]; delete DialogReturn[name];
+      setTimeout(() => {                               // once the dialog is gone: only a focus it left behind is moved
+        const a = document.activeElement;
+        if (back && back.isConnected && (!a || a === document.body || !a.isConnected || (root && root.contains(a))))
+          try { back.focus({ preventScroll: true }); } catch (_) {}
+      }, 0);
+    },
     // Back / Forward: the address names the screen — a page, a step of the journey, My Account — and the gallery design
     // that is open; the screen in front follows it (the address already moved)
     _onHistory() {
@@ -822,6 +859,27 @@ function p3App() {
     _resumeStory() {
       const sc = PAUSED_STORY; PAUSED_STORY = null;
       if (sc && sc === this._story()) sc.play();
+    },
+    // "Skip to content": each screen has its own <main> (only the one on screen is in the page); the focus moves into it
+    skipToContent() {
+      const M = [...document.querySelectorAll('main, [role="main"]')].find(E => E.getClientRects().length) || document.getElementById('content');
+      if (!M) return;
+      if (!M.hasAttribute('tabindex')) M.setAttribute('tabindex', '-1');
+      M.style.outline = 'none';
+      try { M.focus({ preventScroll: false }); } catch (_) {}
+    },
+    // The visitor's own Pause / Play (ACC-02, WCAG 2.2.2): a pause stays until they press Play — a dialog closing or the
+    // mouse leaving never restarts it. Reduced motion shows the finished ring still, without the button.
+    toggleStory() {
+      const sc = this._story(); if (!sc) return;
+      this.storyPaused = !this.storyPaused; this._storyHeld = false; PAUSED_STORY = null;
+      if (this.storyPaused) sc.pause(); else sc.play();
+    },
+    holdStory(on, ev) {
+      if (ev && ev.pointerType !== 'mouse') return;                  // a tap on a phone is not a hover
+      const sc = this._story(); if (!sc || this.storyPaused) return;
+      if (on && sc.state().playing) { sc.pause(); this._storyHeld = true; }
+      else if (!on && this._storyHeld) { this._storyHeld = false; if (!PAUSED_STORY) sc.play(); }
     },
     _pendingGallery() { try { return localStorage.getItem(GALLERY_KEY) || ''; } catch { return ''; } },
     _setPendingGallery(id) { try { id ? localStorage.setItem(GALLERY_KEY, id) : localStorage.removeItem(GALLERY_KEY); } catch {} },

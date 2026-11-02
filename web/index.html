@@ -122,6 +122,14 @@
         @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         input:focus, select:focus, textarea:focus { outline: none; }
+        /* Accessibility (audit B3): a visible ring on checkboxes and radios (Show password), a "Skip to content" link that
+           shows when focused, a heading only screen readers hear, and the story's Pause button's ring */
+        input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid #8A6420; outline-offset: 2px; }
+        .vh { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+        .skip-link { position: fixed; left: 12px; top: 8px; z-index: 2147483647; padding: 10px 16px; background: #1A1A1A; color: #FFFFFF;
+                     font-size: 14px; font-weight: 600; border-radius: 6px; transform: translateY(-160%); transition: transform .12s; }
+        .skip-link:focus { transform: none; outline: 2px solid #C9A96E; outline-offset: 2px; }
+        .sc-toggle:focus-visible { outline: 2px solid #8A6420; outline-offset: 2px; }
         #p3-composer-input::placeholder { color: #666666; opacity: 1; }
         .ai-grid-bg { background-color: #F8F8F8; }
         button:not([class*="rounded"]):not([class*="border-b"]) { border-radius: 6px; }
@@ -202,6 +210,8 @@
         .cand-card.is-ready:hover { outline-color: #D4D4D8; }
         /* Selected = a clear rectangular border (confirmed requirement), square corners. */
         .cand-card.is-selected, .cand-card.is-selected:hover { outline: 3px solid #1A1A1A; border-radius: 0 !important; }
+        .cand-select { cursor: pointer; }
+        .cand-select:focus-visible { outline: 3px solid #8A6420; outline-offset: -6px; }
         .shimmer { background: linear-gradient(100deg, #F1F1F1 30%, #FAFAFA 50%, #F1F1F1 70%); background-size: 300% 100%; animation: sh 1.4s infinite linear; }
         /* The waiting drawing (R-23): each line draws in turn, the piece holds, then fades and starts again */
         .ld-art .ld { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ld-draw 3.6s ease-in-out infinite; }
@@ -295,6 +305,8 @@
 </head>
 <!-- Alpine calls init() itself: an x-init="init()" ran it twice (every startup request twice, timers doubled) -->
 <body x-data="p3App()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
+    <!-- The first stop of the keyboard: straight to the screen's own content, past the header (ACC-06) -->
+    <a href="#content" class="skip-link" @click.prevent="skipToContent()">Skip to content</a>
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
     <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute; width:0; height:0; overflow:hidden" x-html="metalFilterDefs"></svg>
 
@@ -473,6 +485,8 @@
             </div>
         </div>
     </nav>
+    <!-- Where "Skip to content" lands: right after the header, before whichever screen is shown (ACC-06) -->
+    <div id="content" tabindex="-1" class="outline-none" style="height:0"></div>
 
     <!-- ══════════════════════════════════════════════════════════════════════
          Landing page
@@ -507,7 +521,17 @@
                 <!-- The first product visual is the showcase: one real gallery design told from the customer's words to the finished ring
                      (web/showcase.js — the same engine as /showcase). It shows the product; the Inspiration Gallery follows right below.
                      On phones it comes after the headline and the buttons. -->
-                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh_-_var(--hdr))] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);">
+                <div class="hero-visual md:w-[54%] relative overflow-hidden md:self-start md:sticky md:top-0 md:h-[calc(100vh_-_var(--hdr))] flex flex-col items-center justify-center px-4 pt-3 pb-10 md:p-6" style="background:linear-gradient(160deg,#FBF9F4 0%,#F3EFE6 100%);"
+                     @pointerenter="holdStory(true, $event)" @pointerleave="holdStory(false, $event)"
+                     @sc-ready="storyReady = true" x-init="$nextTick(() => { if (_story()?.plan) storyReady = true })">
+                    <!-- Pause / Play for the moving story (ACC-02, WCAG 2.2.2): only while a story plays; none with reduced
+                         motion, which shows it still, nor for the still picture shown when no story may be told -->
+                    <button type="button" x-show="storyReady && !reducedMotion" x-cloak @click="toggleStory()" class="sc-toggle absolute right-3 bottom-3 z-10 inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full text-[12px] font-semibold uppercase tracking-[0.12em]"
+                            style="background:rgba(255,255,255,0.88);color:#1A1A1A;border:1px solid #D4D4D4;" :aria-label="storyPaused ? 'Play the animation' : 'Pause the animation'">
+                        <svg x-show="!storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+                        <svg x-show="storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                        <span x-text="storyPaused ? 'Play' : 'Pause'" aria-hidden="true">Pause</span>
+                    </button>
                     <div class="w-full md:w-[min(100%,700px,calc(100vh_-_var(--hdr)_-_80px))]" data-testid="hero-showcase">
                         <!-- sc-stage from the first paint: the story's room is kept before the scripts start (nothing below moves) -->
                         <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Sterling Silver and Yellow Gold"
@@ -1143,7 +1167,8 @@
          Design studio — four candidates · select · zoom · refine · proceed
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'ai-studio'">
-        <div class="flex-1 flex overflow-hidden relative fade-in min-h-0" style="background:#F8F8F8;">
+        <div role="main" class="flex-1 flex overflow-hidden relative fade-in min-h-0" style="background:#F8F8F8;">
+            <h1 x-show="design" class="vh" x-text="design?.title || 'Your design'"></h1>
             <div class="w-full flex h-[calc(100dvh-61px)] lg:h-full min-h-0 overflow-hidden">
 
                 <!-- CENTER workspace -->
@@ -1252,11 +1277,13 @@
                                          style="scroll-padding:0 16px;" x-ref="candRow" @scroll.passive="candScroll($event)">
                                         <template x-for="(c, i) in orderedCandidates(viewBatch)" :key="c.id">
                                             <div class="cand-card relative aspect-square rounded-2xl overflow-hidden bg-white border border-zinc-200 snap-center shrink-0 w-[78vw] max-w-[360px] sm:w-auto sm:max-w-none"
-                                                 :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}"
-                                                 @click="select(c)" role="button" :aria-pressed="c.id === selectedId" :aria-label="'Design option ' + (i + 1) + (c.id === selectedId ? ' (selected)' : '')">
+                                                 :class="{'is-ready': c.status === 'ready', 'is-selected': c.id === selectedId, 'shimmer': c.status === 'pending' || c.status === 'generating'}">
                                                 <template x-if="c.status === 'ready'">
                                                     <img width="800" height="800" :srcset="srcsetFor(c.image_url)" sizes="(min-width:640px) 320px, 78vw" :src="thumb(c.image_url, 800)" :alt="'Design option ' + (i + 1)" class="w-full h-full object-contain" style="filter:drop-shadow(0 6px 24px rgba(0,0,0,0.08));" decoding="async">
                                                 </template>
+                                                <!-- The whole card selects: one real button over it (keyboard, screen readers), with Enlarge beside it, never inside (ACC-04) -->
+                                                <button x-show="c.status === 'ready'" type="button" @click="select(c)" class="cand-select absolute inset-0 w-full h-full"
+                                                        :aria-pressed="String(c.id === selectedId)" :aria-label="'Design option ' + (i + 1)"></button>
                                                 <template x-if="c.status === 'pending' || c.status === 'generating'">
                                                     <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-[13px]" style="color:#6F6F6F;">
                                                         <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
@@ -1275,9 +1302,9 @@
                                                         <button x-show="c.retryable && !freeRetryOffered(viewBatch)" @click.stop="retrySlot(c)" class="btn-outline mt-2 min-h-[44px] px-3 py-1.5 text-[12px] uppercase tracking-[0.12em]" x-text="'Generate another option · ' + creditsLabel('option')">Generate another option</button>
                                                     </div>
                                                 </template>
-                                                <span x-show="c.id === selectedId" class="absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
+                                                <span x-show="c.id === selectedId" class="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-white rounded-md" style="background:#8A6420;">
                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Selected</span>
-                                                <span x-show="c.status === 'ready' && c.id !== selectedId" class="sm:hidden absolute left-2 top-2 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-[0.12em] rounded-md bg-white/90 text-zinc-700" style="border:1px solid #E5E5E5;" x-text="'Option ' + (i + 1) + ' · tap to select'"></span>
+                                                <span x-show="c.status === 'ready' && c.id !== selectedId" class="pointer-events-none sm:hidden absolute left-2 top-2 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-[0.12em] rounded-md bg-white/90 text-zinc-700" style="border:1px solid #E5E5E5;" x-text="'Option ' + (i + 1) + ' · tap to select'"></span>
                                                 <button x-show="c.status === 'ready'" @click.stop="openPreview('image', c.image_url, c)"
                                                         class="absolute top-2 right-2 p-2 rounded-lg bg-white/85 backdrop-blur border transition hover:bg-white text-[#6F6F6F] hover:text-[#1A1A1A]"
                                                         style="border-color:#DCDCDC;" title="Enlarge image" :aria-label="'Enlarge design ' + (i + 1)">
@@ -1312,7 +1339,7 @@
                                         <template x-for="p in productsList" :key="'np' + p">
                                             <button type="button" role="radio" :aria-checked="newProduct === p" @click="chooseProduct(p)"
                                                     class="px-3.5 py-1.5 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5 transition"
-                                                    :class="newProduct === p ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#6F6F6F] hover:bg-white/60'">
+                                                    :class="newProduct === p ? 'bg-white shadow-sm text-[#1A1A1A]' : 'hover:bg-white/60'" :style="newProduct === p ? '' : 'color:#5C5C5C'">
                                                 <span class="text-[#8A6420]" x-html="productIcon(p)"></span><span x-text="productLabel(p)"></span></button>
                                         </template>
                                     </div>
@@ -1326,7 +1353,7 @@
                                 <div x-show="design" class="w-full flex flex-wrap items-center justify-between gap-2">
                                     <div class="inline-flex rounded-lg p-0.5" style="background:#EFEAE0;" role="group" aria-label="Prompt mode">
                                         <span class="px-3 py-1.5 rounded-md text-[13px] font-semibold bg-white shadow-sm" style="color:#1A1A1A;" aria-current="true">Refine the selected design</span>
-                                        <button type="button" @click="startNew()" class="tap px-3 py-1.5 rounded-md text-[13px] font-medium transition hover:bg-white/60" style="color:#6F6F6F;">Start a new design</button>
+                                        <button type="button" @click="startNew()" class="tap px-3 py-1.5 rounded-md text-[13px] font-medium transition hover:bg-white/60" style="color:#5C5C5C;">Start a new design</button>
                                     </div>
                                     <p class="hidden sm:block text-[13px]" style="color:#6F6F6F;" x-text="canActOnSelection ? 'Describe the change — you get four new variations of the selected design.' : 'Select one of the designs above to refine it.'"></p>
                                 </div>
@@ -1565,12 +1592,13 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'review' && cust">
         <main class="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden fade-in">
+            <h1 class="vh" x-text="'Customize ' + (design?.title || 'your design')">Customize your design</h1>
 
             <!-- Left — preview -->
             <div class="w-full lg:w-1/2 flex flex-col shrink-0 relative" style="background:#F5F5F7;">
                 <div class="flex items-center justify-center gap-3 py-3 shrink-0">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-500">Your Selected Design</span>
+                    <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-600">Your Selected Design</span>
                 </div>
                 <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff" role="group" aria-label="Show the image or the movie">
                     <button @click="mediaTab = 'image'" :aria-pressed="mediaTab === 'image'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition"
@@ -1623,9 +1651,9 @@
                 </div>
 
                 <div class="flex flex-col items-center gap-1 py-3 shrink-0">
-                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-widest" x-text="design?.title"></p>
-                    <p class="text-[12px] lg:text-[13px] text-zinc-500 uppercase tracking-[0.15em]" x-text="currentMaterialLabel"></p>
-                    <p class="text-[13px] text-zinc-500">Metal color is a visual preview of the same design.</p>
+                    <p class="text-[12px] lg:text-[13px] text-zinc-600 uppercase tracking-widest" x-text="design?.title"></p>
+                    <p class="text-[12px] lg:text-[13px] text-zinc-600 uppercase tracking-[0.15em]" x-text="currentMaterialLabel"></p>
+                    <p class="text-[13px] text-zinc-600">Metal color is a visual preview of the same design.</p>
                 </div>
             </div>
 
@@ -1639,7 +1667,7 @@
                         <div class="flex flex-col gap-2">
                             <template x-for="g in (catalog?.groups || [])" :key="g.id">
                                 <div>
-                                    <button @click="toggleGroup(g.id)" :aria-expanded="groupOpen[g.id]"
+                                    <button type="button" @click="toggleGroup(g.id)" :aria-expanded="String(!!groupOpen[g.id])"
                                             :class="currentGroup === g.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                             class="border rounded-sm px-4 py-3 flex items-center gap-3 transition w-full text-left">
                                         <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0"
@@ -1654,7 +1682,7 @@
                                     <!-- Fashion: full-width rows (P2 metal rows) -->
                                     <div x-show="groupOpen[g.id] && g.id === 'fashion'" x-transition class="mt-1 flex flex-col gap-1 pl-2">
                                         <template x-for="m in g.materials" :key="m.id">
-                                            <button @click="chooseMaterial(m.id)"
+                                            <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)"
                                                     :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm px-4 py-2.5 flex items-center gap-3 transition w-full text-left">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
@@ -1668,7 +1696,7 @@
                                     <!-- Luxury: gold grid (P2 gold sub-options) -->
                                     <div x-show="groupOpen[g.id] && g.id === 'luxury'" x-transition class="mt-1 grid grid-cols-3 gap-1 pl-2">
                                         <template x-for="m in g.materials" :key="m.id">
-                                            <button @click="chooseMaterial(m.id)"
+                                            <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)"
                                                     :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
                                                     class="border rounded-sm p-2 flex flex-col items-center gap-1.5 transition text-center">
                                                 <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="'background-color:' + m.swatch"></div>
@@ -1685,7 +1713,7 @@
                          "14 mm — Classic · Recommended": the recommended size is suggested (like a ring's US 10) until the
                          customer confirms it or picks another. -->
                     <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
-                        <h3 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h3>
+                        <h2 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h2>
                         <p class="text-[13px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
                         <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
                         <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
@@ -1709,7 +1737,7 @@
                     <!-- Ring Size: an explicit choice. The opening size is a suggestion until the customer taps a size. -->
                     <div id="ring-size-heading" x-show="!custIsCharm">
                         <div class="flex items-center justify-between mb-1">
-                            <h3 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h3>
+                            <h2 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h2>
                             <button @click="openSizeGuide()" aria-haspopup="dialog" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
                         </div>
                         <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && cust?.ring_size != null">Suggested: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> — tap it to confirm, or choose another size.</p>
@@ -1888,7 +1916,7 @@
     <template x-if="view === 'checkout'">
         <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
             <div class="max-w-2xl mx-auto px-6 pt-10 pb-28">
-                <h2 class="text-2xl brand-font mb-2">My Bag</h2>
+                <h1 class="text-2xl brand-font mb-2">My Bag</h1>
                 <p x-show="token && bagLines.length" class="text-[13px] text-zinc-500 mb-8" x-text="bagPriceNote">Fixed prices per ring and material, in US dollars. Ring sizes are US sizes. Delivery and any promo code are added at checkout.</p>
                 <p x-show="!token" class="text-sm text-zinc-500">Sign in to see your bag.</p>
                 <div x-show="token && bagLines.length === 0" class="text-center py-14 border border-dashed border-zinc-200 rounded-xl">
@@ -1953,6 +1981,7 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'order'">
         <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white" @input="_saveCoDraft()" @change="_saveCoDraft()">
+            <h1 class="vh">Checkout</h1>
             <div class="max-w-5xl mx-auto px-6 pt-8 pb-36 lg:grid lg:grid-cols-[1fr_360px] lg:gap-12 lg:items-start">
                 <div class="min-w-0">
                     <ol class="flex items-center gap-2 sm:gap-3 text-[13px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
@@ -2113,7 +2142,7 @@
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="text-center mb-10">
                     <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
-                    <h2 class="text-3xl brand-font text-zinc-900 mb-2" x-text="order.status === 'new' ? 'Your order has been received' : 'Your order'"></h2>
+                    <h1 class="text-3xl brand-font text-zinc-900 mb-2" x-text="order.status === 'new' ? 'Your order has been received' : 'Your order'"></h1>
                     <p class="text-[15px] text-zinc-700">Order ID <span class="font-mono font-semibold text-zinc-900" x-text="order.ref"></span> · <span x-text="orderDate(order.created_at)"></span></p>
                     <p class="mt-3"><span class="inline-block text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(order)" x-text="'Status: ' + order.status_label"></span></p>
                     <p x-show="order.quote_ref" class="text-[13px] text-zinc-600 mt-2">From your quote request <button type="button" class="font-mono underline" @click="openAccountPage('quote-' + order.quote_ref)" x-text="order.quote_ref"></button></p>
@@ -2174,7 +2203,7 @@
             <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
                 <div class="mb-8">
                     <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My account</p>
-                    <h2 class="text-3xl brand-font text-zinc-900">Your account</h2>
+                    <h1 class="text-3xl brand-font text-zinc-900">Your account</h1>
                     <p class="text-[14px] text-zinc-600 mt-2">How you sign in, and every quote you asked for and order you placed, and where each one stands.</p>
                 </div>
                 <div x-show="!userSession" class="rounded-xl p-6 text-[14px] text-zinc-700" style="background:#FBF7EF; border:1px solid #E8DCC4;">
@@ -2184,7 +2213,7 @@
                 <div x-show="userSession" class="space-y-8">
                     <!-- Sign-in & security -->
                     <section id="account-security" aria-labelledby="sec-title" class="border border-zinc-200 rounded-sm p-5 scroll-mt-20">
-                        <h3 id="sec-title" class="flbl">Sign-in &amp; security</h3>
+                        <h2 id="sec-title" class="flbl">Sign-in &amp; security</h2>
 
                         <!-- Still on a six-letter code: move to a real login -->
                         <div x-show="userSession && !userSession.session" class="text-[14px] text-zinc-700">
@@ -2269,7 +2298,7 @@
                     <p x-show="!ordersLoading && !myQuotesLoading && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-600">No quotes or orders yet. Quote requests (for gold) and orders appear here.</p>
                     <!-- Quote requests -->
                     <section x-show="myQuotes.length" aria-labelledby="account-quotes">
-                        <h3 id="account-quotes" class="flbl">Quote requests</h3>
+                        <h2 id="account-quotes" class="flbl">Quote requests</h2>
                         <div class="space-y-4">
                             <template x-for="q in myQuotes" :key="q.id">
                                 <article :id="'quote-' + q.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
@@ -2300,7 +2329,7 @@
                     </section>
                     <!-- Orders -->
                     <section x-show="orders.length" aria-labelledby="account-orders">
-                        <h3 id="account-orders" class="flbl">Orders</h3>
+                        <h2 id="account-orders" class="flbl">Orders</h2>
                         <div class="space-y-4">
                             <template x-for="o in orders" :key="o.id">
                                 <article :id="'order-' + o.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
@@ -2406,6 +2435,7 @@
             <!-- click-away layer -->
             <div class="absolute inset-0" @click="closeAccountPanel()"></div>
             <div role="dialog" aria-modal="true" aria-label="Your account" data-testid="account-menu" data-clarity-mask="true"
+                 x-effect="dialogFocus('account', accountPanelOpen && !!userSession, $el)" @keydown.tab.window="accountPanelOpen && userSession && trapTab($event, $el)"
                  class="absolute left-4 right-4 sm:left-auto sm:w-[340px] bg-white rounded-2xl overflow-y-auto overscroll-contain fade-in"
                  :style="{ top: accountPanelPos.top + 'px', right: accountPanelPos.right + 'px', maxHeight: 'calc(100dvh - ' + (accountPanelPos.top + 16) + 'px)' }"
                  style="border:1px solid #ECE6DA; box-shadow:0 22px 50px rgba(26,26,26,0.14);">
@@ -2829,7 +2859,8 @@
     <!-- ── Gold: Request a quote (no fixed price yet; nothing is ordered or charged) ── -->
     <template x-teleport="body">
         <div x-show="quoteReq.open" x-cloak class="fixed inset-0 z-[210] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6);"
-             @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title" data-clarity-mask="true">
+             @click.self="closeQuoteRequest()" @keydown.escape.window="closeQuoteRequest()" role="dialog" aria-modal="true" aria-labelledby="qr-title" data-clarity-mask="true"
+             x-effect="dialogFocus('quote', quoteReq.open, $el)" @keydown.tab.window="quoteReq.open && trapTab($event, $el)">
             <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-7 fade-in max-h-[92vh] overflow-y-auto">
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div><p class="text-[13px] uppercase tracking-[0.25em] text-zinc-500 mb-1">Gold · by request</p><h3 id="qr-title" class="brand-font text-2xl text-zinc-900">Request a quote</h3></div>
@@ -2873,10 +2904,12 @@
 
     <!-- ── Fullscreen zoomable preview overlay (P2) ── -->
     <!-- Inspiration Gallery inside the studio (signed-in): the same tiles; one tap opens a design -->
+    <span hidden x-effect="dialogFocus('grid', galleryGridOpen, null)"></span>
     <template x-if="galleryGridOpen">
         <!-- The panel centres itself (my-auto) while it fits, and starts at the top once it is taller than the screen —
              a centred flex child that overflows would cut its top off (the heading was unreachable with 14 designs) -->
-        <div class="fixed inset-0 z-[105] bg-black/60 flex items-start justify-center p-4 overflow-y-auto" @click.self="galleryGridOpen = false" @keydown.escape.window="galleryGridOpen = false" role="dialog" aria-modal="true" aria-label="Inspiration Gallery">
+        <div class="fixed inset-0 z-[105] bg-black/60 flex items-start justify-center p-4 overflow-y-auto" @click.self="galleryGridOpen = false" @keydown.escape.window="galleryGridOpen = false" role="dialog" aria-modal="true" aria-label="Inspiration Gallery"
+             tabindex="-1" style="outline:none" x-effect="dialogFocus('grid', true, $el)" @keydown.tab.window="trapTab($event, $el)">
             <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl p-6 md:p-8 my-auto fade-in">
                 <div class="flex items-start justify-between gap-4 mb-6">
                     <div><span class="text-[12px] uppercase tracking-[0.4em]" style="color:#8A6420">Inspiration Gallery</span>
@@ -2986,8 +3019,10 @@
         </div>
     </template>
 
+    <span hidden x-effect="dialogFocus('preview', previewOpen, null)"></span>
     <template x-if="previewOpen">
-        <div class="fixed inset-0 z-[100] flex items-center justify-center fade-in" style="background:rgba(248,248,248,0.97);"
+        <div class="fixed inset-0 z-[100] flex items-center justify-center fade-in" style="background:rgba(248,248,248,0.97);outline:none;" tabindex="-1"
+             x-effect="dialogFocus('preview', true, $el)" @keydown.tab.window="trapTab($event, $el)"
              @click.self="closePreview('user')" @keydown.escape.window="closePreview('user')" @keydown.window="previewKey($event)" role="dialog" aria-modal="true" aria-label="Enlarged design">
             <button @click="closePreview('user')" class="absolute top-4 right-5 z-10 p-2.5 text-2xl leading-none transition text-[#6F6F6F] hover:text-[#1A1A1A]" title="Close" aria-label="Close enlarged preview">✕</button>
             <!-- One option at a time, large: arrows (and ← → keys, or a swipe on a phone) step through the four -->

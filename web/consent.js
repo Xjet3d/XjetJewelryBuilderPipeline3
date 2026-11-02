@@ -349,7 +349,11 @@
     '.ac-foot{flex-direction:column;align-items:stretch;padding:14px 20px calc(16px + env(safe-area-inset-bottom,0px))}',
     '.ac-foot .ac-btn{width:100%;min-width:0}.ac-foot .ac-end{margin-left:0}}',
     '@media (max-width:359px){.ac-row{flex-direction:column}}',
-    '@media (prefers-reduced-motion:reduce){.ac-bar,.ac-shade,.ac-card{animation:none}.ac-card .ac-sw,.ac-card .ac-sw::after,.ac-more svg{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.ac-bar,.ac-shade,.ac-card{animation:none}.ac-card .ac-sw,.ac-card .ac-sw::after,.ac-more svg{transition:none}}',
+    // While the banner is shown (ACC-03): the page and the screen's own scrolling area keep the banner's height clear at
+    // the bottom, and the screen ends with that much room, so its last links can scroll above the banner too
+    'html.ac-open,html.ac-open main,html.ac-open [role="main"]{scroll-padding-bottom:var(--ac-h)}',
+    'html.ac-open main::after,html.ac-open [role="main"]::after{content:"";display:block;flex:none;height:var(--ac-h)}'
   ].join('');
   function style() {
     if (document.getElementById('ac-style')) return;
@@ -388,9 +392,23 @@
       '<div class="ac-row"><button type="button" class="ac-btn ac-soft" data-ac="reject">Reject optional</button>' +
       '<button type="button" class="ac-btn" data-ac="accept">Accept all</button></div>' +
       '<button type="button" class="ac-quiet" data-ac="manage">Manage preferences</button>');
-    document.body.appendChild(bar);
+    // Early in the keyboard order (after "Skip to content"), not after the whole page; while it is shown the page keeps
+    // its height clear at the bottom, so a focused control is scrolled above the banner, never under it (ACC-03)
+    var skip = document.querySelector('.skip-link');
+    document.body.insertBefore(bar, skip ? skip.nextSibling : document.body.firstChild);
+    clearance();
+    window.addEventListener('resize', clearance);
   }
-  function closeBanner() { if (bar) { bar.remove(); bar = null; } }
+  function clearance() {
+    var R = document.documentElement;
+    R.classList.toggle('ac-open', !!bar);
+    if (bar) R.style.setProperty('--ac-h', (bar.getBoundingClientRect().height + 24) + 'px'); else R.style.removeProperty('--ac-h');
+  }
+  function closeBanner() {
+    if (bar) { bar.remove(); bar = null; }
+    window.removeEventListener('resize', clearance);
+    clearance();
+  }
 
   // One category of Privacy preferences: its name, what is on the right (a status or the switch), its words, more below
   function category(id, name, side, text, more) {
