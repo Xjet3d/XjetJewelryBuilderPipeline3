@@ -37,7 +37,9 @@ from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.testrecords import IsTestCustomer, ReservedEmail
 
-TermsVersion = "2026-10-02"
+# Orders placed before 2 Nov 2026 carry this fixed label; a newer order carries the archived version it accepted (M6,
+# Orders.AcceptedTerms). Kept as it is on those orders: nothing is back-filled (they are test orders, WP7)
+LegacyTermsLabel = "2026-10-02"
 ShippingOptions = {
     "standard": {"id": "standard", "label": "Standard delivery", "price": 0.0, "eta": "up to 14 business days",
                  "detail": "Free · tracked, signature on delivery"},
@@ -147,6 +149,17 @@ class OrderService:
         self.Activations = None               # StlActivations (p3/stl_activation.py): the active file of a result and its bore-corrected revision
 
     # ── checkout: what the customer sees before ordering ─────────────────
+    def AcceptedTerms(self) -> tuple[str | None, str | None]:
+        """The Terms version a customer accepts by placing an order now: the archived version ("v3") its "I accept the
+        Terms of Service" links to, and that text's SHA-256 — the same identifiers a consent record keeps
+        (p3/accounts/consent.py). (None, None) only where the legal texts are not connected (a bare test context): an
+        order is never refused for it."""
+        try:
+            T = self.Ctx.Accounts.Consent.Current()["terms"]
+        except Exception:  # noqa: BLE001
+            return None, None
+        return f"v{T['version']}", T["sha256"]
+
     def CheckoutInfo(self, Who: Principal, Visible: tuple | None = None) -> dict:
         Profile = self.Ctx.Accounts.Profile(Who)
         Name = (Profile.get("name") or "").strip()
@@ -156,7 +169,7 @@ class OrderService:
             "countries": [{"code": C, "name": N} for C, N in Addressing.Countries],
             "region_required": sorted(Addressing.RegionRequired), "no_postal_code": sorted(Addressing.NoPostalCode),
             "shipping_options": list(ShippingOptions.values()),
-            "terms_version": TermsVersion,
+            "terms_version": self.AcceptedTerms()[0],
             "payment": {"available": self.Payment.Available, "provider": self.Payment.Name if self.Payment.Available else None,
                         "message": getattr(self.Payment, "Message", "")},
             "address_validation": {"provider": self.Validator.Name if self.Validator.Name != "none" else None},
@@ -320,6 +333,7 @@ class OrderService:
         if Status not in ("unverified", "verified", "corrected", "failed"):
             Status = "unverified"
         OrderId, T = NewId("ord"), Now()
+        TermsV, TermsSha = self.AcceptedTerms()             # what "I accept the Terms of Service" links to now (M6)
         # The customer's note from Checkout ("Anything we should know?", R-45): kept on the order, as a quote's is
         Note = str(Body.get("customer_note") or "").strip()[:1000]
         Promo = Q["promo"]
@@ -331,14 +345,14 @@ class OrderService:
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
-                         "terms_version, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         "terms_version, terms_sha256, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (OrderId, Who.AccountId, "new", "pending", Dumps(Customer),
                           Dumps({**Address, "validation": {K: V for K, V in Validation.items() if K != "suggestion"},
                                  "suggestion": Validation.get("suggestion")}),
                           Status, Method, Q["currency"], Q["subtotal"], Q["discount"], Q["shipping"], Q["total"],
                           Promo["code"] if Promo else None, Dumps(PromoSnapshot) if PromoSnapshot else None,
-                          TermsVersion, T, Rid, f"Customer's note: {Note}" if Note else None, T, T))
+                          TermsV, TermsSha, T, Rid, f"Customer's note: {Note}" if Note else None, T, T))
             for N, L in enumerate(Ordered, start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
@@ -451,7 +465,7 @@ class OrderService:
             "shipping_method": O["shipping_method"], "shipping_label": Ship.get("label"), "shipping_eta": Ship.get("eta"),
             "currency": O["currency"], "subtotal": O["subtotal"], "discount": O["discount"], "shipping": O["shipping"], "total": O["total"],
             "promo_code": O["promo_code"], "promo": json.loads(O["promo_json"]) if O["promo_json"] else None,
-            "terms_version": O["terms_version"], "terms_accepted_at": O["terms_accepted_at"],
+            "terms_version": O["terms_version"], "terms_sha256": O.get("terms_sha256"), "terms_accepted_at": O["terms_accepted_at"],
             "confirmation_email": self.EmailState(O["id"], json.loads(O["customer_json"]).get("email")),
             "count": sum(L["quantity"] for L in Lines),
             # Which products the order holds — both for a mixed order
@@ -1385,6 +1399,7 @@ class OrderService:
         Snapshot = {**PurchaseSnapshot(Line), "quote": {"ref": Ref, "version": Offer["version"], "weight_g": Offer.get("weight_g"),
                                                         "price_per_g": Offer.get("price_per_g")}}
         OrderId, T = NewId("ord"), Now()
+        TermsV, TermsSha = self.AcceptedTerms()             # the approval page's "I accept the Terms of Service" (M6)
         Total = round(Line["line_total"] + Ship["price"], 2)
         Notes = f"From quote {Ref} (version {Offer['version']})." + (f" Customer's note: {Note}" if Note else "")
         Pin = (Versions.MeshFor(Db, Q["design_id"], Q["candidate_id"]) or {}).get("id")     # the 3D version current now
@@ -1392,13 +1407,13 @@ class OrderService:
             with Db.Transaction() as Conn:
                 Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                              "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
-                             "terms_version, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "terms_version, terms_sha256, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (OrderId, Q["owner_account_id"], "new", "pending", Q["customer_json"],
                               Dumps({**Addr["address"], "validation": {K: V for K, V in Validation.items() if K != "suggestion"},
                                      "suggestion": Validation.get("suggestion")}),
                               Status, Method, Line["currency"], Line["line_total"], 0.0, Ship["price"], Total, None, None,
-                              TermsVersion, T, Rid, Notes, T, T))
+                              TermsV, TermsSha, T, Rid, Notes, T, T))
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
                              "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "

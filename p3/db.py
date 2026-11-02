@@ -417,7 +417,8 @@ CREATE TABLE IF NOT EXISTS orders (
     total               REAL NOT NULL,
     promo_code          TEXT,
     promo_json          TEXT,                     -- snapshot: code, kind, value, original_amount, discount, final_amount
-    terms_version       TEXT,
+    terms_version       TEXT,                     -- the archived Terms version accepted ("v3"; "2026-10-02" before 2 Nov 2026)
+    terms_sha256        TEXT,                     -- that version's SHA-256 (p3/accounts/consent.py legal_documents)
     terms_accepted_at   TEXT,
     client_request_id   TEXT,                     -- idempotency: one order per click
     notes               TEXT,
@@ -693,6 +694,13 @@ def _InstallTestOrders(Conn) -> None:
             Conn.execute(f"ALTER TABLE orders ADD COLUMN {Col}")
 
 
+def _InstallOrderTerms(Conn) -> None:
+    """An order records the archived Terms version its customer accepted, with its hash (WP5 M6, 2026-11-02): an additive
+    column, old code ignores it; older orders keep their label and no hash."""
+    if "terms_sha256" not in _Columns(Conn, "orders"):
+        Conn.execute("ALTER TABLE orders ADD COLUMN terms_sha256 TEXT")
+
+
 def _InstallSizeConfirmed(Conn) -> None:
     """A ring size the customer chose is remembered as confirmed (R-21, 2026-10-26): an additive column, old code ignores it."""
     if "size_confirmed_at" not in _Columns(Conn, "customizations"):
@@ -919,6 +927,7 @@ class Database:
                     _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
                     _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
                     _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
+                    _InstallOrderTerms(Conn)              # an order's accepted Terms version and its hash (2026-11-02)
                     _InstallCheckCategory(Conn)           # why a prompt check stopped a request (2026-10-28)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
