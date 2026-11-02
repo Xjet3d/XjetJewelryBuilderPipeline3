@@ -17,7 +17,7 @@ async def test_thumbnails_are_made_on_first_request_and_cached(H):
     Rel = Url.split("/assets/", 1)[1]
     R = await H.Client.get(f"/thumb/{Rel}?w=320", headers={"Accept": "image/webp,image/*"})
     assert R.status_code == 200 and R.headers["content-type"] == "image/webp"
-    assert R.headers["cache-control"] == "public, max-age=31536000, immutable" and R.headers["vary"] == "Accept"
+    assert R.headers["cache-control"] == "private, max-age=31536000, immutable" and R.headers["vary"] == "Accept"      # not a gallery design: the browser only (SEC-05)
     assert (H.Settings.AssetsDir / "_derived" / (Rel + "_w320.webp")).is_file()
     assert max(Image.open(io.BytesIO(R.content)).size) == 320
     R = await H.Client.get(f"/thumb/{Rel}?w=800", headers={"Accept": "image/avif,image/*"})    # no WebP → JPEG
@@ -30,7 +30,7 @@ async def test_thumbnails_are_made_on_first_request_and_cached(H):
     # the original is untouched and cached for a year under its unique URL
     R = await H.Client.get(Url)
     assert R.status_code == 200 and R.headers["content-type"] == "image/png"
-    assert R.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert R.headers["cache-control"] == "private, max-age=31536000, immutable"
     # the page and the scripts still revalidate on every load; versioned scripts are immutable
     assert (await H.Client.get("/")).headers["cache-control"] == "no-cache"
     assert (await H.Client.get("/static/app.js")).headers["cache-control"] == "no-cache"
@@ -59,7 +59,7 @@ async def test_movie_poster_comes_from_the_first_frame(H):
         assert R.status_code == 404 and R.json()["error"]["code"] == "poster_unavailable"
         return
     assert R.status_code == 200 and R.headers["content-type"] == "image/jpeg"
-    assert R.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert R.headers["cache-control"] == "private, max-age=31536000, immutable"
     Img = Image.open(io.BytesIO(R.content))
     assert Img.size[0] > 100 and Img.size[1] > 100
     assert (H.Settings.AssetsDir / "_derived" / "designs" / "d_x" / "movies" / "m_x.mp4.poster.jpg").is_file()
@@ -83,7 +83,7 @@ async def test_a_movie_clip_is_its_last_seconds_small(H):
         assert R.status_code == 404 and R.json()["error"]["code"] == "clip_unavailable"
         return
     assert R.status_code == 200 and R.headers["content-type"] == "video/mp4", R.text[:200]
-    assert R.headers["cache-control"] == "public, max-age=31536000, immutable" and "content-encoding" not in R.headers
+    assert R.headers["cache-control"] == "private, max-age=31536000, immutable" and "content-encoding" not in R.headers
     assert R.content[4:8] == b"ftyp" and len(R.content) < Dst.stat().st_size * 2
     assert (H.Settings.AssetsDir / "_derived" / "designs" / "d_x" / "movies" / "m_x.mp4.tail2_w480.mp4").is_file()
     R = await H.Client.get("/clip/designs/d_x/movies/m_x.mp4?tail=2&w=480", headers={"Range": "bytes=0-99"})
