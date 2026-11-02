@@ -45,7 +45,7 @@ def _Button(Url: str, Label: str) -> str:
     link, so Outlook (which ignores padding on inline links) still renders a big, clickable button."""
     return f"""
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:8px auto 4px;">
-  <tr><td align="center" bgcolor="#9A7230" style="border-radius:6px;background:#9A7230;">
+  <tr><td align="center" bgcolor="#8A6420" style="border-radius:6px;background:#8A6420;">
     <a href="{Url}" target="_blank"
        style="display:inline-block;padding:20px 56px;{_Font}font-size:18px;font-weight:700;letter-spacing:3px;
               text-transform:uppercase;color:#FFFFFF;text-decoration:none;border-radius:6px;">
@@ -55,19 +55,27 @@ def _Button(Url: str, Label: str) -> str:
 
 
 def _Layout(Heading: str, Content: str) -> str:
+    # A whole document in English (screen readers in mail apps pick the language from lang, ACC-07); the small grey
+    # and gold text meets 4.5:1 on the card (#6F6F6F, #8A6420)
     return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#FFFFFF;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
   <tr><td align="center" style="padding:24px 12px;">
     <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FAF8F4"
            style="width:560px;max-width:100%;background:#FAF8F4;border:1px solid #EDE8DF;border-top:3px solid #C9A96E;">
       <tr><td style="padding:36px 40px;{_Font}color:#2A2A2A;font-size:15px;line-height:1.6;">
-        <p style="margin:0 0 6px;text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#9A7230;font-weight:700;">XJet Atelier</p>
+        <p style="margin:0 0 6px;text-transform:uppercase;letter-spacing:3px;font-size:11px;color:#8A6420;font-weight:700;">XJet Atelier</p>
         <h1 style="margin:0 0 20px;font-size:24px;font-weight:600;color:#1A1A1A;">{Heading}</h1>
 {Content}
       </td></tr>
     </table>
   </td></tr>
-</table>"""
+</table>
+</body>
+</html>"""
 
 
 def VerificationEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
@@ -77,10 +85,10 @@ def VerificationEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
         <p style="margin:0 0 28px;">Thanks for registering at XJet Atelier. Click the button below to confirm your
            email address &mdash; you'll be signed in and taken straight to the design studio.</p>
         {_Button(U, "Start designing")}
-        <p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">This link expires in 24&nbsp;hours. If you didn't
+        <p style="margin:32px 0 0;font-size:12px;color:#6F6F6F;">This link expires in 24&nbsp;hours. If you didn't
            register at XJet Atelier, you can safely ignore this email.</p>
-        <p style="margin:12px 0 0;font-size:11px;color:#A0A0A0;word-break:break-all;">If the button doesn't work,
-           copy this link into your browser:<br><a href="{U}" style="color:#9A7230;">{U}</a></p>"""))
+        <p style="margin:12px 0 0;font-size:11px;color:#6F6F6F;word-break:break-all;">If the button doesn't work,
+           copy this link into your browser:<br><a href="{U}" style="color:#8A6420;">{U}</a></p>"""))
 
 
 def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
@@ -92,7 +100,7 @@ def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
            start designing &mdash; you'll be signed in automatically.</p>
         {_Button(U, "Start designing")}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;">
-          <tr><td style="border-top:1px solid #E5DED0;padding-top:20px;{_Font}font-size:12px;color:#8F8F8F;line-height:1.6;">
+          <tr><td style="border-top:1px solid #E5DED0;padding-top:20px;{_Font}font-size:12px;color:#6F6F6F;line-height:1.6;">
             Signing in on another device? Enter this 6-letter sign-in code there:
             <span style="display:inline-block;margin-left:6px;padding:2px 10px;border:1px solid #C9A96E;background:#FFFFFF;
                          font-family:'Courier New',monospace;font-size:15px;font-weight:700;letter-spacing:3px;color:#1A1A1A;">{T}</span>
@@ -105,10 +113,10 @@ def TokenEmail(Name: str, Token: str, LoginUrl: str) -> tuple[str, str]:
 # ── Account security emails (AJW-39): links carry single-use secrets; no email ever carries a password or a sign-in code ──
 
 def _LinkFooter(U: str, Hours: str) -> str:
-    return (f'''<p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">This link works once and expires in {Hours}. If you
+    return (f'''<p style="margin:32px 0 0;font-size:12px;color:#6F6F6F;">This link works once and expires in {Hours}. If you
            didn't ask for it, you can safely ignore this email &mdash; nothing changes until the link is used.</p>
-        <p style="margin:12px 0 0;font-size:11px;color:#A0A0A0;word-break:break-all;">If the button doesn't work,
-           copy this link into your browser:<br><a href="{U}" style="color:#9A7230;">{U}</a></p>''')
+        <p style="margin:12px 0 0;font-size:11px;color:#6F6F6F;word-break:break-all;">If the button doesn't work,
+           copy this link into your browser:<br><a href="{U}" style="color:#8A6420;">{U}</a></p>''')
 
 
 def AuthVerifyEmail(Name: str, VerifyUrl: str) -> tuple[str, str]:
@@ -142,7 +150,7 @@ def AccountExistsEmail(Name: str, SiteUrl: str) -> tuple[str, str]:
            address, but it already has one. Sign in with it below; if you forgot your password, use &ldquo;Forgot password&rdquo;
            on the sign-in page.</p>
         {_Button(U, "Sign in")}
-        <p style="margin:32px 0 0;font-size:12px;color:#8F8F8F;">If this wasn't you, no action is needed.</p>"""))
+        <p style="margin:32px 0 0;font-size:12px;color:#6F6F6F;">If this wasn't you, no action is needed.</p>"""))
 
 
 def ConfirmLinkEmail(Name: str, Provider: str, ConfirmUrl: str) -> tuple[str, str]:
@@ -261,20 +269,20 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
           <tr>
             <td valign="top" width="50%" style="{_Font}font-size:13px;line-height:1.6;">
-              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">Ships to</p>
+              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#8A6420;font-weight:700;">Ships to</p>
               {Address}<br><span style="color:#6F6F6F;">{_Esc(Order.get('shipping_label') or '')} · {_Esc(Order.get('shipping_eta') or '')}</span>
             </td>
             <td valign="top" width="50%" style="{_Font}font-size:13px;line-height:1.6;">
-              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">Payment</p>
+              <p style="margin:0 0 4px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#8A6420;font-weight:700;">Payment</p>
               <strong>{_Esc(Order['payment_label'])}</strong><br><span style="color:#6F6F6F;">{_Esc(Order.get('payment_message') or '')}</span>
             </td>
           </tr>
         </table>
-        <p style="margin:28px 0 6px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#9A7230;font-weight:700;">What happens next</p>
+        <p style="margin:28px 0 6px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#8A6420;font-weight:700;">What happens next</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Next}
         </table>
         <div style="margin:24px 0 0;">{Button}</div>
-        <p style="margin:28px 0 0;font-size:12px;color:#8F8F8F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
+        <p style="margin:28px 0 0;font-size:12px;color:#6F6F6F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
            {ContactLine(Order['ref'])}</p>"""))
 
 
@@ -305,7 +313,7 @@ def StaffOrderEmail(Order: dict) -> tuple[str, str]:
         <ul style="margin:0 0 12px;padding-left:18px;">{Lines}</ul>
         <p style="margin:0 0 12px;">Total {_Esc(_Money(Order['total'], Order['currency']))} · {_Esc(Order['payment_label'])} ·
            {_Esc(Order.get('shipping_label') or '')}</p>
-        <p style="margin:0;font-size:12px;color:#8F8F8F;">Open the Admin → Orders → {_Esc(Order['ref'])} to review the design for production and record the payment.</p>"""))
+        <p style="margin:0;font-size:12px;color:#6F6F6F;">Open the Admin → Orders → {_Esc(Order['ref'])} to review the design for production and record the payment.</p>"""))
 
 
 def StaffQuoteEmail(Request: dict) -> tuple[str, str]:
@@ -315,7 +323,7 @@ def StaffQuoteEmail(Request: dict) -> tuple[str, str]:
            asks for a price: <strong>{_Esc(Request['title'])}</strong> ({_Esc(_IdLabel(Request))} {_Esc(Request['ring_id'] or '—')})
            in {_Esc(Request['material_label'])}, {_Esc(_Size(Request))}, ×{_Esc(Request['quantity'])}.</p>
         {('<p style="margin:0 0 12px;">Note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
-        <p style="margin:0;font-size:12px;color:#8F8F8F;">The customer was promised a review within one business day and the quote within three business days. Open the Admin → Orders → Quote requests.</p>"""))
+        <p style="margin:0;font-size:12px;color:#6F6F6F;">The customer was promised a review within one business day and the quote within three business days. Open the Admin → Orders → Quote requests.</p>"""))
 
 
 def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
@@ -336,7 +344,7 @@ def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
         </table>
         {_Button(_Esc(Approve), "Approve the quote")}
         <p style="margin:12px 0 0;text-align:center;{_Font}font-size:13px;"><a href="{_Esc(Decline)}" target="_blank" style="color:#B4443A;">Decline the quote</a></p>
-        <p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">Delivery is chosen when you approve: Standard delivery is free, Express is $45.
+        <p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">Delivery is chosen when you approve: Standard delivery is free, Express is $45.
            Prices in US dollars; import duties or VAT, where charged, are paid by the recipient. {ContactLine(Request['ref'])}</p>"""))
 
 
@@ -348,7 +356,7 @@ def QuoteUpdateEmail(Request: dict, Message: str) -> tuple[str, str]:
     return (f"An update on your quote request {Request['ref']} — {Request['title']}",
             _Layout(f"About your quote request {_Esc(Request['ref'])}", f"""\
         {Msg}
-        <p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
+        <p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">{ContactLine(Request['ref'])}</p>"""))
 
 
 def StaffQuoteDecisionEmail(Request: dict, Decision: str, Note: str = "") -> tuple[str, str]:
@@ -359,7 +367,7 @@ def StaffQuoteDecisionEmail(Request: dict, Decision: str, Note: str = "") -> tup
         <p style="margin:0 0 12px;">{_Esc(Who)} &lt;{_Esc(C.get('email') or '')}&gt; {_Esc(Decision)} the quote for
            <strong>{_Esc(Request['title'])}</strong> ({_Esc(Request.get('ring_id') or '—')}).</p>
         {('<p style="margin:0 0 12px;">Their note: ' + _Esc(Note) + '</p>') if Note else ''}
-        <p style="margin:0;font-size:12px;color:#8F8F8F;">Open the Admin → Orders → {_Esc(Request['ref'])} for the history.</p>"""))
+        <p style="margin:0;font-size:12px;color:#6F6F6F;">Open the Admin → Orders → {_Esc(Request['ref'])} for the history.</p>"""))
 
 
 def _Reserved(Order: dict) -> str:
@@ -383,7 +391,7 @@ def QuoteRequestEmail(Request: dict) -> tuple[str, str]:
            email you the quote, with a price and the next steps, within three business days; if your design needs longer, we will
            let you know. Your reference is <strong>{_Esc(Request['ref'])}</strong>.</p>
         {('<p style="margin:0 0 16px;font-size:13px;color:#6F6F6F;">Your note: ' + _Esc(Request['message']) + '</p>') if Request.get('message') else ''}
-        <p style="margin:20px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Request['ref'])}</p>"""))
+        <p style="margin:20px 0 0;font-size:12px;color:#6F6F6F;">{ContactLine(Request['ref'])}</p>"""))
 
 
 def SpendWarningEmail(Spend: float, Threshold: float, Day: str, Site: str, AdminUrl: str = "",
@@ -534,7 +542,7 @@ def FulfillmentEmail(Milestone: str, Order: dict, View: dict, Payload: dict, Acc
     Parts = "".join(f"<li>{_Esc(P.get('display_no') or '')}: {_Esc(P.get('stage') or '')}</li>" for P in (View or {}).get("parts") or [] if P.get("stage"))
     Stages = f'<ul style="margin:0 0 12px;padding-left:18px;">{Parts}</ul>' if Parts and len((View or {}).get("parts") or []) > 1 else ""
     Button = _Button(_Esc(AccountUrl), "View your order") if AccountUrl else ""
-    Foot = f'<p style="margin:24px 0 0;font-size:12px;color:#8F8F8F;">{ContactLine(Ref)}</p>'
+    Foot = f'<p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">{ContactLine(Ref)}</p>'
     if Milestone == "review_approved":
         Pay = ("" if Order.get("payment_status") == "paid" else
                '<p style="margin:0 0 12px;">We will contact you separately to arrange payment.</p>')   # payment never holds production (O1)
