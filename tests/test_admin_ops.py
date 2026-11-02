@@ -128,9 +128,9 @@ async def test_journey_shows_the_image_the_customer_gave_at_each_step(HX):
     Gen = next(E for E in T if E["kind"] == "generate_requested")
     Ref = next(E for E in T if E["kind"] == "refine_requested")
     for E in (Started, Gen):                                     # the uploaded (or pasted) reference, downloadable under a telling name
-        assert E["reference_kind"] == "upload" and E["reference_url"].endswith(".png") and "/references/" in E["reference_url"]
+        assert E["reference_kind"] == "upload" and E["reference_url"].startswith(f"{H.Base}/api/admin/designs/{Did}/references/")
         assert E["download_name"].endswith("_R-1001_reference.png") and E["reference_label"] == "Customer's reference image"
-    assert (await H.Client.get(Started["reference_url"])).status_code == 200
+    assert (await H.Client.get(Started["reference_url"], headers=Admin)).status_code == 200      # the Admin's route (SEC-05)
     assert Ref["reference_kind"] == "option" and Ref["reference_label"] == "Refined from R-1001-B" and Ref["download_name"].endswith("_R-1001-B.png")
     assert all("reference_url" not in E for E in T if E["kind"] not in ("started", "generate_requested", "refine_requested"))
     # a design typed without an image has no reference fields at all (no empty placeholder)

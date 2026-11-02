@@ -43,7 +43,7 @@ from p3.context import Context, HttpError
 from p3.customize import CustomizeService
 from p3.db import Database, Now
 from p3.designs import DesignService
-from p3.images import ImageService
+from p3.images import ImageService, ReferenceFile
 from p3.meshes import MeshService
 from p3.migrations import MigrateToAccounts
 from p3.oidc import BuildProviders as BuildOidcProviders
@@ -335,16 +335,33 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "Not found."}})
         return await CallNext(Req)
 
+    # Audit SEC-05: a customer's reference photo (designs/<id>/references/…, and its derived thumbnails) is never served
+    # at a media address — only to its owner (/api/designs/<id>/references/<batch>) and to the Admin. A design's other
+    # media may sit in shared caches (Cloudflare) only when the design is public: in the gallery, or the design a
+    # gallery variation came from (the home story tells it); everything else is private to the visitor's browser.
+    ReferenceMedia = re.compile(r"^/(?:assets|thumb|poster|clip)/(?:_derived/)?designs/[^/]+/references/")
+    DesignMedia = re.compile(r"^/(?:assets|thumb|poster|clip)/(?:_derived/)?designs/([^/]+)/")
+    PrivateMedia = "private, max-age=31536000, immutable"
+
+    def _PublicDesign(DesignId: str) -> bool:
+        return Ctx.Db.One("SELECT 1 AS x FROM gallery_items WHERE design_id = ? UNION SELECT 1 FROM gallery_items g "
+                          "JOIN designs d ON d.id = g.design_id WHERE d.source_design_id = ?", (DesignId, DesignId)) is not None
+
     @App_.middleware("http")
     async def _Headers(Req: Request, CallNext):
         # Caching: the page and its scripts change with every release, so browsers revalidate (cheap 304s via ETag)
         # instead of running a cached, outdated app.js; generated media never changes under its URL — but only a
         # successful answer is cacheable (a 404 for a missing clip must not be remembered for a year).
-        Resp = await CallNext(Req)
         Rel = _Rel(Req)
+        if ReferenceMedia.match(Rel):
+            Resp = JSONResponse(status_code=404, content={"error": {"code": "asset_not_found", "message": "Not found."}})
+        else:
+            Resp = await CallNext(Req)
         Ok = Resp.status_code in (200, 206)
         if Rel.startswith(("/assets/", "/thumb/", "/poster/", "/clip/")):
-            Resp.headers["Cache-Control"] = Immutable if Ok else "no-store"
+            Design = DesignMedia.match(Rel) if Ok else None
+            Shared = not Design or await run_in_threadpool(_PublicDesign, Design.group(1))
+            Resp.headers["Cache-Control"] = (Immutable if Shared else PrivateMedia) if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
         elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/", "/gallery/")) \
@@ -1033,6 +1050,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.delete("/api/designs/{DesignId}")
     async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):
         return Svc.Designs.Remove(Tok(x_access_token), DesignId)
+
+    @App_.get("/api/designs/{DesignId}/references/{BatchId}")
+    async def DesignReference(DesignId: str, BatchId: str, x_access_token: str | None = Header(None)):
+        """The photo the customer uploaded for their design: to its owner only, never kept by a shared cache (SEC-05)."""
+        Path_, Ctype = ReferenceFile(Ctx, DesignId, BatchId, Tok(x_access_token).AccountId)
+        return FileResponse(Path_, media_type=Ctype, headers={"Cache-Control": "private, no-store"})
 
     @App_.post("/api/designs/{DesignId}/batches")
     async def Refine(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):

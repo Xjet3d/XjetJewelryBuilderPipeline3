@@ -79,6 +79,24 @@ def CustomerError(Code: str | None) -> str:
     return CustomerFailureText.get(Code or "", GenericFailureText)
 
 
+def ReferenceFile(Ctx: Context, DesignId: str, BatchId: str, OwnerAccountId: str | None = None):
+    """A customer's uploaded reference photo (audit SEC-05): (path, content type) for the design's owner, or for the
+    Admin when no owner is given. Anything else — someone else's design, a gallery design, a missing file — is a 404."""
+    Sql = "SELECT b.reference_asset FROM batches b JOIN designs d ON d.id = b.design_id WHERE b.id = ? AND b.design_id = ?"
+    Args = (BatchId, DesignId)
+    if OwnerAccountId is not None:
+        Sql, Args = Sql + " AND d.owner_account_id = ?", Args + (OwnerAccountId,)
+    Row = Ctx.Db.One(Sql, Args)
+    Rel = Row["reference_asset"] if Row else None
+    try:
+        Path_ = assets.Resolve(Ctx.Settings.AssetsDir, Rel) if Rel and "/references/" in Rel else None
+    except assets.AssetError:
+        Path_ = None
+    if Path_ is None or not Path_.is_file():
+        raise HttpError(404, "asset_not_found", "Not found.")
+    return Path_, assets.ImageContentType(Rel)
+
+
 def _NewSeed() -> int:
     return secrets.randbelow(2**31 - 1) + 1
 
@@ -571,7 +589,7 @@ class ImageService:
         Movie = self._MovieCredits(B, Cands)
         return {"id": B["id"], "design_id": B["design_id"], "kind": B["kind"],
                 "parent_candidate_id": B["parent_candidate_id"], "user_text": B["user_text"],
-                "reference_url": self.Ctx.AssetUrl(B["reference_asset"]),
+                "reference_url": self.Ctx.ReferenceUrl(B),
                 "desired_count": B["desired_count"], "config_version": B["config_version"],
                 "status": BatchStatus(Cands, B["desired_count"]), "created_at": B["created_at"],
                 "candidates": [self.CandidateJson(C, Movie.get(C["id"], 0)) for C in Cands]}

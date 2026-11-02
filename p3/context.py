@@ -60,3 +60,12 @@ class Context:
     def AssetUrl(self, RelPath: str | None) -> str | None:
         # Always under the base path, so a deployment behind /JewelryB2C3 never emits root URLs.
         return f"{self.Settings.BasePath}/assets/{RelPath}" if RelPath else None
+
+    def ReferenceUrl(self, Batch: dict, Admin: bool = False) -> str | None:
+        """A batch's reference image. A customer's upload is reachable only through its owner's route or the Admin's
+        (audit SEC-05); a refinement's reference is one of the design's own options, at its media address."""
+        Rel = Batch.get("reference_asset")
+        if not Rel or "/references/" not in Rel:
+            return self.AssetUrl(Rel)
+        Api = "/api/admin/designs" if Admin else "/api/designs"
+        return f"{self.Settings.BasePath}{Api}/{Batch['design_id']}/references/{Batch['id']}"

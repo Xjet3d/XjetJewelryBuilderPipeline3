@@ -442,7 +442,7 @@ def _Reference(Ctx: Context, Design: dict, Batch: dict | None, Refs: dict) -> di
     from p3.production3d import SlugPart
     Ring = RingIds.Ref(Design)
     Slug = SlugPart(Design["title"])
-    Url = Ctx.AssetUrl(Batch["reference_asset"])
+    Url = Ctx.ReferenceUrl(Batch, Admin=True)
     if Batch["kind"] == "initial":
         return {"reference_url": Url, "reference_kind": "upload", "reference_label": "Customer's reference image",
                 "download_name": f"{Slug}_{Ring}_reference.png"}

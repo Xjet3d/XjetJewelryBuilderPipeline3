@@ -44,6 +44,7 @@ from p3 import ratelimit as RateLimit
 from p3.accounts import AccountNotFound, DuplicateEmail, RemovedAccount
 from p3.auth import RequireDeveloper
 from p3.context import Context, HttpError
+from p3.images import ReferenceFile
 from p3.aipricing import PriceError
 from p3.materialprices import MaterialPriceError
 from p3.db import Now
@@ -897,6 +898,13 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             if (T["live"].get("raw") or {}).get("thumbnail"):
                 T["live"]["thumbnail_url"] = _SignedUrl(T["id"], "thumbnail")
         return D
+
+    @App_.get("/api/admin/designs/{DesignId}/references/{BatchId}")
+    async def AdminDesignReference(DesignId: str, BatchId: str, authorization: str | None = Header(None)):
+        """A customer's uploaded reference photo for the Admin (an <img>: the Admin's session cookie signs it in)."""
+        Admin(authorization)
+        Path_, Ctype = ReferenceFile(Ctx, DesignId, BatchId)
+        return FileResponse(Path_, media_type=Ctype, headers={"Cache-Control": "private, no-store"})
 
     @App_.post("/api/admin/sessions/{SessionId}/3d")
     async def Generate3D(SessionId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
