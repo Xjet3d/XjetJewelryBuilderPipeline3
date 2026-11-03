@@ -18,6 +18,9 @@ WebDir    = RepoRoot / "web"
 # notifications about new orders and quote requests (P3_STAFF_NOTIFY_EMAILS; "none" switches them off, as on proto).
 DefaultSupportEmail = "atelier@xjet3d.com"
 
+# P3_ADMIN_HOST values that mean "the Admin answers only through an SSH tunnel to this machine" (Atelier)
+TunnelHosts = ("localhost", "127.0.0.1")
+
 
 def _Bool(Name: str, Default: bool = False) -> bool:
     Raw = os.environ.get(Name)
@@ -277,11 +280,18 @@ def ValidateProduction(S: Settings) -> list[str]:
     if not S.PublicBaseUrl.startswith("https://"):
         P.append("P3_PUBLIC_BASE_URL must be the customer site's https origin, e.g. https://atelier.example.com")
     if not S.AdminHost:
-        P.append("P3_ADMIN_HOST must name the Admin host (the Admin and its API answer only there), e.g. admin.atelier.example.com")
+        P.append("P3_ADMIN_HOST must name the Admin host (the Admin and its API answer only there), e.g. admin.atelier.example.com, "
+                 "or localhost for an Admin reached only through an SSH tunnel")
     elif S.PublicBaseUrl and S.AdminHost == re.sub(r"^https?://", "", S.PublicBaseUrl).split("/")[0].lower():
         P.append("P3_ADMIN_HOST must differ from the public customer host")
-    if S.BasePath:
-        P.append("P3_BASE_PATH must be empty in production (the customer site is served at the root of its own host)")
+    elif S.AdminHost in TunnelHosts:
+        # An Admin reached only through an SSH tunnel (Atelier, 2026-11-03): its sign-in returns to the tunnel's own
+        # address, which is plain http on the operator's machine
+        Tunnel = re.match(r"^https?://([^/:]+)(:\d+)?$", S.AdminBaseUrl or "")
+        if not Tunnel or Tunnel.group(1).lower() != S.AdminHost:
+            P.append(f"P3_ADMIN_HOST={S.AdminHost} (an SSH tunnel) needs P3_ADMIN_BASE_URL on that host, where Admin sign-in returns, "
+                     f"e.g. http://{S.AdminHost}:8340")
+    # A base path is fine: the customer site may share its host with another site (Atelier serves P3 under /JewelryB2C3)
     if not S.AdminKey or len(S.AdminKey) < 24:
         P.append("P3_ADMIN_KEY must be a random secret of at least 24 characters")
     if not S.SigningSecret or len(S.SigningSecret) < 24 or S.SigningSecret == S.AdminKey:
@@ -299,8 +309,9 @@ def ValidateProduction(S: Settings) -> list[str]:
     if "@" not in S.SupportEmail:
         P.append("P3_SUPPORT_EMAIL must be an email address (unset, the site uses the shared inbox " + DefaultSupportEmail + ")")
     try:
-        if S.DataDir.is_relative_to(RepoRoot):
-            P.append(f"P3_DATA_DIR must be outside the code checkout ({RepoRoot}); e.g. /srv/atelier/data")
+        # outside the checkout, or its git-ignored var/ (the default), which no checkout or update ever touches
+        if S.DataDir.is_relative_to(RepoRoot) and not S.DataDir.is_relative_to(RepoRoot / "var"):
+            P.append(f"P3_DATA_DIR must be outside the code checkout ({RepoRoot}) or its git-ignored var/; e.g. /srv/atelier/data")
     except (ValueError, OSError):
         pass
     return P

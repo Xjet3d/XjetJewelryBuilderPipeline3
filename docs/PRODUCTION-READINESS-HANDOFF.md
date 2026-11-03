@@ -36,9 +36,14 @@ payment decision (reservation model is truthful today — see F).
 
 ### 1. Production posture — commit `59f3373`
 - `P3_ENV=production` makes the service **refuse to start** with development defaults: fal provider with `FAL_KEY`,
-  an https `P3_PUBLIC_BASE_URL`, `P3_ADMIN_HOST` different from the public host, empty `P3_BASE_PATH`, two different
-  random secrets (`P3_ADMIN_KEY`, `P3_SIGNING_SECRET`, 24+ chars), `P3_ALLOW_UNAPPROVED_PRICING=false`,
-  `P3_MAIL_MODE=smtp`, `P3_DAILY_AI_SPEND_CAP_USD`, `P3_SUPPORT_EMAIL`, `P3_DATA_DIR` outside the checkout.
+  an https `P3_PUBLIC_BASE_URL`, `P3_ADMIN_HOST` different from the public host, two different random secrets
+  (`P3_ADMIN_KEY`, `P3_SIGNING_SECRET`, 24+ chars), `P3_ALLOW_UNAPPROVED_PRICING=false`, `P3_MAIL_MODE=smtp`,
+  `P3_DAILY_AI_SPEND_CAP_USD`, `P3_SUPPORT_EMAIL`, `P3_DATA_DIR` outside the checkout or in its git-ignored `var/`.
+- **Atelier's layout (3 Nov 2026):** a base path on a shared host is fine (`P3_BASE_PATH=/JewelryB2C3`), and an Admin
+  reached only through an SSH tunnel is `P3_ADMIN_HOST=localhost` with `P3_ADMIN_BASE_URL=http://localhost:8340`
+  (where Admin sign-in returns). Switching Atelier: the owner's Google identity is enrolled first (production enforces
+  administrator identities with modern sign-in), then Dov runs the switch script (backup, new .env, restart, checks,
+  automatic rollback).
 - The AI mode is **locked to the configuration** in production (`P3_LOCK_MODE` implied): the developer switch answers
   409, `var/runtime.json` is ignored, there is no silent fallback to mock. Mock artefacts cannot be produced in live.
 - **Route separation:** `/dev`, `/api/dev/*`, `/showcase` (the reference page), `/docs`, `/redoc`, `/openapi.json` exist
@@ -132,9 +137,10 @@ payment decision (reservation model is truthful today — see F).
 |---|---|---|---|---|---|
 | `P3_ENV` | `development` \| `production` (validation, lock, no dev tools) | **Required** | `production` | no | — |
 | `P3_PUBLIC_BASE_URL` | Public https origin (emails, share links, sitemap, OG) | **Required** | `https://atelier.xjet3d.com` | no | — |
-| `P3_ADMIN_HOST` | Host that alone answers the Admin and its API | **Required** | `admin.atelier.xjet3d.com` | no | — |
-| `P3_BASE_PATH` | URL prefix; **empty** in production | Required empty | `` | no | — |
-| `P3_DATA_DIR` | Data directory outside the checkout | **Required** | `/srv/atelier/data` | no | — |
+| `P3_ADMIN_HOST` | Host that alone answers the Admin and its API (`localhost`: only through an SSH tunnel) | **Required** | `admin.atelier.xjet3d.com` | no | — |
+| `P3_ADMIN_BASE_URL` | Where Admin sign-in returns; required with `P3_ADMIN_HOST=localhost` | With a tunnel | `http://localhost:8340` | no | — |
+| `P3_BASE_PATH` | URL prefix (a host shared with another site) | Optional | `/JewelryB2C3` | no | — |
+| `P3_DATA_DIR` | Data directory outside the checkout, or its git-ignored `var/` | **Required** | `/srv/atelier/data` | no | — |
 | `P3_ADMIN_KEY` | Admin sign-in key | **Required** | random 24+ chars | **yes** | — |
 | `P3_SIGNING_SECRET` | Signs download links (≠ admin key) | **Required** | random 24+ chars | **yes** | — |
 | `P3_PROVIDER` | `fal` in production | **Required** | `fal` | no | fal.ai |

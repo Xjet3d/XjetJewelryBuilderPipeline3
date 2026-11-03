@@ -22,17 +22,57 @@ def test_production_refuses_development_defaults_and_accepts_a_complete_configur
     with pytest.raises(ValueError) as E:
         LoadSettings(Env="production", DataDir=tmp_path, **Dev)
     Msg = str(E.value)
-    for Needle in ("P3_PROVIDER", "P3_PUBLIC_BASE_URL", "P3_ADMIN_HOST", "P3_BASE_PATH", "P3_ADMIN_KEY", "P3_SIGNING_SECRET",
+    for Needle in ("P3_PROVIDER", "P3_PUBLIC_BASE_URL", "P3_ADMIN_HOST", "P3_ADMIN_KEY", "P3_SIGNING_SECRET",
                    "P3_ALLOW_UNAPPROVED_PRICING", "P3_MAIL_MODE", "P3_DAILY_AI_SPEND_CAP_USD"):
         assert Needle in Msg, Needle
     assert "P3_SUPPORT_EMAIL" not in Msg                 # unset, production names the shared inbox atelier@xjet3d.com
+    assert "P3_BASE_PATH" not in Msg                     # a base path is fine: the site may share its host (Atelier)
     S = LoadSettings(Env="production", DataDir=tmp_path, **Good)
     assert S.Production and S.LockMode and not S.DevTools and ValidateProduction(S) == []
-    # The same host for both sites, the admin key as signing secret, or data inside the checkout are refused too
-    Bad = LoadSettings(Env="development", DataDir=RepoRoot / "var", **{**Good, "AdminHost": "atelier.example.com", "SigningSecret": AdminKey})
+    # The same host for both sites, the admin key as signing secret, or data inside the checkout (outside its ignored
+    # var/) are refused too
+    Bad = LoadSettings(Env="development", DataDir=RepoRoot / "data", **{**Good, "AdminHost": "atelier.example.com", "SigningSecret": AdminKey})
     Problems = ValidateProduction(Bad)
     assert any("differ" in P for P in Problems) and any("P3_SIGNING_SECRET" in P for P in Problems) and any("P3_DATA_DIR" in P for P in Problems)
     assert LoadSettings(Env="development", DataDir=tmp_path, **Dev).DevTools          # development keeps its tools
+
+
+def test_atelier_runs_in_production_under_its_base_path_with_its_admin_behind_the_ssh_tunnel(tmp_path):
+    """Atelier (2026-11-03): the customer site under /JewelryB2C3 on a host it shares, its data in the checkout's git-ignored
+    var/, and the Admin reached only through an SSH tunnel (P3_ADMIN_HOST=localhost) whose sign-in returns to the tunnel's
+    own address (P3_ADMIN_BASE_URL, plain http on the operator's machine). Every other production rule still holds."""
+    Atelier = {**Good, "PublicBaseUrl": "https://xjetatelier.xjet3d.com", "BasePath": "/JewelryB2C3", "AdminHost": "localhost",
+               "AdminBaseUrl": "http://localhost:8340", "AuthMode": "modern", "AdminIdentityEnforced": True}
+    S = LoadSettings(Env="production", DataDir=RepoRoot / "var" / "pytest-production", **Atelier)
+    assert S.Production and S.BasePath == "/JewelryB2C3" and ValidateProduction(S) == []
+    # the tunnel host needs its sign-in address, on that host
+    for Wrong in ("", "https://admin.example.com", "http://127.0.0.1:8340"):
+        Problems = ValidateProduction(LoadSettings(Env="development", DataDir=tmp_path, **{**Atelier, "AdminBaseUrl": Wrong}))
+        assert any("P3_ADMIN_BASE_URL" in P for P in Problems), Wrong
+    # modern sign-in still needs the Admin's own identities (the shared key opens nothing through the web)
+    Problems = ValidateProduction(LoadSettings(Env="development", DataDir=tmp_path, **{**Atelier, "AdminIdentityEnforced": False}))
+    assert any("P3_ADMIN_IDENTITY_ENFORCED" in P for P in Problems)
+    # a short admin key is refused as before (Atelier's today is 21 characters)
+    Problems = ValidateProduction(LoadSettings(Env="development", DataDir=tmp_path, **{**Atelier, "AdminKey": "x" * 21}))
+    assert any("P3_ADMIN_KEY" in P for P in Problems)
+
+
+async def test_the_tunnel_admin_answers_only_through_the_tunnel(tmp_path):
+    """P3_ADMIN_HOST=localhost: the Admin page and its API answer for a request that came through the SSH tunnel (Host
+    localhost:8340) and nowhere else, whatever the public host's proxy sends; the customer site is unchanged."""
+    H = Harness(tmp_path, AdminKey=AdminKey, AdminHost="localhost", AdminBaseUrl="http://localhost:8340", NoDevTools=True,
+                BasePath="/JewelryB2C3")
+    try:
+        C = H.Client                                     # its base URL carries /JewelryB2C3
+        Public = {**Admin, "Host": "xjetatelier.xjet3d.com", "X-Forwarded-Host": "xjetatelier.xjet3d.com"}
+        for P in ("/admin/", "/api/admin/session", "/api/admin/health"):
+            assert (await C.get(P, headers=Public)).status_code == 404, P
+        Tunnel = {**Admin, "Host": "localhost:8340"}
+        assert (await C.get("/admin/", headers=Tunnel)).status_code == 200
+        assert (await C.get("/api/admin/session", headers=Tunnel)).status_code == 200
+        assert (await C.get("/", headers={"Host": "xjetatelier.xjet3d.com"})).status_code == 200
+    finally:
+        await H.Close()
 
 
 async def test_the_admin_and_the_dev_tools_answer_only_on_the_admin_host_and_outside_production(tmp_path):
