@@ -415,6 +415,56 @@ def HomePreload(Base: str) -> str:
             f'imagesizes="{HomeHeroSizes}" type="image/webp" fetchpriority="high">')
 
 
+def NotFoundPage(Base: str) -> str:
+    """The page for an address no page answers (p3/app.py _NotFound): the site's name, fonts and colours, the ways back,
+    never indexed. Self-contained, so it never depends on the app starting."""
+    B = E(Base)
+    Links = "".join(f'<a href="{B}/{P}">{T}</a>' for P, T in (("gallery", "Inspiration Gallery"), ("materials", "Materials"),
+                                                               ("faq", "FAQ"), ("contact", "Contact &amp; Support")))
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Page Not Found · XJet Atelier</title>
+    <link rel="stylesheet" href="{B}/static/vendor/fonts.css">
+    <style>
+        body {{ margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: #FBF8F3; color: #1A1A1A;
+               font-family: 'Inter', system-ui, sans-serif; }}
+        header {{ padding: 22px 24px; border-bottom: 1px solid #ECE6DA; background: #fff; }}
+        header a {{ display: inline-flex; align-items: center; gap: 16px; color: #1A1A1A; text-decoration: none; }}
+        header img {{ display: block; height: 24px; width: auto; }}
+        header span {{ font-family: 'Cinzel', Georgia, serif; text-transform: uppercase; letter-spacing: .26em; font-size: 14px; }}
+        main {{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 64px 20px; }}
+        .eyebrow {{ font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8A561B; margin: 0 0 16px; }}
+        h1 {{ font-family: 'Cinzel', Georgia, serif; font-weight: 400; font-size: clamp(30px, 6vw, 44px); letter-spacing: .02em; margin: 0 0 16px; }}
+        p {{ color: #45454C; font-size: 17px; line-height: 1.6; max-width: 480px; margin: 0 0 32px; }}
+        .home {{ display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 32px; border-radius: 4px;
+                 background: linear-gradient(90deg, #C9A96E 0%, #B08040 100%); color: #1A1A1A; font-weight: 600; font-size: 14px;
+                 letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }}
+        nav {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin-top: 28px; }}
+        nav a {{ display: inline-flex; align-items: center; min-height: 44px; color: #2A2520; font-size: 15px; text-decoration: underline;
+                 text-decoration-color: #C9A96E; text-underline-offset: 4px; }}
+        a:focus-visible {{ outline: 2px solid #8A6420; outline-offset: 3px; }}
+        footer {{ padding: 20px; text-align: center; font-size: 13px; color: #66666E; }}
+    </style>
+</head>
+<body>
+    <header><a href="{B}/" aria-label="XJet Atelier — home"><img src="{B}/static/images/xjet-logo.png" width="270" height="96" alt="XJet"><span>Atelier</span></a></header>
+    <main>
+        <p class="eyebrow">404</p>
+        <h1>Page not found</h1>
+        <p>The page you are looking for does not exist or has moved.</p>
+        <a class="home" href="{B}/">Go to the homepage</a>
+        <nav aria-label="Other pages">{Links}</nav>
+    </main>
+    <footer>XJet Atelier is a service of XJet Ltd.</footer>
+</body>
+</html>
+"""
+
+
 def CrawlerBlock(Inner: str) -> str:
     """Markup for readers that run no scripts (the same content the page shows once its scripts start): hidden from the
     first paint and removed as the page starts."""

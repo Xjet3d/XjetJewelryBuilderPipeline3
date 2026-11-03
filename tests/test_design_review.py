@@ -92,7 +92,7 @@ async def test_about_and_technology_say_only_what_xjet_publishes(tmp_path):
                       "<strong"):
             assert Vague not in About, Vague
         Tech = _Live((await H.Client.get("/technology")).text, "technology")
-        assert ">~8 µm</div>" in Tech and ">&gt;98%</div>" in Tech and "Ink.JPG" in Tech       # the bottles moved here
+        assert ">~8 µm</div>" in Tech and ">&gt;98%</div>" in Tech and "Ink-192.jpg" in Tech   # the bottles moved here (2x their 96 px box since 3 Nov)
     finally:
         await H.Close()
     for Text in (Index, (WebDir.parent / "p3" / "sitepages.py").read_text(encoding="utf-8")):

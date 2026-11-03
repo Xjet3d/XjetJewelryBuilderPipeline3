@@ -47,7 +47,7 @@ async def test_vendored_files_are_served_and_versioned(H):
 async def test_page_images_are_versioned_and_cached_for_a_year(H):
     """Images and videos a page names carry ?v=<mtime>: cacheable for a year, and a changed file is a new address."""
     Html = (await H.Client.get("/technology")).text
-    for Name in ("PrintHead.webp", "PrintHead.jpg", "Ink.JPG", "Angel.JPG", "favicon-32.png"):
+    for Name in ("PrintHead.webp", "PrintHead.jpg", "Ink-192.jpg", "Angel-192.jpg", "favicon-32.png"):
         assert re.search(r"/static/images/" + re.escape(Name) + r"\?v=\d+", Html), Name
     assert "PrintHead.png" not in Html and '<source srcset="/static/images/PrintHead.webp?v=' in Html     # 2.2 MB → 30 KB
     Url = re.search(r'"(/static/images/PrintHead\.webp\?v=\d+)"', Html).group(1)

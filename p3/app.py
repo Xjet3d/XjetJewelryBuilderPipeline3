@@ -20,7 +20,9 @@ from urllib.parse import quote
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exception_handlers import http_exception_handler
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
 
 from p3 import analytics as Analytics
@@ -390,6 +392,17 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if AdminAuth.BrowserScheme(Req) == "https":                       # the visitor's scheme (behind proto too)
             H.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return Resp
+
+    @App_.exception_handler(StarletteHTTPException)
+    async def _NotFound(Req: Request, E: StarletteHTTPException):
+        """An address no page answers (review U1, 3 Nov): a page with the way back, never indexed — not raw JSON. The API,
+        the static files and media keep their plain 404."""
+        Rel = Req.url.path[len(Base):] if Base and Req.url.path.startswith(Base) else Req.url.path
+        Page = (E.status_code == 404 and Req.method in ("GET", "HEAD") and "." not in Rel.rsplit("/", 1)[-1]
+                and not Rel.startswith(("/api/", "/static/", "/assets/", "/thumb/")))
+        if not Page:
+            return await http_exception_handler(Req, E)
+        return HTMLResponse(SitePages.NotFoundPage(Base), status_code=404, headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"})
 
     @App_.exception_handler(HttpError)
     async def _HttpError(_Req: Request, E: HttpError):
