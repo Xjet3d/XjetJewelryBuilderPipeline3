@@ -222,6 +222,7 @@ function adminApp() {
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
     pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
+    ils: null, ilsEdit: null, ilsNote: '', ilsBusy: false, ilsMsg: '', ilsErr: false, ilsUsd: '',   // Israeli pricing (B6)
     // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
     mstat: null, mstatEdit: {}, mstatNote: '', mstatBusy: false, mstatMsg: '', mstatErr: false,
     sizesEdit: null, sizeAdd: '', sizeAddName: '', sizeNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
@@ -405,7 +406,7 @@ function adminApp() {
       if (this.tab === 'gallery') await this.loadGallery();
       if (this.tab === 'settings') {
         if (this.sub === 'models' || this.sub === 'pricing') await this.loadModels(id);
-        if (this.sub === 'pricing') { await this.loadCharmPrices(); await this.loadMaterialStatuses(); }
+        if (this.sub === 'pricing') { await this.loadCharmPrices(); await this.loadMaterialStatuses(); await this.loadIls(); }
         if (this.sub === 'promos') await this.loadPromos();
         if (this.sub === 'products') await this.loadProducts();
         if (this.sub === 'keys') {
@@ -2467,6 +2468,57 @@ function adminApp() {
         this.cpEdit = null; this.cpMsg = 'Saved as ' + this.cprices.version + '. Charm quotes use it now; ring prices are unchanged.';
       } catch (e) { this.cpErr = true; this.cpMsg = e.message; } finally { this.cpBusy = false; }
     },
+    // ── Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default; every save a version ──
+    async loadIls() { this.ils = await this.api('GET', '/api/admin/ils-pricing').catch(() => null); },
+    ilsFields: ['enabled', 'rate_mode', 'manual_rate', 'manual_until', 'manual_reason', 'buffer_pct', 'reprice_threshold_pct',
+                'reprice_weekday', 'stage', 'ending', 'vat_pct', 'vat_next_pct', 'vat_next_from', 'countries', 'geo_header'],
+    editIls() {
+      this.ilsMsg = ''; this.ilsNote = ''; this.ilsErr = false;
+      const s = this.ils.settings;
+      this.ilsEdit = Object.fromEntries(this.ilsFields.map(k => [k, k === 'countries' ? (s.countries || []).join(' ') : (s[k] ?? '')]));
+    },
+    _ilsBody() {
+      const e = this.ilsEdit, n = v => (v === '' || v == null) ? null : Number(v);
+      return { ...e, enabled: e.enabled === true, manual_rate: n(e.manual_rate), buffer_pct: n(e.buffer_pct),
+               reprice_threshold_pct: n(e.reprice_threshold_pct), vat_pct: n(e.vat_pct), vat_next_pct: n(e.vat_next_pct),
+               manual_until: e.manual_until || null, vat_next_from: e.vat_next_from || null };
+    },
+    async previewIls() {
+      this.ilsBusy = true; this.ilsMsg = ''; this.ilsErr = false;
+      try {
+        const usd = this.ilsUsd === '' ? null : Number(this.ilsUsd);
+        this.ils = await this.api('POST', '/api/admin/ils-pricing/preview', { settings: this.ilsEdit ? this._ilsBody() : {}, extra_usd: usd });
+        const changed = (this.ils.simulation?.rows || []).filter(r => r.difference && Number(r.difference) !== 0).length;
+        this.ilsMsg = this.ilsEdit ? 'Preview only, nothing saved: ' + changed + ' price' + (changed === 1 ? '' : 's') + ' would change.' : '';
+      } catch (e) { this.ilsErr = true; this.ilsMsg = e.message; } finally { this.ilsBusy = false; }
+    },
+    async saveIls() {
+      const was = this.ils.settings, b = this._ilsBody(), lines = [];
+      for (const k of this.ilsFields) {
+        const a = k === 'countries' ? (was.countries || []).join(' ') : was[k], v = b[k];
+        if (String(a ?? '') !== String(v ?? '')) lines.push(k + ': ' + (a ?? '—') + ' → ' + (v ?? '—'));
+      }
+      const on = b.enabled && !was.enabled, off = !b.enabled && was.enabled;
+      if (!await this.confirmChanges(lines, on ? 'Turn Israeli pricing ON?' : off ? 'Turn Israeli pricing OFF?' : 'Change Israeli pricing?',
+          on ? 'Israeli visitors and deliveries to Israel see ₪ prices including VAT from now on. Orders already placed keep their currency.'
+             : off ? 'Every visitor sees USD again at once. Orders already placed in ₪ keep their ₪ figures.'
+                   : 'New prices apply to new carts and orders at once. Orders already placed keep their prices.', 'Save as new version')) return;
+      this.ilsBusy = true; this.ilsMsg = ''; this.ilsErr = false;
+      try {
+        this.ils = await this.api('PUT', '/api/admin/ils-pricing', { settings: b, note: this.ilsNote || 'Edited in Admin' });
+        this.ilsEdit = null; this.ilsMsg = 'Saved as ' + this.ils.settings.version + '.';
+      } catch (e) { this.ilsErr = true; this.ilsMsg = e.message; } finally { this.ilsBusy = false; }
+    },
+    async ilsAction(path, title, text, label) {
+      if (title && !await this.ask({ title, text, confirmLabel: label, cancelLabel: 'Cancel', danger: true })) return;
+      this.ilsBusy = true; this.ilsMsg = ''; this.ilsErr = false;
+      try {
+        const r = await this.api('POST', '/api/admin/ils-pricing/' + path.split('?')[0], path.includes('restore') ? { version_id: Number(path.split('=')[1]) } : undefined);
+        this.ils = r; this.ilsMsg = r.fetch ? (r.fetch.ok ? 'Fetched: ' + r.fetch.rate + ' for ' + r.fetch.rate_date + ' (' + r.fetch.source + ').' : 'Not fetched: ' + r.fetch.error) : 'Done.';
+        this.ilsErr = !!(r.fetch && !r.fetch.ok);
+      } catch (e) { this.ilsErr = true; this.ilsMsg = e.message; } finally { this.ilsBusy = false; }
+    },
+    ils2(v) { return v == null ? '—' : '₪' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
     // ── Settings → Products: the charm sizes on offer, their names and the recommended size ──
     editCharmSizes() {
       this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = ''; this.sizeAdd = ''; this.sizeAddName = '';

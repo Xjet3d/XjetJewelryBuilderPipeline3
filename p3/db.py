@@ -701,6 +701,18 @@ def _InstallOrderTerms(Conn) -> None:
         Conn.execute("ALTER TABLE orders ADD COLUMN terms_sha256 TEXT")
 
 
+def _InstallIlsPricing(Conn) -> None:
+    """Israeli pricing (B6, 2026-11-03): an order in ₪ keeps the VAT inside its total and how it was priced (rate, date,
+    source, buffer, VAT rate, rule); each line keeps the USD list price it came from. Additive columns, old code ignores
+    them; a USD order leaves them empty."""
+    Have = _Columns(Conn, "orders")
+    for Col in ("vat_amount REAL", "fx_json TEXT"):
+        if Col.split()[0] not in Have:
+            Conn.execute(f"ALTER TABLE orders ADD COLUMN {Col}")
+    if "usd_unit_price" not in _Columns(Conn, "order_lines"):
+        Conn.execute("ALTER TABLE order_lines ADD COLUMN usd_unit_price REAL")
+
+
 def _InstallSizeConfirmed(Conn) -> None:
     """A ring size the customer chose is remembered as confirmed (R-21, 2026-10-26): an additive column, old code ignores it."""
     if "size_confirmed_at" not in _Columns(Conn, "customizations"):
@@ -928,6 +940,7 @@ class Database:
                     _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
                     _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
                     _InstallOrderTerms(Conn)              # an order's accepted Terms version and its hash (2026-11-02)
+                    _InstallIlsPricing(Conn)              # an order in ₪: its VAT and how it was priced (B6, 2026-11-03)
                     _InstallCheckCategory(Conn)           # why a prompt check stopped a request (2026-10-28)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")

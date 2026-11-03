@@ -31,6 +31,7 @@ from p3 import naming as Naming
 from p3 import charmprices as CharmPrices
 from p3 import materialstatus as MaterialStatus
 from p3.charmprices import CharmPriceError
+from p3.ilspricing import IlsPricingError
 from p3 import orders as OrdersModule
 from p3 import payments as PaymentsModule
 from p3 import products as Products
@@ -1460,6 +1461,83 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         except CharmPriceError as E:
             raise HttpError(400, "invalid_charm_prices", str(E)) from E
         return Ctx.CharmPrices.AdminTable()
+
+    # ── Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default. Every save is a version; the
+    # simulator shows every list price under the current and the edited settings before anything is saved ──────────────
+    def _ListPrices() -> list[dict]:
+        """Every fixed list price on offer today, in USD: a ring per metal (all sizes), a charm per metal and size."""
+        Out = []
+        for M in Ctx.Catalog.Materials.values():
+            Q = Ctx.Pricing.QuoteFor(M.Id)
+            if Q.IsAvailable:
+                Out.append({"product": "Ring", "metal": M.Label, "size": "all sizes", "usd": Q.unit_price})
+        for M in CharmPrices.Offered(Ctx.Catalog):
+            for O in Ctx.Products.CharmSizeOptions():
+                Q = Ctx.CharmPrices.QuoteFor(M.Id, O["size"])
+                if Q.IsAvailable:
+                    Out.append({"product": "Charm", "metal": CharmPrices.Label(Ctx.Catalog, M.Id), "size": f"{O['size']:g} mm",
+                                "usd": Q.unit_price})
+        return Out
+
+    def _IlsCard(Proposed: dict | None = None) -> dict:
+        I = Ctx.IlsPricing
+        return {"settings": I.Settings(), "status": I.Status(), "rates": I.Rates(30), "price_rates": I.PriceRates(10),
+                "versions": [{K: V for K, V in R.items() if K != "settings_json"} for R in I.History(20)],
+                "simulation": I.Simulate(_ListPrices(), Proposed)}
+
+    @App_.get("/api/admin/ils-pricing")
+    async def GetIlsPricing(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return _IlsCard()
+
+    @App_.post("/api/admin/ils-pricing/preview")
+    async def PreviewIlsPricing(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """A dry run: every list price under the edited settings beside today's; nothing is saved."""
+        Admin(authorization)
+        try:
+            Card = _IlsCard(Body_.get("settings") or None)
+            if Body_.get("extra_usd") is not None:                 # the simulator's free field: any USD amount
+                Card["simulation"] = Ctx.IlsPricing.Simulate([*_ListPrices(), {"product": "Any amount", "metal": "", "size": "",
+                                                                            "usd": float(Body_["extra_usd"])}], Body_.get("settings") or None)
+            return Card
+        except IlsPricingError as E:
+            raise HttpError(400, "invalid_ils_pricing", str(E)) from E
+
+    @App_.put("/api/admin/ils-pricing")
+    async def SaveIlsPricing(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            Ctx.IlsPricing.Save({**Ctx.IlsPricing.Settings(), **(Body_.get("settings") or {})}, Who.Id,
+                                str(Body_.get("note") or "Edited in Admin")[:200])
+        except IlsPricingError as E:
+            raise HttpError(400, "invalid_ils_pricing", str(E)) from E
+        return _IlsCard()
+
+    @App_.post("/api/admin/ils-pricing/restore")
+    async def RestoreIlsPricing(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        try:
+            Ctx.IlsPricing.Restore(int(Body_.get("version_id") or 0), Who.Id)
+        except (IlsPricingError, ValueError) as E:
+            raise HttpError(400, "invalid_ils_pricing", str(E)) from E
+        return _IlsCard()
+
+    @App_.post("/api/admin/ils-pricing/fetch")
+    async def FetchIlsRate(authorization: str | None = Header(None)):
+        """Fetch now: the Bank of Israel's latest rate (stored once per date); the price rate follows its rules."""
+        Who = Admin(authorization)
+        Result = await asyncio.to_thread(Ctx.IlsPricing.Fetch)
+        if Result["ok"]:
+            Ctx.IlsPricing.Reprice(Who.Id)
+        return {**_IlsCard(), "fetch": Result}
+
+    @App_.post("/api/admin/ils-pricing/apply-rate")
+    async def ApplyIlsRate(authorization: str | None = Header(None)):
+        """Apply now: shown ₪ prices move to today's effective rate (the Bank of Israel or manual rate plus the buffer)."""
+        Who = Admin(authorization)
+        if not Ctx.IlsPricing.Reprice(Who.Id, "applied in Admin", Force=True):
+            raise HttpError(409, "no_rate", "No rate yet: fetch the Bank of Israel rate or set a manual rate first.")
+        return _IlsCard()
 
     # ── Customer status per metal and product (WP3): Available, Preview Only, Quote Only, Hidden — gates what customers may
     # do; never a price version. One save may change several metals of both products (activation is one change) ──────

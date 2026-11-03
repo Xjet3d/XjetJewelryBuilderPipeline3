@@ -55,6 +55,18 @@ PhonePattern = re.compile(r"^\+?[0-9 ()./-]{7,24}$")
 MaxLines = 20
 
 
+def ShippingFor(Market=None) -> dict:
+    """The delivery options as this customer sees them: in ₪ including VAT for an Israeli delivery (B6), else as listed."""
+    if not Market:
+        return ShippingOptions
+    Out = {}
+    for K, O in ShippingOptions.items():
+        Price = Market.Unit(O["price"]) if O["price"] else 0.0
+        Detail = O["detail"].replace(f"${O['price']:g}", f"₪{Price:g}") if O["price"] else O["detail"]
+        Out[K] = {**O, "price": Price, "detail": Detail, "usd_price": O["price"], "currency": Market.currency}
+    return Out
+
+
 def OrderRef(No) -> str | None:
     return f"ORD-{No}" if No is not None else None
 
@@ -160,7 +172,7 @@ class OrderService:
             return None, None
         return f"v{T['version']}", T["sha256"]
 
-    def CheckoutInfo(self, Who: Principal, Visible: tuple | None = None) -> dict:
+    def CheckoutInfo(self, Who: Principal, Visible: tuple | None = None, Market=None) -> dict:
         Profile = self.Ctx.Accounts.Profile(Who)
         Name = (Profile.get("name") or "").strip()
         First, _, Last = Name.partition(" ")
@@ -168,12 +180,12 @@ class OrderService:
             "customer": {"first_name": First, "last_name": Last.strip(), "email": Profile.get("email") or "", "phone": ""},
             "countries": [{"code": C, "name": N} for C, N in Addressing.Countries],
             "region_required": sorted(Addressing.RegionRequired), "no_postal_code": sorted(Addressing.NoPostalCode),
-            "shipping_options": list(ShippingOptions.values()),
+            "shipping_options": list(ShippingFor(Market).values()),
             "terms_version": self.AcceptedTerms()[0],
             "payment": {"available": self.Payment.Available, "provider": self.Payment.Name if self.Payment.Available else None,
                         "message": getattr(self.Payment, "Message", "")},
             "address_validation": {"provider": self.Validator.Name if self.Validator.Name != "none" else None},
-            "quote": self.Quote(Who, Visible=Visible),
+            "quote": self.Quote(Who, Visible=Visible, Market=Market),
         }
 
     def _BagLines(self, Who: Principal, Visible: tuple | None = None) -> list[dict]:
@@ -218,15 +230,16 @@ class OrderService:
         return Out
 
     def Quote(self, Who: Principal, PromoCode: str | None = None, ShippingMethod: str = "standard",
-              Visible: tuple | None = None) -> dict:
+              Visible: tuple | None = None, Market=None) -> dict:
+        """The bag's totals. Market (B6): ₪ including VAT — each line's unit price converted from its USD list price and
+        rounded by the rule, the delivery converted the same way, a promo checked on the USD lines (its rules and minimum
+        are in USD) and its discount taken from the ₪ lines. None: USD, as before."""
         Lines = self._BagLines(Who, Visible)
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Lines}))
         for L in Lines:
             L["ring_id"] = Refs.get(L["candidate_id"])
         Ok = [L for L in Lines if not L["problem"]]
-        Subtotal = round(sum(L["line_total"] for L in Ok), 2)
-        Currency = next((L["currency"] for L in Ok), "USD")
-        Ship = ShippingOptions.get(ShippingMethod or "standard")
+        Ship = ShippingFor(Market).get(ShippingMethod or "standard")
         Promo, PromoError_ = None, None
         if PromoCode and str(PromoCode).strip():
             if not Ok:
@@ -236,12 +249,27 @@ class OrderService:
                     Promo = self.Promos.Evaluate(PromoCode, Ok)
                 except HttpError as E:
                     PromoError_ = {"code": E.Code, "message": E.Message}
+        if Market:
+            for L in Lines:
+                if L["unit_price"] is not None and L["currency"] == "USD":
+                    L["usd_unit_price"], L["unit_price"], L["currency"] = L["unit_price"], Market.Unit(L["unit_price"]), Market.currency
+                    L["line_total"] = round(L["unit_price"] * L["quantity"], 2)
+            if Promo:
+                Share = Promo["eligible_subtotal"] / max(sum(L["usd_unit_price"] * L["quantity"] for L in Ok), 0.01)
+                Eligible = round(sum(L["line_total"] for L in Ok) * Share, 2)        # the eligible lines' share, in ₪
+                Discount = round(Eligible * Promo["value"] / 100.0, 2) if Promo["kind"] == "percent" else min(Market.Plain(Promo["value"]), Eligible)
+                Promo = {**Promo, "usd_discount": Promo["discount"], "discount": Discount,
+                         "label": Promo["label"] if Promo["kind"] == "percent" else f"₪{Discount:,.2f} off"}
+        Subtotal = round(sum(L["line_total"] for L in Ok), 2)
+        Currency = next((L["currency"] for L in Ok), Market.currency if Market else "USD")
         Discount = Promo["discount"] if Promo else 0.0
         Shipping = Ship["price"] if Ship else 0.0
+        Total = round(max(0.0, Subtotal - Discount) + Shipping, 2)
         return {"lines": Lines, "count": sum(L["quantity"] for L in Ok), "currency": Currency,
+                **({"incl_vat": True, "vat_amount": Market.VatOf(Total), "vat_pct": float(Market.vat_pct)} if Market else {}),
                 "subtotal": Subtotal, "discount": round(Discount, 2), "promo": Promo, "promo_error": PromoError_,
                 "shipping_method": Ship["id"] if Ship else None, "shipping": Shipping,
-                "total": round(max(0.0, Subtotal - Discount) + Shipping, 2),
+                "total": Total,
                 # a line that can't be ordered is left out (shown with its problem) and never blocks the rest (WP2)
                 "ok": bool(Ok) and Ship is not None, "excluded": len(Lines) - len(Ok),
                 "repriced": any(L["repriced"] for L in Ok)}
@@ -288,7 +316,10 @@ class OrderService:
         except (TypeError, ValueError):
             return True
 
-    def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None, Origin: str = "") -> dict:
+    def Create(self, Who: Principal, Body: dict, SendMail=None, Visible: tuple | None = None, Origin: str = "",
+               Market=None) -> dict:
+        """Market (B6): how the order is priced, decided by its delivery country (₪ including VAT for Israel). The order
+        keeps the ₪ figures, the VAT inside its total and how they were reached (fx_json). None: USD, as before."""
         Db = self.Ctx.Db
         Rid = (Body.get("client_request_id") or "").strip() or None
         if Rid:
@@ -305,7 +336,7 @@ class OrderService:
             Problems.append({"field": "terms_accepted", "message": "Please accept the Terms of Service to place the order."})
         if Problems:
             raise _Invalid(Problems)
-        Q = self.Quote(Who, Body.get("promo_code"), Method, Visible)
+        Q = self.Quote(Who, Body.get("promo_code"), Method, Visible, Market)
         if not Q["lines"]:
             raise HttpError(409, "bag_empty", "Your bag is empty.")
         if Q["promo_error"]:
@@ -345,25 +376,28 @@ class OrderService:
         with Db.Transaction() as Conn:
             Conn.execute("INSERT INTO orders (id, owner_account_id, status, payment_status, customer_json, shipping_json, "
                          "address_validation, shipping_method, currency, subtotal, discount, shipping, total, promo_code, promo_json, "
-                         "terms_version, terms_sha256, terms_accepted_at, client_request_id, notes, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         "terms_version, terms_sha256, terms_accepted_at, client_request_id, notes, created_at, updated_at, "
+                         "vat_amount, fx_json) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (OrderId, Who.AccountId, "new", "pending", Dumps(Customer),
                           Dumps({**Address, "validation": {K: V for K, V in Validation.items() if K != "suggestion"},
                                  "suggestion": Validation.get("suggestion")}),
                           Status, Method, Q["currency"], Q["subtotal"], Q["discount"], Q["shipping"], Q["total"],
                           Promo["code"] if Promo else None, Dumps(PromoSnapshot) if PromoSnapshot else None,
-                          TermsV, TermsSha, T, Rid, f"Customer's note: {Note}" if Note else None, T, T))
+                          TermsV, TermsSha, T, Rid, f"Customer's note: {Note}" if Note else None, T, T,
+                          Q.get("vat_amount"), Dumps({**Market.Record(), "net_total": round(Q["total"] - Q["vat_amount"], 2),
+                                                      "vat_amount": Q["vat_amount"]}) if Market else None))
             for N, L in enumerate(Ordered, start=1):
                 Conn.execute("INSERT INTO order_lines (id, order_id, position, design_id, candidate_id, bag_line_id, customization_id, "
                              "title, ring_id, product_type, material_id, material_label, ring_size, charm_size, quantity, unit_price, "
-                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "line_total, currency, pricing_version, image_path, purchase_json, mesh_id, usd_unit_price) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (NewId("oln"), OrderId, N, L["design_id"], L["candidate_id"], L["bag_line_id"], L["customization_id"],
                               L["title"], L["ring_id"], L["product_type"], L["material_id"], L["material_label"],
                               L["ring_size"] if L["product_type"] == Products.Ring else None,
                               L["charm_size"] if L["product_type"] == Products.Charm else None, L["quantity"],
                               L["unit_price"], L["line_total"], L["currency"], L["pricing_version"], L["image_path"],
-                              Dumps(PurchaseSnapshot(L)), Pins.get(L["bag_line_id"])))
+                              Dumps(PurchaseSnapshot(L)), Pins.get(L["bag_line_id"]), L.get("usd_unit_price")))
                 Conn.execute("DELETE FROM bag_lines WHERE id = ? AND owner_account_id = ?", (L["bag_line_id"], Who.AccountId))
             if Promo:
                 self.Promos.Redeem(Conn, Promo["promo_id"])
@@ -464,6 +498,9 @@ class OrderService:
             "address_validation": O["address_validation"], "address_validation_detail": Shipping.get("validation"),
             "shipping_method": O["shipping_method"], "shipping_label": Ship.get("label"), "shipping_eta": Ship.get("eta"),
             "currency": O["currency"], "subtotal": O["subtotal"], "discount": O["discount"], "shipping": O["shipping"], "total": O["total"],
+            # an order in ₪ (B6): the VAT inside its total; a USD order has none and no such fields
+            **({"incl_vat": True, "vat_amount": O["vat_amount"]} if O.get("vat_amount") is not None else {}),
+            **({"fx": json.loads(O["fx_json"])} if O.get("fx_json") and not ForCustomer else {}),
             "promo_code": O["promo_code"], "promo": json.loads(O["promo_json"]) if O["promo_json"] else None,
             "terms_version": O["terms_version"], "terms_sha256": O.get("terms_sha256"), "terms_accepted_at": O["terms_accepted_at"],
             "confirmation_email": self.EmailState(O["id"], json.loads(O["customer_json"]).get("email")),

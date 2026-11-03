@@ -2080,7 +2080,14 @@
                     <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
                         <div class="flex justify-between font-semibold text-base pt-3 border-t border-zinc-100 brand-font"><span>Subtotal</span><span x-text="money(total, cur)"></span></div>
                     </template>
-                    <p class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
+                    <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
+                    <!-- Israeli pricing (B6): shown only while it is on -->
+                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1">Prices in shekels include 18% VAT for delivery in Israel. Standard delivery is free; express delivery and any promo code are added at checkout. The delivery country you choose at checkout sets the final currency.</p>
+                    <div x-show="pricingChoice" x-cloak class="flex items-center justify-end gap-2 text-[13px] text-zinc-500 pt-1" role="group" aria-label="Currency">
+                        <span>Prices in</span>
+                        <button type="button" @click="setCurrency('ILS')" :aria-pressed="pricingChoice?.currency === 'ILS'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'ILS' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">₪ ILS</button>
+                        <button type="button" @click="setCurrency('USD')" :aria-pressed="pricingChoice?.currency === 'USD'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'USD' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">$ USD</button>
+                    </div>
                 </div>
                 <div x-show="bagLines.length > 0" class="flex flex-col sm:flex-row gap-3">
                     <button @click="continueFromBag()" class="flex-1 min-h-[44px] border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
@@ -2156,7 +2163,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Delivery option">
                                 <template x-for="s in (checkout?.shipping_options || [])" :key="s.id">
                                     <button type="button" @click="setShipping(s.id)" class="text-left border rounded-lg px-4 py-3 transition" :class="co.shipping_method === s.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'" role="radio" :aria-checked="co.shipping_method === s.id">
-                                        <div class="flex items-baseline justify-between gap-3"><span class="text-sm font-semibold text-zinc-900" x-text="s.label"></span><span class="text-sm text-zinc-800" x-text="s.price ? money(s.price) : 'Free'"></span></div>
+                                        <div class="flex items-baseline justify-between gap-3"><span class="text-sm font-semibold text-zinc-900" x-text="s.label"></span><span class="text-sm text-zinc-800" x-text="s.price ? money(s.price, s.currency || 'USD') : 'Free'"></span></div>
                                         <p class="text-[14px] text-zinc-600 mt-0.5" x-text="s.eta + ' · ' + s.detail.split(' · ').slice(1).join(' · ')"></p>
                                     </button>
                                 </template>
@@ -2233,7 +2240,10 @@
                         <div x-show="coQuote?.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (coQuote?.promo?.code || '')"></span><span x-text="'−' + money(coQuote?.discount || 0, coQuote?.currency)"></span></div>
                         <div class="flex justify-between"><span class="text-zinc-500" x-text="coShipping?.label || 'Delivery'"></span><span x-text="coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'Free'"></span></div>
                         <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(coQuote?.total || 0, coQuote?.currency)"></span></div>
-                        <p class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <div x-show="coQuote?.incl_vat" x-cloak class="flex justify-between text-zinc-500"><span>Including VAT</span><span x-text="money(coQuote?.vat_amount || 0, coQuote?.currency)"></span></div>
+                        <p x-show="co.currencyNote" x-cloak role="status" class="text-[13px] pt-1" style="color:#8A561B;" x-text="co.currencyNote"></p>
+                        <p x-show="coQuote?.currency !== 'ILS'" class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <p x-show="coQuote?.currency === 'ILS'" x-cloak class="text-[14px] text-zinc-600 pt-1">Shekels · including 18% VAT for delivery in Israel.</p>
                     </div>
                 </aside>
             </div>
@@ -2284,6 +2294,7 @@
                         <div x-show="order.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (order.promo_code || '')"></span><span x-text="'−' + money(order.discount, order.currency)"></span></div>
                         <div class="flex justify-between"><span class="text-zinc-500" x-text="order.shipping_label || 'Delivery'"></span><span x-text="order.shipping ? money(order.shipping, order.currency) : 'Free'"></span></div>
                         <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(order.total, order.currency)"></span></div>
+                        <div x-show="order.vat_amount != null" x-cloak class="flex justify-between text-zinc-500"><span>Including VAT</span><span x-text="money(order.vat_amount || 0, order.currency)"></span></div>
                     </div>
                     <div class="grid grid-cols-1 gap-4 text-[13px]">
                         <div class="border border-zinc-100 rounded-lg p-4"><p class="flbl">Ships to</p><template x-for="(ln, i) in order.address_lines" :key="i"><p class="text-zinc-700" x-text="ln"></p></template><p class="text-zinc-500 mt-1" x-text="(order.shipping_label || '') + ' · ' + (order.shipping_eta || '')"></p></div>

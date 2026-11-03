@@ -2905,6 +2905,99 @@
       <p x-show="cpMsg" class="text-sm" :class="cpErr ? 'text-red-600' : 'text-emerald-700'" x-text="cpMsg"></p>
     </section>
 
+    <!-- Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default; every save a version -->
+    <section class="card p-5 space-y-3" x-show="sub === 'pricing' && ils" aria-label="Israeli pricing">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl">Israeli pricing · ₪ including VAT <span class="ml-2 font-semibold" :style="ils?.settings?.enabled ? 'color:#047857' : 'color:#71717A'" x-text="ils?.settings?.enabled ? 'ON' : 'OFF'"></span></p>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="ilsEdit ? (ilsEdit = null) : editIls()" x-text="ilsEdit ? 'Cancel edit' : 'Edit'"></button>
+      </div>
+      <div class="grid gap-3 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));">
+        <div>
+          <p class="text-[12px] text-zinc-500">Bank of Israel rate</p>
+          <p x-text="ils?.status?.latest_rate ? ils.status.latest_rate.rate + ' for ' + ils.status.latest_rate.rate_date + ' · ' + ils.status.latest_rate.source + ' · fetched ' + dateTime(ils.status.latest_rate.fetched_at) : 'None fetched yet'"></p>
+          <p x-show="ils?.status?.stale" class="text-sm text-red-600" x-text="'Stale: older than ' + ils?.settings?.stale_business_days + ' business days. Prices keep the last rate.'"></p>
+        </div>
+        <div>
+          <p class="text-[12px] text-zinc-500">Effective rate (base + buffer)</p>
+          <p x-text="ils?.status?.effective_rate ? ils.status.effective_rate.rate + ' + ' + ils.status.effective_rate.buffer_pct + '% = ' + ils.status.effective_rate.effective + ' (' + ils.status.effective_rate.source + ')' : '—'"></p>
+        </div>
+        <div>
+          <p class="text-[12px] text-zinc-500">Price rate in use (what customers are priced at)</p>
+          <p x-text="ils?.status?.price_rate ? ils.status.price_rate.rate + ' since ' + dateTime(ils.status.price_rate.created_at) + ' — ' + ils.status.price_rate.reason : 'None yet: fetch a rate or set a manual one, then Apply'"></p>
+        </div>
+        <div>
+          <p class="text-[12px] text-zinc-500">VAT today · country header</p>
+          <p x-text="ils?.status?.vat_pct_today + '% · ' + (ils?.status?.header_seen_at ? (ils?.settings?.geo_header + ' last seen ' + dateTime(ils.status.header_seen_at)) : (ils?.settings?.geo_header + ' not seen since the server started'))"></p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="btn" :disabled="ilsBusy" @click="ilsAction('fetch')">Fetch the rate now</button>
+        <button class="btn" :disabled="ilsBusy" @click="ilsAction('apply-rate', 'Apply today\u2019s rate to shown prices?', 'Every \u20aa price moves to the effective rate now. Orders already placed keep their prices.', 'Apply now')">Apply the rate now</button>
+      </div>
+      <template x-if="ilsEdit">
+        <div class="space-y-3 text-sm">
+          <label class="flex items-center gap-2"><input type="checkbox" x-model="ilsEdit.enabled"> <strong>Israeli pricing ON</strong> (off: USD everywhere, exactly as before)</label>
+          <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+            <label class="block"><span class="text-[12px] text-zinc-500">Rate source</span>
+              <select class="inp" x-model="ilsEdit.rate_mode"><option value="auto">Automatic (Bank of Israel)</option><option value="manual">Manual</option></select></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Manual rate ₪/$</span><input type="number" step="any" min="1" class="inp" x-model="ilsEdit.manual_rate"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Manual rate until (optional)</span><input type="date" class="inp" x-model="ilsEdit.manual_until"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Reason for a manual rate</span><input class="inp" x-model="ilsEdit.manual_reason"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Buffer %</span><input type="number" step="any" min="0" max="10" class="inp" x-model="ilsEdit.buffer_pct"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Reprice when the rate moved by %</span><input type="number" step="any" min="0" max="20" class="inp" x-model="ilsEdit.reprice_threshold_pct"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">…or weekly on</span>
+              <select class="inp" x-model="ilsEdit.reprice_weekday"><option value="">never by date</option><template x-for="d in ['sunday','monday','tuesday','wednesday','thursday','friday','saturday']" :key="d"><option :value="d" x-text="d"></option></template></select></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Rounding stage</span>
+              <select class="inp" x-model="ilsEdit.stage"><option value="after_vat">Round the total incl. VAT (Rule 2)</option><option value="before_vat">Round before VAT, then add VAT (Rule 1)</option></select></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Ending (always up)</span>
+              <select class="inp" x-model="ilsEdit.ending"><option value="9">…9 (…339, …349)</option><option value="49_99">…49 or …99</option><option value="0">whole tens</option><option value="1">whole shekels</option></select></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">VAT %</span><input type="number" step="any" min="0" max="50" class="inp" x-model="ilsEdit.vat_pct"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Next VAT % (scheduled, optional)</span><input type="number" step="any" min="0" max="50" class="inp" x-model="ilsEdit.vat_next_pct"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Next VAT from</span><input type="date" class="inp" x-model="ilsEdit.vat_next_from"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Countries priced in ₪ (codes)</span><input class="inp" x-model="ilsEdit.countries"></label>
+            <label class="block"><span class="text-[12px] text-zinc-500">Country header</span><input class="inp" x-model="ilsEdit.geo_header"></label>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="ilsNote">
+            <button class="btn" @click="previewIls()" :disabled="ilsBusy">Preview changes</button>
+            <button class="btn" @click="saveIls()" :disabled="ilsBusy">Save as new version</button>
+          </div>
+        </div>
+      </template>
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span class="text-[12px] text-zinc-500">Simulator — any USD amount:</span>
+        <input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="ilsUsd" aria-label="Any USD amount">
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="previewIls()" :disabled="ilsBusy">Calculate</button>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full !text-xs">
+        <thead><tr><th>Product</th><th>Metal</th><th>Size</th><th class="text-right">USD</th><th class="text-right">Now: net</th><th class="text-right">VAT</th><th class="text-right">Shown</th>
+          <th class="text-right" x-show="ils?.simulation?.proposed_rate">Proposed shown</th><th class="text-right" x-show="ils?.simulation?.proposed_rate">Difference</th></tr></thead>
+        <tbody><template x-for="(r, i) in (ils?.simulation?.rows || [])" :key="i"><tr>
+          <td x-text="r.product"></td><td x-text="r.metal"></td><td x-text="r.size"></td><td class="text-right tabular-nums" x-text="'$' + num(r.usd)"></td>
+          <td class="text-right tabular-nums" x-text="ils2(r.current?.net)"></td><td class="text-right tabular-nums" x-text="ils2(r.current?.vat)"></td>
+          <td class="text-right tabular-nums font-semibold" x-text="ils2(r.current?.total)"></td>
+          <td class="text-right tabular-nums" x-show="ils?.simulation?.proposed_rate" x-text="ils2(r.proposed?.total)"></td>
+          <td class="text-right tabular-nums" x-show="ils?.simulation?.proposed_rate" x-text="r.difference ?? '—'"></td>
+        </tr></template></tbody>
+      </table>
+      </div>
+      <p class="text-[12px] text-zinc-500" x-text="'Rates: now ' + (ils?.simulation?.current_rate || '—') + (ils?.simulation?.proposed_rate ? ' · proposed ' + ils.simulation.proposed_rate : '') + '. A customer sees one figure, the total including VAT; the order keeps net, VAT and the rate.'"></p>
+      <details class="text-[12px] text-zinc-500"><summary>Versions, rates and price-rate changes</summary>
+        <ul class="space-y-0.5 mt-2"><template x-for="v in (ils?.versions || [])" :key="v.id"><li>
+          <span x-text="'ils-v' + v.id + ' · ' + dateTime(v.created_at) + ' · ' + v.created_by + (v.note ? ' — ' + v.note : '')"></span>
+          <button class="underline ml-2" :disabled="ilsBusy" @click="ilsAction('restore?v=' + v.id, 'Restore version ils-v' + v.id + '?', 'Its settings become a new version now.', 'Restore')">Restore</button></li></template></ul>
+        <p class="mt-2">Bank of Israel rates: <span x-text="(ils?.rates || []).map(r => r.rate_date + ' ' + r.rate).join(' · ') || '—'"></span></p>
+        <p class="mt-1">Price-rate changes: <span x-text="(ils?.price_rates || []).map(r => dateTime(r.created_at) + ' ' + r.rate + ' (' + r.reason + ')').join(' · ') || '—'"></span></p>
+      </details>
+      <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
+        <li><strong>Shown price</strong> = USD list price × price rate × (1 + VAT), rounded up by the ending (Rule 2), or rounded before VAT then VAT added (Rule 1). Every list price stays in USD.</li>
+        <li><strong>Who sees ₪</strong>: the visitor's ₪/$ choice, else the country header (Israel). At checkout the <strong>delivery country</strong> decides: Israel → ₪ with VAT, elsewhere → USD without Israeli VAT.</li>
+        <li><strong>Price rate</strong> changes only when the effective rate moved by the threshold, on the weekly day, or by Apply now — never per page view. The rate is fetched Monday–Friday after the Bank of Israel publishes it, while Israeli pricing is ON.</li>
+      </ul>
+      <p x-show="ilsMsg" class="text-sm" :class="ilsErr ? 'text-red-600' : 'text-emerald-700'" x-text="ilsMsg"></p>
+    </section>
+
     <!-- AI prices used for cost estimates -->
     <section class="card p-5 space-y-3" x-show="sub === 'pricing' && prices">
       <div class="flex flex-wrap items-baseline justify-between gap-3">

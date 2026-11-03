@@ -54,6 +54,8 @@ from p3.admin import RegisterAdmin
 from p3.aipricing import PriceBook
 from p3.modelconfig import ModelConfigStore
 from p3.charmprices import CharmPriceBook
+from p3 import ilspricing as IlsPricingMod
+from p3.ilspricing import IlsPricing
 from p3 import charmprices as CharmPrices
 from p3 import materialstatus as MaterialStatus
 from p3.materialprices import MaterialPriceBook
@@ -65,6 +67,7 @@ from p3.gallery import GalleryService
 from p3.fulfillment_bridge import FulfillmentBridge, RegisterBridge
 from p3.mail import BuildMailer
 from p3.orders import OrderService
+from p3 import orders as OrdersModule
 from p3.stl_activation import StlActivations
 from p3.promos import PromoService
 from p3.payments import BuildPaymentProvider
@@ -230,6 +233,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
     Ctx.Pricing.Book = Ctx.MaterialPrices         # the website's fixed price per material comes from it
     Ctx.CharmPrices = CharmPriceBook(Ctx.Db, Catalog, Ctx.Products)   # charm prices per material and size, seeded empty
+    Ctx.IlsPricing = IlsPricing(Ctx.Db)           # ₪ including VAT for Israeli customers (B6); OFF until the Admin turns it on
     # A price only for a metal Available for that product (Admin → Pricing & Materials → Customer status, WP3)
     Ctx.Pricing.Status = lambda Mid: MaterialStatus.Of(Ctx, Products.Ring, Mid)
     Ctx.CharmPrices.Status = lambda Mid: MaterialStatus.Of(Ctx, Products.Charm, Mid)
@@ -267,7 +271,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         NotifyTask = asyncio.create_task(Bridge.Notifications.Loop()) if Bridge.Notifications.Enabled else None
         if NotifyTask:
             Logger.warning("Fulfillment customer notifications are ON%s", f" — every message goes to {S.FulfillmentNotificationRecipient}" if S.FulfillmentNotificationRecipient else "")
+        FxTask = asyncio.create_task(Ctx.IlsPricing.Loop())     # the day's Bank of Israel rate; idle while Israeli pricing is OFF
         yield
+        FxTask.cancel()
         if NotifyTask:
             NotifyTask.cancel()
         await Ctx.Runner.Shutdown()
@@ -923,6 +929,16 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             return Data
         return _Strip(Data)
 
+    def Market(request: Request, Country: str | None = None):
+        """How this answer prices (B6): ₪ including VAT or USD. The delivery country decides when it is known (checkout);
+        before that the visitor's own choice, then their connection's country. Israeli pricing OFF: None, USD as before."""
+        Cur = Ctx.IlsPricing.DeliveryCurrency(Country) if Country else None
+        return Ctx.IlsPricing.MarketFor(Cur or Ctx.IlsPricing.VisitorCurrency(request.headers, request.cookies))
+
+    def _Country(Body_: dict) -> str | None:
+        A = Body_.get("address") if isinstance(Body_.get("address"), dict) else {}
+        return str(A.get("country") or Body_.get("country") or "").strip() or None
+
     # ── inspiration gallery: public tiles; "Make it yours" copies the batch into the customer's own design ──
     def Seen(request: Request) -> tuple[tuple, bool]:
         """The products this browser may see, and whether tiles carry their product: always, but on the ring-only site of
@@ -1001,6 +1017,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         Checked = [P for P in Products.All if PromptCheck.Enabled(Ctx, P)]
         if Checked:                                      # the design screen says "Checking your description…" meanwhile
             Out["prompt_check"] = Checked
+        if Ctx.IlsPricing.Enabled():
+            # Israeli pricing ON (B6): the ₪/$ switch, and the currency this browser sees ("ils_ready": a price rate exists)
+            M = Market(request)
+            IlsPricingMod.LocalizeCatalog(Out, M)
+            Out["pricing"] = {"currency": M.currency if M else "USD", "choices": ["ILS", "USD"], "incl_vat": bool(M),
+                              "ils_ready": bool(Ctx.IlsPricing.PriceRate())}
         return JSONResponse(Out, headers={"Cache-Control": "no-store"})
 
     @App_.get("/api/quote")
@@ -1013,13 +1035,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                 Q = Ctx.CharmPrices.QuoteFor(material_id, charm_size)
             except KeyError:
                 raise HttpError(404, "unknown_material", "Unknown material.")
-            return {**Q.ToJson(), "product": Products.Charm, "charm_size": charm_size}
+            return IlsPricingMod.LocalizeQuote({**Q.ToJson(), "product": Products.Charm, "charm_size": charm_size}, Market(request))
         # ring_size is accepted for clarity but deliberately ignored: size never changes price.
         try:
             Q = Ctx.Pricing.QuoteFor(material_id)
         except KeyError:
             raise HttpError(404, "unknown_material", "Unknown material.")
-        return {**Q.ToJson(), "ring_size": ring_size}
+        return IlsPricingMod.LocalizeQuote({**Q.ToJson(), "ring_size": ring_size}, Market(request))
 
     # ── designs & batches ────────────────────────────────────────────────
     @App_.post("/api/designs")
@@ -1134,19 +1156,20 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def Proceed(DesignId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         _Making(Who, DesignId, request)
-        return Svc.Customize.Proceed(Who, DesignId, Body_.get("candidate_id"))
+        return IlsPricingMod.LocalizeCustomization(Svc.Customize.Proceed(Who, DesignId, Body_.get("candidate_id")), Market(request))
 
     @App_.get("/api/customizations/{CustomizationId}")
     async def GetCustomization(CustomizationId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return Svc.Customize.Get(Who, CustomizationId, Products.OfferedTo(Ctx, request, Who))
+        return IlsPricingMod.LocalizeCustomization(Svc.Customize.Get(Who, CustomizationId, Products.OfferedTo(Ctx, request, Who)),
+                                                   Market(request))
 
     @App_.patch("/api/customizations/{CustomizationId}")
     async def UpdateCustomization(CustomizationId: str, request: Request, Body_: dict = Body(...),
                             x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         _CustomizationOnOffer(Who, CustomizationId, request)
-        return Svc.Customize.Update(Who, CustomizationId, Body_)
+        return IlsPricingMod.LocalizeCustomization(Svc.Customize.Update(Who, CustomizationId, Body_), Market(request))
 
     @App_.post("/api/candidates/{CandidateId}/movie")
     async def EnsureMovie(CandidateId: str, request: Request, x_access_token: str | None = Header(None)):
@@ -1164,35 +1187,43 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     @App_.get("/api/bag")
     async def GetBag(request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return RingOnly(Svc.Customize.Bag(Who, Products.OfferedTo(Ctx, request, Who)), request)
+        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.Bag(Who, Products.OfferedTo(Ctx, request, Who)), Market(request)), request)
 
     @App_.post("/api/bag")
     async def AddToBag(request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         _CustomizationOnOffer(Who, str(Body_.get("customization_id") or ""), request)
-        return RingOnly(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.OfferedTo(Ctx, request, Who)), request)
+        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.OfferedTo(Ctx, request, Who)),
+                                                  Market(request)), request)
 
     @App_.patch("/api/bag/{LineId}")
     async def SetBagQuantity(LineId: str, request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return RingOnly(Svc.Customize.SetBagQuantity(Who, LineId, Body_.get("quantity"), Products.OfferedTo(Ctx, request, Who)), request)
+        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.SetBagQuantity(Who, LineId, Body_.get("quantity"), Products.OfferedTo(Ctx, request, Who)),
+                                                  Market(request)), request)
 
     @App_.delete("/api/bag/{LineId}")
     async def RemoveFromBag(LineId: str, request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return RingOnly(Svc.Customize.RemoveFromBag(Who, LineId, Products.OfferedTo(Ctx, request, Who)), request)
+        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.RemoveFromBag(Who, LineId, Products.OfferedTo(Ctx, request, Who)),
+                                                  Market(request)), request)
 
     # ── checkout & orders (fixed-price materials); gold asks for a quote ──
     @App_.get("/api/checkout")
     async def CheckoutInfo(request: Request, x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return RingOnly(Svc.Orders.CheckoutInfo(Who, Products.OfferedTo(Ctx, request, Who)), request)
+        return RingOnly(Svc.Orders.CheckoutInfo(Who, Products.OfferedTo(Ctx, request, Who), Market(request)), request)
 
     @App_.post("/api/checkout/quote")
     async def CheckoutQuote(request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
-        return RingOnly(Svc.Orders.Quote(Who, Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"),
-                                         Products.OfferedTo(Ctx, request, Who)), request)
+        # the delivery country, once chosen, decides the currency (B6): the page shows the totals it will be charged
+        M = Market(request, _Country(Body_))
+        Q = Svc.Orders.Quote(Who, Body_.get("promo_code"), str(Body_.get("shipping_method") or "standard"),
+                             Products.OfferedTo(Ctx, request, Who), M)
+        if Ctx.IlsPricing.Enabled():                     # the delivery options in the currency this quote is in
+            Q["shipping_options"] = list(OrdersModule.ShippingFor(M).values())
+        return RingOnly(Q, request)
 
     @App_.post("/api/checkout/address")
     async def CheckoutAddress(Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
@@ -1203,7 +1234,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def PlaceOrder(request: Request, Background: BackgroundTasks, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         return RingOnly(Svc.Orders.Create(Who, Body_, Background.add_task, Products.OfferedTo(Ctx, request, Who),
-                                          Origin=S.PublicBaseUrl or PublicOrigin(request)), request)
+                                          Origin=S.PublicBaseUrl or PublicOrigin(request), Market=Market(request, _Country(Body_))), request)
 
     @App_.get("/api/orders")
     async def MyOrders(request: Request, x_access_token: str | None = Header(None)):
