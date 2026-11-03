@@ -24,6 +24,8 @@
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{BASE}}/static/vendor/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{BASE}}/static/vendor/fonts.css">
+    <!-- the home story's styles (web/showcase.js loads only as the story nears the screen: app.js loadStory) -->
+    <link rel="stylesheet" href="{{BASE}}/static/showcase.css" media="print" onload="this.media='all'">
     <!-- deferred: they run in this order once the page is parsed (Alpine last, so p3App() exists when it starts).
          consent.js first: the cookie banner and Cookie Settings, and the analytics that run only after consent (docs/ANALYTICS.md) -->
     <script defer src="{{BASE}}/static/consent.js"></script>
@@ -38,10 +40,8 @@
         h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
         [x-cloak] { display: none !important; }
         .ssr-view { display: contents; }      /* the server's copy of the page asked for (p3/sitepages.py) */
-        /* The homepage, Version A (WP6, the owner's FINAL choice of 1 Nov 2026; the mockup's rules, prefixed hv-). The
-           pearl-and-gold photo is exactly 2:1: from 1100 px the hero keeps that shape, the copy over a light veil on the
-           plain fabric at the right; narrower screens stack the photo above the copy. Text over the photos keeps 4.5:1
-           (darker hero text, stronger veils); tap targets are 44 px or more. */
+        /* The homepage, Version A (WP6, the owner's FINAL choice of 1 Nov 2026; the mockup's rules, prefixed hv-). Text
+           over the photos keeps 4.5:1 (darker text, strong veils); tap targets are 44 px or more. */
         .hv-wrap { width: min(1200px, 100% - 64px); margin-inline: auto; }
         .hv-display { font-family: 'Cinzel', Georgia, serif; font-weight: 400; letter-spacing: .02em; line-height: 1.12; margin: 0; }
         .hv-display em { font-style: italic; }
@@ -55,17 +55,29 @@
         .hv-btn-light { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.7); color: #fff;
             font-weight: 600; text-transform: uppercase; background: transparent; }
         .hv-btn-light:hover { background: rgba(255,255,255,.08); }
-        .hero-section { position: relative; aspect-ratio: 1440 / 720; display: flex; align-items: center; overflow: hidden; background: #FBF8F3; }
-        .hv-hero-media { position: absolute; inset: 0; }
-        .hv-hero-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-        .hv-hero-veil { position: absolute; inset: 0; background: linear-gradient(270deg, rgba(251,248,243,.92) 0%, rgba(251,248,243,.82) 24%, rgba(251,248,243,.35) 36%, rgba(251,248,243,0) 46%); }
-        .hv-hero-copy { position: relative; margin-left: 64%; margin-right: 48px; max-width: 470px; }
-        .hero-section .hv-eyebrow { color: #6E4310; }
-        .hero-section .hero-title { font-size: clamp(34px, 3.4vw, 50px); margin-bottom: 22px; color: #1A1A1A; }
+        /* The hero (the owner's review of 2 Nov: the photo too dominant, the words too small). From 861 px a split: the
+           photograph in the left 52 %, cropped to the jewelry, and the copy in its own cream panel — all of it within the
+           first screen under the header (--hdr), the gallery's start in view below. The headline is as large as its two
+           lines allow (each about 9 × the font size wide in Cinzel): 58 px at 1440, 64 px at most. Phones: a shorter
+           photo (3:2) above the words. */
+        .hero-section { display: grid; grid-template-columns: minmax(0, 52fr) minmax(0, 48fr); background: #FBF8F3; overflow: hidden;
+            min-height: clamp(540px, calc(100vh - var(--hdr) - 96px), 640px); min-height: clamp(540px, calc(100svh - var(--hdr) - 96px), 640px); }
+        .hv-hero-media { position: relative; }
+        .hv-hero-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 22% 50%; }
+        .hv-hero-copy { align-self: center; padding: 44px clamp(28px, 4.5vw, 80px) 44px clamp(28px, 4vw, 64px); }
+        .hv-hero-copy > * { max-width: 600px; }
+        .hero-section .hv-eyebrow { color: #6E4310; font-size: 13px; letter-spacing: .28em; margin-bottom: 20px; }
+        .hero-section .hero-title { font-size: clamp(36px, 4vw, 64px); line-height: 1.06; margin-bottom: 26px; color: #1A1A1A; }
         .hero-section .hero-title em { color: #7A4A14; }
-        .hv-lead { font-size: 17px; color: #2F2F35; margin: 0 0 28px; line-height: 1.6; }
-        .hv-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+        .hv-lead { font-size: clamp(18px, 1.4vw, 21px); color: #2F2F35; margin: 0 0 34px; line-height: 1.6; }
+        .hv-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 28px; }
+        .hero-section .hv-btn { min-height: 58px; padding: 0 44px !important; font-size: 14px !important; }
         .hv-fine { font-size: 14px; color: #45454C; margin: 0; }
+        .hero-section .hv-fine { font-size: 15px; line-height: 1.5; }
+        /* The home story under How It Works (moved from the old hero): the stage keeps its room (showcase.css) */
+        .hv-story { background: linear-gradient(160deg, #FBF9F4 0%, #F3EFE6 100%); padding: 72px 0 88px; }
+        .hv-story-stage { position: relative; width: min(640px, 100% - 40px); margin-inline: auto; }
+        .sc-toggle:focus-visible { outline: 2px solid #8A6420; outline-offset: 2px; }
         .hv-chips { display: inline-flex; gap: 8px; margin-top: 26px; padding: 5px; border: 1px solid #E8E0D2; border-radius: 999px; background: #fff; }
         .hv-chip { min-height: 44px; padding: 0 20px; border-radius: 999px !important; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #66666E; }
         .hv-chip[aria-pressed="true"] { background: #1A1A1A; color: #fff; }
@@ -105,19 +117,16 @@
         .hv-final h2 em { color: #C9A96E; }
         .hv-final p { color: #D4D4D8; max-width: 520px; margin: 22px auto 36px; line-height: 1.6; }
         .hv-final-ctas { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
-        @media (max-width: 1100px) {
-            .hero-section { aspect-ratio: auto; flex-direction: column; align-items: stretch; }
-            .hv-hero-media { position: relative; aspect-ratio: 1440 / 720; }
-            .hv-hero-veil { display: none; }
-            .hv-hero-copy { margin: 0; max-width: none; padding: 40px 32px 52px; }
-            .hv-hero-copy > * { max-width: 560px; }
-        }
         @media (max-width: 860px) {
-            .hv-hero-media { aspect-ratio: 4 / 3; }
-            .hv-hero-media img { object-position: 37% 50%; }
-            .hv-hero-copy { padding: 32px 20px 44px; }
-            .hero-section .hero-title { font-size: 38px; margin-bottom: 18px; }
+            .hero-section { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+            .hv-hero-media { aspect-ratio: 3 / 2; }
+            .hv-hero-media img { object-position: 30% 50%; }
+            .hv-hero-copy { align-self: auto; padding: 30px 20px 44px; }
+            .hero-section .hv-eyebrow { font-size: 12px; letter-spacing: .22em; margin-bottom: 14px; }
+            .hero-section .hero-title { font-size: clamp(32px, calc((100vw - 40px) / 8.85), 46px); letter-spacing: .005em; margin-bottom: 18px; }
+            .hv-lead { font-size: 18px; margin-bottom: 26px; }
             .hv-cta { flex-direction: column; }
+            .hv-story { padding: 48px 0 60px; }
             .hv-split { grid-template-columns: 1fr; }
             .hv-split-img { min-height: 0; aspect-ratio: 1 / 1; }
             .hv-split-copy { padding: 52px 20px 60px; }
@@ -335,7 +344,7 @@
            The Design screen (.is-studio): one row — XJet Atelier · Design — Customize — Bag · account · Exit.
            XJet Atelier: XJet's own logo (web/images/xjet-logo.png, never redrawn) with its clearspace — the height of its
            T — before the divider, then ATELIER in the site's display face. */
-        :root { --hdr: 64px; }                                      /* the header's height on the site's pages */
+        :root { --hdr: 64px; }                                      /* the header's height on the site's pages (the hero's room) */
         @media (min-width: 768px) { :root { --hdr: 117px; } }
         @media (min-width: 1280px) { :root { --hdr: 74px; } }
         .site-header { display: grid; align-items: center; column-gap: .375rem; padding: 1rem .5rem;
@@ -578,16 +587,16 @@
         <main class="flex-1 overflow-y-auto fade-in">
             <!-- The hero (WP6, Version A): the pearl-and-gold photograph, the site's headline, one START DESIGN — Design opens on
                  the default product, Charm while charms are on offer (WP4) — and the collections line. No price on the
-                 homepage. The photo is the page's largest picture: the page's head preloads it (p3/sitepages.py HomePreload). -->
+                 homepage. The photo is the page's largest picture: the page's head preloads it (p3/sitepages.py HomePreload);
+                 its sizes say how wide it is drawn once cropped to its frame (2:1 photo: a 3:2 frame on phones, 134vw). -->
             <section class="hero-section">
                 <div class="hv-hero-media">
                     <picture>
-                        <source type="image/webp" srcset="{{BASE}}/static/images/home-hero-780.webp 780w, {{BASE}}/static/images/home-hero-1440.webp 1440w" sizes="100vw">
+                        <source type="image/webp" srcset="{{BASE}}/static/images/home-hero-780.webp 780w, {{BASE}}/static/images/home-hero-1440.webp 1440w" sizes="(max-width: 860px) 134vw, 100vw">
                         <img src="{{BASE}}/static/images/home-hero-1440.jpg" width="1440" height="720" fetchpriority="high" decoding="async"
                              alt="Gold charm bracelets with a seahorse, a shell, an NYC tag, a heart and a cross, stacked with pearl and gold bead bracelets on a wrist">
                     </picture>
                 </div>
-                <div class="hv-hero-veil"></div>
                 <div class="hv-hero-copy">
                     <p class="hv-eyebrow">Bespoke Jewelry · Powered by AI</p>
                     <!-- "by You" never splits: "You" is never a line of its own -->
@@ -706,6 +715,24 @@
                     </template>
                 </div>
                 <p class="text-center text-sm text-zinc-400 italic">You see your design before anything is made.</p>
+            </section>
+
+            <!-- The design journey in motion (moved from the old hero, 2 Nov): the story of one real gallery design — the idea,
+                 four designs, one chosen and refined, every angle, the finished ring (web/showcase.js, the engine of
+                 /showcase; nothing is generated or charged). Its files load as it nears the screen (app.js loadStory); it
+                 plays muted with its own Pause / Play (ACC-02, WCAG 2.2.2) and stands still for reduced motion. -->
+            <section class="hv-story" aria-label="The design journey, in motion" data-src="{{BASE}}/static/showcase.js" x-init="loadStory($el)">
+                <div class="hv-story-stage" data-testid="home-story" @pointerenter="holdStory(true, $event)" @pointerleave="holdStory(false, $event)"
+                     @sc-ready="storyReady = true" x-init="$nextTick(() => { if (_story()?.plan) storyReady = true })">
+                    <button type="button" x-show="storyReady && !reducedMotion" x-cloak @click="toggleStory()" class="sc-toggle absolute right-3 bottom-3 z-10 inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full text-[12px] font-semibold uppercase tracking-[0.12em]"
+                            style="background:rgba(255,255,255,0.88);color:#1A1A1A;border:1px solid #D4D4D4;" :aria-label="storyPaused ? 'Play the animation' : 'Pause the animation'">
+                        <svg x-show="!storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+                        <svg x-show="storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                        <span x-text="storyPaused ? 'Play' : 'Pause'" aria-hidden="true">Pause</span>
+                    </button>
+                    <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Sterling Silver and Yellow Gold"
+                         data-sc-design="aurora-mesh"></div>
+                </div>
             </section>
 
             <!-- Technology (WP6): the section's own words over XJet's photograph -->

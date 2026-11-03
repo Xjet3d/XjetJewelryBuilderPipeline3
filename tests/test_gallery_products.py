@@ -14,7 +14,7 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "12861e68d0d8cd6f667f730156ed85fd865cb255b29c58736b673b4ddef992e5"      # the homepage hero; the showcase from f7723c2 to WP6; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "6a7fee8cccf43ef3645558584553f2e5e1e4d2f873fb24996e20742535bd3d9d"      # the homepage hero; the showcase from f7723c2 to WP6; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)
@@ -27,6 +27,8 @@ HeroSha256 = "12861e68d0d8cd6f667f730156ed85fd865cb255b29c58736b673b4ddef992e5" 
 #               mouse over it holds it
 #   2026-11-02: WP6 — Version A (the owner's choice of 1 Nov 2026): the pearl-and-gold photograph, the same headline, one
 #               START DESIGN (the default product), the collections line; no story, no price
+#   2026-11-02: the owner's review — a split (the photo cropped to the jewelry, the words larger in their own panel),
+#               within the first screen; the story moved under How It Works
 Metals = [("stainless_steel", "Stainless Steel"), ("silver", "Sterling Silver"), ("gold_18k_yellow", "Gold")]
 Web = Path(__file__).resolve().parent.parent / "web"
 

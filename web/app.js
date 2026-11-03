@@ -851,9 +851,24 @@ function p3App() {
       try { r = r || sessionStorage.getItem('p3_pending_route') || ''; sessionStorage.removeItem('p3_pending_route'); } catch (_) {}
       return FLOW_PATHS[r] ? r : '';
     },
-    // The homepage story (showcase.js) waits while the lightbox covers it, as the hero rotation does: nothing animates under
-    // the dialog, and a design page's story does not reach its larger pictures behind it. It resumes only if this paused it.
-    _story() { const el = document.querySelector('[data-testid="hero-showcase"] .sc-stage'); return el && el._sc; },
+    // The homepage story (showcase.js, under How It Works) loads as it nears the screen: the engine's file once (it mounts
+    // the stage it finds), or, already loaded, a stage the page drew again (back on the homepage)
+    loadStory(section) {
+      const go = () => {
+        const stage = section.querySelector('.sc-stage[data-sc-design]');
+        if (window.P3Showcase) { if (stage && !stage._sc && stage.isConnected) P3Showcase.mount(stage, { design: stage.dataset.scDesign, startAt: 'final' }); return; }
+        if (document.querySelector('script[data-p3-showcase]')) return;
+        const s = document.createElement('script');
+        s.src = section.dataset.src; s.async = true; s.dataset.p3Showcase = '';
+        document.head.appendChild(s);
+      };
+      if (!('IntersectionObserver' in window)) return go();
+      const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '600px 0px' });
+      io.observe(section);
+    },
+    // The homepage story waits while the lightbox covers it, as the hero rotation does: nothing animates under the dialog,
+    // and a design page's story does not reach its larger pictures behind it. It resumes only if this paused it.
+    _story() { const el = document.querySelector('[data-testid="home-story"] .sc-stage'); return el && el._sc; },
     _pauseStory() {
       const sc = this._story();
       if (sc && sc.state().playing) { sc.pause(); PAUSED_STORY = sc; }

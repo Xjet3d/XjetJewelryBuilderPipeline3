@@ -33,12 +33,11 @@ async def test_one_grid_two_rows_on_the_site_one_row_on_phones_and_in_the_studio
     assert 'grid-template-areas: "brand nav util cta";' in Css                  # phones and the Design screen
     Wide = Css[Css.index("@media (min-width: 768px) {", Css.index(".site-header {")):]
     assert '.site-header:not(.is-studio) {' in Wide and 'grid-template-areas: "util util util" "brand nav cta";' in Wide
-    # from 1280 px one 72 px bar: the utility icons beside Start Designing; the header's height is --hdr (since WP6 the
-    # hero takes its photograph's shape, 2:1, instead of the screen under the header)
+    # from 1280 px one 72 px bar: the utility icons beside Start Designing; the hero's room follows the header (--hdr)
     Bar1280 = Css[Css.index("@media (min-width: 1280px) {", Css.index(".site-header {")):]
     assert 'grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "brand nav util cta"; }' in Bar1280[:400]
     assert "@media (min-width: 768px) { :root { --hdr: 117px; } }" in Css and "@media (min-width: 1280px) { :root { --hdr: 74px; } }" in Css
-    assert ".hero-section { position: relative; aspect-ratio: 1440 / 720;" in Index and "115px" not in Index
+    assert "min-height: clamp(540px, calc(100svh - var(--hdr) - 96px), 640px); }" in Index and "115px" not in Index
     # the header's parts never shrink under their content (the logo picture would let ATELIER run under the icons)
     assert ".site-header > .h-brand, .site-header > .h-util, .site-header > .h-cta { min-width: max-content; }" in Css
     # every control exists once (the menu panel below 1024 px is a list of its own)

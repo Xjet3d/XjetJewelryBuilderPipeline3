@@ -1,6 +1,6 @@
 // XJet Atelier showcase engine (styles: showcase.css) — the animated story of one Inspiration Gallery design:
 // your idea → four possibilities → make it yours → every angle → your finish → the finished ring.
-// Mounted by the homepage hero and by /showcase (the standalone reference page with review tools).
+// Mounted by the homepage (its story under How It Works) and by /showcase (the standalone reference page with review tools).
 // Every position, fade and wipe is a function of one clock (render(t)), so the beats never overlap, pausing freezes
 // everything and seeking shows an exact moment. Read-only: the story comes from GET /api/showcase (p3/showcase.py);
 // nothing is generated or charged. The clock stops while the stage is off screen or the tab is hidden.
@@ -10,8 +10,7 @@
     const CAPTIONS = ['Your idea', 'Four possibilities', 'Make it yours', 'Make it yours', 'Every angle', 'Your finish', ''];
     const LABELS = ['Prompt', '4 designs', 'Select', 'Refine', '360°', 'Metal', 'Final'];
     const VCOVER = 1.855;               // seconds of movie the turn beat plays: 1.48 s at normal speed, then 0.6 s easing to ¼
-    // The large ring's sizes — the page's preload of the hero's picture says the same (p3/sitepages.py HeroPreload), so
-    // the browser takes the picture it already has
+    // The large ring's sizes in its stage (the homepage's story is at most 640 px wide: web/index.html .hv-story-stage)
     const FOCUS_SIZES = '(max-width: 767px) 80vw, 520px';
     // Silver for a warm (gold) render: a contrast curve that keeps depth and the bright highlights; near-white pixels
     // (the background, the brightest sparkle) stay untouched.
@@ -58,7 +57,7 @@
     const stories = new Map();          // design → the API answer (one request per page)
     function fetchStory(design) {
         const key = design || '';
-        const inPage = window.__p3 && window.__p3.story;          // the homepage brings its hero's story (p3/app.py)
+        const inPage = window.__p3 && window.__p3.story;          // a page may bring its story with it (none does since 2 Nov)
         if (!stories.has(key) && inPage && inPage.design === key && inPage.data) stories.set(key, Promise.resolve(inPage.data));
         if (!stories.has(key)) {
             stories.set(key, fetch(base() + '/api/showcase' + (design ? '?design=' + encodeURIComponent(design) : ''))
@@ -394,8 +393,8 @@
 
     window.P3Showcase = { mount, captions: CAPTIONS, labels: LABELS, planFor };
 
-    // The homepage hero starts as soon as the page is read — its story is in the page and its picture already on its
-    // way — not after the app's first requests; the page's own x-init finds it running and leaves it be
+    // The homepage loads this file as its story nears the screen (app.js loadStory): the stage starts at once, on its
+    // finished ring, and plays on from the idea; a stage the page draws later is mounted by loadStory itself
     document.querySelectorAll('.sc-stage[data-sc-design]').forEach(el => {
         if (!el._sc) mount(el, { design: el.dataset.scDesign, startAt: 'final' });
     });

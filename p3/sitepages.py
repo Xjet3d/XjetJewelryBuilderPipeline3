@@ -401,8 +401,10 @@ def LightboxPreload(ImageUrl: str) -> str:
             f'imagesizes="{LightboxSizes}" fetchpriority="high">')
 
 
-# The homepage hero's photograph (web/index.html, WP6): its WebP files by width, as its <picture> lists them
+# The homepage hero's photograph (web/index.html, WP6): its WebP files by width, as its <picture> lists them, and its
+# sizes (the 2:1 photo cropped to its frame: 3:2 on phones, so drawn 134vw wide)
 HomeHero = ((780, "home-hero-780.webp"), (1440, "home-hero-1440.webp"))
+HomeHeroSizes = "(max-width: 860px) 134vw, 100vw"
 
 
 def HomePreload(Base: str) -> str:
@@ -410,7 +412,7 @@ def HomePreload(Base: str) -> str:
     after the scripts; the same files and sizes as the hero's <picture>, so the browser takes the picture it already has."""
     Set = ", ".join(f"{E(Base)}/static/images/{Name} {W}w" for W, Name in HomeHero)
     return (f'<link rel="preload" as="image" href="{E(Base)}/static/images/{HomeHero[-1][1]}" imagesrcset="{Set}" '
-            f'imagesizes="100vw" type="image/webp" fetchpriority="high">')
+            f'imagesizes="{HomeHeroSizes}" type="image/webp" fetchpriority="high">')
 
 
 def CrawlerBlock(Inner: str) -> str:

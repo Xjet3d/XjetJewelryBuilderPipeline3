@@ -156,10 +156,11 @@ async def test_showcase_page_is_a_standalone_noindex_reference(HG):
     assert (await H.Client.get("/static/metal.js")).status_code == 200
 
 
-async def test_the_homepage_hero_is_a_photograph_and_the_story_stays_on_its_reference_page(HG):
+async def test_the_homepage_hero_is_a_photograph_and_the_story_plays_under_how_it_works(HG):
     """WP6 (Version A, the owner's choice of 1 Nov 2026): the hero is the pearl-and-gold photograph with the short value
-    statement, one START DESIGN and the collections line — no story, no thumbnail strip, no price. The story's engine
-    stays for the reference page (/showcase) and is no longer loaded by the site's pages."""
+    statement, one START DESIGN and the collections line — no story, no thumbnail strip, no price. The story (the moving
+    showcase the hero used to be) follows How It Works since 2 Nov: its stylesheet never blocks the first paint and its
+    engine loads only as it nears the screen (app.js loadStory), versioned like the page's other files."""
     H = HG
     Index = (await H.Client.get("/")).text
     Hero = Index[Index.index('data-ssr-view="home"'):Index.index('<section class="hv-sec">')]     # the page as served
@@ -168,8 +169,22 @@ async def test_the_homepage_hero_is_a_photograph_and_the_story_stays_on_its_refe
     assert '@click="resetAIFlow()" class="btn-gold hv-btn">Start Design</button>' in Hero and "made to order in real metal" in Hero
     assert Hero.count("<button") == 1 and "scrollToHowItWorks()" not in Hero and "$" not in Hero.replace("$el", "")   # no price
     assert re.search(r'<img src="' + re.escape(H.Base) + r'/static/images/home-hero-1440\.jpg\?v=\d+" width="1440" height="720" fetchpriority="high"', Hero)
-    assert 'data-testid="hero-showcase"' not in Index and "P3Showcase.mount(" not in Index and "/static/showcase." not in Index
-    assert "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
+    assert "sc-stage" not in Hero and "heroGo(" not in Hero and "openGallery(heroRing)" not in Hero
+    Live = Index[Index.index('data-ssr-view="home"'):Index.index("""<template x-if="view === 'home' && ssrView !== 'home'">""")]
+    How = Live.index('<section id="how-it-works"')
+    Story = Live.index('<section class="hv-story"')
+    assert How < Story and Live.index("</section>", How) < Story < Live.index('<section class="hv-band">')   # right after it
+    assert re.search(r'<section class="hv-story" aria-label="The design journey, in motion" data-src="' + re.escape(H.Base)
+                     + r'/static/showcase\.js\?v=\d+" x-init="loadStory\(\$el\)">', Live)
+    assert 'data-testid="home-story"' in Live and 'data-sc-design="aurora-mesh"' in Live
+    Head = Index.split("</head>")[0]
+    assert re.search(r'<link rel="stylesheet" href="' + re.escape(H.Base) + r'/static/showcase\.css\?v=\d+" media="print" onload="this\.media=\'all\'">', Head)
+    assert not re.search(r"<script[^>]*showcase\.js", Head)                               # no engine before the story is near
+    App = (await H.Client.get("/static/app.js")).text
+    Load = App[App.index("    loadStory(section) {"):App.index("    _story()")]
+    assert "rootMargin: '600px 0px'" in Load and "s.src = section.dataset.src; s.async = true;" in Load
+    assert "P3Showcase.mount(stage, { design: stage.dataset.scDesign, startAt: 'final' })" in Load
+    assert """_story() { const el = document.querySelector('[data-testid="home-story"] .sc-stage'); return el && el._sc; },""" in App
     Engine = (await H.Client.get("/static/showcase.js")).text
     assert "Designed with XJet Atelier" in Engine and "'Your idea', 'Four possibilities', 'Make it yours'" in Engine
     for Gone in ("From your words", "NanoParticle", "Design preview", "Design yours", "gold_18k_rose"):
@@ -219,18 +234,20 @@ async def test_a_browser_that_cannot_play_the_movie_fetches_no_video(HG):
 
 async def test_the_homepage_fetches_its_hero_photograph_with_its_first_files(HG):
     """Home LCP: the hero's photograph is the page's largest picture; the page's head preloads it — the same WebP files
-    and sizes as the hero's <picture>, so the browser takes the picture it already has. No story in the page any more
-    (WP6). Other pages preload no hero. The engine (the /showcase reference page) opens its story on the finished ring."""
+    and sizes as the hero's <picture>, so the browser takes the picture it already has (the sizes follow its crop: 134vw
+    on phones). The story below brings no data in the page (WP6). Other pages preload no hero. The engine opens its story
+    on the finished ring."""
+    from p3 import sitepages as SitePages
     H = HG
     await _Story(H)
     Index = (await H.Client.get("/")).text
     Cfg = json.loads(re.search(r"window\.__p3 = (\{.*?\});</script>", Index).group(1))
-    assert "story" not in Cfg
+    assert "story" not in Cfg and SitePages.HomeHeroSizes == "(max-width: 860px) 134vw, 100vw"
     Img = H.Base + "/static/images/home-hero-"
     Head = Index.split("</head>")[0]
     Preload = (f'<link rel="preload" as="image" href="{Img}1440.webp" imagesrcset="{Img}780.webp 780w, {Img}1440.webp 1440w" '
-               f'imagesizes="100vw" type="image/webp" fetchpriority="high">')
-    assert Preload in Head and f'srcset="{Img}780.webp 780w, {Img}1440.webp 1440w" sizes="100vw"' in Index
+               f'imagesizes="{SitePages.HomeHeroSizes}" type="image/webp" fetchpriority="high">')
+    assert Preload in Head and f'srcset="{Img}780.webp 780w, {Img}1440.webp 1440w" sizes="{SitePages.HomeHeroSizes}"' in Index
     for Other in ("/gallery", "/faq", "/design"):
         Page = (await H.Client.get(Other)).text
         assert '"story":' not in Page.split("</head>")[0] and Preload not in Page, Other
