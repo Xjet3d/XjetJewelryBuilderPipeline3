@@ -274,15 +274,18 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
         Supports = (" and ".join(Products.Plurals[P].lower() for P in Named) if len(Named) > 1 else
                     Products.Plurals[Named[0]].lower() + " only" if Named else "no products at the moment")
         Fixed = ("fixed per piece and material (a charm’s price also depends on its size)" if R and C else
-                 "fixed per charm, material and size" if C else "fixed per ring and material")
+                 "fixed per charm, material and size" if C else "fixed per ring and material" if R else
+                 "fixed per piece and material")                       # no product on offer: no ring wording (L5)
         Movie = (" with AI (and a 360° preview movie for rings)" if C else " and a 360° preview movie with AI") if R else " with AI"
         return {"termsService": f"XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for {Idea}, generates "
                                 f"four design options{Movie}, and lets you configure the metal and size of the "
                                 f"design you choose. The current release supports {Supports}.",
+                # the materials follow in their own static paragraph (web/index.html "Materials.", WP5): no sentence here
+                # names a metal or its status
                 "termsOrders": f"Prices are in US dollars and are {Fixed}. An order is a reservation until our team has reviewed "
                                "the design for production feasibility and confirmed it to you; payment is arranged after you "
                                f"place the order. Each {W['noun']} is made to order (design and size) and is not returnable for "
-                               f"change of mind; your design is not exclusive. Gold {W['nouns']} are quoted individually."}
+                               "change of mind; your design is not exclusive."}
     if View == "contact":
         Ring = ("Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or "
                 "send us your finger circumference in mm.")
