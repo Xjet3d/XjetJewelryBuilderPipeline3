@@ -14,7 +14,7 @@ from tests.test_charm_foundation import CharmDesign
 
 AdminKey = "gallery-products-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-HeroSha256 = "6a7fee8cccf43ef3645558584553f2e5e1e4d2f873fb24996e20742535bd3d9d"      # the homepage hero; the showcase from f7723c2 to WP6; 2026-10-07: the hero line names the products on offer;
+HeroSha256 = "382c8918ec240bb814e2c4591bac4f0d1a9c13e0f29e6c890dcb2ac6b938cd0c"      # the homepage hero; the showcase from f7723c2 to WP6; 2026-10-07: the hero line names the products on offer;
 #   2026-10-08: the line under Start Designing follows the products customers can design (heroCollection)
 #   2026-10-09: "Bespoke Jewelry" (never "Jewellery"); the mock-mode badges are marked <!--mock--> (sent only in mock mode)
 #   2026-10-09: phones — a smaller headline, the eyebrow on one line, tighter spacing (hero-* classes; desktop unchanged)

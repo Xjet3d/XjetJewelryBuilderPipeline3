@@ -403,7 +403,7 @@ def LightboxPreload(ImageUrl: str) -> str:
 
 # The homepage hero's photograph (web/index.html, WP6): its WebP files by width, as its <picture> lists them, and its
 # sizes (the 2:1 photo cropped to its frame: 3:2 on phones, so drawn 134vw wide)
-HomeHero = ((780, "home-hero-780.webp"), (1440, "home-hero-1440.webp"))
+HomeHero = ((780, "home-hero-780.webp"), (1080, "home-hero-1080.webp"), (1440, "home-hero-1440.webp"))
 HomeHeroSizes = "(max-width: 860px) 134vw, 100vw"
 
 

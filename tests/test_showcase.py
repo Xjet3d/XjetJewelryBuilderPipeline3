@@ -245,9 +245,9 @@ async def test_the_homepage_fetches_its_hero_photograph_with_its_first_files(HG)
     assert "story" not in Cfg and SitePages.HomeHeroSizes == "(max-width: 860px) 134vw, 100vw"
     Img = H.Base + "/static/images/home-hero-"
     Head = Index.split("</head>")[0]
-    Preload = (f'<link rel="preload" as="image" href="{Img}1440.webp" imagesrcset="{Img}780.webp 780w, {Img}1440.webp 1440w" '
+    Preload = (f'<link rel="preload" as="image" href="{Img}1440.webp" imagesrcset="{Img}780.webp 780w, {Img}1080.webp 1080w, {Img}1440.webp 1440w" '
                f'imagesizes="{SitePages.HomeHeroSizes}" type="image/webp" fetchpriority="high">')
-    assert Preload in Head and f'srcset="{Img}780.webp 780w, {Img}1440.webp 1440w" sizes="{SitePages.HomeHeroSizes}"' in Index
+    assert Preload in Head and f'srcset="{Img}780.webp 780w, {Img}1080.webp 1080w, {Img}1440.webp 1440w" sizes="{SitePages.HomeHeroSizes}"' in Index
     for Other in ("/gallery", "/faq", "/design"):
         Page = (await H.Client.get(Other)).text
         assert '"story":' not in Page.split("</head>")[0] and Preload not in Page, Other
