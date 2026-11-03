@@ -82,3 +82,26 @@
   src: url(fonts/inter-latin.woff2) format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* Fallbacks sized like the web fonts: text laid out before Inter or Cinzel arrives takes the room it will take, so nothing
+   moves when the font swaps in (CLS). Measured 3 Nov 2026 in Chrome from these files against the local Arial and Georgia:
+   the width over the site's own text (size-adjust) and each font's ascent, descent and line gap. Inter's is the average
+   (106.77%); Cinzel's is a little under its narrowest heading's (the hero's two lines measure 115.8%, other headings up to
+   127%), so a heading that just fits in Cinzel never wraps while the fallback shows. A device without the local font skips
+   the face and uses the next family, as before. */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT');
+  size-adjust: 106.77%;
+  ascent-override: 90.76%;
+  descent-override: 22.57%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Cinzel Fallback';
+  src: local('Georgia');
+  size-adjust: 112%;
+  ascent-override: 87.14%;
+  descent-override: 33.21%;
+  line-gap-override: 0%;
+}

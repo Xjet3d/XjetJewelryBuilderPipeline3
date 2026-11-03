@@ -273,7 +273,8 @@
   // quote page (none of the site's stylesheets) shows the same. The banner names no tool: Google Analytics 4 and
   // Microsoft Clarity are named under Analytics & Performance → Learn more, and on the Privacy page. Marketing &
   // Advertising is shown so the choices are complete, as "Not currently used": no tool, no switch.
-  var SANS = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif", SERIF = "Cinzel,Georgia,'Times New Roman',serif";
+  var SANS = "Inter,'Inter Fallback','Helvetica Neue',Helvetica,Arial,sans-serif",
+      SERIF = "Cinzel,'Cinzel Fallback',Georgia,'Times New Roman',serif";      // the fallbacks: vendor/fonts.css
   var CSS = [
     '@keyframes ac-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
     '@keyframes ac-fade{from{opacity:0}to{opacity:1}}',
@@ -339,10 +340,17 @@
     '.ac-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 28px 22px;border-top:1px solid #EAE0CC}',
     '.ac-foot .ac-btn{min-width:150px}.ac-foot .ac-end{margin-left:auto}',
     '@media (max-width:640px){',
-    '.ac-bar{left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;max-width:none;padding:18px 16px 8px}',
-    '.ac-bar p{font-size:13px}',
-    '.ac-bar .ac-row .ac-btn{padding:0 8px;font-size:12.5px;letter-spacing:.04em}',    // both labels on one line from 360 px
-    '.ac-bar .ac-quiet{display:block;margin:4px auto 0}',
+    // Phones (U4): a compact sheet with the same words and buttons in the same order, low enough that the hero's Start
+    // Design stays in view above it on a first visit (390 × 844: the card was 285 px tall and covered it). The heading
+    // runs into the text; the type has fallback faces sized like Inter and Cinzel, so the card keeps its height when the
+    // web font arrives (it grew 21 px)
+    '.ac-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;max-width:none;padding:11px 14px 2px;',
+    'font-size:12px;line-height:1.45}',
+    '.ac-bar .ac-title{display:inline;margin:0 6px 0 0;font-size:13px;line-height:1.45;letter-spacing:.05em}',
+    '.ac-bar p.ac-text{display:inline;margin:0;font-size:12px;line-height:1.45}',
+    '.ac-bar .ac-row{margin-top:9px}',
+    '.ac-bar .ac-row .ac-btn{min-height:38px;padding:0 8px;font-size:12px;letter-spacing:.04em}',    // both labels on one line from 360 px
+    '.ac-bar .ac-quiet{display:block;min-height:30px;padding:5px 0;margin:2px auto 0;font-size:12px}',
     '.ac-shade{align-items:flex-end;padding:0}',
     '.ac-card{max-width:none;max-height:92vh;max-height:92dvh;border-radius:12px 12px 0 0;border-bottom:0}',
     '.ac-body{padding:24px 20px 6px}',
@@ -380,7 +388,7 @@
   var CHEVRON = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 3.5L5 7l3.5-3.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  var bar = null;
+  var bar = null, barSize = null;
   function showBanner() {
     if (bar || !ACTIVE) return;
     style();
@@ -398,6 +406,7 @@
     document.body.insertBefore(bar, skip ? skip.nextSibling : document.body.firstChild);
     clearance();
     window.addEventListener('resize', clearance);
+    if (window.ResizeObserver) { barSize = new ResizeObserver(clearance); barSize.observe(bar); }   // its height as it is now
   }
   function clearance() {
     var R = document.documentElement;
@@ -405,6 +414,7 @@
     if (bar) R.style.setProperty('--ac-h', (bar.getBoundingClientRect().height + 24) + 'px'); else R.style.removeProperty('--ac-h');
   }
   function closeBanner() {
+    if (barSize) { barSize.disconnect(); barSize = null; }
     if (bar) { bar.remove(); bar = null; }
     window.removeEventListener('resize', clearance);
     clearance();

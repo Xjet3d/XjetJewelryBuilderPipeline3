@@ -517,6 +517,11 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   "products": list(Visible)}
         if View == "inspiration":
             Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
+        Foot = SitePages.PageDesigns(GalleryLinks(request), View) if View in SitePages.PageDesignOffsets and not Flow else []
+        if Foot:
+            Config["page_designs"] = len(Foot)                                 # the designs at the foot of the page
+        if View == "materials":                                                # the metal groups the page lists (its intro)
+            Config["page_groups"] = [G for G, Ms in MaterialStatus.PageGroups(Ctx, Visible).items() if Ms]
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
@@ -528,7 +533,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Links = SitePages.DesignLinks(Base, GalleryLinks(request), (Design or {}).get("slug", ""))
             Before['<div class="text-center"><button @click="resetAIFlow()"' if View == "inspiration" else '<section id="how-it-works"'] = Links
         if View in SitePages.PageDesignOffsets and not Flow:      # the four designs at the foot of the page, as links
-            Before[SitePages.PageDesignsAnchor] = SitePages.DesignLinks(Base, SitePages.PageDesigns(GalleryLinks(request), View))
+            Before[SitePages.PageDesignsAnchor] = SitePages.DesignLinks(Base, Foot)
+            Before[SitePages.PageDesignsLoop] = SitePages.PageDesignPlaceholders(len(Foot))   # their room (CLS)
+        if View == "home" and not Flow:                # the product chips and the Gallery's filter from the first paint (CLS)
+            Before[SitePages.HomeChipsAnchor] = SitePages.HomeChips(Visible)
+        if View == "inspiration":
+            Before[SitePages.GalleryFiltersAnchor] = SitePages.GalleryFilters(Visible)
         if View == "inspiration":                      # the grid's room from the first paint (CLS)
             Before[SitePages.GalleryLoading] = SitePages.GalleryPlaceholders(Config["gallery_count"])
         if View == "materials":
@@ -539,7 +549,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Before[Design.get("anchor") or '<section class="hero-section'] = Design["block"]     # the view's top
         if not Flow:
             Fill = SitePages.Fallbacks(View, Ctx, Visible, SitePages.HeroCollection(Visible, Products.PreviewedProducts(Ctx, request)))
-            Html = SitePages.ServerView(Html, View, Fill, Before)
+            if S.SupportEmail:                         # the address's line keeps its room; the address itself stays out of the
+                Fill["SUPPORT_EMAIL"] = " "         # markup (Cloudflare rewrites one into a link crawlers get as 404)
+            # what the app starts with shown: the page as served shows it too, so nothing moves when the scripts start
+            Shown = {"productsOn": len(Visible) > 1, SitePages.PageDesignsShown: bool(Foot),
+                     "heroCollection.label": bool(Fill.get("heroCollection.label")), "SUPPORT_EMAIL": bool(S.SupportEmail)}
+            Html = SitePages.ServerView(Html, View, Fill, Before, Shown)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
             Html = SitePages.DesignHeading(Html)
         if Flow:                                       # the step's own title, the one the app shows there

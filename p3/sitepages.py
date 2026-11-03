@@ -330,11 +330,18 @@ def _Span(Html: str, Open: str, Start: int = 0) -> tuple[int, int]:
     raise ValueError(f"unclosed template: {Open}")
 
 
-def _Cloak(Html: str) -> str:
-    """Before the scripts start, a part shown or hidden by state (x-show) stays hidden: it never flashes in its wrong state."""
+def _Cloak(Html: str, Shown: dict | None = None) -> str:
+    """Before the scripts start, a part shown or hidden by state (x-show) stays hidden: it never flashes in its wrong state.
+    Shown: the x-show expressions the server knows the app starts with as true (the product chips while more than one
+    product is on offer…): those parts are shown from the first paint, so nothing moves when the scripts start."""
     def One(M):
         Tag = M.group(0)
-        if ' x-show="' not in Tag or " x-cloak" in Tag:
+        Show = re.search(r' x-show="([^"]*)"', Tag)
+        if not Show:
+            return Tag
+        if (Shown or {}).get(html.unescape(Show.group(1))) is True:
+            return Tag.replace(" x-cloak", "")
+        if " x-cloak" in Tag:
             return Tag
         Name = re.match(r"<[a-zA-Z][\w:-]*", Tag).group(0)
         return Name + " x-cloak" + Tag[len(Name):]
@@ -347,10 +354,11 @@ def _Fill(Html: str, Expr: str, Text: str) -> str:
                   lambda M: M.group(1) + html.escape(Text, quote=False) + M.group(2), Html)
 
 
-def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | None = None) -> str:
+def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | None = None, Shown: dict | None = None) -> str:
     """index.html with the page `View` as real markup: a live copy of its template (filled with this site's text, the
-    x-show parts cloaked until the scripts start, crawler-only blocks inserted before an anchor) that removes itself when
-    the visitor leaves the view; the template stays for later visits, kept from rendering twice (ssrView)."""
+    x-show parts cloaked until the scripts start unless Shown says the app starts with them shown, crawler-only blocks
+    inserted before an anchor) that removes itself when the visitor leaves the view; the template stays for later visits,
+    kept from rendering twice (ssrView)."""
     Open = _LegalOpen if View in Legal else f"""<template x-if="view === '{View}'">"""
     S, End = _Span(Html, Open)
     Inner = Html[S + len(Open):End - len("</template>")]
@@ -360,7 +368,7 @@ def ServerView(Html: str, View: str, Fill: dict | None = None, Before: dict | No
             Open_ = f"""<template x-if="view === '{Other}'">"""
             IS, IE = _Span(Copy, Open_)
             Copy = Copy[:IS] + (Copy[IS + len(Open_):IE - len("</template>")] if Other == View else "") + Copy[IE:]
-    Copy = _Cloak(Copy)
+    Copy = _Cloak(Copy, Shown)
     for Expr, Text in (Fill or {}).items():
         Copy = _Fill(Copy, Expr, Text)
     for Anchor, Block in (Before or {}).items():
@@ -396,6 +404,43 @@ def DesignHeading(Html: str) -> str:
 # has the card's shape (its top row, the square picture, the name and the swatch row: index.html .g-card), so the grid
 # holds its height from the first paint to the cards and nothing below it moves (CLS).
 GalleryLoading = """<template x-if="galleryState === 'loading'"><template x-for="i in galleryPlaceholders" """
+
+# The product chips (home) and the Gallery's filter (index.html): while more than one product is on offer the page shows
+# them from the first paint — the buttons as the app first draws them, each removed as the app starts and draws its own
+# (web/app.js homeChips, galleryFilters: the products in the server's order; the default product's chip, and All, pressed)
+HomeChipsAnchor = """<template x-for="f in homeChips" """
+GalleryFiltersAnchor = """<template x-for="f in galleryFilters" """
+_FilterClass = "tap min-h-[40px] px-4 py-2 rounded-full text-[13px] uppercase tracking-[0.14em] font-semibold transition"
+
+
+def HomeChips(Visible: tuple) -> str:
+    if len(Visible) < 2:
+        return ""
+    Chips = [(P, Products.Plurals[P]) for P in Visible] + [("all", "All")]
+    return "".join(f'<button type="button" class="hv-chip" aria-pressed="{"true" if P == Visible[0] else "false"}" tabindex="-1" '
+                   f'aria-hidden="true" data-ssr-placeholder x-init="$el.remove()">{E(Label)}</button>' for P, Label in Chips)
+
+
+def GalleryFilters(Visible: tuple) -> str:
+    if len(Visible) < 2:
+        return ""
+    Filters = [("", "All")] + [(P, Products.Plurals[P]) for P in Visible]
+    return "".join(f'<button type="button" aria-pressed="{"true" if not P else "false"}" tabindex="-1" aria-hidden="true" '
+                   f'class="{_FilterClass} {"bg-white shadow-sm text-[#1A1A1A]" if not P else "text-[#5F5F5F]"}" '
+                   f'data-ssr-placeholder x-init="$el.remove()">{E(Label)}</button>' for P, Label in Filters)
+
+
+# The designs at the foot of About, Materials, Technology and FAQ (index.html, x-show "pageDesigns.length ||
+# pageDesignsSoon"): the page as served holds one card's room per design until the gallery answers (web/app.js
+# pageDesignsSoon draws the same squares meanwhile), so the footer never moves when the cards arrive
+PageDesignsShown = "pageDesigns.length || pageDesignsSoon"
+PageDesignsLoop = """<template x-for="g in pageDesigns" """
+PageDesignSquare = ('<div class="g-card" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"><span class="block mx-[9%] mt-[9%]">'
+                    '<span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div>')
+
+
+def PageDesignPlaceholders(Count: int) -> str:
+    return PageDesignSquare * max(0, Count)
 GallerySquare = ('<div class="g-card" aria-hidden="true" data-ssr-placeholder x-init="$el.remove()"><div class="h-11"></div>'
                  '<div class="mx-[9%] aspect-square rounded-lg shimmer"></div><div class="g-ph-foot"></div></div>')
 
@@ -447,14 +492,14 @@ def NotFoundPage(Base: str) -> str:
     <link rel="stylesheet" href="{B}/static/vendor/fonts.css">
     <style>
         body {{ margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: #FBF8F3; color: #1A1A1A;
-               font-family: 'Inter', system-ui, sans-serif; }}
+               font-family: 'Inter', 'Inter Fallback', system-ui, sans-serif; }}
         header {{ padding: 22px 24px; border-bottom: 1px solid #ECE6DA; background: #fff; }}
         header a {{ display: inline-flex; align-items: center; gap: 16px; color: #1A1A1A; text-decoration: none; }}
         header img {{ display: block; height: 24px; width: auto; }}
-        header span {{ font-family: 'Cinzel', Georgia, serif; text-transform: uppercase; letter-spacing: .26em; font-size: 14px; }}
+        header span {{ font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; text-transform: uppercase; letter-spacing: .26em; font-size: 14px; }}
         main {{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 64px 20px; }}
         .eyebrow {{ font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8A561B; margin: 0 0 16px; }}
-        h1 {{ font-family: 'Cinzel', Georgia, serif; font-weight: 400; font-size: clamp(30px, 6vw, 44px); letter-spacing: .02em; margin: 0 0 16px; }}
+        h1 {{ font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; font-weight: 400; font-size: clamp(30px, 6vw, 44px); letter-spacing: .02em; margin: 0 0 16px; }}
         p {{ color: #45454C; font-size: 17px; line-height: 1.6; max-width: 480px; margin: 0 0 32px; }}
         .home {{ display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 32px; border-radius: 4px;
                  background: linear-gradient(90deg, #C9A96E 0%, #B08040 100%); color: #1A1A1A; font-weight: 600; font-size: 14px;

@@ -75,7 +75,7 @@ def test_the_consent_card_sits_bottom_right_clear_of_the_heros_buttons():
     designing" and "How it works"); phones keep their sheet along the bottom."""
     Js = (WebDir / "consent.js").read_text(encoding="utf-8")
     assert "'.ac-bar{position:fixed;right:24px;bottom:24px;" in Js and "left:24px;bottom:24px" not in Js
-    assert "'.ac-bar{left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;" in Js
+    assert "'.ac-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;" in Js   # compact since U4
 
 
 async def test_about_and_technology_say_only_what_xjet_publishes(tmp_path):
@@ -120,7 +120,7 @@ def test_how_it_works_numerals_read_and_its_titles_are_h3():
     with the same look; nothing else in How It Works changes."""
     S = Index.index('<section id="how-it-works"')
     How = Index[S:Index.index("</section>", S)]
-    assert ".step-numeral { color: #B08D57 !important; }" in Index and ".step-title, .h-inter { font-family: 'Inter', sans-serif; }" in Index
+    assert ".step-numeral { color: #B08D57 !important; }" in Index and ".step-title, .h-inter { font-family: 'Inter', 'Inter Fallback', sans-serif; }" in Index
     assert '<h3 class="step-title text-sm font-semibold text-zinc-900 mb-2" x-text="s.title"></h3>' in How and "<h4" not in How
     for Kept in ("Custom Jewelry Made Simple", "From idea to finished piece in four simple steps.", "Share Your Idea",
                  "Choose From Four", "Choose Your Details", "Add to Your Bag", "You see your design before anything is made."):

@@ -250,6 +250,7 @@ function p3App() {
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
           problems: {}, addrCheck: null, useSuggested: false, requestId: '', currencyNote: '',
+          duplicate: null,             // the customer's own order of the last day that this one repeats: placed again only on their say-so
           note: '',                    // "Anything we should know?" (R-45): the order's customer note
           recipientEdited: false },    // the customer typed the Recipient: step 1's name no longer fills it (R-42)
     quoteReq: { open: false, busy: false, error: '', done: null, message: '', quantity: 1, problems: {},
@@ -368,6 +369,7 @@ function p3App() {
         if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
         if (err.category) ex.category = err.category;          // why the prompt check stopped a request (P5)
         if (err.legal) ex.legal = err.legal;                   // terms_changed: the versions to show and accept now
+        if (err.existing_order) ex.existingOrder = err.existing_order;   // duplicate_order: the earlier order it repeats
         throw ex;
       }
       return data;
@@ -603,6 +605,12 @@ function p3App() {
       if (at === undefined || !all.length) return [];
       const from = at % all.length;
       return [...all.slice(from), ...all.slice(0, from)].slice(0, 4);
+    },
+    // While the gallery loads on the page the server rendered, the designs at its foot keep their room (as many squares as
+    // the server's copy holds: p3/sitepages.py PageDesignPlaceholders), so the footer never moves when the cards arrive
+    get pageDesignsSoon() {
+      const n = window.__p3?.page_designs;
+      return this.galleryState === 'loading' && this.view === P3_PAGE && Number.isInteger(n) && n > 0 ? n : 0;
     },
     // A gallery design's picture in words (its alt text, as the design's page says it: p3/app.py): its name, what it is,
     // where it is from, and the metal it is previewed in
@@ -1745,8 +1753,10 @@ function p3App() {
                 : c ? 'Fashion metals have a fixed price per charm, set by material and size — any design.'
                 : 'Fashion metals have a fixed price per ring — any size, any design.';
       // the metals by their status (WP3): a sentence only for a group the page lists (p3/sitepages.py, the same words)
-      const gold = (this.pageMetals('luxury').length ? ' Gold is quoted individually.' : '')
-                 + (this.pageMetals('preview').length ? ' Gold can be previewed in Customize but is not available to order.' : '');
+      // until the catalog answers, the groups the server's copy listed (p3/app.py page_groups): the intro keeps its length
+      const has = g => this.catalog ? this.pageMetals(g).length > 0 : (window.__p3?.page_groups || []).includes(g);
+      const gold = (has('luxury') ? ' Gold is quoted individually.' : '')
+                 + (has('preview') ? ' Gold can be previewed in Customize but is not available to order.' : '');
       return 'Every ' + this.wording.noun + ' is printed to order in the metal you choose. ' + how + gold;
     },
     get materialsNote() {
@@ -2650,9 +2660,10 @@ function p3App() {
     },
     coGoTo(step) {
       const idx = this.checkoutSteps.findIndex(s => s[0] === step);
-      if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this._scrollTop(); }
+      if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this.co.duplicate = null; this._scrollTop(); }
     },
     coBack() {
+      this.co.duplicate = null;
       if (this.co.step === 'details') { this._goBackOr('checkout'); return; }
       this.co.step = this.co.step === 'review' ? 'shipping' : 'details'; this.co.error = ''; this._scrollTop();
     },
@@ -2715,9 +2726,10 @@ function p3App() {
     },
     async removePromo() { this.co.promo_code = ''; this.co.promo_input = ''; await this.coRequote(); },
     async setShipping(m) { this.co.shipping_method = m; this._saveCoDraft(); if (this.view === 'order') await this.coRequote(); },
-    async placeOrder() {
+    // confirmDuplicate: the customer chose "Place it again" for an order that repeats one of theirs from the last day
+    async placeOrder({ confirmDuplicate = false } = {}) {
       if (!this.coCanPlace) return;
-      this.co.busy = true; this.co.error = ''; this.co.problems = {};
+      this.co.busy = true; this.co.error = ''; this.co.problems = {}; this.co.duplicate = null;
       try {
         this.co.currencyNote = '';
         const o = await this.api('POST', '/api/orders', {
@@ -2728,6 +2740,7 @@ function p3App() {
           // what this page showed: a bag that changed meanwhile is reviewed again, never paid for unseen (WP2)
           expected_lines: (this.coQuote?.lines || []).filter(l => !l.problem).map(l => l.bag_line_id),
           expected_total: this.coQuote?.total ?? null,
+          ...(confirmDuplicate ? { confirm_duplicate: true } : {}),
         });
         this.order = o;
         this.co.note = ''; this._clearCoDraft();                       // placed: the draft has done its job
@@ -2747,7 +2760,17 @@ function p3App() {
         }
         if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
         if (e.code === 'bag_changed') { await this.refreshBag(); await this.coRequote(); this.co.error = e.message; }
+        if (e.code === 'duplicate_order') {                       // the same pieces to the same address, ordered within the day
+          this.co.error = ''; this.co.duplicate = { ...(e.existingOrder || {}), message: e.message };
+          this.$nextTick(() => document.getElementById('co-duplicate')?.focus());
+        }
       } finally { this.co.busy = false; }
+    },
+    async viewEarlierOrder() {
+      const id = this.co.duplicate?.id;
+      if (!id) return;
+      try { this.openOrder(await this.api('GET', `/api/orders/${encodeURIComponent(id)}`)); this.co.duplicate = null; }
+      catch (e) { this.co.error = e.message; }
     },
     async loadOrders() {
       if (!this.token) return;
