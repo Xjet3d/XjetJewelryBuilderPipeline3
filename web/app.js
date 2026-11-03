@@ -248,7 +248,7 @@ function p3App() {
     co: { step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
-          problems: {}, addrCheck: null, useSuggested: false, requestId: '',
+          problems: {}, addrCheck: null, useSuggested: false, requestId: '', currencyNote: '',
           note: '',                    // "Anything we should know?" (R-45): the order's customer note
           recipientEdited: false },    // the customer typed the Recipient: step 1's name no longer fills it (R-42)
     quoteReq: { open: false, busy: false, error: '', done: null, message: '', quantity: 1, problems: {},
@@ -1422,7 +1422,7 @@ function p3App() {
       this.co = { ...this.co, step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
                   address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
                   promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '',
-                  note: '', recipientEdited: false };
+                  note: '', recipientEdited: false, currencyNote: '' };
       this._clearCoDraft();
       this.persist({ designId: null, view: 'home' });
       this.navigateTo('home', { history: 'replace' });         // the journey's steps need a sign-in again
@@ -1729,7 +1729,8 @@ function p3App() {
       const ring = kinds.has('ring'), charm = kinds.has('charm');
       const per = ring && charm ? 'piece' : charm ? 'charm' : 'ring';
       const sizes = ring && charm ? 'Charm sizes are in millimeters; ring sizes are US sizes.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
-      return 'Fixed prices per ' + per + ' and material, in US dollars. ' + sizes + ' Delivery and any promo code are added at checkout.';
+      const cur = this.bag?.incl_vat ? 'in shekels, including VAT' : 'in US dollars';     // ₪ only while Israeli pricing is on (B6)
+      return 'Fixed prices per ' + per + ' and material, ' + cur + '. ' + sizes + ' Delivery and any promo code are added at checkout.';
     },
     get composerNote() {
       if (this.nothingOnOffer) return 'Nothing is available to design right now. Please check back soon.';
@@ -2422,7 +2423,14 @@ function p3App() {
       const q = this.cust?.quote;
       if (!q) return '—';
       if (q.pricing_status !== 'available') return 'Price unavailable';
-      return this.money(q.unit_price, q.currency);
+      return this.money(q.unit_price, q.currency) + (q.incl_vat ? ' incl. VAT' : '');
+    },
+    // Israeli pricing (B6), only while it is on: the ₪/$ choice is kept in an essential cookie and every price reloads
+    get pricingChoice() { return this.catalog?.pricing || null; },
+    setCurrency(cur) {
+      if (!['ILS', 'USD'].includes(cur) || this.pricingChoice?.currency === cur) return;
+      document.cookie = 'p3_currency=' + cur + '; path=/; max-age=31536000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+      location.reload();
     },
     // whole: a whole amount without its cents ("$90", the Materials page); anything else keeps them ("$90.50")
     money(v, cur = 'USD', whole = false) {
@@ -2523,7 +2531,7 @@ function p3App() {
         this.bag = await this.api('POST', '/api/bag', { customization_id: this.cust.id });
         const c = this.cust, product = c.product_type || 'ring', qty = c.quantity || 1;
         const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / qty : undefined);
-        this.measure('add_to_cart', { currency: 'USD', value: c.line_total ?? undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
+        this.measure('add_to_cart', { currency: c.quote?.currency || 'USD', value: c.line_total ?? undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
         this.bagMessage = 'Added to your bag.';
         this.showToast('Added to your bag', { label: 'View bag', action: () => this.goToCheckout() });
       } catch (e) { this.custError = e.message; }
@@ -2631,7 +2639,8 @@ function p3App() {
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
         this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
         this.navigateTo('order', { history });                       // Checkout's page view, then the event at its address
-        if (!resumed) this.measure('begin_checkout', { currency: 'USD', value: this.bag?.totals?.USD,
+        const bagCur = Object.keys(this.bag?.totals || {})[0] || 'USD';
+        if (!resumed) this.measure('begin_checkout', { currency: bagCur, value: this.bag?.totals?.[bagCur],
                                                        items: this.bagLines.map(l => this.measureItem(l.product_type || 'ring', l.material_id, l.unit_price, l.quantity)) });
       } catch (e) { this.co.error = e.message; }
       finally { this.co.busy = false; }
@@ -2680,7 +2689,18 @@ function p3App() {
     },
     async coReview() { await this.coRequote(); this.co.step = 'review'; this._scrollTop(); },
     async coRequote() {
-      try { this.coQuote = await this.api('POST', '/api/checkout/quote', { promo_code: this.co.promo_code || null, shipping_method: this.co.shipping_method }); }
+      try {
+        const before = this.coQuote?.currency;
+        // the delivery country decides the currency while Israeli pricing is on (B6); otherwise it is not sent
+        const country = this.pricingChoice && this.co.step !== 'details' ? (this.co.address.country || null) : null;
+        const q = await this.api('POST', '/api/checkout/quote', { promo_code: this.co.promo_code || null, shipping_method: this.co.shipping_method,
+                                                                   ...(country ? { country } : {}) });
+        if (q.shipping_options && this.checkout) this.checkout.shipping_options = q.shipping_options;
+        this.coQuote = q;
+        if (before && q.currency !== before)
+          this.co.currencyNote = q.currency === 'ILS' ? 'Prices updated for delivery to Israel: in shekels, including VAT.'
+                                                      : 'Prices updated for delivery outside Israel: in US dollars, without Israeli VAT.';
+      }
       catch (e) { this.co.error = e.message; }
     },
     async applyPromo() {
@@ -2696,6 +2716,7 @@ function p3App() {
       if (!this.coCanPlace) return;
       this.co.busy = true; this.co.error = ''; this.co.problems = {};
       try {
+        this.co.currencyNote = '';
         const o = await this.api('POST', '/api/orders', {
           customer: this.co.customer, address: this.co.address, shipping_method: this.co.shipping_method,
           promo_code: this.co.promo_code || null, terms_accepted: this.co.terms === true,

@@ -182,7 +182,23 @@ def AccountUnavailableEmail(Name: str, Removed: bool, Support: str = "") -> tupl
 
 
 def _Money(V, Cur="USD") -> str:
-    return ("$" if Cur == "USD" else Cur + " ") + f"{float(V or 0):,.2f}"
+    return {"USD": "$", "ILS": "₪"}.get(Cur, f"{Cur} ") + f"{float(V or 0):,.2f}"
+
+
+def _VatRow(Order: dict) -> str:
+    """An order in ₪ (Israeli pricing, B6): the VAT included in its total, under the total. A USD order: nothing."""
+    if Order.get("vat_amount") is None:
+        return ""
+    return f"""
+          <tr><td style="padding:2px 0 0;{_Font}font-size:13px;color:#6F6F6F;">Including VAT</td>
+              <td align="right" style="padding:2px 0 0;{_Font}font-size:13px;color:#6F6F6F;">{_Esc(_Money(Order['vat_amount'], Order['currency']))}</td></tr>"""
+
+
+def _PriceNote(Order: dict) -> str:
+    """The order email's price line: a ₪ order (Israeli pricing, B6) includes Israeli VAT; a USD order is as before."""
+    if Order.get("currency") == "ILS":
+        return "Prices in shekels, including Israeli VAT."
+    return "Prices in US dollars; import duties or VAT, where charged, are paid by the recipient."
 
 
 def _Esc(V) -> str:
@@ -264,7 +280,7 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Rows}</table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">{TotalRows}
           <tr><td style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">Total</td>
-              <td align="right" style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">{_Esc(_Money(Order['total'], Order['currency']))}</td></tr>
+              <td align="right" style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">{_Esc(_Money(Order['total'], Order['currency']))}</td></tr>{_VatRow(Order)}
         </table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
           <tr>
@@ -282,7 +298,7 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Next}
         </table>
         <div style="margin:24px 0 0;">{Button}</div>
-        <p style="margin:28px 0 0;font-size:12px;color:#6F6F6F;">Prices in US dollars; import duties or VAT, where charged, are paid by the recipient.
+        <p style="margin:28px 0 0;font-size:12px;color:#6F6F6F;">{_PriceNote(Order)}
            {ContactLine(Order['ref'])}</p>"""))
 
 
