@@ -44,10 +44,11 @@ const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
 const CO_DRAFT_KEY = 'p3_co_draft';               // the checkout draft (sessionStorage: this tab only, R-25)
 const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal_code', 'country'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
-                    'terms', 'privacy', 'shipping-returns', 'contact'];
+                    'terms', 'privacy', 'shipping-returns', 'contact', 'warranty', 'accessibility'];
 // Each page's URL under the base path (p3/sitepages.py Paths): /gallery, /faq … ('' = the home page)
 const PAGE_PATHS = { home: '', inspiration: 'gallery', faq: 'faq', materials: 'materials', technology: 'technology', designers: 'about',
-                     'shipping-returns': 'shipping-returns', terms: 'terms', privacy: 'privacy', contact: 'contact' };
+                     'shipping-returns': 'shipping-returns', terms: 'terms', privacy: 'privacy', contact: 'contact',
+                     warranty: 'warranty', accessibility: 'accessibility' };
 // The designs each page shows at its foot start at this place in the gallery's order (p3/sitepages.py PageDesignOffsets)
 const PAGE_DESIGN_OFFSETS = { materials: 0, technology: 4, designers: 8, faq: 12 };
 // The page the server rendered: its view is in the HTML as real markup (a copy that leaves when the visitor moves on)
@@ -1771,13 +1772,13 @@ function p3App() {
       const idea = names.length ? names.map(n => 'a ' + n).join(' or ') : 'a piece of jewelry';
       const supports = plurals.length > 1 ? plurals.join(' and ') : plurals.length === 1 ? plurals[0] + ' only' : 'no products at the moment';
       const movie = this.wording.ring ? (this.wording.charm ? ' with AI (and a 360° preview movie for rings)' : ' and a 360° preview movie with AI') : ' with AI';
-      return 'XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for ' + idea + ', generates four design options' + movie + ', and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
+      return 'XJet Atelier lets you describe or upload an idea for ' + idea + ', generates four design options' + movie + ', and lets you configure the metal and size of the design you choose. The current release supports ' + supports + '.';
     },
     // The orders sentence (p3/sitepages.py, the same words); the materials follow in the Terms' own static paragraph (WP5)
     get termsOrders() {
       const r = this.wording.ring, c = this.wording.charm;
-      const fixed = r && c ? 'fixed per piece and material (a charm’s price also depends on its size)' : c ? 'fixed per charm, material and size' : r ? 'fixed per ring and material' : 'fixed per piece and material';
-      return 'Prices are in US dollars and are ' + fixed + '. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. Each ' + this.wording.noun + ' is made to order (design and size) and is not returnable for change of mind; your design is not exclusive.';
+      const fixed = r && c ? 'fixed per piece and material (a charm’s price also depends on its size; a ring’s size does not change its price)' : c ? 'fixed per charm, material and size' : r ? 'fixed per ring and material' : 'fixed per piece and material';
+      return 'Prices are ' + fixed + '. An order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you; payment is arranged after you place the order. You can cancel an order free of charge until we confirm it to you. If we cannot make your design, we tell you and you pay nothing. Each ' + this.wording.noun + ' is made to order; your design is not exclusive.';
     },
     get sizingHelp() {
       const r = this.wording.ring, c = this.wording.charm;

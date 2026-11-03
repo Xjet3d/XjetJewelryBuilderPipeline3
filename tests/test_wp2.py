@@ -180,9 +180,9 @@ def test_sign_in_wording_and_the_terms_checkbox_are_the_owners_and_await_counsel
     Terms = Index[Index.index("<template x-if=\"view === 'terms'\">"):]
     Terms = Terms[:Terms.index("</template>")]
     assert "Access is by a personal 6-letter sign-in code." not in Terms
+    # B5 draft (Counsel Book A-1 §3, T1): the six-letter codes are retired (2 Nov), so the Terms no longer mention them
     assert ("You create an account and sign in with your email address and a password, or with your Google account." in Terms
-            and "Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; "
-                "if you have one, it only moves its account to the new sign-in and then stops working." in Terms)
+            and "Six-letter sign-in codes" not in Terms)
     assert ("Respect other people's intellectual property, such as their artwork, designs and trademarks, as XJet does." in Terms
             and "We never show the photos you upload in the gallery or use them to promote Atelier." in Terms
             and "We do not display, promote or make for anyone else a design that shows an identifiable person or carries "

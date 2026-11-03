@@ -99,7 +99,7 @@ async def test_the_legal_texts_are_versioned_and_archived_automatically(A):
     assert set(Archive) == {"terms", "privacy"}
     Terms, Privacy = Archive["terms"]["text"], Archive["privacy"]["text"]
     # Each page's own wording (base path left out), not the site's frame or footer; its hash is what customers accept
-    assert Terms.startswith("Terms of Service The service ") and Privacy.startswith("Privacy What we collect ")
+    assert Terms.startswith("Terms of Service Last updated: ") and Privacy.startswith("Privacy Policy Last updated: ")   # B5 draft
     assert "You create an account and sign in with your email address and a password" in Terms and "/privacy" in Terms
     assert "made in real metal with NanoParticle Jetting" not in Terms + Privacy and "<!--" not in Terms + Privacy
     assert Sha256(Terms) == L1["terms"]["sha256"] and Sha256(Privacy) == L1["privacy"]["sha256"]

@@ -1128,7 +1128,7 @@
     </template>
 
     <!-- ── Legal & support pages (P2 plain-language drafts, pending legal review) ── -->
-    <template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">
+    <template x-if="['terms','privacy','shipping-returns','contact','warranty','accessibility'].includes(view)">
         <main class="flex-1 overflow-y-auto fade-in bg-white flex flex-col">
             <div class="flex-1 p-8 md:p-24">
             <article class="max-w-3xl mx-auto">
@@ -1136,66 +1136,131 @@
 
                 <template x-if="view === 'shipping-returns'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-3 (S1–S4, T4, N2–N4, N8,
+                             N9). Pending legal counsel's written approval; [bracketed] parts are placeholders or counsel's choices -->
                         <h1 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h1>
+                        <p class="text-[14px] text-zinc-500">Last updated: [date]</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Timeline</h2>
                         <ul class="list-disc pl-5 space-y-1">
                             <li><strong>Design:</strong> same day. You choose and refine your design before anything is made.</li>
+                            <li><strong>Design review:</strong> about 2 business days after you order, our team checks that your design can be made and confirms the order to you.</li>
                             <li><strong>Production:</strong> up to 14 days. <span x-text="'Each ' + wording.noun + ' is printed to order in real metal.'"></span></li>
-                            <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery. Express delivery is $45, about 5 business days, priority handling and fully insured.</li>
+                            <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery. Express delivery is $45 and takes about 5 business days, with priority handling[ and insurance for the value of the order].</li>
                         </ul>
-                        <h2 class="text-lg font-semibold text-zinc-900">Prices, tax and duties</h2>
-                        <p>All prices are in US dollars. If your country charges import duties or VAT on delivery, those are paid by the recipient.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Returns</h2>
-                        <p x-text="'Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. If your ' + wording.noun + ' arrives damaged, or does not match the design or the size you selected, contact us within 14 days of delivery and we will remake it or refund you.'"></p>
+                        <p>We ship from Israel to the countries listed at checkout. Business days are [Sunday to Thursday, except public holidays in Israel] for our design review and production, and the carrier’s working days for delivery; delivery times are the carrier’s estimates. The piece is at our risk until it is delivered to you.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Prices, taxes and duties</h2>
+                        <p>For delivery to Israel, prices are in Israeli shekels and include 18% VAT. Elsewhere, prices are in US dollars and we do not add sales tax. Where your country charges import VAT, customs duty or a carrier’s handling fee on delivery, the recipient pays them, unless the law requires us to collect them at checkout; in that case we show them in your total before you order. [United Kingdom: for orders up to £135, the price includes UK VAT, which we collect at checkout.] [European Union: import VAT and customs duty — currently a flat €3 per type of item for parcels up to €150 — may be charged on delivery.] [United States: customs duty may be charged on delivery.]</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Cancelling before we confirm</h2>
+                        <p>You can cancel an order free of charge until we confirm it to you. If we cannot make your design, we tell you and you pay nothing.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Personalised pieces</h2>
+                        <p>A piece made from a design you created or changed in Atelier — from your own description or image, or by changing a gallery design — is printed to order to your specification and cannot be resold. Once we have confirmed the order, it is not returnable for a change of mind, and, where the law allows, the right to cancel a purchase made at a distance does not apply to it.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Gallery designs ordered unchanged</h2>
+                        <!-- Counsel chooses Option 1 or Option 2 (Counsel Book Q2); the other is deleted before release -->
+                        <p>[Option 1, if counsel decides a right to cancel applies:] If you order a gallery design without changing it, you can cancel within 14 days of receiving it [Israel: within 14 days of receiving it or the order confirmation with this information, whichever is later]. To cancel, use “Cancel this order” on your order page or write to <a :href="mailto('Cancel my order')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a>; we confirm we received it by email. Send the piece back unworn within 14 days after telling us[; you pay the cost of returning it]. We refund the price and the standard delivery cost within 14 days of receiving the piece back, to the way you paid [Israel: less a cancellation fee of 5% of the price or NIS 100, whichever is lower, where the law allows].</p>
+                        <p>[Option 2, if counsel decides it is exempt:] A gallery design is printed to order in the metal and size you choose, so the rules for personalised pieces apply.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Israeli customers: extended period</h2>
+                        <p>If you live in Israel and are a person with a disability, a senior citizen (65 or older) or a new immigrant, and your order included a conversation with our team, you may cancel within four months instead of 14 days, where Israeli law gives you that right. We may ask you to show your status.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Faulty or not as ordered</h2>
+                        <p>If your piece arrives damaged or faulty, or does not match the design, metal or size you ordered, contact us within 14 days of delivery with your Order ID and photos, and we will remake it or refund you, and pay for the return. This does not affect your legal rights for a faulty piece, which in the EU and the UK last at least two years from delivery.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Delivery problems</h2>
+                        <p>If your parcel has not arrived [10 business days] after its delivery estimate, contact us and we will trace it with the carrier; if it is lost, we remake your piece or refund you. Please check the delivery address: if a parcel comes back because the address was wrong, we send it again for the cost of shipping.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Ring size</h2>
+                        <!-- Owner decision pending (Counsel Book Q42) -->
+                        <p>[If your ring does not fit, write to us: we can remake it in another size [free of charge once / for $…].]</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Warranty</h2>
-                        <p>Two years against manufacturing defects. Normal wear, resizing by third parties and accidental damage are not covered.</p>
+                        <p>Every piece has a two-year limited warranty against manufacturing defects, counted from the day it is delivered. See the <a href="{{BASE}}/warranty" @click="pageLink($event, 'warranty')" class="underline underline-offset-2 hover:text-black">Warranty</a> page for what it covers and how to claim. It is in addition to your rights as a consumer under applicable law.</p>
                     </div>
                 </template>
 
                 <template x-if="view === 'terms'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-1 — the whole Terms of
+                             Service (live text + T1–T12, A1, N1, N7, N8, N9, N21). Pending legal counsel's written approval;
+                             [bracketed] parts are placeholders XJet fills or counsel's choices. On release the changed text
+                             becomes the Terms' next version (p3/accounts/consent.py), as for any wording change -->
                         <h1 class="text-4xl brand-font text-zinc-900">Terms of Service</h1>
-                        <h2 class="text-lg font-semibold text-zinc-900">The service</h2>
+                        <p class="text-[14px] text-zinc-500">Last updated: [date]</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">1. Who we are and these terms</h2>
+                        <p>XJet Atelier is operated by XJet Ltd., [registered address], company number [company number] (“XJet”, “we”). You can reach us at <a :href="mailto('A question about the Terms')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'the address on our Contact page'">the address on our Contact page</a>. These terms apply when you use XJet Atelier and when you order from it. Please read them with our <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>, our <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="underline underline-offset-2 hover:text-black">Shipping &amp; Returns</a> page and our <a href="{{BASE}}/warranty" @click="pageLink($event, 'warranty')" class="underline underline-offset-2 hover:text-black">Warranty</a>.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">2. The service</h2>
                         <p x-text="termsService"></p>
-                        <!-- Your access and Your content: wording business-approved by the owner (28 Oct 2026), not yet reviewed
-                             by legal counsel (Legal Review Pack T1, T3) -->
-                        <h2 class="text-lg font-semibold text-zinc-900">Your access</h2>
-                        <p>You create an account and sign in with your email address and a password, or with your Google account. Keep your sign-in details private: anyone who uses them can use your account and its credits and create designs. Six-letter sign-in codes belong to our earlier sign-in and are not issued when you create an account; if you have one, it only moves its account to the new sign-in and then stops working. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Your content</h2>
+                        <p>The design images and movies are generated by AI: they are renderings, not photographs, and they are not made by a person.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">3. Your account</h2>
+                        <p>You must be 18 or older to create an account or place an order. You create an account and sign in with your email address and a password, or with your Google account. Keep your sign-in details private: you are responsible for what is done with your account, and anyone who uses them can use your account and its credits and create designs. Tell us straight away if you think someone else has used it. We may suspend or close an account that is used against these terms. How we handle personal data, cookies and analytics is described on the <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy</a> page.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">4. Credits</h2>
+                        <p>Credits let you ask for new designs, refinements, extra options and 360° movies of rings. Each of these requests uses one credit, and the number a request uses is always shown before you confirm it. Choosing a design, its metal and its size uses no credits. If a request cannot deliver all four designs, its credit comes back, and asking again for the missing ones is free; a request our content check declines uses no credit. New accounts receive free credits; the number is shown when you sign up. Credits are free, do not expire, have no cash value, and cannot be bought, sold, transferred or exchanged for money. We may change how many credits new accounts receive and how many a request uses in the future; a change never removes or reduces credits already in your account. [Credits end when your account is closed.]</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">5. Your content</h2>
                         <p>You keep the rights to the descriptions and images you upload, and you confirm you have the right to use them. Respect other people's intellectual property, such as their artwork, designs and trademarks, as XJet does. You grant XJet the license needed to generate, store, display and produce your design and to improve the service.</p>
-                        <p><strong class="font-semibold text-zinc-900">Your photos and personal information.</strong> We never show the photos you upload in the gallery or use them to promote Atelier. We do not display, promote or make for anyone else a design that shows an identifiable person or carries personal details such as a name, initials or a date, unless you allow it.</p>
-                        <!-- Your designs (the commercial use of customers' designs): the owner's business-approved wording (29 Oct 2026),
-                             pending legal counsel's review (Legal Review Pack T11); every Terms acceptance says it too (p3/sitepages.py) -->
-                        <p><strong class="font-semibold text-zinc-900">Your designs.</strong> XJet may display and promote the designs you create in Atelier, including in our public gallery, and may manufacture and sell jewelry based on them to other customers, without paying you royalties unless we agree otherwise in writing. To allow this, you grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to reproduce, adapt, display and promote those designs and to manufacture and sell jewelry based on them. What you upload remains yours, and the protections in Your photos and personal information above still apply: we ask your separate permission before we publicly use an identifiable photograph, a person's likeness or personal information. The license covers only the rights you hold; other people's intellectual property stays theirs.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Orders</h2>
+                        <p>Use only faces, names, logos, trademarks, club crests, characters and artwork you have the right to use. You may use your own face, or another person’s face with their permission. We make a design with a public figure’s likeness only if you state that you have the commercial permission to use it; we do not ask for proof, and you are responsible for that statement. Logos, brands, club crests and characters are not blocked when you make a request, so the responsibility for using them is yours. We do not make designs with sexual, hateful or violent content, intimate images of any person, or any sexual content involving minors. Requests are checked automatically before designs are made, and our AI providers apply their own safety rules: when a provider declines a design, we do not try to get around its decision. We may decline to make or produce a design we believe infringes someone else’s rights; if we decline after you have ordered, you pay nothing for it.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">6. Your photos and personal information</h2>
+                        <p>We never show the photos you upload in the gallery or use them to promote Atelier. We do not display, promote or make for anyone else a design that shows an identifiable person or carries personal details such as a name, initials or a date, unless you allow it.</p>
+                        <!-- Your designs: the first paragraph is the owner's business-approved wording live since 29 Oct 2026 (T11),
+                             the same sentence beside every Terms acceptance (p3/sitepages.py DesignUseAcceptance); the second
+                             adds AI-03's per-design permission (Counsel Book A-7, text only on this branch) and the third N7 -->
+                        <h2 class="text-lg font-semibold text-zinc-900">7. Your designs</h2>
+                        <p>XJet may display and promote the designs you create in Atelier, including in our public gallery, and may manufacture and sell jewelry based on them to other customers, without paying you royalties unless we agree otherwise in writing. To allow this, you grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to reproduce, adapt, display and promote those designs and to manufacture and sell jewelry based on them. What you upload remains yours, and the protections in Your photos and personal information above still apply: we ask your separate permission before we publicly use an identifiable photograph, a person's likeness or personal information. The license covers only the rights you hold; other people's intellectual property stays theirs.</p>
+                        <p>We show a design you created in the public gallery, or offer it to other customers, only after you allow it for that design. You can withdraw that permission at any time for the future; orders already placed for the design will still be made.</p>
+                        <p>The law in many countries does not give anyone copyright in images made by AI, so we do not promise that a design is protected or exclusive. To the extent any rights exist in a design you create, [Option A: they belong to you, subject to the license above] [Option B: they belong to XJet Ltd., and you may use images of your design for personal, non-commercial purposes].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">8. Orders</h2>
                         <p x-text="termsOrders"></p>
-                        <!-- Materials (WP5, 2 Nov 2026): static — it names no metal whose status the Admin can change, so no
-                             material status or product switch ever makes a Terms version. Business draft, pending legal
-                             counsel's review (Legal Review Pack); it ships only with counsel's written OK -->
-                        <p><strong class="font-semibold text-zinc-900">Materials.</strong> Each material is shown with its availability. A material available to order can be purchased at the price displayed for your design when you place your order. Some materials may be offered by request only: you can ask us for a quote for your design, its price is set individually, and nothing is ordered or charged until you approve the quote. Some materials may be offered for preview only: you can design and view your piece in them, but they cannot be purchased or quoted. We may change which materials are available, offered by request or offered for preview only. Orders already placed and quotes already issued are handled separately.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Preview accuracy</h2>
-                        <p>The images, and for rings the 360° movie, are AI renderings. Metal color is a visual preview; reflections and fine surface detail on a finished piece may differ.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Liability</h2>
-                        <p>To the extent permitted by law, XJet's liability for an order is limited to the price paid for it. Nothing here limits rights you have as a consumer under applicable law.</p>
+                        <p>Your rights to cancel after we confirm, to return a piece and to a remedy for a faulty piece are described on the <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="underline underline-offset-2 hover:text-black">Shipping &amp; Returns</a> page.</p>
+                        <!-- Materials (WP5 T12, 2 Nov 2026, with the quote steps of T5): static — it names no metal whose status
+                             the Admin can change, so no material status or product switch ever makes a Terms version -->
+                        <h2 class="text-lg font-semibold text-zinc-900">9. Materials</h2>
+                        <p>Each material is shown with its availability. A material available to order can be purchased at the price displayed for your design when you place your order. Some materials may be offered by request only: you can ask us for a quote for your design; we confirm your request right away, review it within one business day and aim to send the quote within three business days, or tell you if your design needs longer. A quote shows its price and the date it is valid until. If you approve it by then, the price is fixed and the piece is ordered on these terms. Nothing is ordered or charged until you approve the quote. Some materials may be offered for preview only: you can design and view your piece in them, but they cannot be purchased or quoted. We may change which materials are available, offered by request or offered for preview only. Orders already placed and quotes already issued are handled separately [Q14: a quote already issued stays valid until its date].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">10. Prices, taxes and duties</h2>
+                        <p>For delivery to an address in Israel, prices are shown and charged in Israeli shekels and include 18% VAT. For delivery elsewhere, prices are in US dollars and we do not add sales tax. Where the destination country charges import VAT, customs duty or a carrier’s handling fee, the recipient pays them, unless the law requires us to collect them at checkout; in that case we show them in your total before you order. Details are on the <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="underline underline-offset-2 hover:text-black">Shipping &amp; Returns</a> page.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">11. Preview accuracy</h2>
+                        <p>The images, and for rings the 360° movie, are AI renderings of your design, not photographs of a finished piece. To make your piece we turn the design into a 3D model for printing and may adjust it so it can be made and worn, for example its wall thickness, a ring’s inner surface or a charm’s loop. Metal color is a visual preview[; a material offered for preview only cannot be ordered]; reflections, fine surface detail and small proportions on the finished piece may differ.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">12. Warranty</h2>
+                        <p>Every piece has a two-year limited warranty against manufacturing defects, described on the <a href="{{BASE}}/warranty" @click="pageLink($event, 'warranty')" class="underline underline-offset-2 hover:text-black">Warranty</a> page. It is in addition to your rights as a consumer under applicable law.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">13. Liability</h2>
+                        <p>To the extent permitted by law, XJet's liability for an order is limited to the price paid for it, and we are not liable for indirect or unforeseeable loss. This does not limit our liability for death or personal injury caused by our negligence, for fraud, or for anything else that cannot be limited by law. Nothing here limits rights you have as a consumer under applicable law, including your rights if a piece is faulty or not as described.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">14. Changes to these terms</h2>
+                        <p>We may update these terms. The date at the top shows the version in force, and each order follows the version in force when it was placed. We tell you by email at least [30 days] before a change that matters to you applies; if you do not agree, you can close your account before then.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">15. Law and courts</h2>
+                        <p>These terms are governed by the laws of [Israel], and the courts of [Tel Aviv] have jurisdiction. If you are a consumer, you keep the protection of the mandatory laws of the country where you live and may also bring a claim there.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">16. Contact</h2>
+                        <p>XJet Ltd., [registered address]. Email: <a :href="mailto('A question about the Terms')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'see our Contact page'">see our Contact page</a>. [Phone: …]</p>
                     </div>
                 </template>
 
                 <template x-if="view === 'privacy'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <h1 class="text-4xl brand-font text-zinc-900">Privacy</h1>
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-2 — the Privacy Policy
+                             improved, not rewritten (PRV-01: live text + P1, P3–P10, N17, N19, N20). No endpoints, keys, model
+                             names or infrastructure. The cookie section and its table are the live text, word for word.
+                             Pending legal counsel's written approval; [bracketed] parts are placeholders or release conditions -->
+                        <h1 class="text-4xl brand-font text-zinc-900">Privacy Policy</h1>
+                        <p class="text-[14px] text-zinc-500">Last updated: [date]</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Who is responsible</h2>
+                        <p>XJet Ltd., [registered address], company number [company number], is responsible for your personal data. For any question about it, write to <a :href="mailto('Privacy question')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a>. [EU representative: …] [UK representative: …]</p>
                         <h2 class="text-lg font-semibold text-zinc-900">What we collect</h2>
                         <ul class="list-disc pl-5 space-y-1">
-                            <li><strong class="font-semibold text-zinc-900">Your account.</strong> Your name and email address, and how you sign in: with Google (we receive the account identifier, name and email address it shares with us) or with a password (kept only in a secure, irreversible form, never the password itself). For each browser you are signed in on, we keep its type and when it was last used, so you can see and end your sessions. If you first joined with a six-letter sign-in code, that code is also kept only in a secure, irreversible form.</li>
-                            <li>The descriptions and images you upload, the designs and movies generated for you, and your saved designs and bag.</li>
+                            <li><strong class="font-semibold text-zinc-900">Your account.</strong> Your name and email address, and how you sign in: with Google (we receive the account identifier, name and email address it shares with us) or with a password (kept only in a secure, irreversible form, never the password itself). For each browser you are signed in on, we keep its type and when it was last used, so you can see and end your sessions. [SEC-02: Accounts our team created with a one-time sign-in code keep that code only in a secure, irreversible form.]</li>
+                            <li><strong class="font-semibold text-zinc-900">Your acceptance of our terms.</strong> When you accept the Terms of Service, we record when, how your account was created, and which versions of the Terms and of this Privacy Policy you accepted; each order records the version of the Terms in force.</li>
+                            <li>The descriptions and images you upload, the designs and movies generated for you, the results of the automatic check of your requests, and your saved designs and bag.</li>
+                            <li><strong class="font-semibold text-zinc-900">Orders and quote requests.</strong> Your name, email address and phone number, the delivery address and the recipient’s name, the note you add at checkout, what you order and its price, and our messages about the order or quote.</li>
                             <li>Technical logs (requests, errors) needed to run and secure the service.</li>
                             <li><strong class="font-semibold text-zinc-900">Records of the service.</strong> We keep a record of the steps you take in Atelier — for example a design created, an option chosen, an order placed — to run the service, prevent misuse and help you when you contact us.</li>
+                            <li>Your approximate country, derived from your connection by our network provider, to show prices in the right currency. We do not store it with your account. [only once Israeli pricing (B6) is live]</li>
                             <li><strong class="font-semibold text-zinc-900">How you use the site — only if you allow Analytics &amp; Performance.</strong> The pages and steps of the design journey you visit, the type of device and browser you use, and your approximate region. With Microsoft Clarity, also how you interact with pages — clicks, scrolling and session recordings — with sensitive information masked. Analytics never receives your design descriptions, uploaded images or files, or your name, email address, postal address or phone number.</li>
                         </ul>
-                        <h2 class="text-lg font-semibold text-zinc-900">How we use it</h2>
-                        <p>To generate your designs, to keep the service working and to improve it. With your consent, we also use analytics to understand how the site is used and to improve it; you can withdraw your consent at any time (see Cookies and similar technologies below). We do not sell your personal data.</p>
-                        <h2 class="text-lg font-semibold text-zinc-900">Third parties</h2>
-                        <p>Design generation runs on AI providers that process your descriptions and images to produce the results; they do not receive your contact details. If you sign in with Google, it confirms your identity to us.</p>
-                        <p><strong class="font-semibold text-zinc-900">Analytics providers — only with your consent.</strong> Google Analytics 4 (Google) and Microsoft Clarity (Microsoft) process information about how the site is used on our behalf, so that we can see usage statistics and session recordings in which sensitive information is masked. Their advertising features are switched off. These providers may process data outside your country, including in the United States.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">How we use it and why</h2>
+                        <p>To create your designs and check that requests follow our content rules, to make, ship and support your orders and quotes, to keep the service secure and working, and to improve it. We do this to carry out our agreement with you and in our legitimate interest in running a safe service. We keep certain records because the law requires it, for example for tax. With your consent, we also use analytics to understand how the site is used and to improve it; you can withdraw your consent at any time (see Cookies and similar technologies below). We do not sell your personal data. A person at XJet reviews every order before it is made; if our automatic check declines a request and you think it was wrong, write to us.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Who receives your data</h2>
+                        <p>Design generation and the automatic check of requests run on third-party AI providers, which process your descriptions and images to produce the results, including in the United States. They do not receive your name or contact details. [Our providers’ terms do not allow them to use your descriptions or images to train their models.] If you sign in with Google, it confirms your identity to us. To deliver an order we give the carrier the recipient’s name, address and phone number. We also use service providers that host the site, deliver it securely and send our emails; they process data only on our instructions.</p>
+                        <p><strong class="font-semibold text-zinc-900">Analytics providers — only with your consent.</strong> Google Analytics 4 (Google) and Microsoft Clarity (Microsoft) process information about how the site is used on our behalf, so that we can see usage statistics and session recordings in which sensitive information is masked. Their advertising features are switched off.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">International transfers</h2>
+                        <p>We are based in Israel. Our providers may process data outside your country, including in the United States. Where they do, we rely on safeguards the law recognises, such as an adequacy decision, the EU–US Data Privacy Framework or the European Commission’s standard contractual clauses.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">How long we keep it</h2>
+                        <p>We keep your account, designs and saved items while your account is open, and delete them within [30 days] after you ask us to close it. We keep order and quote records for [7 years] for accounting, tax and warranty purposes, our emails with you for [period], and technical logs for [90 days]. Backups are overwritten within 30 days.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Your rights</h2>
+                        <p>You can withdraw your consent to Analytics &amp; Performance at any time in Cookie Settings. You can ask to see, correct or delete your personal data, to restrict or stop some uses of it, or for a copy in a portable form. To make a request, write to <a :href="mailto('Privacy request')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a> from the email address of your account; we may ask you to confirm it is you. We answer within one month. Account deletion is handled by our team on request; we keep order records we must keep by law. You may also complain to the data-protection authority where you live, or in Israel to the Privacy Protection Authority.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Children</h2>
+                        <p>Atelier is not meant for anyone under 18, and we do not knowingly collect their personal data.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Security</h2>
+                        <p>We protect your data with technical and organisational measures suited to the risk, and our team can access it only as needed for their work.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Cookies and similar technologies</h2>
                         <p>Atelier uses cookies and similar technologies, such as your browser’s local storage, in three categories. Essential technologies are always active; the others are used only if you allow them.</p>
                         <p><strong class="font-semibold text-zinc-900">Essential — always active.</strong> They keep you signed in, save your designs and your bag, make checkout and security work, and remember your privacy preferences. They are never used for analytics or advertising.</p>
@@ -1230,8 +1295,8 @@
                                 <p><span class="font-semibold text-zinc-800">Microsoft Clarity:</span> <span class="font-mono text-[14px]">_clck</span> and <span class="font-mono text-[14px]">_clsk</span>.</p>
                             </div>
                         </details>
-                        <h2 class="text-lg font-semibold text-zinc-900">Your rights</h2>
-                        <p>You can withdraw your consent to Analytics &amp; Performance at any time in Cookie Settings. To access, correct or delete your personal data, or for any other privacy question, write to <a :href="mailto('Privacy question')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a>.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Changes to this notice</h2>
+                        <p>If we change this notice, we update the date at the top; we tell you before a change that matters to you applies.</p>
                     </div>
                 </template>
 
@@ -1260,6 +1325,49 @@
                         </div>
                         <h2 class="text-lg font-semibold text-zinc-900">Company</h2>
                         <p>XJet Atelier is a service of XJet Ltd., the developer of NanoParticle Jetting™ metal and ceramic 3D printing. <a href="https://xjet3d.com/" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">xjet3d.com</a></p>
+                        <!-- DRAFT B5: the company details (CON-01), placeholders until XJet supplies them -->
+                        <p>XJet Ltd., [registered address], company number [company number].</p>
+                    </div>
+                </template>
+
+                <template x-if="view === 'warranty'">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-8 (CON-06, S4, T7, N22).
+                             Pending legal counsel's written approval (US wording: Q40; gold-layer adhesion cover: owner, Q41) -->
+                        <h1 class="text-4xl brand-font text-zinc-900">XJet Atelier 2-Year Limited Warranty</h1>
+                        <p class="text-[14px] text-zinc-500">Last updated: [date]</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Who gives it</h2>
+                        <p>XJet Ltd., [registered address], company number [company number], <a :href="mailto('Warranty claim')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'contact us through the Contact page'">contact us through the Contact page</a>.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">What it covers</h2>
+                        <p>Every piece ordered from XJet Atelier is warranted against defects in materials and manufacturing — for example a crack, a hole or a break that happens in normal wear — for two years from the day it is delivered to you, wherever you live.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">What it does not cover</h2>
+                        <p>Normal wear, including scratches, softening of a polished finish and gradual wear of the gold layer on 14K Gold over Stainless Steel; tarnish of silver; loss or theft; accidental damage; damage from chemicals (for example chlorine, perfume or cleaning products) or misuse; a piece that someone other than XJet has resized, repaired or altered; a ring that does not fit because of the size chosen [see <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="underline underline-offset-2 hover:text-black">Shipping &amp; Returns</a>].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">What we do</h2>
+                        <p>If we confirm a defect, we repair the piece or make it again from the same design, free of charge[, and pay the shipping both ways]. If neither is possible, we refund what you paid for the piece.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">How to claim</h2>
+                        <p>Write to <a :href="mailto('Warranty claim')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a> with your Order ID, a short description and photos of the piece. We reply within [5 business days]. If we need to see the piece, we tell you how to send it [and give you a prepaid label].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Your legal rights</h2>
+                        <p>This warranty is in addition to your rights as a consumer, and it does not limit them. In the European Union and the United Kingdom, the seller is responsible for goods that are not in conformity with the contract for at least two years from delivery, and you can choose those rights instead of this warranty. In Israel, your rights under consumer and sale law are not affected. In the United States, this is a limited warranty; any implied warranty of merchantability or fitness for a particular purpose is limited to the two-year duration of this warranty, where the law allows such a limit. Some states do not allow limits on how long an implied warranty lasts, so this limit may not apply to you. This warranty gives you specific legal rights, and you may also have other rights which vary from state to state.</p>
+                    </div>
+                </template>
+
+                <template x-if="view === 'accessibility'">
+                    <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-9 (ACC-01, N12). Pending
+                             legal counsel's written approval; the list of what was done must match the verified B3 / ACC-07 work -->
+                        <h1 class="text-4xl brand-font text-zinc-900">Accessibility at XJet Atelier</h1>
+                        <p class="text-[14px] text-zinc-500">Last reviewed: [date]</p>
+                        <p>We want everyone to be able to design and order jewelry with XJet Atelier, including people who use assistive technology.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Standard</h2>
+                        <p>We are working to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA and Israeli Standard IS 5568 [edition] at level AA.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">What we have done</h2>
+                        <p>[Keyboard access to the whole design and order journey; visible focus; text alternatives for interface images; form labels and error messages read by screen readers; color contrast of at least 4.5:1 for text; our emails are marked as English documents and meet the same contrast — list to match the B3 and ACC-07 work as verified].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">How we checked</h2>
+                        <p>Automated tests and internal manual reviews on [dates]. Testing by a person who uses a screen reader is planned for [month].</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Known limitations</h2>
+                        <p>The design images and 360° movies are generated by AI, so their descriptions are general and may not describe every detail. [Other known issues.] We are working on them.</p>
+                        <h2 class="text-lg font-semibold text-zinc-900">Contact</h2>
+                        <p>If anything on the site is hard to use, or you need the information in another way, contact [accessibility coordinator name, if required] at <a :href="mailto('Accessibility')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'the address on our Contact page'">the address on our Contact page</a> or [phone]. We reply within [one business day] and can help you complete your design or order by email or phone.</p>
                     </div>
                 </template>
 
@@ -2199,12 +2307,27 @@
                             </template>
                             <template x-if="checkout?.payment?.available"><p class="text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
                         </div>
+                        <!-- DRAFT B5 (branch b5-legal-drafts, never pushed): Counsel Book Appendix A-4 — the seller and
+                             pre-order summary (CHK-1), the Terms box (CHK-2), the short privacy notice (CHK-4) and the age
+                             statement (CHK-6). Text only: the order, its total and the Terms acceptance work as before.
+                             Pending legal counsel's written approval; [bracketed] parts are placeholders or counsel's choices -->
+                        <div class="rounded-xl p-5 text-[13px] text-zinc-700 leading-relaxed space-y-1" style="border:1px solid #E4E4E7;" data-testid="pre-order-summary">
+                            <p class="flbl">Before you order</p>
+                            <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., [registered address], company number [company number] · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
+                            <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="money((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + money(coQuote?.total || 0, coQuote?.currency)"></span></p>
+                            <p><strong class="font-semibold text-zinc-900">Import charges:</strong> where your country charges import VAT, customs duty or a carrier’s handling fee on delivery, the recipient pays them. [destination-specific line]</p>
+                            <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 days; delivery <span x-text="co.shipping_method === 'express' ? 'about 5 business days (Express)' : 'up to 14 business days (Standard)'"></span>.</p>
+                            <p x-show="!checkout?.payment?.available"><strong class="font-semibold text-zinc-900">Payment:</strong> nothing is charged now. Your order is a reservation until we confirm it; you can cancel free of charge until then. We arrange payment with you after you order.</p>
+                            <p><strong class="font-semibold text-zinc-900">Cancelling and returns:</strong> each personalised piece is made to your specification, so it cannot be returned for a change of mind once confirmed. [Unchanged gallery design, if counsel so decides: you can cancel within 14 days of delivery.] Faulty pieces are always covered.</p>
+                            <p><strong class="font-semibold text-zinc-900">Warranty:</strong> <a href="{{BASE}}/warranty" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">two-year limited warranty</a>, in addition to your legal rights.</p>
+                        </div>
                         <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer" :class="coProblem('terms_accepted') ? 'text-red-700' : ''">
                             <input id="co-terms" type="checkbox" x-model="co.terms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;"
                                    aria-required="true" :aria-invalid="coProblem('terms_accepted') ? 'true' : null" :aria-describedby="coProblem('terms_accepted') ? 'co-terms-err' : null">
-                            <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> <span x-text="'and understand that each ' + bagKind + ' is made to order (design and size) and is not returnable for change of mind, and that my design is not exclusive.'"></span></span>
+                            <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a>. <span x-text="'I understand that each personalised ' + bagKind + ' is made to order to my specification and cannot be returned for a change of mind once confirmed, and that my design is not exclusive.'"></span></span>
                         </label>
                         <p id="co-terms-err" class="ferr" x-show="coProblem('terms_accepted')" x-text="coProblem('terms_accepted')"></p>
+                        <p class="text-[13px] text-zinc-500">You must be 18 or older to place an order. XJet Ltd. uses these details to make, deliver and support your order and keeps order records for [7 years] for tax and warranty purposes. We share the recipient’s name, address and phone number with the carrier. See our <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a> for your rights.</p>
                         <p class="text-[13px] text-zinc-500">Questions before you order? <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
                     </section>
                     <p x-show="co.error" class="err-line mt-4" role="alert" x-text="co.error"></p>
@@ -2242,7 +2365,7 @@
                     <div class="flex items-center gap-4">
                         <span class="hidden sm:inline text-sm text-zinc-700"><span class="text-zinc-500">Total</span> <strong x-text="money(coQuote?.total || 0, coQuote?.currency)"></strong></span>
                         <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-7 py-3 stream-glow"
-                                x-text="co.busy ? 'One moment…' : co.step === 'review' ? 'Place order' : 'Continue'"></button>
+                                x-text="co.busy ? 'One moment…' : co.step === 'review' ? (checkout?.payment?.available ? 'Place order and pay' : 'Place order — payment arranged after confirmation') : 'Continue'"></button>
                     </div>
                 </div>
             </div>
@@ -2761,7 +2884,7 @@
                             <input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                             <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
                         </label>
-                        <p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs.</p>
+                        <p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs. We show a design in the gallery or offer it to others only after you allow it for that design.</p>
                         <button type="submit" :disabled="regLoading || !regForm.email || regForm.password.length < 10"
                                 :aria-disabled="termsPending ? 'true' : null" :class="termsPending ? 'opacity-50' : ''" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                             <span x-show="!regLoading">Create account</span><span x-show="regLoading">Creating…</span>
@@ -2855,7 +2978,7 @@
                         <input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                         <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
                     </label>
-                    <p class="text-[13px] text-zinc-600 -mt-3 mb-6 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs.</p>
+                    <p class="text-[13px] text-zinc-600 -mt-3 mb-6 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs. We show a design in the gallery or offer it to others only after you allow it for that design.</p>
                     <button type="submit" :disabled="regLoading || !regForm.acceptTerms"
                             class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                         <span x-show="!regLoading" class="inline-flex items-center">Send Verification Link
@@ -2935,7 +3058,7 @@
                     <input id="tg-terms" type="checkbox" x-model="termsGate.accept" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                     <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
                 </label>
-                <p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs.</p>
+                <p class="text-[13px] text-zinc-600 -mt-2 mb-5 leading-relaxed">By accepting, you agree that XJet may display and promote the designs you create, including in our public gallery, and manufacture and sell jewelry based on them to other customers, without royalties to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays yours, we ask your separate permission before we publicly use an identifiable photo, likeness or personal information, and other people's intellectual property stays theirs. We show a design in the gallery or offer it to others only after you allow it for that design.</p>
                 <button type="button" @click="acceptTermsGate()" :disabled="termsGate.loading || !termsGate.accept"
                         class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
                     <span x-show="!termsGate.loading" x-text="termsGate.mode === 'pending' ? 'Accept and create account' : 'Accept and continue'"></span>
@@ -3003,6 +3126,8 @@
                             <button @click="sendQuoteRequest()" :disabled="quoteReq.busy" class="btn-gold flex-1 py-3" x-text="quoteReq.busy ? 'Sending…' : 'Send request'"></button>
                         </div>
                         <p class="text-[14px] text-zinc-600 text-center leading-snug" x-text="'We confirm your request right away, review it within one business day and aim to email your quote' + (quoteReq.customer.email ? ' to ' + quoteReq.customer.email : '') + ' within three business days. Nothing is ordered or charged.'"></p>
+                        <!-- DRAFT B5 (Counsel Book A-4 CHK-5, PRV-03): pending legal counsel's written approval -->
+                        <p class="text-[13px] text-zinc-500 text-center leading-snug">XJet Ltd. uses these details to prepare and send your quote and to contact you about it. See our <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a> for how long we keep them and your rights.</p>
                     </div>
                 </template>
                 <template x-if="quoteReq.done">

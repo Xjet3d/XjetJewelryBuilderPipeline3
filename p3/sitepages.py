@@ -32,9 +32,9 @@ VerificationPattern = re.compile(r"[A-Za-z0-9_-]{20,100}")
 # (#account), checkout and confirmation are not pages: they live under the home URL and are never indexed.
 Paths = {"home": "", "inspiration": "gallery", "faq": "faq", "materials": "materials", "technology": "technology",
          "designers": "about", "shipping-returns": "shipping-returns", "terms": "terms", "privacy": "privacy",
-         "contact": "contact"}
+         "contact": "contact", "warranty": "warranty", "accessibility": "accessibility"}
 Views = {P: V for V, P in Paths.items() if P}
-Legal = ("terms", "privacy", "shipping-returns", "contact")
+Legal = ("terms", "privacy", "shipping-returns", "contact", "warranty", "accessibility")
 # The customer's journey (web/app.js FLOW_PATHS): the app at its own addresses — never indexed, never in the sitemap, no
 # server-side content (nothing about a customer is in the page; the app restores the step for the signed-in customer)
 FlowPaths = ("design", "my-designs", "favorites", "customize", "bag", "checkout")
@@ -47,7 +47,7 @@ ScreenTitles = {"ai-studio": "Design Studio · XJet Atelier", "my-designs": "My 
                 "confirmation": "Your Order · XJet Atelier", "account": "My Account · XJet Atelier"}
 FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "favorites", "customize": "review",
                "bag": "checkout", "checkout": "order"}
-_LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
+_LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact','warranty','accessibility'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
 # The commercial use of a customer's designs, said beside every Terms acceptance (the Terms' "Your designs."): the
 # owner's business-approved wording of 29 Oct 2026, pending legal counsel's review (Legal Review Pack T11). The same
@@ -56,7 +56,9 @@ DesignUseAcceptance = ("By accepting, you agree that XJet may display and promot
                        "public gallery, and manufacture and sell jewelry based on them to other customers, without royalties "
                        "to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays "
                        "yours, we ask your separate permission before we publicly use an identifiable photo, likeness or "
-                       "personal information, and other people's intellectual property stays theirs.")
+                       "personal information, and other people's intellectual property stays theirs."
+                       # DRAFT B5 (Counsel Book A-6, AI-03 addition to T11): pending legal counsel's approval
+                       " We show a design in the gallery or offer it to others only after you allow it for that design.")
 # Each set of products a site can offer, every product first: a legal page's sentence that follows the products on offer
 # is archived in each of its forms (LegalText), in the Terms' own product order (M7: the archived text stays the same)
 _Offers = tuple(C for N in range(len(Products.TermsOrder), -1, -1) for C in itertools.combinations(Products.TermsOrder, N))
@@ -129,8 +131,11 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
     Start = StartingCredits(Ctx)                       # the Admin's number at this moment (R-16); none said at 0
     Credits = (f"Each new design and each refinement you ask for uses one credit, as does each extra option you request{Movie}. "
                "The cost is shown before you confirm. If a request can’t deliver all four designs, its credit comes back, "
-               "and retrying the missing ones is free. Choosing a design, its metal and its size is free."
-               + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else ""))
+               "and retrying the missing ones is free; a request our content check declines uses no credit. Choosing a design, "
+               "its metal and its size is free."
+               + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else "")
+               # DRAFT B5 (Counsel Book A-10b): pending legal counsel's approval
+               + " Credits are free and do not expire, but they have no cash value and cannot be bought, sold or transferred.")
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
             ("Do I need design experience?", "None at all. Just describe what you want in plain language or upload a "
@@ -194,13 +199,19 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
                              "Production takes up to 14 days. Standard delivery is free (up to 14 business days), "
-                             "Express is $45 (about 5). Prices in US dollars; returns and the two-year warranty."),
+                             "Express is $45 (about 5). Taxes and duties, cancelling, returns and the warranty."),
         "terms": ("Terms of Service · XJet Atelier",
-                  "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: the "
-                  "service, your access, your content, orders, preview accuracy and liability."),
-        "privacy": ("Privacy · XJet Atelier",
-                    "What XJet Atelier collects, how it is used, the AI providers that process your designs, cookies "
+                  "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: your "
+                  "account, credits, your content and designs, orders, materials, prices and liability."),
+        "privacy": ("Privacy Policy · XJet Atelier",
+                    "What XJet Atelier collects, how it is used and why, who receives it, how long it is kept, cookies "
                     "and storage, and your rights."),
+        "warranty": ("2-Year Limited Warranty · XJet Atelier",
+                     "The XJet Atelier two-year limited warranty: what it covers and does not cover, what we do, how to "
+                     "claim, and your rights as a consumer."),
+        "accessibility": ("Accessibility · XJet Atelier",
+                          "Accessibility at XJet Atelier: the standard we work to, what we have done, how we checked, known "
+                          "limitations and how to contact us for help."),
         "contact": ("Contact & Support · XJet Atelier",
                     "Questions about a design, sizing, an order or something that is not working — the XJet Atelier "
                     "design team answers within one business day."),
@@ -262,30 +273,29 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
         return {"'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'":
                 f"Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier {W['noun']}."}
     if View == "shipping-returns":
-        return {"'Each ' + wording.noun + ' is printed to order in real metal.'": f"Each {W['noun']} is printed to order in real metal.",
-                "'Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. If your ' + wording.noun + ' arrives damaged, or does not match the design or the size you selected, contact us within 14 days of delivery and we will remake it or refund you.'":
-                "Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. "
-                f"If your {W['noun']} arrives damaged, or does not match the design or the size you selected, contact us within "
-                "14 days of delivery and we will remake it or refund you."}
+        return {"'Each ' + wording.noun + ' is printed to order in real metal.'": f"Each {W['noun']} is printed to order in real metal."}
     if View == "terms":
         Named = [P for P in Products.TermsOrder if P in Visible]     # M7: the Terms keep their product order (rings first)
         Names = [Products.Labels[P].lower() for P in Named]
         Idea = " or ".join("a " + N for N in Names) if Names else "a piece of jewelry"
         Supports = (" and ".join(Products.Plurals[P].lower() for P in Named) if len(Named) > 1 else
                     Products.Plurals[Named[0]].lower() + " only" if Named else "no products at the moment")
-        Fixed = ("fixed per piece and material (a charm’s price also depends on its size)" if R and C else
+        Fixed = ("fixed per piece and material (a charm’s price also depends on its size; a ring’s size does not change its price)" if R and C else
                  "fixed per charm, material and size" if C else "fixed per ring and material" if R else
                  "fixed per piece and material")                       # no product on offer: no ring wording (L5)
         Movie = (" with AI (and a 360° preview movie for rings)" if C else " and a 360° preview movie with AI") if R else " with AI"
-        return {"termsService": f"XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for {Idea}, generates "
+        return {"termsService": f"XJet Atelier lets you describe or upload an idea for {Idea}, generates "
                                 f"four design options{Movie}, and lets you configure the metal and size of the "
                                 f"design you choose. The current release supports {Supports}.",
                 # the materials follow in their own static paragraph (web/index.html "Materials.", WP5): no sentence here
                 # names a metal or its status
-                "termsOrders": f"Prices are in US dollars and are {Fixed}. An order is a reservation until our team has reviewed "
+                # DRAFT B5 (Counsel Book A-1 §8, T4): the currency moved to "10. Prices, taxes and duties" (N8, N9); the
+                # returns rules to Shipping & Returns (N2)
+                "termsOrders": f"Prices are {Fixed}. An order is a reservation until our team has reviewed "
                                "the design for production feasibility and confirmed it to you; payment is arranged after you "
-                               f"place the order. Each {W['noun']} is made to order (design and size) and is not returnable for "
-                               "change of mind; your design is not exclusive."}
+                               "place the order. You can cancel an order free of charge until we confirm it to you. If we cannot "
+                               f"make your design, we tell you and you pay nothing. Each {W['noun']} is made to order; your "
+                               "design is not exclusive."}
     if View == "contact":
         Ring = ("Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or "
                 "send us your finger circumference in mm.")

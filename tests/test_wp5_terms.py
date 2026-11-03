@@ -113,18 +113,20 @@ def test_the_terms_name_materials_by_their_availability_and_never_a_metal():
     when no product is on offer (L5)."""
     Html = (Web / "index.html").read_text(encoding="utf-8")
     Terms = SitePages.LegalText(Html, "terms")
-    Para = Terms[Terms.index("Materials. Each material is shown with its availability."):]
-    Para = Para[:Para.index("Orders already placed and quotes already issued are handled separately.") + 71]
-    assert Terms.count("Materials. Each material is shown with its availability.") == 1 and Html.count("Each material is shown with its availability.") == 1
+    # B5 draft (Counsel Book A-1 section 9): a numbered heading, the quote steps (T5) and counsel's Q14 in brackets
+    Para = Terms[Terms.index("9. Materials Each material is shown with its availability."):]
+    End = "Orders already placed and quotes already issued are handled separately [Q14: a quote already issued stays valid until its date]."
+    Para = Para[:Para.index(End) + len(End)]
+    assert Terms.count("9. Materials Each material is shown with its availability.") == 1 and Html.count("Each material is shown with its availability.") == 1
     for Words in ("available to order can be purchased at the price displayed for your design", "offered by request only",
-                  "nothing is ordered or charged until you approve the quote", "offered for preview only",
+                  "Nothing is ordered or charged until you approve the quote", "offered for preview only",
                   "they cannot be purchased or quoted", "We may change which materials are available"):
         assert Words in Para, Words
     Labels = [M.Label for M in LoadCatalog().Materials.values()]
     for Name in Labels + ["gold", "silver", "steel", "vermeil", "karat", "14K", "18K"]:
         assert Name.lower() not in Para.lower(), Name
     assert "quoted individually" not in Terms and "Gold pieces" not in Terms and "Gold rings" not in Terms
-    assert "[no product on offer] Prices are in US dollars and are fixed per piece and material." in Terms
+    assert "[no product on offer] Prices are fixed per piece and material." in Terms
     App = (Web / "app.js").read_text(encoding="utf-8")
     Getter = App[App.index("get termsOrders()"):App.index("get sizingHelp()")]
     assert "quoted individually" not in Getter and "r ? 'fixed per ring and material' : 'fixed per piece and material'" in Getter

@@ -42,7 +42,7 @@ async def test_every_public_page_ends_with_the_one_site_footer(tmp_path):
             assert Live.count("data-site-footer") == 1, View
             Foot = Live[Live.index("data-site-footer"):]
             for Target in ("/gallery", "/materials", "/#how-it-works", "/technology", "/about", "/faq", "/contact",
-                           "/shipping-returns", "/terms", "/privacy"):
+                           "/shipping-returns", "/terms", "/privacy", "/warranty", "/accessibility"):
                 assert f'href="{Target}"' in Foot, (View, Target)
             assert "data-cookie-settings" in Foot and 'href="https://xjet3d.com/"' in Foot, View
             assert re.search(r'src="/static/images/xjet-logo-white\.png\?v=\d+" width="270" height="96" alt="XJet"', Foot), View
@@ -160,8 +160,10 @@ def test_headings_follow_each_other_in_order():
     """Lighthouse's heading-order check on proto (20 Oct): Materials and the legal and Contact pages had h3 straight
     under their h1. Their section headings are h2 now (the same look), Materials' metal names h3."""
     Public = _Public(Index)
-    Legal = Public[Public.index("""<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""):]
-    assert '<h3 class="text-lg font-semibold' not in Legal and Legal.count('<h2 class="text-lg font-semibold text-zinc-900">') == 17
+    Legal = Public[Public.index(SitePages._LegalOpen):]
+    # B5 draft: the full Terms (16 numbered sections), Privacy Policy (11), Shipping & Returns (10), Contact (2), and the
+    # Warranty (6) and Accessibility (5) pages
+    assert '<h3 class="text-lg font-semibold' not in Legal and Legal.count('<h2 class="text-lg font-semibold text-zinc-900">') == 50
     Materials = Public[Public.index("<template x-if=\"view === 'materials'\">"):Public.index("<!-- ── Legal & support pages")]
     assert "<h4" not in Materials and Materials.count('<h2 class="brand-font text-2xl text-zinc-900">') == 4   # + preview, the strip
     assert '<h3 class="h-inter text-[14px] font-semibold text-zinc-900" x-text="m.label"></h3>' in Materials       # gold: Inter

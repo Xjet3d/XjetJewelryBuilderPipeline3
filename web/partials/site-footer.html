@@ -29,18 +29,24 @@
                     <p class="f-head">Help</p>
                     <a href="{{BASE}}/contact" @click="pageLink($event, 'contact')" class="f-link">Contact &amp; Support</a>
                     <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="f-link">Shipping &amp; Returns</a>
+                    <a href="{{BASE}}/warranty" @click="pageLink($event, 'warranty')" class="f-link">Warranty</a>
                     <p class="text-[14px] leading-relaxed mt-2">We reply within one business day.</p>
                 </nav>
                 <nav aria-label="Legal" class="flex flex-col">
                     <p class="f-head">Legal</p>
                     <a href="{{BASE}}/terms" @click="pageLink($event, 'terms')" class="f-link">Terms of Service</a>
                     <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="f-link">Privacy</a>
+                    <a href="{{BASE}}/accessibility" @click="pageLink($event, 'accessibility')" class="f-link">Accessibility</a>
                     <button type="button" data-cookie-settings class="f-link text-left">Cookie Settings</button>
                 </nav>
             </div>
         </div>
         <div class="mt-10 md:mt-12 pt-5 border-t border-zinc-800 flex flex-col md:flex-row md:items-center md:justify-between gap-1 md:gap-6">
-            <p class="text-[14px]">© 2026 XJet Ltd. XJet Atelier is a service of XJet Ltd.</p>
+            <div>
+                <p class="text-[14px]">© 2026 XJet Ltd. XJet Atelier is a service of XJet Ltd.</p>
+                <!-- DRAFT B5 (CON-01, Counsel Book A-1 §1): the company details, placeholders until XJet supplies them -->
+                <p class="text-[14px]">XJet Ltd. · [registered address] · Company number [company number]</p>
+            </div>
             <a href="https://xjet3d.com/" target="_blank" rel="noopener" class="f-link self-start md:self-auto underline underline-offset-4 decoration-zinc-600">xjet3d.com</a>
         </div>
     </div>
