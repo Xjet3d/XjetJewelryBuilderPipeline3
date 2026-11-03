@@ -32,9 +32,9 @@ VerificationPattern = re.compile(r"[A-Za-z0-9_-]{20,100}")
 # (#account), checkout and confirmation are not pages: they live under the home URL and are never indexed.
 Paths = {"home": "", "inspiration": "gallery", "faq": "faq", "materials": "materials", "technology": "technology",
          "designers": "about", "shipping-returns": "shipping-returns", "terms": "terms", "privacy": "privacy",
-         "contact": "contact"}
+         "contact": "contact", "warranty": "warranty", "accessibility": "accessibility"}
 Views = {P: V for V, P in Paths.items() if P}
-Legal = ("terms", "privacy", "shipping-returns", "contact")
+Legal = ("terms", "privacy", "shipping-returns", "contact", "warranty", "accessibility")
 # The customer's journey (web/app.js FLOW_PATHS): the app at its own addresses — never indexed, never in the sitemap, no
 # server-side content (nothing about a customer is in the page; the app restores the step for the signed-in customer)
 FlowPaths = ("design", "my-designs", "favorites", "customize", "bag", "checkout")
@@ -47,7 +47,7 @@ ScreenTitles = {"ai-studio": "Design Studio · XJet Atelier", "my-designs": "My 
                 "confirmation": "Your Order · XJet Atelier", "account": "My Account · XJet Atelier"}
 FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "favorites", "customize": "review",
                "bag": "checkout", "checkout": "order"}
-_LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact'].includes(view)">"""
+_LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact','warranty','accessibility'].includes(view)">"""
 _TemplateTag = re.compile(r"<template\b|</template>")
 # The commercial use of a customer's designs, said beside every Terms acceptance (the Terms' "Your designs."): the
 # owner's business-approved wording of 29 Oct 2026, pending legal counsel's review (Legal Review Pack T11). The same
@@ -57,6 +57,7 @@ DesignUseAcceptance = ("By accepting, you agree that XJet may display and promot
                        "to you unless we agree otherwise in writing, as the Terms of Service describe. What you upload stays "
                        "yours, we ask your separate permission before we publicly use an identifiable photo, likeness or "
                        "personal information, and other people's intellectual property stays theirs.")
+# (Counsel Book A-6's per-design permission, AI-03, joins this sentence once its consent mechanism exists: N1)
 # Each set of products a site can offer, every product first: a legal page's sentence that follows the products on offer
 # is archived in each of its forms (LegalText), in the Terms' own product order (M7: the archived text stays the same)
 _Offers = tuple(C for N in range(len(Products.TermsOrder), -1, -1) for C in itertools.combinations(Products.TermsOrder, N))
@@ -118,8 +119,11 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
              "Fashion jewelry pieces are priced per piece by material.")             # no product on offer: no ring wording
     Ring = "Ring sizes are US sizes (see the size guide on the Customize screen)"
     Charm = "charm size is its total height in millimeters, including the loop at the top"
-    Usd = "Yes — all prices are in US dollars." + (f" A {Charm}; {Ring[:1].lower() + Ring[1:]}." if R and C else
-                                                  f" {Ring}." if R else f" A {Charm}." if C else "")
+    Ils = getattr(Ctx, "IlsPricing", None)
+    Shekels = bool(Ils and Ils.Enabled())
+    Vat = f" ({Ils.VatPct(Ils.Settings()).normalize():f}%)" if Shekels else ""
+    Usd = ("Prices are in US dollars, except for delivery to an address in Israel: there they are shown and charged in "
+           f"Israeli shekels and include VAT{Vat}." if Shekels else "Yes — all prices are in US dollars.")         + (f" A {Charm}; {Ring[:1].lower() + Ring[1:]}." if R and C else f" {Ring}." if R else f" A {Charm}." if C else "")
     Preview = ("Yes. You choose from four designs and can refine your favorite before adding it to your bag; rings also "
                "come with a 360° movie preview." if R and C else
                "Yes. You choose from four designs, refine your favorite and preview your ring in a 360° movie before adding "
@@ -129,8 +133,11 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
     Start = StartingCredits(Ctx)                       # the Admin's number at this moment (R-16); none said at 0
     Credits = (f"Each new design and each refinement you ask for uses one credit, as does each extra option you request{Movie}. "
                "The cost is shown before you confirm. If a request can’t deliver all four designs, its credit comes back, "
-               "and retrying the missing ones is free. Choosing a design, its metal and its size is free."
-               + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else ""))
+               "and retrying the missing ones is free; a request our content check declines uses no credit. Choosing a design, "
+               "its metal and its size is free."
+               + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else "")
+               # Counsel Book A-10b, published 3 Nov 2026 with the owner's approval; legal counsel's review pending
+               + " Credits are free and do not expire, but they have no cash value and cannot be bought, sold or transferred.")
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
             ("Do I need design experience?", "None at all. Just describe what you want in plain language or upload a "
@@ -194,13 +201,19 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
                              "Production takes up to 14 days. Standard delivery is free (up to 14 business days), "
-                             "Express is $45 (about 5). Prices in US dollars; returns and the two-year warranty."),
+                             "Express is $45 (about 5). Taxes and duties, cancelling, returns and the warranty."),
         "terms": ("Terms of Service · XJet Atelier",
-                  "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: the "
-                  "service, your access, your content, orders, preview accuracy and liability."),
-        "privacy": ("Privacy · XJet Atelier",
-                    "What XJet Atelier collects, how it is used, the AI providers that process your designs, cookies "
+                  "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: your "
+                  "account, credits, your content and designs, orders, materials, prices and liability."),
+        "privacy": ("Privacy Policy · XJet Atelier",
+                    "What XJet Atelier collects, how it is used and why, who receives it, how long it is kept, cookies "
                     "and storage, and your rights."),
+        "warranty": ("2-Year Limited Warranty · XJet Atelier",
+                     "The XJet Atelier two-year limited warranty: what it covers and does not cover, what we do, how to "
+                     "claim, and your rights as a consumer."),
+        "accessibility": ("Accessibility · XJet Atelier",
+                          "Accessibility at XJet Atelier: the standard we work to, what we have done, how we checked, known "
+                          "limitations and how to contact us for help."),
         "contact": ("Contact & Support · XJet Atelier",
                     "Questions about a design, sizing, an order or something that is not working — the XJet Atelier "
                     "design team answers within one business day."),
@@ -237,10 +250,11 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                if R and C else "Fashion metals have a fixed price per charm, set by material and size — any design."
                if C else "Fashion metals have a fixed price per ring — any size, any design."
                if R else "Fashion metals have a fixed price per piece, set by material.")
-        Fixed = ("Prices in US dollars, fixed for the material — a charm is priced by size; a ring’s size does not change its price."
-                 if R and C else "Prices in US dollars, per charm, fixed for the material and size."
-                 if C else "Prices in US dollars, per ring, fixed for the material — the ring size does not change the price."
-                 if R else "Prices in US dollars, per piece, fixed for the material.")
+        # no currency: the prices beside it are in the visitor's (₪ including VAT for Israel while B6 is on)
+        Fixed = ("Prices are fixed for the material — a charm is priced by size; a ring’s size does not change its price."
+                 if R and C else "Prices are per charm, fixed for the material and size."
+                 if C else "Prices are per ring, fixed for the material — the ring size does not change the price."
+                 if R else "Prices are per piece, fixed for the material.")
         G = MaterialStatus.PageGroups(Ctx, Visible)                    # the metals by their status (WP3)
         Gold = (" Gold is quoted individually." if G["luxury"] else "") + \
                (" Gold can be previewed in Customize but is not available to order." if G["preview"] else "")
@@ -262,27 +276,29 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
         return {"'Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier ' + wording.noun + '.'":
                 f"Fine detail at this scale is what the technology is made for — the same printers make every XJet Atelier {W['noun']}."}
     if View == "shipping-returns":
-        return {"'Each ' + wording.noun + ' is printed to order in real metal.'": f"Each {W['noun']} is printed to order in real metal.",
-                "'Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. If your ' + wording.noun + ' arrives damaged, or does not match the design or the size you selected, contact us within 14 days of delivery and we will remake it or refund you.'":
-                "Every piece is made to your design and size, so it cannot be resold and is not returnable for change of mind. "
-                f"If your {W['noun']} arrives damaged, or does not match the design or the size you selected, contact us within "
-                "14 days of delivery and we will remake it or refund you."}
+        return {"'Each ' + wording.noun + ' is printed to order in real metal.'": f"Each {W['noun']} is printed to order in real metal."}
     if View == "terms":
         Named = [P for P in Products.TermsOrder if P in Visible]     # M7: the Terms keep their product order (rings first)
         Names = [Products.Labels[P].lower() for P in Named]
         Idea = " or ".join("a " + N for N in Names) if Names else "a piece of jewelry"
         Supports = (" and ".join(Products.Plurals[P].lower() for P in Named) if len(Named) > 1 else
                     Products.Plurals[Named[0]].lower() + " only" if Named else "no products at the moment")
-        Fixed = ("fixed per piece and material (a charm’s price also depends on its size)" if R and C else
-                 "fixed per charm, material and size" if C else "fixed per ring and material")
+        Fixed = ("fixed per piece and material (a charm’s price also depends on its size; a ring’s size does not change its price)" if R and C else
+                 "fixed per charm, material and size" if C else "fixed per ring and material" if R else
+                 "fixed per piece and material")                       # no product on offer: no ring wording (L5)
         Movie = (" with AI (and a 360° preview movie for rings)" if C else " and a 360° preview movie with AI") if R else " with AI"
-        return {"termsService": f"XJet Atelier, operated by XJet Ltd., lets you describe or upload an idea for {Idea}, generates "
+        return {"termsService": f"XJet Atelier lets you describe or upload an idea for {Idea}, generates "
                                 f"four design options{Movie}, and lets you configure the metal and size of the "
                                 f"design you choose. The current release supports {Supports}.",
-                "termsOrders": f"Prices are in US dollars and are {Fixed}. An order is a reservation until our team has reviewed "
+                # the materials follow in their own static paragraph (web/index.html "Materials.", WP5): no sentence here
+                # names a metal or its status
+                # Counsel Book A-1 §8, T4 (published 3 Nov 2026, counsel's review pending): the currency moved to "10. Prices,
+                # taxes and duties" (N8, N9); the returns rules to Shipping & Returns (N2)
+                "termsOrders": f"Prices are {Fixed}. An order is a reservation until our team has reviewed "
                                "the design for production feasibility and confirmed it to you; payment is arranged after you "
-                               f"place the order. Each {W['noun']} is made to order (design and size) and is not returnable for "
-                               f"change of mind; your design is not exclusive. Gold {W['nouns']} are quoted individually."}
+                               "place the order. You can cancel an order free of charge until we confirm it to you. If we cannot "
+                               f"make your design, we tell you and you pay nothing. Each {W['noun']} is made to order; your "
+                               "design is not exclusive."}
     if View == "contact":
         Ring = ("Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or "
                 "send us your finger circumference in mm.")
@@ -553,9 +569,17 @@ def JsonLd(*Objects: dict) -> str:
 XJetHome = "https://xjet3d.com/"          # XJet's own site as it answers (www.xjet3d.com redirects here: one hop less)
 
 
+# XJet Ltd. as the site names it everywhere — the legal pages, the footer, the emails (p3/mail.py): XJet's details of 3 Nov 2026
+CompanyAddress = {"streetAddress": "4 Oppenheimer St., Science Park", "addressLocality": "Rehovot", "postalCode": "7670102",
+                  "addressCountry": "IL"}
+CompanyPhone = "+972-73-2694620"
+CompanyNumber = "513655233"                       # its company number, which is also its VAT number
+
+
 def Organization(Home: str, SupportEmail: str = "") -> dict:
     Out = {"@context": "https://schema.org", "@type": "Organization", "@id": Home + "#organization", "name": "XJet Ltd.",
-           "url": XJetHome, "brand": {"@type": "Brand", "name": "XJet Atelier"}}
+           "url": XJetHome, "brand": {"@type": "Brand", "name": "XJet Atelier"},
+           "address": {"@type": "PostalAddress", **CompanyAddress}, "telephone": CompanyPhone, "vatID": CompanyNumber}
     if SupportEmail:
         Out["contactPoint"] = {"@type": "ContactPoint", "contactType": "customer support", "email": SupportEmail}
     return Out

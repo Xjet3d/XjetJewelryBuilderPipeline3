@@ -44,7 +44,7 @@ ShippingOptions = {
     "standard": {"id": "standard", "label": "Standard delivery", "price": 0.0, "eta": "up to 14 business days",
                  "detail": "Free · tracked, signature on delivery"},
     "express": {"id": "express", "label": "Express delivery", "price": 45.0, "eta": "about 5 business days",
-                "detail": "$45 · priority handling, fully insured"},
+                "detail": "$45 · priority handling"},   # CON-07: the insurance claim is unverified (Counsel Book A-3), so it is not made (3 Nov 2026)
 }
 StatusOrder = ["new", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"]
 StatusLabels = {"new": "New", "payment_confirmed": "Payment confirmed", "three_d_ready": "3D ready", "production": "In production",

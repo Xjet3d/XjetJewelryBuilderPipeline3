@@ -5,14 +5,19 @@ And no material status or product switch can change the Terms version: the text 
 the products on offer are archived in every form."""
 
 import re
+from pathlib import Path
 
 from p3 import materialstatus as MaterialStatus
 from p3 import orders as Orders
+from p3 import sitepages as SitePages
+from p3.config import LoadCatalog
+from p3.db import Now
 from tests.conftest import Harness
 from tests.test_consent import ChangeTerms
 from tests.test_orders import Address, Customer, _InBag, _Order
 from tests.test_quotes import Admin, AdminKey, _Link, _Offer, _Request
 
+Web = Path(__file__).resolve().parent.parent / "web"
 Gold = ("vermeil", "gold_10k_yellow", "gold_14k_yellow", "gold_18k_yellow", "gold_10k_rose", "gold_14k_rose", "gold_18k_rose")
 
 
@@ -96,5 +101,56 @@ async def test_no_material_status_or_product_switch_changes_the_terms_version(tm
                     assert R.status_code == 200, R.text
                 (await H.Client.get("/terms")).raise_for_status()      # the page served in this state
                 await Same(f"rings {'on' if Ring else 'off'}, charms {'on' if Charm else 'off'}")
+    finally:
+        await H.Close()
+
+
+# ── the Terms text (branch wp5-terms: out of main until legal counsel approves the exact wording) ─────────────────────────
+def test_the_terms_name_materials_by_their_availability_and_never_a_metal():
+    """The Materials paragraph: once, static, the same words wherever the page is read (one copy in the page's template);
+    it covers a material available to order, one offered by request (Quote Only) and one for preview only, and names no
+    metal, so no status the Admin sets can rewrite it. The orders sentence no longer says gold is quoted, nor "per ring"
+    when no product is on offer (L5)."""
+    Html = (Web / "index.html").read_text(encoding="utf-8")
+    Terms = SitePages.LegalText(Html, "terms")
+    # B5 draft (Counsel Book A-1 section 9): a numbered heading, the quote steps (T5) and counsel's Q14 as the owner published it (3 Nov 2026)
+    Para = Terms[Terms.index("9. Materials Each material is shown with its availability."):]
+    End = "Orders already placed and quotes already issued are handled separately: a quote already issued stays valid until its date."
+    Para = Para[:Para.index(End) + len(End)]
+    assert Terms.count("9. Materials Each material is shown with its availability.") == 1 and Html.count("Each material is shown with its availability.") == 1
+    for Words in ("available to order can be purchased at the price displayed for your design", "offered by request only",
+                  "Nothing is ordered or charged until you approve the quote", "offered for preview only",
+                  "they cannot be purchased or quoted", "We may change which materials are available"):
+        assert Words in Para, Words
+    Labels = [M.Label for M in LoadCatalog().Materials.values()]
+    for Name in Labels + ["gold", "silver", "steel", "vermeil", "karat", "14K", "18K"]:
+        assert Name.lower() not in Para.lower(), Name
+    assert "quoted individually" not in Terms and "Gold pieces" not in Terms and "Gold rings" not in Terms
+    assert "[no product on offer] Prices are fixed per piece and material." in Terms
+    App = (Web / "app.js").read_text(encoding="utf-8")
+    Getter = App[App.index("get termsOrders()"):App.index("get sizingHelp()")]
+    assert "quoted individually" not in Getter and "r ? 'fixed per ring and material' : 'fixed per piece and material'" in Getter
+
+
+async def test_the_new_terms_are_exactly_one_new_version_whatever_the_statuses_and_switches(tmp_path):
+    """Served after the Terms of before (an archived version 1), the new wording is version 2 — once: every status and
+    every switch combination keeps it version 2, and nothing else is archived."""
+    H = Harness(tmp_path, AdminKey=AdminKey)
+    try:
+        Db = H.Ctx.Accounts.Db
+        Db.Execute("DELETE FROM legal_documents WHERE doc = 'terms'")                # the site as it is before the release:
+        Db.Execute("INSERT INTO legal_documents (doc, version, sha256, text, first_served_at) VALUES ('terms', 1, ?, ?, ?)",
+                   ("0" * 64, "The Terms of Service before WP5.", Now()))           # its Terms archived as version 1
+        V = H.Ctx.Accounts.Consent.Current()["terms"]
+        assert V["version"] == 2
+        for Status in (MaterialStatus.Preview, MaterialStatus.Quote, MaterialStatus.Hidden):
+            for Product in ("ring", "charm"):
+                Changes = [{"product": Product, "material_id": M, "status": Status} for M in Gold]
+                assert (await H.Client.put("/api/admin/material-statuses", json={"changes": Changes}, headers=Admin)).status_code == 200
+                assert H.Ctx.Accounts.Consent.Current()["terms"] == V
+        for P, On in (("ring", False), ("charm", True), ("ring", True), ("charm", False)):
+            assert (await H.Client.put("/api/admin/products/availability", json={"product": P, "available": On}, headers=Admin)).status_code == 200
+            assert H.Ctx.Accounts.Consent.Current()["terms"] == V
+        assert [R["version"] for R in Db.All("SELECT version FROM legal_documents WHERE doc = 'terms' ORDER BY version")] == [1, 2]
     finally:
         await H.Close()

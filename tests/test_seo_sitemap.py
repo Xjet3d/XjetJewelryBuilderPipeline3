@@ -38,7 +38,7 @@ async def test_lastmod_is_the_date_each_pages_own_content_last_changed(tmp_path)
         _D2, S2 = await _Publish(H, "A twisted band")
         await H.Client.put("/api/admin/site-indexing", json={"on": True}, headers=Admin)
         Map = await _Map(H)
-        assert len(Map) == 12 and all(re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", V) for V in Map.values())
+        assert len(Map) == 14 and all(re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", V) for V in Map.values())
         Base = "https://atelier.example.com/JewelryB2C3"
         Design1, Design2 = f"{Base}/gallery/{S1['slug']}", f"{Base}/gallery/{S2['slug']}"
         # a design starts at the date it was published here

@@ -441,8 +441,10 @@ class QuoteDesk:
   </div>
   <fieldset><legend>Delivery</legend>{Ship}{self._Err(Problems, 'shipping_method')}</fieldset>
   <label class="check"><input type="checkbox" name="terms" value="1"{' checked' if F.get('terms') else ''}>
-    <span>I accept the <a href="{_E(self.Ctx.Settings.BasePath)}/terms" target="_blank" rel="noopener">Terms of Service</a> and understand that the piece is made to order (design and size) and is not returnable
-    for change of mind.</span></label>{self._Err(Problems, 'terms')}
+    <span>I accept the <a href="{_E(self.Ctx.Settings.BasePath)}/terms" target="_blank" rel="noopener">Terms of Service</a>. I understand that the personalised piece is made to order to my
+    specification and cannot be returned for a change of mind once confirmed, and that my design is not exclusive.</span></label>{self._Err(Problems, 'terms')}
+  <!-- Counsel Book A-4 CHK-2, CHK-6: published 3 Nov 2026 with the owner's approval; legal counsel's review pending -->
+  <p class="small">You must be 18 or older to place an order.</p>
   <label>A note for our team (optional)<textarea name="note" rows="3" maxlength="1000">{V('note') if (Form or {}).get('_form') == 'approve' else ''}</textarea></label>
   <button type="submit">Approve and place the order</button>
 </form>"""

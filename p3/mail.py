@@ -72,6 +72,8 @@ def _Layout(Heading: str, Content: str) -> str:
 {Content}
       </td></tr>
     </table>
+    <p style="margin:16px 0 0;{_Font}font-size:11px;line-height:1.5;color:#6F6F6F;">XJet Atelier is a service of XJet Ltd.,
+       4 Oppenheimer St., Science Park, Rehovot 7670102, Israel · Company No. 513655233</p>
   </td></tr>
 </table>
 </body>
@@ -273,10 +275,34 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
               <td align="right" style="padding:4px 0;{_Font}font-size:13px;">{_Esc(_Money(V, Order['currency']) if V else 'Free')}</td></tr>"""
                         for K, V in Totals)
     Address = "<br>".join(_Esc(L) for L in Order["address_lines"])
+    # Counsel Book Appendix A-5 (EML-1, O1) — the order as a durable record: what happens until we confirm, who makes it,
+    # delivery, cancelling and returns, the warranty and the Terms version. Published 3 Nov 2026 with the owner's
+    # approval (the 14-day cancellation of an unchanged gallery design, Q2); legal counsel's review pending
+    Site = AccountUrl.split("#", 1)[0].rstrip("/") if AccountUrl else ""
+    Paid = (Order.get("payment_status") or "") in ("paid", "payment_confirmed")
+    Rights = [("Made by:", "XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233. Made in Israel."),
+              ("Delivery:", f"production up to 14 days; {Order.get('shipping_label') or 'delivery'}"
+                            f"{(', ' + Order['shipping_eta']) if Order.get('shipping_eta') else ''}. Import charges: where the "
+                            "destination country charges import VAT, customs duty or a carrier’s handling fee, the recipient "
+                            "pays them."),
+              ("Cancelling and returns:", "you can cancel free of charge until we confirm your order. Each personalised piece "
+                                          "is made to your specification, so once confirmed it cannot be returned for a change "
+                                          "of mind. If it arrives faulty or does not match what you ordered, contact us within "
+                                          "14 days of delivery. A gallery design you order unchanged can be cancelled "
+                                          "within 14 days of delivery: write to us; the Shipping & Returns page says how."),
+              ("Warranty:", "two-year limited warranty from delivery" + (f" — {Site}/warranty" if Site else "")
+                            + ". It does not affect your legal rights."),
+              ("Terms:", "this order follows the Terms of Service"
+                         + (f" version {Order['terms_version']}" if Order.get("terms_version") else "")
+                         + (f", available at {Site}/terms." if Site else ", available on our site."))]
+    RightsRows = "".join(f'<p style="margin:0 0 6px;"><strong style="color:#1A1A1A;">{_Esc(K)}</strong> {_Esc(V)}</p>'
+                         for K, V in Rights)
+    Lead = (f"{_Esc(_Reserved(Order))} — order {_Esc(Order['ref'])}.")
     return (f"Order {Order['ref']} received — XJet Atelier", _Layout(f"Thank you — order {_Esc(Order['ref'])} received", f"""\
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
-        <p style="margin:0 0 20px;">We have received your order. {_Esc(_Reserved(Order))}: our team now reviews the design for
-           production feasibility and confirms it to you before anything is made.</p>
+        <p style="margin:0 0 20px;"><strong>{Lead}</strong> Our team will check that your design can be made and confirm it to
+           you within about 2 business days. You can cancel free of charge until then by replying to this email.
+           Production starts as soon as we confirm your order{'.' if Paid else '; we will contact you separately to arrange payment.'}</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Rows}</table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">{TotalRows}
           <tr><td style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">Total</td>
@@ -298,6 +324,8 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Next}
         </table>
         <div style="margin:24px 0 0;">{Button}</div>
+        <p style="margin:28px 0 6px;text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#8A6420;font-weight:700;">Your order and your rights</p>
+        <div style="{_Font}font-size:13px;line-height:1.6;color:#3F3F46;">{RightsRows}</div>
         <p style="margin:28px 0 0;font-size:12px;color:#6F6F6F;">{_PriceNote(Order)}
            {ContactLine(Order['ref'])}</p>"""))
 
