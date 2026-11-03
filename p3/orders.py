@@ -9,7 +9,8 @@ XJ numbers, mandatory XJET10 coupon and client-side prices were deliberately NOT
     totals are computed here, and the order stores a snapshot of all of it;
   * an order is a reservation until XJet has reviewed the design for production feasibility — the
     confirmation says so; payment is never faked (p3/payments.py);
-  * one order per click (client_request_id), an empty or non-purchasable bag cannot be ordered,
+  * one order per click (client_request_id); an order repeating one of the customer's own from the last day (the same
+    pieces to the same address) is placed only when they confirm it; an empty or non-purchasable bag cannot be ordered,
     Gold (luxury) is not on this path (it asks for a quote instead: RequestQuote);
   * terms acceptance is recorded with its version and time; the customer's known profile pre-fills
     the form but never overwrites what they typed (the browser's job);
@@ -20,7 +21,7 @@ import html
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from p3 import addressing as Addressing
 from p3 import assets
@@ -53,6 +54,9 @@ ProductionStatuses = ("production", "qc", "shipped", "completed")     # need eve
 PhoneDigits = re.compile(r"\d")
 PhonePattern = re.compile(r"^\+?[0-9 ()./-]{7,24}$")
 MaxLines = 20
+# An order that repeats one of the customer's own from the last day (the same pieces to the same address) is placed only
+# when they confirm it (22 Oct: one checkout run twice, 44 s apart, made two identical orders)
+RepeatHours = 24
 
 
 def ShippingFor(Market=None) -> dict:
@@ -363,6 +367,12 @@ class OrderService:
         Status = Validation.get("status") or "unverified"
         if Status not in ("unverified", "verified", "corrected", "failed"):
             Status = "unverified"
+        Earlier = None if Body.get("confirm_duplicate") is True else self._Repeats(Who, Ordered, Address)
+        if Earlier:
+            raise HttpError(409, "duplicate_order",
+                            f"You already placed this order — the same pieces to the same address — as {Earlier['ref']}, "
+                            f"{Earlier['when']}. Place it again only if you want a second, identical order.",
+                            Details={"existing_order": {"id": Earlier["id"], "ref": Earlier["ref"]}})
         OrderId, T = NewId("ord"), Now()
         TermsV, TermsSha = self.AcceptedTerms()             # what "I accept the Terms of Service" links to now (M6)
         # The customer's note from Checkout ("Anything we should know?", R-45): kept on the order, as a quote's is
@@ -424,6 +434,38 @@ class OrderService:
         Out = self.Get(Who, OrderId)
         self._Email(Out, SendMail, Origin)
         return Out
+
+    @staticmethod
+    def _LineKey(L: dict) -> tuple:
+        """What makes two order lines the same piece: design, option, customization, metal, size and quantity."""
+        Num = lambda V: None if V is None else round(float(V), 3)
+        Charm = L.get("product_type") == Products.Charm
+        return (L.get("design_id") or "", L.get("candidate_id") or "", L.get("customization_id") or "", L.get("material_id") or "",
+                None if Charm else Num(L.get("ring_size")), Num(L.get("charm_size")) if Charm else None, int(L.get("quantity") or 0))
+
+    @staticmethod
+    def _AddressKey(A: dict) -> tuple:
+        Same = lambda V: " ".join(str(V or "").split()).casefold()
+        return tuple(Same(A.get(K)) for K in ("recipient", "line1", "city", "postal_code", "country"))
+
+    def _Repeats(self, Who: Principal, Ordered: list[dict], Address: dict) -> dict | None:
+        """The customer's own order of the last RepeatHours that this one would repeat — the same pieces, metals, sizes and
+        quantities to the same address, and not cancelled — as {"id", "ref", "when"}; None when there is none."""
+        Since = (datetime.now(timezone.utc) - timedelta(hours=RepeatHours)).isoformat(timespec="milliseconds")
+        Lines, Where = sorted(self._LineKey(L) for L in Ordered), self._AddressKey(Address)
+        Db = self.Ctx.Db
+        for O in Db.All("SELECT id, order_no, shipping_json, created_at FROM orders WHERE owner_account_id = ? AND status != 'cancelled' "
+                        "AND created_at >= ? ORDER BY created_at DESC", (Who.AccountId, Since)):
+            if self._AddressKey(json.loads(O["shipping_json"] or "{}")) != Where:
+                continue
+            Theirs = Db.All("SELECT design_id, candidate_id, customization_id, material_id, product_type, ring_size, charm_size, quantity "
+                            "FROM order_lines WHERE order_id = ?", (O["id"],))
+            if sorted(self._LineKey(L) for L in Theirs) == Lines:
+                Minutes = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(O["created_at"])).total_seconds() // 60))
+                When = ("a moment ago" if Minutes < 1 else f"{Minutes} minute{'s' if Minutes > 1 else ''} ago" if Minutes < 60
+                        else f"about {Minutes // 60} hour{'s' if Minutes >= 120 else ''} ago")
+                return {"id": O["id"], "ref": OrderRef(O["order_no"]), "when": When}
+        return None
 
     def _Email(self, Order: dict, SendMail, Origin: str = "") -> None:
         """Origin: the public site the customer ordered on (P3_PUBLIC_BASE_URL first): the email's pictures and its View Your

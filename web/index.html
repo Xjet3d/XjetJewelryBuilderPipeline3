@@ -36,14 +36,14 @@
 
     <!-- Visual system carried over from Pipeline 2 (index-p2.html) -->
     <style>
-        body { font-family: 'Inter', sans-serif; background: #fff; color: #111; margin: 0; -webkit-tap-highlight-color: transparent; }
-        h1, h2, h3, .brand-font { font-family: 'Cinzel', serif; }
+        body { font-family: 'Inter', 'Inter Fallback', sans-serif; background: #fff; color: #111; margin: 0; -webkit-tap-highlight-color: transparent; }
+        h1, h2, h3, .brand-font { font-family: 'Cinzel', 'Cinzel Fallback', serif; }
         [x-cloak] { display: none !important; }
         .ssr-view { display: contents; }      /* the server's copy of the page asked for (p3/sitepages.py) */
         /* The homepage, Version A (WP6, the owner's FINAL choice of 1 Nov 2026; the mockup's rules, prefixed hv-). Text
            over the photos keeps 4.5:1 (darker text, strong veils); tap targets are 44 px or more. */
         .hv-wrap { width: min(1200px, 100% - 64px); margin-inline: auto; }
-        .hv-display { font-family: 'Cinzel', Georgia, serif; font-weight: 400; letter-spacing: .02em; line-height: 1.12; margin: 0; }
+        .hv-display { font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; font-weight: 400; letter-spacing: .02em; line-height: 1.12; margin: 0; }
         .hv-display em { font-style: italic; }
         .hv-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8A561B; margin: 0 0 16px; }
         .hv-h2 { font-size: clamp(28px, 3.2vw, 40px); }
@@ -98,7 +98,7 @@
         .hv-ring-imgs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
         .hv-ring-imgs figure { margin: 0; }
         .hv-ring-imgs img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 14px; border: 1px solid #EEE8DD; background: #F7F5F1; }
-        .hv-ring-imgs figcaption { font-family: 'Cinzel', Georgia, serif; letter-spacing: .02em; font-size: 14px; text-align: center; margin-top: 10px; }
+        .hv-ring-imgs figcaption { font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; letter-spacing: .02em; font-size: 14px; text-align: center; margin-top: 10px; }
         .hv-band { position: relative; min-height: 620px; display: flex; align-items: center; background: #F4F1EC; overflow: hidden; }
         .hv-band > picture img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 40%; }
         .hv-band-veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(25,25,28,.92) 0%, rgba(25,25,28,.86) 40%, rgba(25,25,28,.2) 66%); }
@@ -195,7 +195,7 @@
         .g-card .g-link:focus-visible::after { outline: 2px solid #C9A96E; outline-offset: 2px; }
         .g-card .g-over { position: relative; z-index: 2; pointer-events: none; }      /* only its buttons take a click */
         .g-card .g-over button { pointer-events: auto; }
-        .g-name { font-family: 'Cinzel', serif; font-weight: 500; letter-spacing: .02em; color: #1A1A1A; font-size: 16px; line-height: 1.35; }
+        .g-name { font-family: 'Cinzel', 'Cinzel Fallback', serif; font-weight: 500; letter-spacing: .02em; color: #1A1A1A; font-size: 16px; line-height: 1.35; }
         /* "Make it yours": the words where a card has room for them beside the swatches (262 px and more: the grids' one
            column of two at 640–767 px and four from 1300 px, never the gallery panel's narrower four), else a gold arrow.
            Phones: 14 px names and 40 × 44 swatches; on a tight card the swatches give way a little (to 32 px), so three
@@ -267,7 +267,7 @@
         @media (min-width: 768px) { .f-link { padding: .3125rem 0; } }
         .f-head { margin-bottom: .5rem; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #C9A96E; }
         .step-numeral { color: #B08D57 !important; }      /* 3.1:1 on white: readable at its 48 px */
-        .step-title, .h-inter { font-family: 'Inter', sans-serif; }  /* an h3 with the look of the titles before it (Inter, not Cinzel) */
+        .step-title, .h-inter { font-family: 'Inter', 'Inter Fallback', sans-serif; }  /* an h3 with the look of the titles before it (Inter, not Cinzel) */
         .cand-card.is-selected { border-color: #8A6420 !important; box-shadow: 0 0 0 3px rgba(138, 100, 32, 0.28); }
         .cand-row { scrollbar-width: none; } .cand-row::-webkit-scrollbar { display: none; }
         .tap, .tap-lg { position: relative; }
@@ -849,12 +849,13 @@
             </div>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length || pageDesignsSoon" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 py-3 -my-3" style="color:#8A6420;">See every design</a>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
                             <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
@@ -952,12 +953,13 @@
             </section>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length || pageDesignsSoon" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 py-3 -my-3" style="color:#8A6420;">See every design</a>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
                             <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
@@ -998,12 +1000,13 @@
             </div>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length || pageDesignsSoon" class="px-6 md:px-20 pt-14 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 py-3 -my-3" style="color:#8A6420;">See every design</a>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
                             <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
@@ -1115,12 +1118,13 @@
             </section>
             <!-- From the Inspiration Gallery: four real designs at the foot of the page, each a link to its own page (a different
                  four on About, Materials, Technology and FAQ: app.js pageDesigns; the page as served lists them too) -->
-            <section x-show="pageDesigns.length" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
+            <section x-show="pageDesigns.length || pageDesignsSoon" class="px-6 md:px-20 pb-16 max-w-6xl mx-auto w-full" aria-label="From the Inspiration Gallery">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">From the Inspiration Gallery</h2>
                     <a href="{{BASE}}/gallery" @click="pageLink($event, 'inspiration')" class="text-[12px] uppercase tracking-widest font-semibold underline underline-offset-4 py-3 -my-3" style="color:#8A6420;">See every design</a>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
                             <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
@@ -2217,6 +2221,15 @@
                         <p class="text-[13px] text-zinc-500">Questions before you order? <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black">Email our design team</a> — we reply within one business day.</p>
                     </section>
                     <p x-show="co.error" class="err-line mt-4" role="alert" x-text="co.error"></p>
+                    <!-- The same pieces to the same address were ordered within the day: placed again only if the customer says so -->
+                    <div x-show="co.duplicate" x-cloak id="co-duplicate" tabindex="-1" role="alert" data-testid="co-duplicate"
+                         class="mt-4 rounded-xl p-5" style="background:#FBF7EF; border:1px solid #E8DCC4;">
+                        <p class="text-[14px] text-zinc-800 leading-relaxed" x-text="co.duplicate?.message"></p>
+                        <div class="mt-3 flex flex-wrap gap-3">
+                            <button type="button" @click="viewEarlierOrder()" class="btn-outline px-5 py-2.5">View that order</button>
+                            <button type="button" @click="placeOrder({ confirmDuplicate: true })" :disabled="co.busy" class="btn-gold px-5 py-2.5">Place it again</button>
+                        </div>
+                    </div>
                 </div>
 
                 <aside class="mt-10 lg:mt-0 lg:sticky lg:top-6 border border-zinc-100 rounded-xl p-5 bg-zinc-50/50" aria-label="Order summary">
@@ -2689,7 +2702,7 @@
                 <div x-show="!legacyAuth">
                     <div class="mb-6 text-center">
                         <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
-                        <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;"
+                        <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel','Cinzel Fallback',serif;"
                             x-text="{ signin: { favorites: 'Sign in to save favorites', bag: 'Sign in to see your bag' }[regReason] || 'Sign in', register: 'Create your account', forgot: 'Reset your password', code: 'Use your sign-in code', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
                         <p id="reg-desc" class="text-[15px] text-zinc-600 mt-2 leading-relaxed"
                            x-text="{ signin: { favorites: 'Your favorites, designs and orders stay with your account.',
@@ -2836,7 +2849,7 @@
                 <!-- Header -->
                 <div class="mb-6 text-center">
                     <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
-                    <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;" x-text="regMode === 'token' ? 'Sign in' : 'Sign in or register'"></h2>
+                    <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel','Cinzel Fallback',serif;" x-text="regMode === 'token' ? 'Sign in' : 'Sign in or register'"></h2>
                     <p id="reg-desc" x-show="regMode === 'email'" class="text-[13px] text-zinc-600 mt-2 leading-relaxed">Register with your email and we send you a link to start designing. Your designs are saved to your account.</p>
                     <p x-show="regMode === 'token'" class="text-[13px] text-zinc-600 mt-2 leading-relaxed">Enter the 6-letter sign-in code from your welcome email.</p>
                 </div>
@@ -2936,7 +2949,7 @@
                  aria-labelledby="terms-title" aria-describedby="terms-desc" @keydown="trapFocus($event, 'terms-dialog')">
                 <div class="mb-6 text-center">
                     <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
-                    <h2 id="terms-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel',serif;"
+                    <h2 id="terms-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel','Cinzel Fallback',serif;"
                         x-text="termsGate.mode === 'pending' ? 'Create your account' : 'Before you start'"></h2>
                     <p id="terms-desc" class="text-[15px] text-zinc-600 mt-2 leading-relaxed"
                        x-text="termsGate.mode === 'pending'

@@ -32,7 +32,9 @@ async def _InBag(H, Did: str, Cand: str, Material: str, Size=None, Charm=None, Q
 
 
 async def _Place(H, Click: str) -> dict:
-    R = await H.Client.post("/api/orders", json=_Order(client_request_id=Click))
+    # These orders repeat the same piece on purpose: the customer confirms each repeat ("Place it again",
+    # tests/test_duplicate_order.py)
+    R = await H.Client.post("/api/orders", json=_Order(client_request_id=Click, confirm_duplicate=True))
     assert R.status_code == 200, R.text
     return R.json()
 

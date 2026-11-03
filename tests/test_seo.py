@@ -404,7 +404,7 @@ async def test_four_gallery_designs_close_about_materials_technology_and_faq(tmp
         assert Page.count('<template x-for="g in pageDesigns"') == 4
         # room above the four (2026-10-18): FAQ and Technology end on content with no space of its own below it; About
         # too since 2026-10-20 (it ends on a tinted section)
-        Strip = '<section x-show="pageDesigns.length" class="px-6 md:px-20 {}pb-16 max-w-6xl mx-auto w-full"'
+        Strip = '<section x-show="pageDesigns.length || pageDesignsSoon" class="px-6 md:px-20 {}pb-16 max-w-6xl mx-auto w-full"'
         assert Page.count(Strip.format("pt-14 ")) == 3 and Page.count(Strip.format("")) == 1
         for View, Path_ in (("faq", "/faq"), ("technology", "/technology")):         # the page as served (x-cloak added)
             Live = _Live((await H.Client.get(Path_)).text, View)
