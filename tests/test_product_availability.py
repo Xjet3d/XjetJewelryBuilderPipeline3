@@ -125,7 +125,9 @@ async def test_the_line_under_start_designing_follows_the_products_customers_can
         Template = Index[Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">"):]
         assert Template.count(Bound) == 1 and Template.count('x-show="heroCollection.label"') == 1   # one line at every width (WP6)
         Live = Index[Index.index('data-ssr-view="home"'):Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">")]
-        assert Live.count(Bound) == 1 and Live.count('x-cloak x-show="heroCollection.label"') == 1    # hidden until the script decides
+        # shown from the first paint: the server writes the line the script starts with (launch UX, 3 Nov: no shift)
+        assert Live.count(Bound) == 1 and Live.count('<p x-show="heroCollection.label" class="hv-fine">') == 1
+        assert 'x-cloak x-show="heroCollection.label"' not in Live
         App = (await H.Client.get("/static/app.js")).text
         Getter = App[App.index("get heroCollection()"):App.index("chooseProduct(p)")]
         assert "this.productsList.filter(p => !this.previewedProducts.includes(p))" in Getter    # customers' products only
@@ -140,5 +142,9 @@ async def test_the_line_under_start_designing_follows_the_products_customers_can
         await _Set(H, "ring", False)
         assert (await H.Client.get("/api/catalog")).json()["products"]["available"] == ["charm"]
         assert 'x-text="heroCollection.label">Charms</span>' in (await H.Client.get("/")).text
+        await _Set(H, "charm", False)                     # nothing on offer: no line, so it stays hidden until the script decides
+        Index = (await H.Client.get("/")).text
+        Live = Index[Index.index('data-ssr-view="home"'):Index.index("<template x-if=\"view === 'home' && ssrView !== 'home'\">")]
+        assert 'x-cloak x-show="heroCollection.label"' in Live
     finally:
         await H.Close()
