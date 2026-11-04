@@ -182,7 +182,7 @@ class OrderService:
         First, _, Last = Name.partition(" ")
         return {
             "customer": {"first_name": First, "last_name": Last.strip(), "email": Profile.get("email") or "", "phone": ""},
-            "countries": [{"code": C, "name": N} for C, N in Addressing.Countries],
+            "countries": Addressing.CountryList(),            # with each one's dialling code (the phone field)
             "region_required": sorted(Addressing.RegionRequired), "no_postal_code": sorted(Addressing.NoPostalCode),
             "shipping_options": list(ShippingFor(Market).values()),
             "terms_version": self.AcceptedTerms()[0],
@@ -291,7 +291,7 @@ class OrderService:
         if not EmailPattern.match(C["email"]):
             P.append({"field": "email", "message": "Please enter a valid email address."})
         if not PhonePattern.match(C["phone"]) or len(PhoneDigits.findall(C["phone"])) < 7:
-            P.append({"field": "phone", "message": "Please enter a phone number we can reach you on (with the country code)."})
+            P.append({"field": "phone", "message": "Please enter a phone number we can reach you on."})
         return C, P
 
     def ValidateAddress(self, Raw: dict | None) -> dict:
