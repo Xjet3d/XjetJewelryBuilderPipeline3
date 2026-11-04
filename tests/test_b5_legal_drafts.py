@@ -82,6 +82,10 @@ def test_the_terms_promise_no_gallery_permission_that_is_not_built_yet():
     for Text in (Terms, SitePages.DesignUseAcceptance):
         assert "only after you allow it for that design" not in Text
     assert SitePages.DesignUseAcceptance.endswith("other people's intellectual property stays theirs.")
+    # nor do the copies beside the sign-up form, the Google sign-up and the Terms gate: each is the sentence, whole
+    assert "only after you allow it" not in Index
+    Copies = [Index[I:Index.index("</p>", I)] for I in [M for M in range(len(Index)) if Index.startswith("By accepting, you agree that XJet", M)]]
+    assert len(Copies) == 3 and all(C == SitePages.DesignUseAcceptance for C in Copies), Copies
 
 
 def test_the_shekel_wording_is_true_whether_israeli_pricing_is_on_or_off():
