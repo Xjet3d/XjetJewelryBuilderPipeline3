@@ -2595,7 +2595,7 @@ function p3App() {
     get coStepIndex() { return this.checkoutSteps.findIndex(s => s[0] === this.co.step); },
     get coCountry() { return (this.checkout?.countries || []).find(c => c.code === this.co.address.country); },
     get coCountries() { return this.checkout?.countries || []; },
-    flagSrc(cc) { return url('/static/vendor/flags/' + String(cc || '').toLowerCase() + '.svg'); },
+    flagSrc(cc) { return url(`/static/vendor/flags/${String(cc || '').toLowerCase()}.svg`); },   // under the base path, like every request
     coDial(cc) { return (this.coCountries.find(c => c.code === cc) || {}).dial || ''; },
     coCountryName(cc) { return (this.coCountries.find(c => c.code === cc) || {}).name || ''; },
     // ── The phone field (4 Nov 2026): a dialling code with its flag, then the number; the order keeps "+972 54 123 4567"

@@ -77,7 +77,7 @@ def test_every_shipping_country_has_a_plain_flag():
 async def test_flags_are_served_as_images_of_the_site(H):
     R = await H.Client.get("/static/vendor/flags/il.svg")
     assert R.status_code == 200 and R.headers["content-type"].startswith("image/svg+xml")
-    assert "url('/static/vendor/flags/' + String(cc || '').toLowerCase() + '.svg')" in App     # same origin: the CSP's img-src 'self'
+    assert "url(`/static/vendor/flags/${String(cc || '').toLowerCase()}.svg`)" in App      # same origin, under the base path (CSP img-src 'self')
 
 
 def test_the_pickers_are_comboboxes_with_listboxes_and_sized_flags():
