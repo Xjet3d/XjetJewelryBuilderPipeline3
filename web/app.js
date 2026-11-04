@@ -250,9 +250,11 @@ function p3App() {
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
           problems: {}, addrCheck: null, useSuggested: false, requestId: '', currencyNote: '',
+          phoneCc: '', phoneNum: '',   // the phone as the field shows it: its country's dialling code and the number (customer.phone joins them)
           duplicate: null,             // the customer's own order of the last day that this one repeats: placed again only on their say-so
           note: '',                    // "Anything we should know?" (R-45): the order's customer note
           recipientEdited: false },    // the customer typed the Recipient: step 1's name no longer fills it (R-42)
+    picker: { open: '', active: '', typed: '', typedAt: 0, up: false },   // Checkout's open picker ('country' | 'dial'), its highlighted option
     quoteReq: { open: false, busy: false, error: '', done: null, message: '', quantity: 1, problems: {},
                 customer: { first_name: '', last_name: '', email: '', phone: '' } },
 
@@ -2594,6 +2596,121 @@ function p3App() {
     },
     get coStepIndex() { return this.checkoutSteps.findIndex(s => s[0] === this.co.step); },
     get coCountry() { return (this.checkout?.countries || []).find(c => c.code === this.co.address.country); },
+    get coCountries() { return this.checkout?.countries || []; },
+    flagSrc(cc) { return url(`/static/vendor/flags/${String(cc || '').toLowerCase()}.svg`); },   // under the base path, like every request
+    coDial(cc) { return (this.coCountries.find(c => c.code === cc) || {}).dial || ''; },
+    coCountryName(cc) { return (this.coCountries.find(c => c.code === cc) || {}).name || ''; },
+    // ── The phone field (4 Nov 2026): a dialling code with its flag, then the number; the order keeps "+972 54 123 4567"
+    // The code a phone starts from: Israel while prices are in shekels (B6), else the shipping country chosen (the first
+    // listed until one is) — the visitor's location is not used for it
+    _defaultPhoneCc() {
+      const has = cc => this.coCountries.some(c => c.code === cc);
+      if (this.pricingChoice?.currency === 'ILS' && has('IL')) return 'IL';
+      return has(this.co.address.country) ? this.co.address.country : (this.coCountries[0]?.code || '');
+    },
+    // "+972 54 123 4567" → IL and "54 123 4567" (the rest as typed); a number without "+" keeps the code chosen. A code
+    // two countries share ("+1") stays with the one chosen, else the first listed.
+    _splitPhone(raw) {
+      const s = String(raw || '').trim();
+      if (!s.startsWith('+')) return { cc: null, num: s };
+      const digits = s.replace(/\D/g, '');
+      let best = null;
+      for (const c of this.coCountries) {
+        const d = c.dial.slice(1), b = best ? best.dial.length - 1 : 0;
+        if (digits.startsWith(d) && (!best || d.length > b || (d.length === b && c.code === this.co.phoneCc))) best = c;
+      }
+      if (!best) return { cc: null, num: s };
+      let need = best.dial.length - 1, i = 0;
+      while (i < s.length && need > 0) { if (/\d/.test(s[i])) need--; i++; }
+      return { cc: best.code, num: s.slice(i).replace(/^[\s.()-]+/, '') };
+    },
+    _initPhone() {
+      const { cc, num } = this._splitPhone(this.co.customer.phone);
+      this.co.phoneCc = cc || (this.coCountries.some(c => c.code === this.co.phoneCc) ? this.co.phoneCc : this._defaultPhoneCc());
+      this.co.phoneNum = num;
+      this._composePhone();
+    },
+    // What the order keeps: the code and the number without its national 0 (054 … in Israel is +972 54 …; Italy keeps it).
+    // A number typed in full with a code not listed is kept as typed.
+    _composePhone() {
+      const c = this.coCountries.find(x => x.code === this.co.phoneCc);
+      let n = String(this.co.phoneNum || '').trim();
+      if (!n || n.startsWith('+') || !c) { this.co.customer.phone = n; return; }
+      if (!c.keep_zero) n = n.replace(/^0\s*(?=\d)/, '');
+      this.co.customer.phone = c.dial + ' ' + n;
+    },
+    // A whole international number typed or filled in ("+44 20 …"): its code moves to the picker
+    coPhoneInput() {
+      if (String(this.co.phoneNum).trim().startsWith('+')) {
+        const { cc, num } = this._splitPhone(this.co.phoneNum);
+        if (cc) { this.co.phoneCc = cc; this.co.phoneNum = num; }
+      }
+      this._composePhone();
+    },
+    // ── Checkout's pickers (shipping country, phone code): a select-only combobox with flags. The focus stays on its button
+    // and the list follows with aria-activedescendant; arrows, Home/End, Page keys, letters (a country's name; digits for
+    // a code), Enter or Space to choose, Escape to close, Tab to choose and move on.
+    _pickerValue(kind) { return kind === 'country' ? this.co.address.country : this.co.phoneCc; },
+    _pickerButton(kind) { return kind === 'country' ? 'co-country' : 'co-phone-cc'; },
+    pickerOptId(kind, cc) { return this._pickerButton(kind) + '-opt-' + cc; },
+    pickerOpen(kind) {
+      // below the button, unless the screen has more room above it (the action bar covers the bottom of a phone's screen)
+      const r = document.getElementById(this._pickerButton(kind))?.getBoundingClientRect();
+      this.picker.up = !!r && innerHeight - r.bottom - 96 < 240 && r.top - 72 > innerHeight - r.bottom - 96;
+      this.picker.open = kind; this.picker.active = this._pickerValue(kind) || this.coCountries[0]?.code || ''; this.picker.typed = '';
+      this._pickerScroll(kind);
+    },
+    pickerToggle(kind) { this.picker.open === kind ? this.pickerClose(kind) : this.pickerOpen(kind); },
+    pickerClose(kind, focus = true) {
+      if (this.picker.open !== kind) return;
+      this.picker.open = '';
+      if (focus) this.$nextTick(() => document.getElementById(this._pickerButton(kind))?.focus());
+    },
+    _pickerSet(kind, cc) {
+      if (!cc) return;
+      if (kind === 'country') this.co.address.country = cc;
+      else { this.co.phoneCc = cc; this._composePhone(); }
+    },
+    pickerChoose(kind, cc) { this._pickerSet(kind, cc); this.pickerClose(kind); },
+    _pickerScroll(kind) {
+      this.$nextTick(() => document.getElementById(this.pickerOptId(kind, this.picker.active))?.scrollIntoView({ block: 'nearest' }));
+    },
+    pickerKey(kind, e) {
+      const list = this.coCountries, k = e.key, plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      const typing = Date.now() - this.picker.typedAt < 700 && this.picker.typed;
+      if (this.picker.open !== kind) {
+        if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(k)) { e.preventDefault(); this.pickerOpen(kind); return; }
+        if (!(k.length === 1 && /\S/.test(k) && plain)) return;
+        this.pickerOpen(kind);                                         // a letter opens the list at that country
+      }
+      const at = Math.max(0, list.findIndex(c => c.code === this.picker.active));
+      const move = i => { this.picker.active = list[Math.min(list.length - 1, Math.max(0, i))]?.code || ''; this._pickerScroll(kind); };
+      if (k === 'ArrowDown') { e.preventDefault(); move(at + 1); }
+      else if (k === 'ArrowUp' && e.altKey) { e.preventDefault(); this.pickerChoose(kind, this.picker.active); }
+      else if (k === 'ArrowUp') { e.preventDefault(); move(at - 1); }
+      else if (k === 'Home') { e.preventDefault(); move(0); }
+      else if (k === 'End') { e.preventDefault(); move(list.length - 1); }
+      else if (k === 'PageDown') { e.preventDefault(); move(at + 10); }
+      else if (k === 'PageUp') { e.preventDefault(); move(at - 10); }
+      else if (k === 'Enter' || (k === ' ' && !typing)) { e.preventDefault(); this.pickerChoose(kind, this.picker.active); }
+      else if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); this.pickerClose(kind); }
+      else if (k === 'Tab') { this._pickerSet(kind, this.picker.active); this.picker.open = ''; }
+      else if (k.length === 1 && plain) {
+        const now = Date.now();
+        this.picker.typed = (typing ? this.picker.typed : '') + k.toLowerCase(); this.picker.typedAt = now;
+        const t = this.picker.typed;
+        let hit = -1;
+        if (kind === 'dial' && /^[+\d]+$/.test(t)) {                   // "972" or "+97": by the code
+          const d = t.replace(/^\+/, ''); hit = d ? list.findIndex(c => c.dial.slice(1).startsWith(d)) : -1;
+        } else if (t.length > 1 && [...t].every(ch => ch === t[0])) {     // the same letter again: the next country with it
+          const starts = list.map((c, i) => [c, i]).filter(([c]) => c.name.toLowerCase().startsWith(t[0]));
+          const cur = starts.findIndex(([, i]) => i === at);
+          hit = starts.length ? starts[(cur + 1) % starts.length][1] : -1;
+        } else hit = list.findIndex(c => c.name.toLowerCase().startsWith(t));
+        e.preventDefault();
+        if (hit >= 0) move(hit);
+      }
+    },
     get coRegionRequired() { return (this.checkout?.region_required || []).includes(this.co.address.country); },
     get coNoPostal() { return (this.checkout?.no_postal_code || []).includes(this.co.address.country); },
     get coRegionLabel() { return { US: 'State', CA: 'Province', AU: 'State / territory', JP: 'Prefecture' }[this.co.address.country] || 'State / province / region'; },
@@ -2649,6 +2766,7 @@ function p3App() {
         this._restoreCoDraft();                                       // what was typed before a reload comes first
         const c = this.co.customer, p = info.customer || {};
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
+        this._initPhone();                                            // the phone field's code and number, from what is known
         if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
         if (this.co.shipping_method !== (info.quote?.shipping_method || 'standard')) this.coRequote();   // the draft's delivery
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
@@ -2672,11 +2790,12 @@ function p3App() {
     coNext() { return this.co.step === 'details' ? this.coDetailsNext() : this.co.step === 'shipping' ? this.coShippingNext() : this.placeOrder(); },
     coDetailsNext() {
       const c = this.co.customer, probs = [];
+      this._composePhone();                                           // the code chosen and the number typed
       for (const k of CUSTOMER_FIELDS) c[k] = String(c[k] || '').trim();
       if (!c.first_name) probs.push({ field: 'first_name', message: 'Please enter your first name.' });
       if (!c.last_name) probs.push({ field: 'last_name', message: 'Please enter your last name.' });
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) probs.push({ field: 'email', message: 'Please enter a valid email address.' });
-      if (!/^\+?[0-9 ()./-]{7,24}$/.test(c.phone) || (c.phone.match(/\d/g) || []).length < 7) probs.push({ field: 'phone', message: 'Please enter a phone number we can reach you on (with the country code).' });
+      if (!/^\+?[0-9 ()./-]{7,24}$/.test(c.phone) || (c.phone.match(/\d/g) || []).length < 7) probs.push({ field: 'phone', message: 'Please enter a phone number we can reach you on.' });
       this._setProblems(probs);
       if (probs.length) { this._focusProblem(); return; }
       // Step 1's name fills the Recipient until the customer types one of their own (R-42)

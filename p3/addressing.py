@@ -27,6 +27,27 @@ Countries = [
     ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"), ("CO", "Colombia"), ("PE", "Peru"),
 ]
 CountryNames = dict(Countries)
+# Each shipping country's international dialling code: Checkout's phone field picks it beside the number (with the
+# country's flag, web/vendor/flags/<code>.svg), and the number is sent as "+972 54 123 4567"
+DialCodes = {
+    "US": "+1", "CA": "+1", "GB": "+44", "IE": "+353", "IL": "+972", "DE": "+49", "FR": "+33", "IT": "+39", "ES": "+34",
+    "PT": "+351", "NL": "+31", "BE": "+32", "LU": "+352", "CH": "+41", "AT": "+43", "DK": "+45", "SE": "+46", "NO": "+47",
+    "FI": "+358", "IS": "+354", "PL": "+48", "CZ": "+420", "SK": "+421", "HU": "+36", "RO": "+40", "BG": "+359", "GR": "+30",
+    "CY": "+357", "MT": "+356", "HR": "+385", "SI": "+386", "EE": "+372", "LV": "+371", "LT": "+370", "TR": "+90",
+    "AE": "+971", "SA": "+966", "QA": "+974", "KW": "+965", "BH": "+973", "OM": "+968", "JO": "+962", "EG": "+20",
+    "ZA": "+27", "MA": "+212", "KE": "+254", "NG": "+234", "IN": "+91", "SG": "+65", "MY": "+60", "TH": "+66", "VN": "+84",
+    "ID": "+62", "PH": "+63", "JP": "+81", "KR": "+82", "TW": "+886", "HK": "+852", "CN": "+86", "AU": "+61", "NZ": "+64",
+    "MX": "+52", "BR": "+55", "AR": "+54", "CL": "+56", "CO": "+57", "PE": "+51",
+}
+# Where a number's leading 0 stays after the dialling code (Italy: +39 06 …); elsewhere it is the national prefix that
+# the international form drops (054 … in Israel is +972 54 …)
+KeepsLeadingZero = {"IT"}
+
+
+def CountryList() -> list[dict]:
+    """The shipping countries as Checkout offers them: code, name, dialling code, and whether a leading 0 stays."""
+    return [{"code": C, "name": N, "dial": DialCodes[C], **({"keep_zero": True} if C in KeepsLeadingZero else {})}
+            for C, N in Countries]
 RegionRequired = {"US", "CA", "AU", "BR", "MX", "IN", "CN"}          # state / province / prefecture
 NoPostalCode = {"AE", "HK", "QA", "BH"}                              # countries that do not use postal codes
 PostalPatterns = {

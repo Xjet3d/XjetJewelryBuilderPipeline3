@@ -335,6 +335,27 @@
         .fld:focus { border-color: #1A1A1A; outline: 2px solid rgba(201,169,110,0.45); outline-offset: 1px; }
         .fld.bad { border-color: #C0392B; }
         .fld:disabled { background: #F6F6F6; color: #6F6F6F; }
+        /* Checkout's pickers with flags (shipping country, phone code; 4 Nov 2026): a button that opens its list below */
+        .flag { width: 20px; height: 15px; flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.12); object-fit: cover; }
+        .pick-wrap { position: relative; }
+        .pick-btn { display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
+        .pick-btn .pick-chev { width: 14px; height: 14px; flex: none; margin-left: auto; color: #71717A; transition: transform .12s; }
+        .pick-btn[aria-expanded="true"] .pick-chev { transform: rotate(180deg); }
+        .pick-code { width: auto; height: 100%; padding-left: 12px; padding-right: 10px; gap: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .pick-list { position: absolute; z-index: 50; left: 0; top: calc(100% + 4px); min-width: 100%; max-height: min(18rem, 55vh); overflow-y: auto;
+                     overscroll-behavior: contain; background: #fff; border: 1px solid #E4E4E7; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.12); padding: 4px 0; margin: 0; list-style: none; }
+        .pick-list.pick-wide { width: 18rem; max-width: calc(100vw - 40px); }
+        .pick-list.pick-up { top: auto; bottom: calc(100% + 4px); }            /* no room below (the action bar): it opens upwards */
+        .pick-opt { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 14px; font-size: 15px; color: #1A1A1A; cursor: pointer; }
+        .pick-opt.is-active { background: #FBF7EF; box-shadow: inset 3px 0 0 #C9A96E; }
+        .pick-opt[aria-selected="true"] { font-weight: 600; }
+        .pick-opt .pick-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pick-opt .pick-dial { color: #6F6F6F; font-variant-numeric: tabular-nums; }
+        .phone-row { display: flex; gap: 8px; align-items: stretch; }
+        .phone-in { position: relative; flex: 1 1 0%; min-width: 0; }
+        .phone-in .phone-ico { position: absolute; left: 13px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); color: #8A6420; pointer-events: none; }
+        .phone-in .fld { padding-left: 40px; }
+        @media (max-width: 639px) { .pick-list { max-height: 50vh; } .pick-opt { min-height: 48px; } }
         .flbl { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: #6F6F6F; margin-bottom: 6px; font-weight: 600; }
         /* Errors (board J, R-13): 14 px with an alert icon, never color alone. .err-line: the same for a message outside a form */
         .ferr, .err-line { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; line-height: 1.45; color: #A1261D; }
@@ -2243,7 +2264,34 @@
                             <div><label class="flbl" for="co-first">First name</label><input id="co-first" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('first_name') ? 'true' : null" :aria-describedby="coProblem('first_name') ? 'co-first-err' : null" :class="coProblem('first_name') ? 'bad' : ''" x-model="co.customer.first_name" autocomplete="given-name" @keydown.enter="coNext()"><p id="co-first-err" class="ferr" x-show="coProblem('first_name')" x-text="coProblem('first_name')"></p></div>
                             <div><label class="flbl" for="co-last">Last name</label><input id="co-last" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('last_name') ? 'true' : null" :aria-describedby="coProblem('last_name') ? 'co-last-err' : null" :class="coProblem('last_name') ? 'bad' : ''" x-model="co.customer.last_name" autocomplete="family-name" @keydown.enter="coNext()"><p id="co-last-err" class="ferr" x-show="coProblem('last_name')" x-text="coProblem('last_name')"></p></div>
                             <div><label class="flbl" for="co-email">Email</label><input id="co-email" type="email" class="fld" aria-required="true" :aria-invalid="coProblem('email') ? 'true' : null" :aria-describedby="coProblem('email') ? 'co-email-err' : null" :class="coProblem('email') ? 'bad' : ''" x-model="co.customer.email" autocomplete="email" inputmode="email" @keydown.enter="coNext()"><p id="co-email-err" class="ferr" x-show="coProblem('email')" x-text="coProblem('email')"></p></div>
-                            <div><label class="flbl" for="co-phone">Phone <span class="normal-case tracking-normal font-normal text-zinc-500">(with the country code)</span></label><input id="co-phone" type="tel" class="fld" aria-required="true" :aria-invalid="coProblem('phone') ? 'true' : null" :aria-describedby="coProblem('phone') ? 'co-phone-err' : null" :class="coProblem('phone') ? 'bad' : ''" x-model="co.customer.phone" autocomplete="tel" inputmode="tel" placeholder="+1 555 000 0000" @keydown.enter="coNext()"><p id="co-phone-err" class="ferr" x-show="coProblem('phone')" x-text="coProblem('phone')"></p></div>
+                            <!-- The phone (4 Nov 2026): the country's code with its flag, then the number; sent as "+972 54 123 4567" -->
+                            <div><label class="flbl" for="co-phone">Phone</label>
+                                <div class="phone-row">
+                                    <div class="pick-wrap shrink-0" @click.outside="pickerClose('dial', false)">
+                                        <button type="button" id="co-phone-cc" role="combobox" aria-haspopup="listbox" aria-controls="co-phone-cc-list" aria-label="Phone country code"
+                                                :aria-expanded="picker.open === 'dial' ? 'true' : 'false'"
+                                                :aria-activedescendant="picker.open === 'dial' && picker.active ? pickerOptId('dial', picker.active) : null"
+                                                class="fld pick-btn pick-code" :class="coProblem('phone') ? 'bad' : ''" @click="pickerToggle('dial')" @keydown="pickerKey('dial', $event)">
+                                            <img x-show="co.phoneCc" :src="flagSrc(co.phoneCc)" width="20" height="15" alt="" class="flag">
+                                            <span x-text="coDial(co.phoneCc) || '+'"></span>
+                                            <svg class="pick-chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                                        </button>
+                                        <ul x-show="picker.open === 'dial'" x-cloak id="co-phone-cc-list" role="listbox" aria-label="Phone country code" class="pick-list pick-wide" :class="picker.up ? 'pick-up' : ''">
+                                            <template x-for="c in coCountries" :key="'dial-' + c.code">
+                                                <li :id="pickerOptId('dial', c.code)" role="option" :aria-selected="co.phoneCc === c.code ? 'true' : 'false'" class="pick-opt" :class="picker.active === c.code ? 'is-active' : ''"
+                                                    @mousedown.prevent @mousemove="picker.active = c.code" @click="pickerChoose('dial', c.code)">
+                                                    <img :src="flagSrc(c.code)" width="20" height="15" alt="" loading="lazy" class="flag"><span class="pick-name" x-text="c.name"></span><span class="pick-dial" x-text="c.dial"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <div class="phone-in">
+                                        <svg class="phone-ico" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 0 1-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z"/></svg>
+                                        <input id="co-phone" type="tel" class="fld" aria-required="true" :aria-invalid="coProblem('phone') ? 'true' : null" :aria-describedby="coProblem('phone') ? 'co-phone-err' : null" :class="coProblem('phone') ? 'bad' : ''"
+                                               x-model="co.phoneNum" @input="coPhoneInput()" autocomplete="tel" inputmode="tel" placeholder="Phone number" @keydown.enter="coNext()">
+                                    </div>
+                                </div>
+                                <p id="co-phone-err" class="ferr" x-show="coProblem('phone')" x-text="coProblem('phone')"></p></div>
                         </div>
                     </section>
 
@@ -2257,10 +2305,26 @@
                             <div><label class="flbl" for="co-city">City</label><input id="co-city" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('city') ? 'true' : null" :aria-describedby="coProblem('city') ? 'co-city-err' : null" :class="coProblem('city') ? 'bad' : ''" x-model="co.address.city" autocomplete="shipping address-level2"><p id="co-city-err" class="ferr" x-show="coProblem('city')" x-text="coProblem('city')"></p></div>
                             <div><label class="flbl" for="co-region"><span x-text="coRegionLabel">State / province / region</span> <span x-show="!coRegionRequired" class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label><input id="co-region" class="fld" dir="auto" :aria-label="coRegionLabel + (coRegionRequired ? '' : ' (optional)')" :aria-required="coRegionRequired ? 'true' : null" :aria-invalid="coProblem('region') ? 'true' : null" :aria-describedby="coProblem('region') ? 'co-region-err' : null" :class="coProblem('region') ? 'bad' : ''" x-model="co.address.region" autocomplete="shipping address-level1"><p id="co-region-err" class="ferr" x-show="coProblem('region')" x-text="coProblem('region')"></p></div>
                             <div x-show="!coNoPostal"><label class="flbl" for="co-postal" x-text="coPostalLabel">Postal code</label><input id="co-postal" class="fld" :aria-required="coNoPostal ? null : 'true'" :aria-invalid="coProblem('postal_code') ? 'true' : null" :aria-describedby="coProblem('postal_code') ? 'co-postal-err' : null" :class="coProblem('postal_code') ? 'bad' : ''" x-model="co.address.postal_code" autocomplete="shipping postal-code"><p id="co-postal-err" class="ferr" x-show="coProblem('postal_code')" x-text="coProblem('postal_code')"></p></div>
-                            <div><label class="flbl" for="co-country">Country</label>
-                                <select id="co-country" class="fld" aria-required="true" :aria-invalid="coProblem('country') ? 'true' : null" :aria-describedby="coProblem('country') ? 'co-country-err' : null" :class="coProblem('country') ? 'bad' : ''" x-model="co.address.country" autocomplete="shipping country">
-                                    <template x-for="c in (checkout?.countries || [])" :key="c.code"><option :value="c.code" x-text="c.name"></option></template>
-                                </select><p id="co-country-err" class="ferr" x-show="coProblem('country')" x-text="coProblem('country')"></p></div>
+                            <!-- The country with its flag (4 Nov 2026): a select-only combobox (the focus stays on its button) -->
+                            <div class="pick-wrap" @click.outside="pickerClose('country', false)"><label class="flbl" id="co-country-label" for="co-country">Country</label>
+                                <button type="button" id="co-country" role="combobox" aria-haspopup="listbox" aria-controls="co-country-list" aria-labelledby="co-country-label" aria-required="true"
+                                        :aria-expanded="picker.open === 'country' ? 'true' : 'false'"
+                                        :aria-activedescendant="picker.open === 'country' && picker.active ? pickerOptId('country', picker.active) : null"
+                                        :aria-invalid="coProblem('country') ? 'true' : null" :aria-describedby="coProblem('country') ? 'co-country-err' : null"
+                                        class="fld pick-btn" :class="coProblem('country') ? 'bad' : ''" @click="pickerToggle('country')" @keydown="pickerKey('country', $event)">
+                                    <img x-show="coCountry" :src="flagSrc(co.address.country)" width="20" height="15" alt="" class="flag">
+                                    <span class="truncate" x-text="coCountry?.name || 'Choose a country'"></span>
+                                    <svg class="pick-chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                                </button>
+                                <ul x-show="picker.open === 'country'" x-cloak id="co-country-list" role="listbox" aria-labelledby="co-country-label" class="pick-list" :class="picker.up ? 'pick-up' : ''">
+                                    <template x-for="c in coCountries" :key="'country-' + c.code">
+                                        <li :id="pickerOptId('country', c.code)" role="option" :aria-selected="co.address.country === c.code ? 'true' : 'false'" class="pick-opt" :class="picker.active === c.code ? 'is-active' : ''"
+                                            @mousedown.prevent @mousemove="picker.active = c.code" @click="pickerChoose('country', c.code)">
+                                            <img :src="flagSrc(c.code)" width="20" height="15" alt="" loading="lazy" class="flag"><span class="pick-name" x-text="c.name"></span>
+                                        </li>
+                                    </template>
+                                </ul>
+                                <p id="co-country-err" class="ferr" x-show="coProblem('country')" x-text="coProblem('country')"></p></div>
                         </div>
                         <!-- A validation service suggested a correction: the customer decides; nothing is replaced silently -->
                         <div x-show="co.addrCheck?.status === 'corrected' && co.addrCheck?.suggestion" class="rounded-xl p-5" style="background:#FBF7EF; border:1px solid #E8DCC4;">
