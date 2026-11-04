@@ -56,25 +56,25 @@ async def test_a_charm_s_stl_finished_in_silver_is_the_stainless_line_s_stl_reco
         assert (await H.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                    headers=Admin)).status_code == 200
         await OfferCharmSizes(H, AdminKey)
-        Both = {**Prices, "stainless_steel": {"fixed_prices": {"20": 90, "25": 110}, "price_per_g": 10, "cost_per_g": 4}}
+        Both = {**Prices, "stainless_steel": {"fixed_prices": {"18": 90, "22": 110}, "price_per_g": 10, "cost_per_g": 4}}
         assert (await H.Client.put("/api/admin/charm-prices", json={"materials": Both}, headers=Admin)).status_code == 200
         Did, Cand = await _Design(H, "A rope charm with a twist", Charm=True)
-        await _Model(H, Did, 20, "silver")                                       # the 20 mm STL, finished in Silver
-        Silver = _Results(H, Did, "silver", 20)[0]
-        await _InBag(H, Did, Cand, "stainless_steel", Charm=20)
+        await _Model(H, Did, 18, "silver")                                       # the 18 mm STL, finished in Silver
+        Silver = _Results(H, Did, "silver", 18)[0]
+        await _InBag(H, Did, Cand, "stainless_steel", Charm=18)
         O = await _Place(H, "fil-rope")
         X = await _Verdict(H, O["id"])
         assert X["stl"]["state"] == "ready_shared" and X["eligible"], X["stl"]
-        assert X["stl"]["label"] == "STL ready — the same file as the Sterling Silver STL at 20 mm" and "Stainless Steel" in X["stl"]["action"]
+        assert X["stl"]["label"] == "STL ready — the same file as the Sterling Silver STL at 18 mm" and "Stainless Steel" in X["stl"]["action"]
         assert X["stl"]["link"]["id"] == Silver["id"] and X["stl"]["link"]["from_material_id"] == "silver"
-        assert not _Results(H, Did, "stainless_steel", 20)                      # nothing recorded yet — and nothing to prepare
+        assert not _Results(H, Did, "stainless_steel", 18)                      # nothing recorded yet — and nothing to prepare
         R = await _SendLine(H, O["id"])                                          # the link is confirmed, never silent
         assert R.status_code == 409 and R.json()["error"]["code"] == "link_confirmation_required"
         assert "the same file as the Sterling Silver STL" in R.json()["error"]["message"]
-        assert not _Results(H, Did, "stainless_steel", 20) and not _Admin(H, O["id"])["three_d_pinned"]   # a refused hand-over records nothing
+        assert not _Results(H, Did, "stainless_steel", 18) and not _Admin(H, O["id"])["three_d_pinned"]   # a refused hand-over records nothing
         R = await _SendLine(H, O["id"], {_Admin(H, O["id"])["id"]: Silver["id"]})
         assert R.status_code == 200, R.text
-        Mine = _Results(H, Did, "stainless_steel", 20)
+        Mine = _Results(H, Did, "stainless_steel", 18)
         assert len(Mine) == 1 and Mine[0]["status"] == "measured" and Mine[0]["mesh_id"] == Silver["mesh_id"]
         assert _Geo(H, Mine[0]["id"]) == _Geo(H, Silver["id"])                   # the very same geometry …
         assert _Weight(H, Mine[0]["id"]) != _Weight(H, Silver["id"])             # … and Stainless Steel's own weight

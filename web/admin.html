@@ -2687,29 +2687,40 @@
         </div>
         <template x-if="sizesEdit">
           <div class="space-y-3">
-            <!-- Each size: its name (Delicate, Classic, Bold \u2026) and whether it is the recommended one -->
+            <!-- The grid (10\u201330 mm in 4 mm steps): exactly three ticked, 18 mm always among them -->
+            <fieldset>
+              <legend class="text-[12px] font-semibold text-zinc-700 mb-1.5">Sizes on offer</legend>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="s in (products.charm_size_grid || [])" :key="'cg' + s">
+                  <label class="inline-flex items-center gap-1.5 border px-3 py-1.5 cursor-pointer text-[13px]"
+                         :class="sizesEdit.includes(s) ? 'border-[#E8D9B8] bg-[#FBF7EF] font-semibold' : 'border-zinc-200'">
+                    <input type="checkbox" :checked="sizesEdit.includes(s)" @change="toggleCharmSize(s, $event.target.checked)"
+                           :disabled="s === products.charm_required_size" :aria-label="s + ' mm' + (s === products.charm_required_size ? ' (always on offer)' : '')">
+                    <span x-text="s + ' mm'"></span>
+                  </label>
+                </template>
+              </div>
+              <p class="text-[12px] mt-1.5" :class="sizesEdit.length === products.charm_sizes_on_offer ? 'text-zinc-500' : 'text-amber-700'"
+                 x-text="sizesEdit.length + ' of ' + products.charm_sizes_on_offer + ' ticked' + (sizesEdit.length === products.charm_sizes_on_offer ? '' : ' \u2014 tick exactly ' + products.charm_sizes_on_offer)"></p>
+            </fieldset>
+            <!-- Each level: the size it is given now, its name (Delicate, Classic, Bold) and the recommended one -->
             <table class="!text-[13px]"><tbody>
-              <template x-for="s in sizesEdit" :key="'ce' + s">
+              <template x-for="(s, i) in sizesEdit" :key="'ce' + s">
                 <tr>
                   <td class="pr-3 whitespace-nowrap font-medium" x-text="s + ' mm'"></td>
-                  <td class="pr-3"><input class="inp !w-40" maxlength="30" x-model="sizeNames[sizeKey(s)]" placeholder="Name (optional)" :aria-label="'Name of ' + s + ' mm'"></td>
+                  <td class="pr-3 whitespace-nowrap text-zinc-500" x-text="(products.charm_level_labels || {})[String(i + 1)] + ' price'"></td>
+                  <td class="pr-3"><input class="inp !w-40" maxlength="30" x-model="levelNames[String(i + 1)]" placeholder="Name (optional)" :aria-label="'Name of the ' + (products.charm_level_labels || {})[String(i + 1)] + ' size'"></td>
                   <td class="pr-3 whitespace-nowrap"><label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="radio" name="charm-size-default" :value="s" :checked="sizeDefault === s" @change="sizeDefault = s"> Recommended</label></td>
-                  <td><button type="button" class="leading-none text-zinc-500 hover:text-red-700" :aria-label="'Remove ' + s + ' mm'" @click="removeCharmSize(s)">&times;</button></td>
                 </tr>
               </template>
             </tbody></table>
-            <form class="flex flex-wrap items-center gap-2" @submit.prevent="addCharmSize()">
-              <input type="number" step="0.5" min="3" max="100" class="inp !w-32" x-model="sizeAdd" placeholder="Size in mm" aria-label="New charm size in mm">
-              <input class="inp !w-40" maxlength="30" x-model="sizeAddName" placeholder="Name (optional)" aria-label="Name of the new charm size">
-              <button class="btn2" type="submit">Add size</button>
-            </form>
             <div class="flex flex-wrap items-center gap-3">
               <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="sizesNote">
-              <button class="btn" @click="saveCharmSizes()" :disabled="sizesBusy || !sizesEdit.length">Save charm sizes</button>
+              <button class="btn" @click="saveCharmSizes()" :disabled="sizesBusy || sizesEdit.length !== products.charm_sizes_on_offer">Save charm sizes</button>
             </div>
           </div>
         </template>
-        <p class="text-[12px] text-zinc-500" x-text="'Between ' + products.charm_size_limits?.min + ' and ' + products.charm_size_limits?.max + ' mm, at most ' + products.charm_size_limits?.count + ' sizes, each with an optional name. The recommended size is suggested in Customize and used for a 3D when the customer chose none. Each size has its own price (Pricing & Materials \u2192 Charm); a size without a price shows \u201cPrice unavailable\u201d. Ring sizes are not affected.'"></p>
+        <p class="text-[12px] text-zinc-500" x-text="'Tick exactly ' + products.charm_sizes_on_offer + ' of ' + (products.charm_size_grid || []).join(', ') + ' mm; ' + products.charm_required_size + ' mm is always on offer. They are always shown smallest first. Prices follow the order (Pricing & Materials \u2192 Charm): the smallest size at the small price, the middle at the medium and the biggest at the large one, so the biggest size always costs the most. Each level keeps its name. The recommended size is suggested in Customize and used for a 3D when the customer chose none; a 3D can be made at any of the six sizes. Ring sizes are not affected.'"></p>
         <p x-show="sizesMsg" class="text-sm" :class="sizesErr ? 'text-red-600' : 'text-emerald-700'" x-text="sizesMsg"></p>
       </div>
       </template>
@@ -2750,7 +2761,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : (l.key === 'starting_credits' ? 'New accounts start with ' + l.value + (l.value === 1 ? ' credit' : ' credits') : l.key))))))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_level_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => ({1: 'small', 2: 'medium', 3: 'large'})[k] + ' ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : (l.key === 'starting_credits' ? 'New accounts start with ' + l.value + (l.value === 1 ? ' credit' : ' credits') : l.key)))))))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>
@@ -2798,7 +2809,7 @@
                   :aria-pressed="pProduct === p" @click="pProduct = p; if (p === 'charm' && !cprices) loadCharmPrices()"><span x-html="pIcon(p, 'w-4 h-4')"></span><span x-text="pLabel(p)"></span></button>
         </template>
       </div>
-      <p class="text-[12px] text-zinc-500 flex-1 min-w-[260px]" x-text="pProduct === 'charm' ? 'Charm prices: a fixed price per material and size. Completely separate from ring prices \u2014 a charm never uses a ring price.' : 'Ring prices: one fixed price per material (the ring size never changes it). Saving here never changes a charm price.'"></p>
+      <p class="text-[12px] text-zinc-500 flex-1 min-w-[260px]" x-text="pProduct === 'charm' ? 'Charm prices: a fixed price per material at three levels, the sizes on offer smallest first. Completely separate from ring prices \u2014 a charm never uses a ring price.' : 'Ring prices: one fixed price per material (the ring size never changes it). Saving here never changes a charm price.'"></p>
     </section>
 
     <!-- Customer status changes (WP3): pending in either table, saved together after a confirmation of what they touch -->
@@ -2853,7 +2864,7 @@
       <p x-show="mpMsg" class="text-sm" :class="mpErr ? 'text-red-600' : 'text-emerald-700'" x-text="mpMsg"></p>
     </section>
 
-    <!-- Charm pricing: a fixed price per material and size; price and cost per gram (never a ring price) -->
+    <!-- Charm pricing: a fixed price per material at three levels (the sizes on offer, smallest first); price and cost per gram -->
     <section class="card p-5 space-y-3 !border-[#E8D9B8]" x-show="sub === 'pricing' && pProduct === 'charm' && cprices" aria-label="Charm pricing">
       <div class="flex flex-wrap items-baseline justify-between gap-3">
         <p class="lbl flex items-center gap-2"><span class="text-[#8A6420]" x-html="pIcon('charm', 'w-4 h-4')"></span>Pricing · charms</p>
@@ -2862,7 +2873,7 @@
       <div class="overflow-x-auto">
       <table class="w-full !text-xs">
         <thead><tr><th>Material</th>
-          <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="s + ' mm' + (charmSizeName(s) ? ' ' + charmSizeName(s) : '') + ' $' + ((cprices?.sizes || []).includes(s) ? '' : ' (not offered)')"></th></template>
+          <template x-for="s in charmSizeCols()" :key="'h' + s"><th class="text-right whitespace-nowrap" x-text="charmColLabel(s) + ' $'"></th></template>
           <th class="text-right">Price $/g</th><th class="text-right">Cost $/g</th><th>Customer status</th></tr></thead>
         <tbody>
           <template x-if="!cpEdit"><template x-for="r in (cprices?.rows || [])" :key="r.id"><tr>
@@ -2895,8 +2906,8 @@
         <button class="btn" @click="saveCharmPrices()" :disabled="cpBusy">Save as new version</button>
       </div>
       <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
-        <li><strong>Fixed price</strong> is what the website shows for a charm in that material and size. Empty = NA: "Price unavailable". A ring price is never used for a charm.</li>
-        <li><strong>Size</strong>: <span x-text="cprices?.size_definition?.text"></span> The sizes on offer are set in Settings → Products.</li>
+        <li><strong>Fixed price</strong> is what the website shows for a charm in that material, at three levels: the smallest size on offer at the small price, the middle at the medium and the biggest at the large one. Each must be above the one before, so the biggest size always costs the most. Empty = NA: "Price unavailable". A ring price is never used for a charm.</li>
+        <li><strong>Size</strong>: <span x-text="cprices?.size_definition?.text"></span> The three sizes on offer are set in Settings → Products; when they change, each level keeps its price for its new size.</li>
         <li><strong>Gold</strong> charms have no fixed price: Quote Only (Request a quote) or Preview Only, like gold rings.</li>
         <li><strong>Customer status</strong>: Available — sold at the fixed price · Preview Only — seen in Customize, never priced, added to the bag or quoted · Quote Only — by quote request · Hidden — offered nowhere (what was made in it still opens). Available needs a fixed price, density and cost; Stainless Steel stays Available while Customize opens on it. Saved apart from the prices (no new price version) and logged.</li>
         <li><strong>Weight</strong> = 3D volume × the material's sintered density (Ring view, Pricing · materials) · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>

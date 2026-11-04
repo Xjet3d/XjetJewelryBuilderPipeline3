@@ -225,7 +225,7 @@ function adminApp() {
     ils: null, ilsEdit: null, ilsNote: '', ilsBusy: false, ilsMsg: '', ilsErr: false, ilsUsd: '',   // Israeli pricing (B6)
     // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
     mstat: null, mstatEdit: {}, mstatNote: '', mstatBusy: false, mstatMsg: '', mstatErr: false,
-    sizesEdit: null, sizeAdd: '', sizeAddName: '', sizeNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
+    sizesEdit: null, levelNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
@@ -1399,7 +1399,8 @@ function adminApp() {
     size3dLabel(size) { return this.isCharm(this.sd?.session) ? size + ' mm' : 'US ' + size; },
     default3dSize() { return this.sd?.three_d_defaults?.own_size ?? (this.isCharm(this.sd?.session) ? this.sd.catalog.charm_default_size : 10); },
     charm3dSizes() {
-      const s = [...(this.sd?.catalog?.charm_sizes || [])];
+      // every size of the grid, offered or not (a 3D is made at any of them), and any other one already in use
+      const s = [...(this.sd?.catalog?.charm_3d_sizes || this.sd?.catalog?.charm_sizes || [])];
       for (const v of [this.g3.size, this.sd?.three_d_defaults?.customer_size]) if (v != null && !s.includes(v)) s.push(v);   // e.g. a size no longer offered
       return s.sort((a, b) => a - b);
     },
@@ -2435,8 +2436,13 @@ function adminApp() {
     },
     // ── charm pricing: a fixed price per material and size, price and cost per gram (never a ring price) ──
     async loadCharmPrices() { this.cprices = await this.api('GET', '/api/admin/charm-prices').catch(() => null); },
-    // The size columns: the sizes on offer, then any older size that still has a price
-    charmSizeCols() { const c = this.cprices; return c ? [...c.sizes, ...(c.other_priced_sizes || [])] : []; },
+    // The price columns: the three sizes on offer, smallest first — the small, medium and large price of each metal
+    charmSizeCols() { const c = this.cprices; return c ? [...c.sizes].sort((a, b) => a - b) : []; },
+    // '18 mm · small · Delicate': a column's size, its level and the level's name
+    charmColLabel(s) {
+      const l = (this.cprices?.levels || []).find(x => x.size === s);
+      return s + ' mm' + (l ? ' · ' + l.label + (l.name ? ' · ' + l.name : '') : '');
+    },
     sizeKey(s) { return String(Number(s)); },          // "20", "22.5": the server's key for a size
     editCharmPrices() {
       this.cpMsg = ''; this.cpNote = '';
@@ -2521,29 +2527,23 @@ function adminApp() {
     ils2(v) { return v == null ? '—' : '₪' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
     // ── Settings → Products: the charm sizes on offer, their names and the recommended size ──
     editCharmSizes() {
-      this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = ''; this.sizeAdd = ''; this.sizeAddName = '';
-      this.sizesEdit = [...(this.products?.charm_sizes || [])];
-      this.sizeNames = { ...(this.products?.charm_size_names || {}) };
+      this.sizesMsg = ''; this.sizesErr = false; this.sizesNote = '';
+      this.sizesEdit = [...(this.products?.charm_sizes || [])].sort((a, b) => a - b);
+      this.levelNames = { ...(this.products?.charm_level_names || {}) };     // "1" small · "2" medium · "3" large
       this.sizeDefault = this.products?.charm_default_size ?? null;
     },
-    addCharmSize() {
-      const v = Number(String(this.sizeAdd).replace(',', '.'));
-      if (this.sizeAdd === '' || !isFinite(v)) return;
-      if (!this.sizesEdit.includes(v)) this.sizesEdit = [...this.sizesEdit, v].sort((a, b) => a - b);
-      if (this.sizeAddName.trim()) this.sizeNames[this.sizeKey(v)] = this.sizeAddName.trim();
-      this.sizeAdd = ''; this.sizeAddName = '';
-    },
-    removeCharmSize(v) {
-      this.sizesEdit = this.sizesEdit.filter(x => x !== v);
-      delete this.sizeNames[this.sizeKey(v)];
-      if (this.sizeDefault === v) this.sizeDefault = null;        // the server falls back to the middle size
+    // A size ticked or unticked on the grid: always kept smallest first (its level is its place)
+    toggleCharmSize(v, on) {
+      if (v === this.products?.charm_required_size && !on) return;            // 18 mm is always on offer
+      this.sizesEdit = on ? [...new Set([...this.sizesEdit, v])].sort((a, b) => a - b) : this.sizesEdit.filter(x => x !== v);
+      if (!this.sizesEdit.includes(this.sizeDefault)) this.sizeDefault = null; // the server falls back to the middle size
     },
     charmSizeName(s) { return (this.cprices?.size_names || this.products?.charm_size_names || {})[this.sizeKey(s)] || ''; },
     async saveCharmSizes() {
       this.sizesBusy = true; this.sizesMsg = ''; this.sizesErr = false;
       try {
-        const names = Object.fromEntries(Object.entries(this.sizeNames).filter(([, n]) => n && n.trim()));
-        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, names, default: this.sizeDefault, note: this.sizesNote });
+        const level_names = Object.fromEntries(Object.entries(this.levelNames || {}).filter(([, n]) => n && n.trim()));
+        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, level_names, default: this.sizeDefault, note: this.sizesNote });
         this.products = r; this.sizesEdit = null; this.cprices = null;          // the charm price columns follow the sizes
         this.sizesMsg = 'Charm sizes saved.' + (r.removed_in_bags?.length ? ' Still in customers\u2019 bags: ' +
           r.removed_in_bags.map(x => x.size + ' mm (' + x.bag_lines + (x.bag_lines === 1 ? ' line' : ' lines') + ')').join(', ') +

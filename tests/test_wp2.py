@@ -61,15 +61,15 @@ async def test_checkout_names_a_charm_by_its_size(HW):
     H = HW
     await OfferCharmSizes(H, AdminKey)
     assert (await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)).status_code == 200
-    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
+    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"18": 145}}}}, headers=Admin)
     B = await H.NewDesign("A crescent moon charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     Info = (await H.Client.get("/api/checkout")).json()
-    assert Info["quote"]["lines"][0]["size_label"] == "20 mm"
-    assert (await H.Client.post("/api/checkout/quote", json={})).json()["lines"][0]["size_label"] == "20 mm"
+    assert Info["quote"]["lines"][0]["size_label"] == "18 mm"
+    assert (await H.Client.post("/api/checkout/quote", json={})).json()["lines"][0]["size_label"] == "18 mm"
 
 
 async def test_the_checkout_note_and_the_order_email(HW):

@@ -75,7 +75,7 @@ def _Meshes(H) -> int:
 async def _Tron(H) -> dict:
     """tron's orders as the audit found them (2026-10-14 18:15 UTC), with the same order numbers and the same shared
     designs: A (R-1012-D) in ORD-10001 and ORD-10002, B (R-1019-R1C) in ORD-10003 and ORD-10005, the charm C (C-1010-R1C)
-    in ORD-10004 and ORD-10005. The charm is 20 mm silver here (tron's is 14 mm stainless): the test catalogue's sizes.
+    in ORD-10004 and ORD-10005. The charm is 18 mm silver here (tron's is 14 mm stainless): the test catalogue's sizes.
     Charms are on offer to customers, as on tron (an Admin's preview orders a hidden product only on a test account)."""
     R = await H.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True}, headers=Admin)
     assert R.status_code == 200, R.text
@@ -90,9 +90,9 @@ async def _Tron(H) -> dict:
     O2 = await _Place(H, "o2")
     await _InBag(H, B, CandB, "silver", Size=7)
     O3 = await _Place(H, "o3")
-    await _InBag(H, C, CandC, "silver", Charm=20)
+    await _InBag(H, C, CandC, "silver", Charm=18)
     O4 = await _Place(H, "o4")
-    await _InBag(H, C, CandC, "silver", Charm=20)
+    await _InBag(H, C, CandC, "silver", Charm=18)
     await _InBag(H, B, CandB, "silver", Size=7)
     O5 = await _Place(H, "o5")
     assert [O["ref"] for O in (O1, O2, O3, O4, O5)] == ["ORD-10001", "ORD-10002", "ORD-10003", "ORD-10004", "ORD-10005"]
@@ -112,7 +112,7 @@ async def _Tron(H) -> dict:
     await _Status(H, O3["id"], "new", "set back to New by the Admin")          # undoing a cancellation needs a reason (G1, 2026-10-15)
     # ORD-10004 / ORD-10005: the charm's result at the ordered size, made from the design page — linked to no line;
     # ORD-10004 set to Payment confirmed by hand (no payment recorded)
-    await _Model(H, C, 20, "silver")
+    await _Model(H, C, 18, "silver")
     await _Status(H, O4["id"], "payment_confirmed")
     return {"orders": {O["ref"]: O for O in (O1, O2, O3, O4, O5)}, "lines": L, "designs": {"A": A, "B": B, "C": C}}
 
@@ -199,7 +199,7 @@ async def test_with_the_owner_s_go_the_blocked_orders_reach_production_the_right
         L4 = S4["lines"][0]
         assert L4["eligible"] and L4["stl"]["state"] == "ready_unlinked" and not L4["pinned"]
         Link = L4["stl"]["link"]
-        assert (Link["size_label"], Link["material_label"], Link["version_label"]) == ("20 mm", "Sterling Silver", "v1 · Hi3D")
+        assert (Link["size_label"], Link["material_label"], Link["version_label"]) == ("18 mm", "Sterling Silver", "v1 · Hi3D")
         R = await H.Client.post(f"/api/admin/orders/{O['ORD-10004']['id']}/production", json={"line_ids": [L4["line_id"]]}, headers=Admin)
         assert R.status_code == 409 and R.json()["error"]["code"] == "link_confirmation_required" and R.json()["error"]["blocked"][0]["link"]["id"] == Link["id"]
         assert H.Ctx.Db.One("SELECT three_d_id FROM order_lines WHERE id = ?", (L4["line_id"],))["three_d_id"] is None           # nothing linked by a refusal

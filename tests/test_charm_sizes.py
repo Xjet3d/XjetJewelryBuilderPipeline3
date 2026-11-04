@@ -52,21 +52,30 @@ async def test_the_sizes_on_offer_are_delicate_classic_and_bold_with_classic_rec
 
 
 async def test_names_and_the_recommended_size_are_edited_with_the_sizes(HS):
+    """The names belong to the levels (small, medium, large) and follow them when the sizes change; the recommended size
+    is one of the three, the middle one when none is given (5 Nov 2026)."""
     H = HS
     R = await H.Client.put("/api/admin/products/charm-sizes", headers=Admin,
-                           json={"sizes": [12, 16, 20], "names": {"12": "Petite", "20": "Statement", "30": "Gone"}, "default": 16, "note": "new range"})
+                           json={"sizes": [26, 18, 22], "level_names": {"1": "Petite", "3": "Statement"}, "default": 22, "note": "new range"})
     assert R.status_code == 200, R.text
     P = R.json()
-    assert P["charm_sizes"] == [12.0, 16.0, 20.0] and P["charm_default_size"] == 16.0
-    assert P["charm_size_names"] == {"12": "Petite", "20": "Statement"}                     # a name of a size not on offer is dropped
-    assert [O["label"] for O in P["charm_size_options"]] == ["12 mm — Petite", "16 mm · Recommended", "20 mm — Statement"]
-    assert [L["key"] for L in P["log"][:3]] == ["charm_default_size", "charm_size_names", "charm_sizes"]
-    # The recommended size must be on offer; a removed recommended size falls back to the middle size, names stay
-    assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [12, 16, 20], "default": 14}, headers=Admin)).status_code == 400
-    P = (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [12, 20, 24]}, headers=Admin)).json()
-    assert P["charm_default_size"] == 20.0 and P["charm_size_names"] == {"12": "Petite", "20": "Statement"}
-    # The charm price table shows the names next to the sizes
+    assert P["charm_sizes"] == [18.0, 22.0, 26.0] and P["charm_default_size"] == 22.0
+    assert P["charm_level_names"] == {"1": "Petite", "3": "Statement"} and P["charm_size_names"] == {"18": "Petite", "26": "Statement"}
+    assert [O["label"] for O in P["charm_size_options"]] == ["18 mm — Petite", "22 mm · Recommended", "26 mm — Statement"]
+    assert [(O["level"], O["level_label"]) for O in P["charm_size_options"]] == [("1", "small"), ("2", "medium"), ("3", "large")]
+    assert [L["key"] for L in P["log"][:3]] == ["charm_default_size", "charm_level_names", "charm_sizes"]
+    # The recommended size must be on offer; names given per size (the older Admin page) name the levels
+    assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [18, 22, 26], "default": 14}, headers=Admin)).status_code == 400
+    P = (await H.Client.put("/api/admin/products/charm-sizes", headers=Admin,
+                            json={"sizes": [10, 14, 18], "names": {"10": "Delicate", "14": "Classic", "18": "Bold", "30": "Gone"}})).json()
+    assert P["charm_default_size"] == 14.0 and P["charm_level_names"] == {"1": "Delicate", "2": "Classic", "3": "Bold"}
+    # Without names the levels keep theirs for their new sizes; without a recommended size, the middle one
+    P = (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [30, 18, 22]}, headers=Admin)).json()
+    assert P["charm_size_names"] == {"18": "Delicate", "22": "Classic", "30": "Bold"} and P["charm_default_size"] == 22.0
+    # The charm price table names its columns: the size, its level and the level's name
     T = (await H.Client.get("/api/admin/charm-prices", headers=Admin)).json()
-    assert T["sizes"] == [12.0, 20.0, 24.0] and T["size_names"] == {"12": "Petite", "20": "Statement"} and T["default_size"] == 20.0
-    # A name is a short text
-    assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [12], "names": {"12": "x" * 31}}, headers=Admin)).status_code == 400
+    assert T["sizes"] == [18.0, 22.0, 30.0] and T["default_size"] == 22.0
+    assert [(L["size"], L["label"], L["name"]) for L in T["levels"]] == [(18.0, "small", "Delicate"), (22.0, "medium", "Classic"), (30.0, "large", "Bold")]
+    # A name is a short text, given for a level
+    for Bad in ({"1": "x" * 31}, {"4": "Huge"}, "Petite"):
+        assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [10, 14, 18], "level_names": Bad}, headers=Admin)).status_code == 400

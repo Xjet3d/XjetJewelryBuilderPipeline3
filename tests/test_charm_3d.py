@@ -23,12 +23,12 @@ async def H3(tmp_path):
     # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
     assert (await Obj.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                  headers=Admin)).status_code == 200
-    await OfferCharmSizes(Obj, AdminKey)                                                           # 15–30 mm, as written
+    await OfferCharmSizes(Obj, AdminKey)                                                           # 14 / 18 / 22 mm (written with 15 / 20 / 25 mm before 5 Nov 2026)
     yield Obj
     await Obj.Close()
 
 
-async def CharmJourney(H, Size=25, Material="silver"):
+async def CharmJourney(H, Size=22, Material="silver"):
     B = await H.NewDesign("A crescent moon charm with a small star", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
@@ -43,29 +43,29 @@ async def Session(H, Did):
     return R.json()
 
 
-Prices = {"silver": {"fixed_prices": {"20": 145, "25": 165}, "price_per_g": 30, "cost_per_g": 12}}
+Prices = {"silver": {"fixed_prices": {"18": 145, "22": 165}, "price_per_g": 30, "cost_per_g": 12}}
 
 
 async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
     H = H3
     assert (await H.Client.put("/api/admin/charm-prices", json={"materials": Prices}, headers=Admin)).status_code == 200
-    B, C = await CharmJourney(H, 25)
+    B, C = await CharmJourney(H, 22)
     Did = B["design_id"]
     D = await Session(H, Did)
-    assert (D["three_d_defaults"]["customer_size"], D["three_d_defaults"]["production_size"]) == (25.0, 25.0)
-    assert D["catalog"]["charm_sizes"] == [15.0, 20.0, 25.0, 30.0] and "ring_sizes" not in D["catalog"]
+    assert (D["three_d_defaults"]["customer_size"], D["three_d_defaults"]["production_size"]) == (22.0, 22.0)
+    assert D["catalog"]["charm_sizes"] == [14.0, 18.0, 22.0] and "ring_sizes" not in D["catalog"]
     assert [M["label"] for M in D["catalog"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     R = await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)
     assert R.status_code == 200, R.text
-    assert (R.json()["production_size"], R.json()["size_source"], R.json()["material_id"]) == (25.0, "customer", "silver")
+    assert (R.json()["production_size"], R.json()["size_source"], R.json()["material_id"]) == (22.0, "customer", "silver")
     await H.Idle()
     T = (await Session(H, Did))["three_d"][0]
     Prod = T["geometry"]["production"]
     assert Prod["method_version"] == CharmGeo.CharmMethodVersion and Prod["checks"]["up_source"] == "model_up"   # the mock charm stands
-    assert Prod["size_y_mm"] == pytest.approx(25.0) and Prod["inner_diameter_mm"] is None                       # height = the size
+    assert Prod["size_y_mm"] == pytest.approx(22.0) and Prod["inner_diameter_mm"] is None                       # height = the size
     assert Prod["size_z_mm"] < Prod["size_x_mm"] < Prod["size_y_mm"]                       # thin, narrower than tall (loop on top)
     assert (T["product_type"], T["target_height_mm"], T["target_inner_diameter_mm"], T["size_label"], T["material_label"]) == \
-        ("charm", 25.0, None, "25 mm", "Sterling Silver")
+        ("charm", 22.0, None, "22 mm", "Sterling Silver")
     # The size is the total height, loop included: a closed charm model is complete, nothing to review
     assert T["status"] == "measured" and T["production_state"] == "complete" and T["review"] == []
     assert T["height_basis"] == "The total height of the charm, including the attachment loop at the top."
@@ -74,18 +74,18 @@ async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
     assert math.isclose(Price["weight_g"], Prod["volume_mm3"] / 1000 * Price["density_g_cm3"], rel_tol=1e-3)
     assert Price["production_cost"] == pytest.approx(Price["weight_g"] * 12, abs=0.01)
     assert Price["calculated_price"] == pytest.approx(Price["weight_g"] * 30, abs=0.01)
-    assert (Price["fixed_price"], Price["fixed_price_version"]) == (165.0, "charms-v2")      # the customer's 25 mm price
-    # The scaled STL: lying flat, height along Y = 25 mm, its own header and an mm file name
+    assert (Price["fixed_price"], Price["fixed_price_version"]) == (165.0, "charms-v2")      # the customer's 22 mm price
+    # The scaled STL: lying flat, height along Y = 22 mm, its own header and an mm file name
     E = (await H.Client.post(f"/api/admin/3d/{T['id']}/export", headers=Admin)).json()
     await H.Idle()
     E = (await H.Client.get(f"/api/admin/3d/{T['id']}/export/{E['job_id']}", headers=Admin)).json()
     assert E["status"] == "done", E
     File = await H.Client.get(E["url"].removeprefix(H.Ctx.Settings.BasePath))
-    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled charm 25 mm total height incl. loop"
-    assert "C-1001-A_Sterling-Silver_25mm.stl" in File.headers["content-disposition"]
+    assert File.status_code == 200 and File.content[:80].rstrip() == b"XJet P3 scaled charm 22 mm total height incl. loop"
+    assert "C-1001-A_Sterling-Silver_22mm.stl" in File.headers["content-disposition"]
     Tri = np.frombuffer(File.content[84:], dtype=Stl)["v"].reshape(-1, 3)
     Span = Tri.max(0) - Tri.min(0)
-    assert Span[1] == pytest.approx(25.0, rel=1e-4) and Span[0] == pytest.approx(Prod["size_x_mm"], rel=1e-4)
+    assert Span[1] == pytest.approx(22.0, rel=1e-4) and Span[0] == pytest.approx(Prod["size_x_mm"], rel=1e-4)
     assert Span[2] == pytest.approx(Prod["size_z_mm"], rel=1e-4)
     assert abs(Tri.max(0)[1] + Tri.min(0)[1]) < 1e-3                                             # centred
     # Background jobs ran on the charm too (light preview, edge check)
@@ -98,10 +98,10 @@ async def test_charm_3d_sizes_defaults_and_materials(H3):
     B, _C = await CharmJourney(H, None)                           # the customer chose no size
     Did = B["design_id"]
     D = await Session(H, Did)
-    assert (D["three_d_defaults"]["customer_size"], D["three_d_defaults"]["production_size"]) == (None, 20.0)
-    assert D["catalog"]["charm_default_size"] == 20.0
+    assert (D["three_d_defaults"]["customer_size"], D["three_d_defaults"]["production_size"]) == (None, 18.0)
+    assert D["catalog"]["charm_default_size"] == 18.0
     T = (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).json()
-    assert (T["production_size"], T["size_source"]) == (20.0, "default")
+    assert (T["production_size"], T["size_source"]) == (18.0, "default")
     await H.Idle()
     # Recalculating for another size and material reuses the model: arithmetic, no new Hi3D request
     Meshes = H.Ctx.Db.One("SELECT COUNT(*) AS n FROM meshes")["n"]
@@ -120,7 +120,7 @@ async def test_charm_3d_sizes_defaults_and_materials(H3):
 
 async def test_a_waiting_charm_result_is_priced_from_the_charm_book_only(H3):
     H = H3
-    B, _C = await CharmJourney(H, 20)
+    B, _C = await CharmJourney(H, 18)
     await H.Client.post(f"/api/admin/sessions/{B['design_id']}/3d", json={}, headers=Admin)
     await H.Idle()
     T = (await Session(H, B["design_id"]))["three_d"][0]
@@ -143,7 +143,7 @@ async def test_the_ring_3d_path_is_unchanged_beside_a_charm(H3):
     H = H3
     Ring = await H.NewDesign("Plain band", product="ring")
     await H.Proceed(Ring["design_id"], Ring["candidates"][0]["id"])
-    B, _C = await CharmJourney(H, 25)
+    B, _C = await CharmJourney(H, 22)
     for Did in (Ring["design_id"], B["design_id"]):
         assert (await H.Client.post(f"/api/admin/sessions/{Did}/3d", json={}, headers=Admin)).status_code == 200
     await H.Idle()
@@ -160,7 +160,7 @@ async def test_the_ring_3d_path_is_unchanged_beside_a_charm(H3):
     # The session pipeline names the 3D size in each product's own unit
     RingSteps = [S["text"] for S in (await Session(H, Ring["design_id"]))["pipeline"]["steps"] if S["kind"] == "3d"]
     CharmSteps = [S["text"] for S in (await Session(H, B["design_id"]))["pipeline"]["steps"] if S["kind"] == "3d"]
-    assert (RingSteps, CharmSteps) == (["US 10"], ["25 mm"])
+    assert (RingSteps, CharmSteps) == (["US 10"], ["22 mm"])
     # … and so do the Admin's 3D viewer title and journey / activity lines (a ring reads "US 10" as before)
     Js = (await H.Client.get("/static/admin.js")).text
     assert "(t.size_label || 'US ' + t.production_size)" in Js
@@ -174,22 +174,22 @@ async def test_an_ordered_charm_line_gets_its_3d_at_the_ordered_size(H3):
     from tests.test_orders import Address, Customer
     H = H3
     await H.Client.put("/api/admin/charm-prices", json={"materials": Prices}, headers=Admin)
-    B, C = await CharmJourney(H, 20)
+    B, C = await CharmJourney(H, 18)
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "c3d"})).json()
     Line = O["lines"][0]
-    assert (await H.Client.post(f"/api/admin/sessions/{B['design_id']}/3d", json={"production_size": 25}, headers=Admin)).status_code == 200
+    assert (await H.Client.post(f"/api/admin/sessions/{B['design_id']}/3d", json={"production_size": 22}, headers=Admin)).status_code == 200
     await H.Idle()
     L = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["lines"][0]
-    assert L["three_d_match"] is False and L["three_d_latest"]["size"] == 25.0          # a 25 mm result is not this 20 mm line
+    assert L["three_d_match"] is False and L["three_d_latest"]["size"] == 22.0          # a 22 mm result is not this 18 mm line
     R = await H.Client.post(f"/api/admin/orders/{O['id']}/lines/{Line['id']}/3d", headers=Admin)
     assert R.status_code == 200 and R.json()["prepared"]
     await H.Idle()
     L = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["lines"][0]
     assert L["three_d_match"] is True and L["three_d_state"] == "complete"
     T = H.Ctx.Db.One("SELECT production_size, material_id FROM session_3d WHERE id = ?", (L["three_d_id"],))
-    assert (T["production_size"], T["material_id"]) == (20.0, "silver")
+    assert (T["production_size"], T["material_id"]) == (18.0, "silver")
 
 
 def test_the_charm_frame_follows_the_model_up_direction(tmp_path):
@@ -214,7 +214,7 @@ def test_the_charm_frame_follows_the_model_up_direction(tmp_path):
 
 async def test_charm_results_flagged_only_for_the_loop_become_complete(H3):
     H = H3
-    B, _C = await CharmJourney(H, 20)
+    B, _C = await CharmJourney(H, 18)
     await H.Client.post(f"/api/admin/sessions/{B['design_id']}/3d", json={}, headers=Admin)
     await H.Idle()
     T = (await Session(H, B["design_id"]))["three_d"][0]

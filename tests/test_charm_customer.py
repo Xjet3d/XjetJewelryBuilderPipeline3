@@ -18,7 +18,7 @@ ProductKeys = {"product_type", "product_types", "charm_size", "size_label"}
 @pytest.fixture
 async def HC5(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
-    await OfferCharmSizes(Obj, AdminKey)                                     # 15–30 mm, as these tests were written
+    await OfferCharmSizes(Obj, AdminKey)                                     # 14 / 18 / 22 mm (written with 15 / 20 / 25 mm before 5 Nov 2026)
     yield Obj
     await Obj.Close()
 
@@ -75,20 +75,20 @@ async def test_a_customer_who_holds_charms_keeps_seeing_them_after_charms_are_hi
     H = HC5
     On = await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
     assert On.json()["charms_available"] is True
-    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
+    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"18": 145}}}}, headers=Admin)
     B = await H.NewDesign("A crescent moon charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "c1"})).json()
-    assert O["product_types"] == ["charm"] and O["lines"][0]["size_label"] == "20 mm"
+    assert O["product_types"] == ["charm"] and O["lines"][0]["size_label"] == "18 mm"
     await H.Client.put("/api/admin/products/availability", json={"charms_available": False}, headers=Admin)
     # Charms hidden again: no new charm, no charm in the catalog or gallery — but this customer's order still reads right
     assert "products" not in (await H.Client.get("/api/catalog")).json()
     Mine = (await H.Client.get("/api/orders")).json()["orders"][0]
-    assert Mine["product_types"] == ["charm"] and Mine["lines"][0]["size_label"] == "20 mm"
+    assert Mine["product_types"] == ["charm"] and Mine["lines"][0]["size_label"] == "18 mm"
     D = await H.Client.get(f"/api/designs/{B['design_id']}")                              # paused after launch: it opens, read-only (WP2)
     assert D.status_code == 200 and D.json()["available"] is False and D.json()["customization"]["add_to_bag_blocked_reason"] == "design_unavailable"
 
@@ -124,13 +124,13 @@ async def test_promo_messages_are_product_neutral(HC5):
     assert Ring == {"code": "promo_not_applicable", "message": "This promo code applies to 14K Gold over Stainless Steel pieces only."}
     # … and the same message for a charm
     await H.Client.put("/api/admin/products/availability", json={"charms_available": True}, headers=Admin)
-    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"20": 145}}}}, headers=Admin)
+    await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"18": 145}}}}, headers=Admin)
     for L in (await H.Client.get("/api/bag")).json()["lines"]:
         await H.Client.delete(f"/api/bag/{L['id']}")
     B = await H.NewDesign("A heart charm", product="charm")
     C = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20, "material_id": "silver"})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     Charm = (await H.Client.post("/api/checkout/quote", json={"promo_code": "VERMEIL10"})).json()["promo_error"]
     assert Charm == Ring

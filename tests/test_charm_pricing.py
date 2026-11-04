@@ -1,5 +1,6 @@
-"""Charms, phase 3 — sizes and pricing. A charm has its own sizes (Admin → Settings → Products) and its own price
-book (Admin → Pricing & Materials → Charm): a fixed price per material and size, price and cost per gram. It starts
+"""Charms, phase 3 — sizes and pricing. A charm has its own sizes (Admin → Settings → Products: three of the 10–30 mm
+grid, 18 mm among them) and its own price book (Admin → Pricing & Materials → Charm): per material a small, medium and large
+price for the sizes on offer, smallest first, and price and cost per gram. It starts
 empty, never falls back to a ring price, and a change to either product's prices never touches the other's."""
 
 import json
@@ -22,7 +23,7 @@ async def HP(tmp_path):
     # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
     assert (await Obj.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                  headers=Admin)).status_code == 200
-    await OfferCharmSizes(Obj, AdminKey)                                                           # 15–30 mm, as written
+    await OfferCharmSizes(Obj, AdminKey)                                                           # 14 / 18 / 22 mm (the tests' 15 / 20 / 25)
     yield Obj
     await Obj.Close()
 
@@ -55,14 +56,14 @@ async def SetCharmPrices(H, Materials: dict, Note="test prices"):
     return R.json()
 
 
-Prices = {"silver": {"fixed_prices": {"20": 145, "25": 165}, "price_per_g": 30, "cost_per_g": 12},
-          "stainless_steel": {"fixed_prices": {"20": 90}}}
+Prices = {"silver": {"fixed_prices": {"18": 145, "22": 165}, "price_per_g": 30, "cost_per_g": 12},
+          "stainless_steel": {"fixed_prices": {"18": 90}}}
 
 
 async def test_charm_prices_start_empty_and_never_fall_back_to_ring_prices(HP):
     H = HP
     T = (await H.Client.get("/api/admin/charm-prices", headers=Admin)).json()
-    assert T["version"] == "charms-v1" and T["sizes"] == [15.0, 20.0, 25.0, 30.0]
+    assert T["version"] == "charms-v1" and T["sizes"] == [14.0, 18.0, 22.0]
     assert [R["id"] for R in T["rows"]][:3] == ["stainless_steel", "silver", "vermeil"]
     assert {R["id"]: R["label"] for R in T["rows"]}["silver"] == "Sterling Silver"
     assert {R["id"]: R["label"] for R in T["rows"]}["vermeil"] == "14K Gold over Stainless Steel"
@@ -71,13 +72,13 @@ async def test_charm_prices_start_empty_and_never_fall_back_to_ring_prices(HP):
     # The ring price of silver exists — and is never a charm's price
     Ring = (await H.Client.get("/api/quote?material_id=silver")).json()
     assert Ring["unit_price"] == 200.0 and Ring["pricing_status"] == "available"
-    Q = (await H.Client.get("/api/quote?material_id=silver&product=charm&charm_size=20")).json()
+    Q = (await H.Client.get("/api/quote?material_id=silver&product=charm&charm_size=18")).json()
     assert Q["pricing_status"] == "unavailable" and Q["unit_price"] is None and Q["unavailable_reason"] == "charm_price_not_set"
     assert Q["pricing_version"] == "charms-v1" and Q["product"] == "charm"
     _B, C = await CharmCustomize(H)                         # Customize opens a charm on the recommended size (WP3)
-    assert C["charm_size"] == C["recommended_size"] == 20.0
+    assert C["charm_size"] == C["recommended_size"] == 18.0
     assert C["can_add_to_bag"] is False and C["add_to_bag_blocked_reason"] == "price_unavailable"
-    C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})).json()
+    C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18})).json()
     assert C["quote"]["unit_price"] is None and C["add_to_bag_blocked_reason"] == "price_unavailable" and C["line_total"] is None
     R = await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     assert R.status_code == 409 and R.json()["error"]["code"] == "price_unavailable"
@@ -87,22 +88,22 @@ async def test_charm_prices_differ_by_material_and_size_and_leave_ring_prices_al
     H = HP
     RingTable = (await H.Client.get("/api/admin/material-prices", headers=Admin)).json()
     T = await SetCharmPrices(H, Prices)
-    assert T["version"] == "charms-v2" and {R["id"]: R["fixed_prices"] for R in T["rows"]}["silver"] == {"20": 145.0, "25": 165.0}
+    assert T["version"] == "charms-v2" and {R["id"]: R["fixed_prices"] for R in T["rows"]}["silver"] == {"18": 145.0, "22": 165.0}
     assert (await H.Client.get("/api/admin/material-prices", headers=Admin)).json() == RingTable      # the ring table untouched
 
     async def Q(M, S):
         return (await H.Client.get(f"/api/quote?material_id={M}&product=charm&charm_size={S}")).json()
-    assert ((await Q("silver", 20))["unit_price"], (await Q("silver", 25))["unit_price"], (await Q("stainless_steel", 20))["unit_price"]) \
+    assert ((await Q("silver", 18))["unit_price"], (await Q("silver", 22))["unit_price"], (await Q("stainless_steel", 18))["unit_price"]) \
         == (145.0, 165.0, 90.0)
-    assert (await Q("stainless_steel", 25))["unavailable_reason"] == "charm_price_not_set"
-    assert (await Q("vermeil", 20))["unavailable_reason"] == "charm_price_not_set"
-    assert (await Q("silver", 22))["unavailable_reason"] == "charm_size_not_offered"
-    assert (await Q("gold_14k_yellow", 20))["unavailable_reason"] == "luxury_pricing_unavailable"
+    assert (await Q("stainless_steel", 22))["unavailable_reason"] == "charm_price_not_set"
+    assert (await Q("vermeil", 18))["unavailable_reason"] == "charm_price_not_set"
+    assert (await Q("silver", 26))["unavailable_reason"] == "charm_size_not_offered"
+    assert (await Q("gold_14k_yellow", 18))["unavailable_reason"] == "luxury_pricing_unavailable"
     _B, C = await CharmCustomize(H)
     assert [(S["label"], S["unit_price"]) for S in C["charm_sizes"]] == \
-        [("15 mm", None), ("20 mm · Recommended", 145.0), ("25 mm", 165.0), ("30 mm", None)]    # the middle size is recommended
-    C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 25, "quantity": 2})).json()
-    assert C["quote"]["unit_price"] == 165.0 and C["line_total"] == 330.0 and C["can_add_to_bag"] is True and C["size_label"] == "25 mm"
+        [("14 mm", None), ("18 mm · Recommended", 145.0), ("22 mm", 165.0)]    # the middle size is recommended
+    C = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 22, "quantity": 2})).json()
+    assert C["quote"]["unit_price"] == 165.0 and C["line_total"] == 330.0 and C["can_add_to_bag"] is True and C["size_label"] == "22 mm"
     # A ring is priced exactly as before, from the ring table (it opens on Stainless Steel: WP3)
     B = await H.NewDesign(product="ring")
     R = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
@@ -111,11 +112,12 @@ async def test_charm_prices_differ_by_material_and_size_and_leave_ring_prices_al
 
 async def test_the_charm_price_table_refuses_what_it_cannot_sell(HP):
     H = HP
-    for Bad, Text in (({"gold_14k_yellow": {"fixed_prices": {"20": 900}}}, "quoted individually"),
-                      ({"silver": {"fixed_prices": {"20": -5}}}, "greater than 0"),
-                      ({"silver": {"fixed_prices": {"2": 50}}}, "between 3 and 100 mm"),
+    for Bad, Text in (({"gold_14k_yellow": {"fixed_prices": {"18": 900}}}, "quoted individually"),
+                      ({"silver": {"fixed_prices": {"18": -5}}}, "greater than 0"),
+                      ({"silver": {"fixed_prices": {"2": 50}}}, "not a size on offer"),
+                      ({"silver": {"fixed_prices": {"18": 165, "22": 145}}}, "must rise with the size"),
                       ({"silver": {"price_per_g": "abc"}}, "must be a number"),
-                      ({"platinum": {"fixed_prices": {"20": 50}}}, "is not a charm material")):
+                      ({"platinum": {"fixed_prices": {"18": 50}}}, "is not a charm material")):
         R = await H.Client.put("/api/admin/charm-prices", json={"materials": Bad}, headers=Admin)
         assert R.status_code == 400 and Text in R.json()["error"]["message"], (Bad, R.text)
     assert (await H.Client.get("/api/admin/charm-prices", headers=Admin)).json()["version"] == "charms-v1"   # nothing saved
@@ -125,30 +127,37 @@ async def test_the_charm_price_table_refuses_what_it_cannot_sell(HP):
         assert (await Customer_.put("/api/admin/charm-prices", json={"materials": {}})).status_code == 403
         assert (await Customer_.get("/api/admin/charm-prices")).status_code == 403
     # A partial table keeps every charm material as a row (the ones left out have no prices)
-    T = await SetCharmPrices(H, {"silver": {"fixed_prices": {"20": 145}}})
+    T = await SetCharmPrices(H, {"silver": {"fixed_prices": {"18": 145}}})
     assert len(T["rows"]) == 9 and {R["id"]: R["fixed_prices"] for R in T["rows"]}["stainless_steel"] == {}
 
 
 async def test_charm_sizes_are_set_in_admin_and_checked_everywhere(HP):
+    """Exactly three sizes of the 10–30 mm grid, 18 mm among them, smallest first; each level keeps its price for its new
+    size (the biggest always the dearest), and a size no longer offered is refused in Customize and asked again in the bag."""
     H = HP
-    await SetCharmPrices(H, Prices)
-    R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [30, 15, 20, 25, 35], "note": "a larger size"}, headers=Admin)
-    assert R.status_code == 200 and R.json()["charm_sizes"] == [15.0, 20.0, 25.0, 30.0, 35.0]
+    await SetCharmPrices(H, Prices)                                  # 18 mm (medium) 145, 22 mm (large) 165
+    R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [26, 22, 18], "note": "larger charms"}, headers=Admin)
+    assert R.status_code == 200 and R.json()["charm_sizes"] == [18.0, 22.0, 26.0]
     Sz = next(L for L in R.json()["log"] if L["key"] == "charm_sizes")           # (the kept recommended size is logged too)
-    assert Sz["value"] == [15.0, 20.0, 25.0, 30.0, 35.0] and Sz["note"] == "a larger size"
-    for Bad in ([20, 20], [2], [], "20", [150]):
-        assert (await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": Bad}, headers=Admin)).status_code == 400, Bad
-    assert (await H.Client.get("/api/catalog")).json()["products"]["charm"]["sizes"] == [15.0, 20.0, 25.0, 30.0, 35.0]
+    assert Sz["value"] == [18.0, 22.0, 26.0] and Sz["note"] == "larger charms"
+    for Bad in ([18, 18, 22], [14, 22, 26], [18, 22], [10, 14, 18, 22], [18, 20, 22], [2, 18, 22], [], "18"):
+        R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": Bad}, headers=Admin)
+        assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_charm_sizes", Bad
+    assert (await H.Client.get("/api/catalog")).json()["products"]["charm"]["sizes"] == [18.0, 22.0, 26.0]
+    T = (await H.Client.get("/api/admin/charm-prices", headers=Admin)).json()
+    assert {R["id"]: R["fixed_prices"] for R in T["rows"]}["silver"] == {"22": 145.0, "26": 165.0}   # the levels moved up
+    assert [(L["size"], L["label"]) for L in T["levels"]] == [(18.0, "small"), (22.0, "medium"), (26.0, "large")]
     _B, C = await CharmCustomize(H)
-    C35 = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 35})).json()
-    assert C35["charm_size"] == 35.0 and C35["add_to_bag_blocked_reason"] == "price_unavailable"          # no 35 mm price yet
-    Bad = await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 40})
+    assert [(S["size"], S["unit_price"]) for S in C["charm_sizes"]] == [(18.0, None), (22.0, 145.0), (26.0, 165.0)]
+    C18 = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18})).json()
+    assert C18["charm_size"] == 18.0 and C18["add_to_bag_blocked_reason"] == "price_unavailable"          # no small price yet
+    Bad = await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 30})                  # on the grid, not on offer
     assert Bad.status_code == 400 and Bad.json()["error"]["code"] == "invalid_charm_size"
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 22})
     assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).status_code == 200
     # Removing a size a bag still holds: the Admin is told, and that line asks for another size
-    R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [15, 25, 30, 35]}, headers=Admin)
-    assert R.json()["removed_in_bags"] == [{"size": 20.0, "bag_lines": 1}]
+    R = await H.Client.put("/api/admin/products/charm-sizes", json={"sizes": [14, 18, 26]}, headers=Admin)
+    assert R.json()["removed_in_bags"] == [{"size": 22.0, "bag_lines": 1}]
     Bag = (await H.Client.get("/api/bag")).json()
     assert Bag["lines"][0]["orderable"] is False and Bag["checkout_available"] is False
     Line = (await H.Client.post("/api/checkout/quote", json={})).json()["lines"][0]
@@ -161,22 +170,22 @@ async def test_a_charm_customization_has_a_charm_size_and_never_a_ring_size(HP):
     H = HP
     B, C = await CharmCustomize(H, Material=None)         # as Customize opens it: Stainless Steel, the recommended size (WP3)
     assert (C["product_type"], C["ring_size"], C["charm_size"], C["material_id"], C["material_label"]) == \
-        ("charm", None, 20.0, "stainless_steel", "Stainless Steel")
+        ("charm", None, 18.0, "stainless_steel", "Stainless Steel")
     assert C["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
     assert [M["label"] for M in C["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
     assert all(not M["purchasable"] for M in C["materials"][3:])                      # gold: the quote flow
     R = await H.Client.patch(f"/api/customizations/{C['id']}", json={"ring_size": 7})
     assert R.status_code == 400 and R.json()["error"]["code"] == "invalid_size"
-    Gold = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"material_id": "gold_14k_yellow", "charm_size": 20})).json()
+    Gold = (await H.Client.patch(f"/api/customizations/{C['id']}", json={"material_id": "gold_14k_yellow", "charm_size": 18})).json()
     assert Gold["add_to_bag_blocked_reason"] == "luxury_preview_only"
     # A ring customization never takes a charm size
     RB = await H.NewDesign(product="ring")
     RC = await H.Proceed(RB["design_id"], RB["candidates"][0]["id"])
-    assert (await H.Client.patch(f"/api/customizations/{RC['id']}", json={"charm_size": 20})).status_code == 400
+    assert (await H.Client.patch(f"/api/customizations/{RC['id']}", json={"charm_size": 18})).status_code == 400
     assert RC["ring_size"] == 10.0 and "product_type" not in RC                      # a ring opens on US 10, as before
     Ev = [json.loads(E["data_json"]) for E in H.Ctx.Db.All("SELECT data_json FROM session_events WHERE kind = 'customize_opened' "
                                                             "AND design_id = ?", (B["design_id"],))]
-    assert Ev[0]["product_type"] == "charm" and Ev[0]["charm_size"] == 20.0 and "ring_size" not in Ev[0]
+    assert Ev[0]["product_type"] == "charm" and Ev[0]["charm_size"] == 18.0 and "ring_size" not in Ev[0]
 
 
 async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):
@@ -184,36 +193,36 @@ async def test_one_bag_and_one_order_hold_a_ring_and_a_charm(HP):
     await SetCharmPrices(H, Prices)
     Ring, _ = await RingInBag(H, 7)
     Charm, C = await CharmCustomize(H)
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18})
     assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).status_code == 200
     Bag = (await H.Client.get("/api/bag")).json()
     assert [(L["product_type"], L["ring_id"], L["size_label"], L["material_label"], L["unit_price"]) for L in Bag["lines"]] == [
-        ("ring", "R-1001-A", "US 7", "Sterling Silver", 200.0), ("charm", "C-1001-A", "20 mm", "Sterling Silver", 145.0)]
+        ("ring", "R-1001-A", "US 7", "Sterling Silver", 200.0), ("charm", "C-1001-A", "18 mm", "Sterling Silver", 145.0)]
     assert Bag["totals"] == {"USD": 345.0} and Bag["checkout_available"] is True
     O = (await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "terms_accepted": True,
                                                   "client_request_id": "mixed"})).json()
     assert O["product_types"] == ["charm", "ring"] and O["subtotal"] == 345.0
-    assert [L["size_label"] for L in O["lines"]] == ["US 7", "20 mm"]
+    assert [L["size_label"] for L in O["lines"]] == ["US 7", "18 mm"]
     Rows = H.Ctx.Db.All("SELECT * FROM order_lines ORDER BY position")
-    assert [(R["product_type"], R["ring_size"], R["charm_size"]) for R in Rows] == [("ring", 7.0, None), ("charm", None, 20.0)]
+    assert [(R["product_type"], R["ring_size"], R["charm_size"]) for R in Rows] == [("ring", 7.0, None), ("charm", None, 18.0)]
     Snap = json.loads(Rows[1]["purchase_json"])
-    assert Snap["product"] == "charm" and Snap["size"]["label"] == "20 mm" and Snap["size"]["unit"] == "mm"
+    assert Snap["product"] == "charm" and Snap["size"]["label"] == "18 mm" and Snap["size"]["unit"] == "mm"
     assert Snap["size"]["definition"] == "The total height of the charm, including the attachment loop at the top."
     assert Snap["material"] == {"id": "silver", "label": "Sterling Silver"}
     assert Snap["price"] == {"unit_price": 145.0, "currency": "USD", "pricing_version": "charms-v2"}
     assert json.loads(Rows[0]["purchase_json"])["price"]["pricing_version"].startswith("materials-v")
     _Subject, Html = OrderConfirmationEmail(O)
-    assert "Ring ID R-1001-A" in Html and "US 7" in Html and "Charm ID C-1001-A" in Html and "20 mm" in Html
+    assert "Ring ID R-1001-A" in Html and "US 7" in Html and "Charm ID C-1001-A" in Html and "18 mm" in Html
     assert "Your pieces are reserved" in Html
     for P in ("ring", "charm"):
         assert [X["ref"] for X in (await H.Client.get(f"/api/admin/orders?product={P}", headers=Admin)).json()["orders"]] == [O["ref"]]
     S = {X["design_id"]: X for X in (await H.Client.get("/api/admin/sessions?include_mock=true", headers=Admin)).json()["sessions"]}
-    assert (S[Charm["design_id"]]["charm_size"], S[Charm["design_id"]]["charm_size_chosen"]) == (20.0, True)
+    assert (S[Charm["design_id"]]["charm_size"], S[Charm["design_id"]]["charm_size_chosen"]) == (18.0, True)
     assert S[Charm["design_id"]]["material_label"] == "Sterling Silver" and S[Charm["design_id"]]["ring_size"] is None
     assert (S[Ring["design_id"]]["ring_size"], S[Ring["design_id"]]["ring_size_chosen"]) == (7.0, True)
     assert "charm_size" not in S[Ring["design_id"]]
     Placed = [json.loads(E["data_json"]) for E in H.Ctx.Db.All("SELECT data_json FROM session_events WHERE kind = 'order_placed' ORDER BY id")]
-    assert [(E.get("ring_size"), E.get("charm_size"), E.get("product_type")) for E in Placed] == [(7.0, None, None), (None, 20.0, "charm")]
+    assert [(E.get("ring_size"), E.get("charm_size"), E.get("product_type")) for E in Placed] == [(7.0, None, None), (None, 18.0, "charm")]
 
 
 async def test_a_price_change_reprices_only_its_own_product(HP):
@@ -221,7 +230,7 @@ async def test_a_price_change_reprices_only_its_own_product(HP):
     await SetCharmPrices(H, Prices)
     await RingInBag(H, 7)
     _B, C = await CharmCustomize(H)
-    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 20})
+    await H.Client.patch(f"/api/customizations/{C['id']}", json={"charm_size": 18})
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
 
     async def Stale():
@@ -234,7 +243,7 @@ async def test_a_price_change_reprices_only_its_own_product(HP):
     assert (await H.Client.put("/api/admin/material-prices", json={"materials": Rows}, headers=Admin)).status_code == 200
     assert await Stale() == [("ring", True, 210.0), ("charm", False, 145.0)]
     # A charm price change: only the charm line
-    await SetCharmPrices(H, {**Prices, "silver": {**Prices["silver"], "fixed_prices": {"20": 150, "25": 165}}})
+    await SetCharmPrices(H, {**Prices, "silver": {**Prices["silver"], "fixed_prices": {"18": 150, "22": 165}}})
     assert await Stale() == [("ring", True, 210.0), ("charm", True, 150.0)]
     Q = (await H.Client.post("/api/checkout/quote", json={})).json()
     assert [(L["unit_price"], L["repriced"]) for L in Q["lines"]] == [(210.0, True), (150.0, True)] and Q["subtotal"] == 360.0
@@ -244,15 +253,15 @@ async def test_a_gold_charm_is_quoted_with_its_charm_size(HP):
     H = HP
     B, C = await CharmCustomize(H)
     Body = {"design_id": B["design_id"], "candidate_id": C["candidate_id"], "material_id": "gold_14k_yellow", "quantity": 1,
-            "customer": Customer, "charm_size": 25}
+            "customer": Customer, "charm_size": 22}
     R = await H.Client.post("/api/quote-requests", json=Body)
     assert R.status_code == 200, R.text
     J = R.json()
     assert (J["product_type"], J["charm_size"], J["ring_size"], J["size_label"], J["material_label"]) == \
-        ("charm", 25.0, None, "25 mm", "14K Yellow Gold")
-    assert (await H.Client.post("/api/quote-requests", json={**Body, "charm_size": 26})).json()["error"]["code"] == "invalid_charm_size"
+        ("charm", 22.0, None, "22 mm", "14K Yellow Gold")
+    assert (await H.Client.post("/api/quote-requests", json={**Body, "charm_size": 30})).json()["error"]["code"] == "invalid_charm_size"
     Rows = (await H.Client.get("/api/admin/quote-requests", headers=Admin)).json()["quote_requests"]
-    assert Rows[0]["size_label"] == "25 mm" and Rows[0]["product_type"] == "charm"
+    assert Rows[0]["size_label"] == "22 mm" and Rows[0]["product_type"] == "charm"
     # A ring request reads as before
     RB = await H.NewDesign(product="ring")
     RC = await H.Proceed(RB["design_id"], RB["candidates"][0]["id"])
@@ -264,7 +273,7 @@ async def test_a_gold_charm_is_quoted_with_its_charm_size(HP):
 async def test_charm_quotes_stay_hidden_from_customers_while_charms_are_hidden(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
-        R = await H.Client.get("/api/quote?material_id=silver&product=charm&charm_size=20")
+        R = await H.Client.get("/api/quote?material_id=silver&product=charm&charm_size=18")
         assert R.status_code == 400 and R.json()["error"]["code"] == "unknown_product"
         Ring = (await H.Client.get("/api/quote?material_id=silver&ring_size=7")).json()
         assert Ring["ring_size"] == 7.0 and Ring["unit_price"] == 200.0 and "product" not in Ring
