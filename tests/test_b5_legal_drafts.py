@@ -1,4 +1,4 @@
-"""B5 — the legal pages as published on 3 Nov 2026 with the owner's approval, legal counsel's review pending. The
+"""B5 — the legal pages as published on 4 Nov 2026 with the owner's approval of 3 Nov, legal counsel's review pending. The
 wording is the Counsel Book's Appendix A: the full Terms of Service (A-1), Privacy Policy (A-2), Shipping & Returns (A-3),
 the checkout and quote-form notices (A-4), the confirmation email's block (A-5), the Warranty (A-8) and Accessibility (A-9)
 pages and the credits FAQ (A-10b). The company facts are XJet's own (3 Nov 2026), counsel's options are the owner's
@@ -40,7 +40,7 @@ async def test_the_warranty_and_accessibility_pages_are_legal_pages_with_their_o
         R = await H.Client.get("/" + View)
         assert R.status_code == 200, View
         Live = _Live(R.text, View)
-        assert Live.count("<h1") == 1 and Heading in Live and "3 November 2026" in Live, View
+        assert Live.count("<h1") == 1 and Heading in Live and "4 November 2026" in Live, View
     Map = (await H.Client.get("/sitemap.xml")).text
     assert "/warranty</loc>" in Map and "/accessibility</loc>" in Map          # listed like the other legal pages
     for Link in ("/warranty", "/accessibility"):
@@ -52,7 +52,7 @@ def test_the_company_facts_are_xjets_and_no_placeholder_is_left():
     Terms, Privacy = SitePages.LegalText(Index, "terms"), SitePages.LegalText(Index, "privacy")
     Shipping = SitePages.LegalText(Index, "shipping-returns")
     for Text in (Terms, Privacy):
-        assert Company in Text and "Last updated: 3 November 2026" in Text
+        assert Company in Text and "Last updated: 4 November 2026" in Text
     assert "Company No. 513655233 · VAT No. 513655233" in Terms and "+972-73-2694620" in Terms
     Legal = Index[Index.index("<template x-if=\"view === 'shipping-returns'\">"):Index.index("<template x-if=\"view === 'accessibility'\">")]
     for Mark in ("[registered address]", "[company number]", "[date]", "[Option", "[Q14", "[Phone", "[period]", "[30 days]",

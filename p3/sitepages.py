@@ -136,7 +136,7 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
                "and retrying the missing ones is free; a request our content check declines uses no credit. Choosing a design, "
                "its metal and its size is free."
                + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else "")
-               # Counsel Book A-10b, published 3 Nov 2026 with the owner's approval; legal counsel's review pending
+               # Counsel Book A-10b, published 4 Nov 2026 with the owner's approval of 3 Nov; legal counsel's review pending
                + " Credits are free and do not expire, but they have no cash value and cannot be bought, sold or transferred.")
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
@@ -292,7 +292,7 @@ def _PageFallbacks(View: str, Ctx, Visible: tuple, HeroCollection: dict) -> dict
                                 f"design you choose. The current release supports {Supports}.",
                 # the materials follow in their own static paragraph (web/index.html "Materials.", WP5): no sentence here
                 # names a metal or its status
-                # Counsel Book A-1 §8, T4 (published 3 Nov 2026, counsel's review pending): the currency moved to "10. Prices,
+                # Counsel Book A-1 §8, T4 (published 4 Nov 2026, counsel's review pending): the currency moved to "10. Prices,
                 # taxes and duties" (N8, N9); the returns rules to Shipping & Returns (N2)
                 "termsOrders": f"Prices are {Fixed}. An order is a reservation until our team has reviewed "
                                "the design for production feasibility and confirmed it to you; payment is arranged after you "

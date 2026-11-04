@@ -170,7 +170,7 @@ async def test_with_no_product_on_offer_the_site_names_no_ring(tmp_path):
         assert "Fashion jewelry pieces are priced per piece by material." in Faq and "Your ring size does not change the price." not in Faq
         Materials = (await H.Client.get("/materials")).text
         assert "Fashion metals have a fixed price per piece, set by material." in Materials and "fixed price per ring" not in Materials
-        assert "Prices in US dollars, per piece, fixed for the material." in Materials and "Prices in US dollars, per ring" not in Materials
+        assert "Prices are per piece, fixed for the material." in Materials and "Prices are per ring" not in Materials
         Head = (await H.Client.get("/")).text.split("<body")[0]
         assert '<meta property="og:image" content="http://p3.test/static/images/printed-jewelry.jpg">' in Head
         assert (await H.Client.get("/api/showcase")).json()["still"]["image_url"] == "/static/images/printed-jewelry.jpg"
