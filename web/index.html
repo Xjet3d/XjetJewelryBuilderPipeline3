@@ -1945,13 +1945,13 @@
                         <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
                         <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
                             <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
-                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price) : '')"
+                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : '')"
                                         :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : (sizeIsSuggested(s.size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500')"
                                         :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
                                         class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
                                     <span x-text="s.label"></span>
                                     <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
-                                          x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price) : 'Unavailable')"></span>
+                                          x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : 'Unavailable')"></span>
                                 </button>
                             </template>
                         </div>

@@ -21,7 +21,7 @@ Admin = {"Authorization": f"Bearer {AdminKey}"}
 @pytest.fixture
 async def HC(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
-    await OfferCharmSizes(Obj, AdminKey)                                     # 15–30 mm, as these tests were written
+    await OfferCharmSizes(Obj, AdminKey)                                     # 14 / 18 / 22 mm (written with 15 / 20 / 25 mm before 5 Nov 2026)
     yield Obj
     await Obj.Close()
 

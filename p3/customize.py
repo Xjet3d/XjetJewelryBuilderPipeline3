@@ -234,7 +234,7 @@ class CustomizeService:
         Sizes = []
         for O in self.Ctx.Products.CharmSizeOptions():       # '14 mm — Classic · Recommended', each with its price
             Q = self.Ctx.CharmPrices.QuoteFor(Row["material_id"], O["size"])
-            Sizes.append({**O, "unit_price": Q.unit_price, "pricing_status": Q.pricing_status})
+            Sizes.append({**O, "unit_price": Q.unit_price, "currency": Q.currency, "pricing_status": Q.pricing_status})
         return {"product_type": Products.Charm, "charm_size": Row.get("charm_size"),
                 "size_label": Products.SizeLabel(Products.Charm, None, Row.get("charm_size")),
                 "recommended_size": self.Ctx.Products.CharmDefaultSize,     # suggested until the customer picks a size

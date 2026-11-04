@@ -487,7 +487,7 @@ def LocalizeCustomization(Out: dict, M: Market | None) -> dict:
     if Out.get("line_total") is not None and Q.get("unit_price") is not None:
         Out["line_total"] = round(Q["unit_price"] * Out["quantity"], 2)
     if Out.get("charm_sizes"):
-        Out["charm_sizes"] = [{**S, "unit_price": M.Unit(S.get("unit_price"))} for S in Out["charm_sizes"]]
+        Out["charm_sizes"] = [{**S, "unit_price": M.Unit(S.get("unit_price")), "currency": M.currency} for S in Out["charm_sizes"]]
     return Out
 
 

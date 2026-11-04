@@ -86,6 +86,26 @@ DefaultCharmSizes = (10.0, 14.0, 18.0)
 DefaultCharmSizeNames = {"10": "Delicate", "14": "Classic", "18": "Bold"}
 DefaultCharmRecommendedSize = 14.0
 CharmSizeMin, CharmSizeMax, CharmSizesMax, CharmSizeNameMax = 3.0, 100.0, 12, 30
+# The owner's rule of 4–5 Nov 2026: the sizes come from a 4 mm grid; exactly three are on offer at a time, 18 mm always
+# among them. They are priced by their rank, at three levels per metal — the smallest at the low price, the middle at
+# the medium and the biggest at the high one — and each level keeps its name (Delicate · Classic · Bold), whatever
+# sizes it is given. A 3D can be made at any size of the grid (Admin), offered or not.
+CharmSizeGrid = (10.0, 14.0, 18.0, 22.0, 26.0, 30.0)
+CharmRequiredSize = 18.0
+CharmSizesOnOffer = 3
+CharmLevels = ("1", "2", "3")                                   # small · medium · large
+CharmLevelLabels = {"1": "small", "2": "medium", "3": "large"}
+DefaultCharmLevelNames = {"1": "Delicate", "2": "Classic", "3": "Bold"}
+
+
+def CharmLevelOf(Size, Sizes) -> str | None:
+    """The price level of a size among the sizes on offer ("1" for the smallest … "3" for the biggest); None when the
+    size is not on offer."""
+    try:
+        S = sorted(float(V) for V in Sizes)
+        return CharmLevels[S.index(float(Size))] if len(S) <= len(CharmLevels) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def SizeKey(Size) -> str:
@@ -117,7 +137,8 @@ def CharmSizeChoiceLabel(Size, Name: str | None = None, Recommended: bool = Fals
 def CharmSizeOptions(Sizes, Names: dict, Recommended) -> list[dict]:
     """The size choices in order: size, name (or None), recommended, and the choice label."""
     return [{"size": float(S), "name": Names.get(SizeKey(S)) or None, "recommended": float(S) == float(Recommended),
-             "label": CharmSizeChoiceLabel(S, Names.get(SizeKey(S)), float(S) == float(Recommended))}
+             "label": CharmSizeChoiceLabel(S, Names.get(SizeKey(S)), float(S) == float(Recommended)),
+             "level": CharmLevelOf(S, Sizes), "level_label": CharmLevelLabels.get(CharmLevelOf(S, Sizes) or "")}
             for S in sorted(float(V) for V in Sizes)]
 
 
@@ -178,6 +199,7 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "rings_available": True, "charms_available": False, "rings_movie": True, "charms_movie": True,
             "charm_sizes": list(DefaultCharmSizes),
             "charm_size_names": dict(DefaultCharmSizeNames), "charm_default_size": DefaultCharmRecommendedSize,
+            "charm_level_names": dict(DefaultCharmLevelNames),                       # by level since 5 Nov 2026
             "prompt_check": {"ring": False, "charm": False},                          # p3/promptcheck.py: off
             "site_indexing": False,                                                  # p3/sitepages.py: search engines kept out
             "material_statuses": {},                                                 # p3/materialstatus.py: none = today's behaviour
@@ -210,6 +232,28 @@ def ValidateCharmSizeNames(Raw, Sizes) -> dict:
     return {K: Out[K] for K in sorted(Out, key=float)}
 
 
+def ValidateCharmLevelNames(Raw) -> dict:
+    """The levels' names ({"1": "Delicate", "2": "Classic", "3": "Bold"}): short texts; an empty one is no name."""
+    if not isinstance(Raw, dict):
+        raise HttpError(400, "invalid_charm_size_names", "Size names are given per level (1 small, 2 medium, 3 large).")
+    Out = {}
+    for K, V in Raw.items():
+        if str(K) not in CharmLevels:
+            raise HttpError(400, "invalid_charm_size_names", f"{K!r} is not a level (1 small, 2 medium, 3 large).")
+        if V is None or not str(V).strip():
+            continue
+        if not isinstance(V, str) or len(V.strip()) > CharmSizeNameMax:
+            raise HttpError(400, "invalid_charm_size_names", f"A size name is a short text (at most {CharmSizeNameMax} characters).")
+        Out[str(K)] = V.strip()
+    return {K: Out[K] for K in CharmLevels if K in Out}
+
+
+def CharmLevelNamesOf(SizeNames: dict, Sizes) -> dict:
+    """{"1": "Delicate", …}: the names of the sizes on offer ({"18": "Bold"}) as the names of their levels."""
+    return {L: SizeNames[SizeKey(S)] for S in sorted(float(V) for V in Sizes)
+            for L in (CharmLevelOf(S, Sizes),) if L and SizeNames.get(SizeKey(S))}
+
+
 def ValidateCharmDefaultSize(Raw, Sizes) -> float | None:
     """The recommended size, one of the sizes on offer (None = not given)."""
     if Raw is None or Raw == "":
@@ -224,22 +268,25 @@ def ValidateCharmDefaultSize(Raw, Sizes) -> float | None:
 
 
 def ValidateCharmSizes(Raw) -> list[float]:
+    """The sizes on offer: exactly three of the grid, 18 mm among them, in ascending order whatever order they came in."""
+    Grid = ", ".join(f"{S:g}" for S in CharmSizeGrid)
+    Rule = (f"Choose exactly {CharmSizesOnOffer} charm sizes from {Grid} mm, {CharmRequiredSize:g} mm always among them "
+            f"(for example 18, 22, 26).")
     if not isinstance(Raw, (list, tuple)) or not Raw:
-        raise HttpError(400, "invalid_charm_sizes", "Give at least one charm size.")
+        raise HttpError(400, "invalid_charm_sizes", Rule)
     Out = []
     for V in Raw:
         try:
-            F = float(V)
+            F = round(float(V), 2)
         except (TypeError, ValueError):
             raise HttpError(400, "invalid_charm_sizes", f"Charm sizes must be numbers in millimetres ({V!r} is not).")
-        if not CharmSizeMin <= F <= CharmSizeMax:
-            raise HttpError(400, "invalid_charm_sizes",
-                            f"Charm sizes must be between {CharmSizeMin:g} and {CharmSizeMax:g} mm ({F:g} is not).")
-        Out.append(round(F, 2))
+        if F not in CharmSizeGrid:
+            raise HttpError(400, "invalid_charm_sizes", f"{F:g} mm is not one of the charm sizes ({Grid} mm).")
+        Out.append(F)
     if len(set(Out)) != len(Out):
         raise HttpError(400, "invalid_charm_sizes", "Each charm size can be listed only once.")
-    if len(Out) > CharmSizesMax:
-        raise HttpError(400, "invalid_charm_sizes", f"At most {CharmSizesMax} charm sizes.")
+    if len(Out) != CharmSizesOnOffer or CharmRequiredSize not in Out:
+        raise HttpError(400, "invalid_charm_sizes", Rule)
     return sorted(Out)
 
 
@@ -303,7 +350,8 @@ class ProductSettings:
 
     @property
     def CharmSizes(self) -> list[float]:
-        return [float(V) for V in self.Get("charm_sizes")]
+        """The sizes on offer, smallest first (stored sorted; sorted again for a list saved before the rule)."""
+        return sorted(float(V) for V in self.Get("charm_sizes"))
 
     def IsValidCharmSize(self, Size) -> bool:
         try:
@@ -311,11 +359,26 @@ class ProductSettings:
         except (TypeError, ValueError):
             return False
 
+    def CharmLevel(self, Size) -> str | None:
+        """The price level of a size on offer ("1" small · "2" medium · "3" large); None when it is not on offer."""
+        return CharmLevelOf(Size, self.CharmSizes)
+
+    def _Stored(self, Key: str) -> bool:
+        return self.Db.One("SELECT 1 AS x FROM product_settings WHERE key = ?", (Key,)) is not None
+
+    @property
+    def CharmLevelNames(self) -> dict:
+        """{"1": "Delicate", "2": "Classic", "3": "Bold"}: each level's name. A site that named its sizes before the levels
+        (charm_size_names) keeps those names, read by the rank of its sizes."""
+        if self._Stored("charm_level_names") or not self._Stored("charm_size_names"):
+            return {K: V for K, V in (self.Get("charm_level_names") or {}).items() if K in CharmLevels and V}
+        return CharmLevelNamesOf(self.Get("charm_size_names") or {}, self.CharmSizes)
+
     @property
     def CharmSizeNames(self) -> dict:
-        """{"14": "Classic"} for the sizes on offer that have a name."""
-        Keys = {SizeKey(S) for S in self.CharmSizes}
-        return {K: V for K, V in (self.Get("charm_size_names") or {}).items() if K in Keys and V}
+        """{"14": "Classic"} for the sizes on offer that have a name: their levels' names."""
+        Names = self.CharmLevelNames
+        return {SizeKey(S): Names[L] for S in self.CharmSizes for L in (self.CharmLevel(S),) if L and Names.get(L)}
 
     @property
     def CharmDefaultSize(self) -> float:
@@ -335,8 +398,11 @@ class ProductSettings:
                 "charms_available": self.CharmsAvailable,                       # the older names, still answered
                 "charms_available_changed": self.ChangedAt(AvailabilityKeys[Charm]),
                 "charm_sizes": self.CharmSizes, "charm_size_names": self.CharmSizeNames,
+                "charm_level_names": self.CharmLevelNames, "charm_level_labels": CharmLevelLabels,
                 "charm_default_size": self.CharmDefaultSize, "charm_size_options": self.CharmSizeOptions(),
                 "charm_size_definition": CharmSizeDefinition,
+                "charm_size_grid": list(CharmSizeGrid), "charm_required_size": CharmRequiredSize,
+                "charm_sizes_on_offer": CharmSizesOnOffer,
                 "charm_size_limits": {"min": CharmSizeMin, "max": CharmSizeMax, "count": CharmSizesMax, "name": CharmSizeNameMax},
                 "log": [{**L, "value": json.loads(L.pop("value_json"))} for L in Log]}
 
