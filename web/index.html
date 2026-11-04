@@ -2195,7 +2195,7 @@
                     </template>
                     <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
                     <!-- Israeli pricing (B6): shown only while it is on -->
-                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1">Prices in shekels include 18% VAT for delivery in Israel. Standard delivery is free; express delivery and any promo code are added at checkout. The delivery country you choose at checkout sets the final currency.</p>
+                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1"><span x-text="pricingChoice?.currency === 'USD' ? 'Prices in US dollars include 18% Israeli VAT for delivery in Israel.' : 'Prices in shekels include 18% VAT for delivery in Israel.'">Prices in shekels include 18% VAT for delivery in Israel.</span> Standard delivery is free; express delivery and any promo code are added at checkout. The delivery country you choose at checkout sets the final currency.</p>
                     <div x-show="pricingChoice" x-cloak class="flex items-center justify-end gap-2 text-[13px] text-zinc-500 pt-1" role="group" aria-label="Currency">
                         <span>Prices in</span>
                         <button type="button" @click="setCurrency('ILS')" :aria-pressed="pricingChoice?.currency === 'ILS'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'ILS' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">₪ ILS</button>
@@ -2379,7 +2379,8 @@
                         <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(coQuote?.total || 0, coQuote?.currency)"></span></div>
                         <div x-show="coQuote?.incl_vat" x-cloak class="flex justify-between text-zinc-500"><span>Including VAT</span><span x-text="money(coQuote?.vat_amount || 0, coQuote?.currency)"></span></div>
                         <p x-show="co.currencyNote" x-cloak role="status" class="text-[13px] pt-1" style="color:#8A561B;" x-text="co.currencyNote"></p>
-                        <p x-show="coQuote?.currency !== 'ILS'" class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <p x-show="coQuote?.currency !== 'ILS' && !coQuote?.incl_vat" class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
+                        <p x-show="coQuote?.currency === 'USD' && coQuote?.incl_vat" x-cloak class="text-[14px] text-zinc-600 pt-1">US dollars · including 18% Israeli VAT · a delivery to Israel is charged in shekels.</p>
                         <p x-show="coQuote?.currency === 'ILS'" x-cloak class="text-[14px] text-zinc-600 pt-1">Shekels · including 18% VAT for delivery in Israel.</p>
                     </div>
                 </aside>

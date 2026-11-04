@@ -1738,7 +1738,9 @@ function p3App() {
       const ring = kinds.has('ring'), charm = kinds.has('charm');
       const per = ring && charm ? 'piece' : charm ? 'charm' : 'ring';
       const sizes = ring && charm ? 'Charm sizes are in millimeters; ring sizes are US sizes.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
-      const cur = this.bag?.incl_vat ? 'in shekels, including VAT' : 'in US dollars';     // ₪ only while Israeli pricing is on (B6)
+      // ₪ only while Israeli pricing is on (B6); $ including VAT for a visitor from Israel who chose $
+      const ils = Object.keys(this.bag?.totals || {})[0] === 'ILS' || (this.bagLines || []).some(l => l.currency === 'ILS');
+      const cur = this.bag?.incl_vat ? (ils ? 'in shekels, including VAT' : 'in US dollars, including Israeli VAT') : 'in US dollars';
       return 'Fixed prices per ' + per + ' and material, ' + cur + '. ' + sizes + ' Delivery and any promo code are added at checkout.';
     },
     get composerNote() {
@@ -2704,14 +2706,14 @@ function p3App() {
     async coReview() { await this.coRequote(); this.co.step = 'review'; this._scrollTop(); },
     async coRequote() {
       try {
-        const before = this.coQuote?.currency;
+        const before = this.coQuote ? this.coQuote.currency + (this.coQuote.incl_vat ? '+vat' : '') : null;
         // the delivery country decides the currency while Israeli pricing is on (B6); otherwise it is not sent
         const country = this.pricingChoice && this.co.step !== 'details' ? (this.co.address.country || null) : null;
         const q = await this.api('POST', '/api/checkout/quote', { promo_code: this.co.promo_code || null, shipping_method: this.co.shipping_method,
                                                                    ...(country ? { country } : {}) });
         if (q.shipping_options && this.checkout) this.checkout.shipping_options = q.shipping_options;
         this.coQuote = q;
-        if (before && q.currency !== before)
+        if (before && q.currency + (q.incl_vat ? '+vat' : '') !== before)
           this.co.currencyNote = q.currency === 'ILS' ? 'Prices updated for delivery to Israel: in shekels, including VAT.'
                                                       : 'Prices updated for delivery outside Israel: in US dollars, without Israeli VAT.';
       }

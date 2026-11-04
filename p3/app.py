@@ -945,10 +945,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         return _Strip(Data)
 
     def Market(request: Request, Country: str | None = None):
-        """How this answer prices (B6): ₪ including VAT or USD. The delivery country decides when it is known (checkout);
-        before that the visitor's own choice, then their connection's country. Israeli pricing OFF: None, USD as before."""
+        """How this answer prices (B6): ₪ including VAT or USD. The delivery country decides when it is known (checkout and
+        every order): Israel ₪, elsewhere USD without VAT. Before that the visitor's own choice, then their connection's
+        country; a visitor from Israel who chose $ reads dollars including VAT (UsdVatMarket). OFF: None, USD as before."""
         Cur = Ctx.IlsPricing.DeliveryCurrency(Country) if Country else None
-        return Ctx.IlsPricing.MarketFor(Cur or Ctx.IlsPricing.VisitorCurrency(request.headers, request.cookies))
+        if Cur:
+            return Ctx.IlsPricing.MarketFor(Cur)
+        return Ctx.IlsPricing.VisitorMarket(request.headers, request.cookies)
 
     def _Country(Body_: dict) -> str | None:
         A = Body_.get("address") if isinstance(Body_.get("address"), dict) else {}

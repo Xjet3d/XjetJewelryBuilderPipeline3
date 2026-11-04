@@ -60,13 +60,15 @@ RepeatHours = 24
 
 
 def ShippingFor(Market=None) -> dict:
-    """The delivery options as this customer sees them: in ₪ including VAT for an Israeli delivery (B6), else as listed."""
+    """The delivery options as this customer sees them: in ₪ including VAT for an Israeli delivery (B6), in $ including VAT
+    for a visitor from Israel who chose $ before giving an address, else as listed."""
     if not Market:
         return ShippingOptions
     Out = {}
     for K, O in ShippingOptions.items():
         Price = Market.Unit(O["price"]) if O["price"] else 0.0
-        Detail = O["detail"].replace(f"${O['price']:g}", f"₪{Price:g}") if O["price"] else O["detail"]
+        Shown = f"₪{Price:g}" if Market.currency == "ILS" else f"${Price:,.2f}"
+        Detail = O["detail"].replace(f"${O['price']:g}", Shown) if O["price"] else O["detail"]
         Out[K] = {**O, "price": Price, "detail": Detail, "usd_price": O["price"], "currency": Market.currency}
     return Out
 

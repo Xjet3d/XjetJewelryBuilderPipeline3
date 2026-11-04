@@ -5,6 +5,8 @@ order. On:
   * the visitor's currency: their own choice (the essential cookie p3_currency, set by the ₪/$ switch) first, then the
     country of their connection (Cloudflare's CF-IPCountry header; read per request, never stored) — Israel → ₪;
   * the delivery country at checkout is final: Israel → ₪ including VAT, any other country → USD without Israeli VAT;
+  * a visitor from Israel who chooses $ sees US dollars including Israeli VAT, to the cent (owner, 4 Nov 2026): a price to
+    read only — a delivery to Israel is still charged in ₪, one abroad in $ without VAT (UsdVatMarket);
   * every price list stays in USD; a ₪ price is computed from it: USD × the price rate (the Bank of Israel rate plus the
     buffer) × (1 + VAT), rounded UP to whole shekels ending in 9 (owner decisions D1, D5, D7 of 3 Nov 2026). Rule 1 (round
     before VAT, then add VAT) stays a setting;
@@ -215,6 +217,24 @@ class Market:
                 "ending": self.ending}
 
 
+@dataclass
+class UsdVatMarket(Market):
+    """US dollars including Israeli VAT, to the cent ($49 → $57.82): what a visitor from Israel sees after choosing $ on
+    the ₪/$ switch (owner, 4 Nov 2026). A price to read: the delivery country decides what is charged (DeliveryCurrency)."""
+    currency: str = Usd
+
+    def Unit(self, UsdAmount) -> float | None:
+        if UsdAmount is None:
+            return None
+        return float(Q2(_Dec(UsdAmount) * (1 + self.vat_pct / 100)))
+
+    def Plain(self, UsdAmount) -> float:
+        return float(Q2(_Dec(UsdAmount) * (1 + self.vat_pct / 100)))
+
+    def Record(self) -> dict:
+        return {"currency": Usd, "vat_pct": float(self.vat_pct), "display_only": True}
+
+
 class IlsPricing:
     def __init__(self, Db: Database, Fetcher=None):
         self.Db = Db
@@ -372,6 +392,19 @@ class IlsPricing:
             self.HeaderSeenAt = Now()
         return Ils if Country in S["countries"] else Usd
 
+    def VisitorMarket(self, Headers, Cookies) -> Market | None:
+        """How prices read before a delivery country is known: ₪ including VAT for the ₪ choice; for a visitor from Israel
+        who chose $, dollars including Israeli VAT; anyone else, plain USD (None). Off: None."""
+        Cur = self.VisitorCurrency(Headers, Cookies)
+        if Cur == Ils:
+            return self.MarketFor(Ils)
+        S = self.Settings()
+        if not S["enabled"]:
+            return None
+        if str(Headers.get(S["geo_header"]) or "").strip().upper() not in S["countries"]:
+            return None
+        return UsdVatMarket(rate=Decimal(1), vat_pct=self.VatPct(S), stage="exact", ending="", info={})
+
     def DeliveryCurrency(self, Country: str | None) -> str | None:
         """The delivery country decides at checkout (None: no country yet, the visitor's currency stands). Off: USD."""
         S = self.Settings()
@@ -472,10 +505,12 @@ def FetchBankOfIsrael(Timeout: float = 15.0) -> tuple[str, Decimal, str]:
 
 # ── answers in ₪: the USD figures a service computed, converted at the edge (M None: unchanged) ──
 def LocalizeQuote(Q: dict, M: Market | None) -> dict:
-    """A price quote ({unit_price, currency}) in ₪ including VAT; the USD list price it came from rides along."""
+    """A price quote ({unit_price, currency}) including VAT (₪, or $ for a visitor from Israel); the USD list price it
+    came from rides along."""
     if not M or not isinstance(Q, dict) or Q.get("currency") != Usd:
         return Q
-    return {**Q, "unit_price": M.Unit(Q.get("unit_price")), "currency": Ils, "usd_unit_price": Q.get("unit_price"), "incl_vat": True}
+    return {**Q, "unit_price": M.Unit(Q.get("unit_price")), "currency": M.currency, "usd_unit_price": Q.get("unit_price"),
+            "incl_vat": True}
 
 
 def LocalizeCustomization(Out: dict, M: Market | None) -> dict:
@@ -499,7 +534,7 @@ def LocalizeBag(B: dict, M: Market | None) -> dict:
     for L in B["lines"]:
         if L.get("currency") == Usd:
             U = M.Unit(L["unit_price"])
-            L = {**L, "unit_price": U, "currency": Ils, "line_total": round(U * L["quantity"], 2),
+            L = {**L, "unit_price": U, "currency": M.currency, "line_total": round(U * L["quantity"], 2),
                  "current_unit_price": M.Unit(L.get("current_unit_price"))}
         if L.get("orderable"):
             Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + L["line_total"], 2)
@@ -512,6 +547,6 @@ def LocalizeCatalog(Out: dict, M: Market | None) -> dict:
     Charm = ((Out.get("products") or {}).get("charm") or {})
     if M and Charm.get("materials"):
         for Mat in Charm["materials"]:
-            Mat["prices"] = [{**P, "price": M.Unit(P["price"]), "currency": Ils} if P.get("currency") == Usd else P
+            Mat["prices"] = [{**P, "price": M.Unit(P["price"]), "currency": M.currency} if P.get("currency") == Usd else P
                              for P in Mat["prices"]]
     return Out
