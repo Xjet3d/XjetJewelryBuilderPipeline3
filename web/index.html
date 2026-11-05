@@ -676,7 +676,7 @@
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
-                                <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+                                <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                             </div>
                         </div>
                     </template>
@@ -833,7 +833,7 @@
                                 <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                 <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                             </div>
-                            <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+                            <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                         </div>
                     </div>
                 </template>
@@ -3174,15 +3174,16 @@
         </div>
     </template>
 
-    <!-- ── Admin preview: this browser is signed in to the Admin and sees products customers do not (hidden, or paused
-         after their launch); on phones too. They are tried only on a test account. ── -->
+    <!-- ── Admin preview: this tab was opened in preview (?preview=on) by a browser signed in to the Admin, and sees the
+         products customers do not (hidden, or paused after their launch). They are tried only on a test account. ── -->
     <template x-teleport="body">
         <div x-show="charmPreview" x-cloak role="status"
              class="flex fixed left-3 bottom-3 z-[590] items-center gap-2 px-3 py-1.5 rounded-full shadow-lg text-[12px]"
              style="background:#2A2418; color:#F3E7CC; max-width:min(92vw, 440px);"
-             :title="previewText.replace(/^./, c => c.toUpperCase()) + ' (Admin → Settings → Products). This browser sees them because it is signed in to the Admin; they are tried only on a test account.'">
+             >
             <span x-html="productIcon(previewedProducts[0] || 'charm', 'w-3.5 h-3.5')"></span>
-            <span><strong class="font-semibold">Admin preview</strong> · <span x-text="previewText"></span></span>
+            <span><strong class="font-semibold">Preview</strong> · <span x-text="previewText"></span></span>
+            <button type="button" @click="endPreview()" class="ml-1 underline underline-offset-2 hover:text-white">End preview</button>
         </div>
     </template>
 
@@ -3280,7 +3281,7 @@
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
                                     <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
-                                <button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+                                <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                             </div>
                         </div>
                     </template>

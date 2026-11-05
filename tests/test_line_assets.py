@@ -52,6 +52,7 @@ async def test_a_charm_s_stl_finished_in_silver_is_the_stainless_line_s_stl_reco
     H = _On(tmp_path)
     try:
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
         # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
         assert (await H.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                    headers=Admin)).status_code == 200

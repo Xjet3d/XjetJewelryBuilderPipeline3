@@ -24,6 +24,7 @@ LivePrices = {"stainless_steel": {"10": 49.0, "14": 69.0, "18": 99.0}, "silver":
 async def HG(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey, AccountEmail=PreviewEmail)
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    Obj.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     assert (await Obj.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                  headers=Admin)).status_code == 200
     yield Obj

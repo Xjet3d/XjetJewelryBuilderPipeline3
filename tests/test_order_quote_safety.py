@@ -105,6 +105,7 @@ async def test_an_admin_preview_on_a_customer_account_makes_nothing_and_spends_n
         assert (await H.Client.post("/api/bag", json={"customization_id": C["id"]})).json()["lines"][0]["orderable"] is True
         await _Set(H, "charm", False)
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # this browser previews charms
+        H.Client.headers["X-P3-Preview"] = "1"                              # this tab opened the site in preview
         assert (await H.Client.get("/api/catalog")).json()["products"]["previewed"] == ["charm"]
         Before, Designs = _Credits(H), _Count(H, "designs")
         Attempts = {
@@ -141,6 +142,7 @@ async def test_an_admin_preview_on_a_test_account_works_and_its_orders_are_test_
         await H.Client.put("/api/admin/charm-prices", json={"materials": {"silver": {"fixed_prices": {"14": 109}}}}, headers=Admin)
         Qa = {"X-Access-Token": H.Ctx.Accounts.IssueToken("qa", Email="qa@example.com", MaxGenerations=100)[0]}
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        H.Client.headers["X-P3-Preview"] = "1"                              # this tab opened the site in preview
         R = await H.Client.post("/api/designs", data={"prompt": "A star charm", "product": "charm"}, headers=Qa)
         assert R.status_code == 200, R.text
         await H.Idle()
@@ -205,6 +207,7 @@ async def test_the_preview_marker_says_paused_or_hidden_and_shows_on_phones(tmp_
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        H.Client.headers["X-P3-Preview"] = "1"                              # this tab opened the site in preview
         P = (await H.Client.get("/api/catalog")).json()["products"]
         assert P["previewed"] == ["charm"] and P["paused"] == []             # never on offer: hidden
         await _Set(H, "charm", True)
@@ -215,6 +218,6 @@ async def test_the_preview_marker_says_paused_or_hidden_and_shows_on_phones(tmp_
         Badge = Page.split("<!-- ── Admin preview:", 1)[1].split("</template>", 1)[0]
         assert 'class="flex fixed' in Badge and "sm:flex" not in Badge       # on phones too
         Js = (WebDir / "app.js").read_text(encoding="utf-8")
-        assert "' are paused for customers'" in Js and "' are hidden from customers'" in Js
+        assert "' off for customers'" in Js and "' hidden from customers'" in Js
     finally:
         await H.Close()

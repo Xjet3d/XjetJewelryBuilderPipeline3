@@ -47,8 +47,9 @@ MovieKeys = {P: f"{Plurals[P].lower()}_movie" for P in All}               # ring
 UnavailableText = "Currently unavailable for customization or ordering."
 UnavailableError = "This design is currently unavailable for customization or ordering."
 # What an Admin's browser reads when it previews a hidden product on an account that is not a test account
-PreviewOnlyError = ("Admin preview: this product is hidden from customers. Try it on a test account (an address at a reserved "
-                    "test domain, such as example.com), so no real order is placed and no customer credits are spent.")
+PreviewOnlyError = "Preview only: use a test account to try this product."
+# The header a browser sends while an Admin has opened the site in preview (?preview=on, this tab only)
+PreviewHeader = "X-P3-Preview"
 
 
 def DefaultProduct(Visible, Previewed=()) -> str:
@@ -409,8 +410,10 @@ class ProductSettings:
 
 # ── who sees charms ───────────────────────────────────────────────────────────
 def AdminPreview(Ctx: Context, Request) -> bool:
-    """A browser signed in to the Admin (its session cookie) previews charms on the customer site."""
-    if Request is None:
+    """A browser signed in to the Admin that opened the site in preview on purpose (?preview=on: the PreviewHeader on its
+    requests) sees the products hidden from customers. Without it an Admin's browser sees exactly what customers see
+    (owner, 5 Nov 2026: no ring choice or ring action while Rings are OFF)."""
+    if Request is None or not hasattr(Request, "headers") or Request.headers.get(PreviewHeader) != "1":
         return False
     from p3 import adminauth
     try:

@@ -7,13 +7,14 @@ import pytest
 from tests.conftest import Harness, PreviewEmail
 
 AdminKey = "charm-sizes-key"
-Admin = {"Authorization": f"Bearer {AdminKey}"}
+Admin = {"Authorization": f"Bearer {AdminKey}", "X-P3-Preview": "1"}   # an Admin previewing the site (5 Nov 2026)
 
 
 @pytest.fixture
 async def HS(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey, AccountEmail=PreviewEmail)   # a test account
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200   # Admin preview of charms
+    Obj.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     yield Obj
     await Obj.Close()
 

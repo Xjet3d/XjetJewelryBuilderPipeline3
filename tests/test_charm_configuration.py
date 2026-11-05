@@ -9,7 +9,7 @@ from p3.providers import endpoints
 from tests.conftest import Harness, PreviewEmail
 
 AdminKey = "charm-config-key"
-Admin = {"Authorization": f"Bearer {AdminKey}"}
+Admin = {"Authorization": f"Bearer {AdminKey}", "X-P3-Preview": "1"}   # an Admin previewing the site (5 Nov 2026)
 RingModels = ("nano-banana-pro", "nano-banana-pro-edit-photo", "nano-banana-pro-edit", "minimax-camera", "hi3d")
 CharmModels = ("nano-banana-pro-charm", "nano-banana-pro-edit-photo-charm", "nano-banana-pro-edit-charm", "minimax-camera-charm",
                "hi3d-charm")
@@ -87,6 +87,7 @@ async def test_exports_are_per_product_and_the_ring_export_is_unchanged(HK):
 async def test_an_admin_previews_the_charm_pipeline_end_to_end_in_mock_mode(HK):
     H = HK
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200    # this browser: Admin preview
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     Ring = await H.NewDesign("A slim twisted band")
     Batch = await H.NewDesign("A crescent moon charm with a small star", product="charm")
     D = await H.Design(Batch["design_id"])

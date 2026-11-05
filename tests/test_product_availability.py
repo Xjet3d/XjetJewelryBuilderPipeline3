@@ -104,6 +104,7 @@ async def test_the_gallery_the_sitemap_and_the_admin_preview_follow_availability
         # A browser signed in to the Admin still sees rings on the site — as a preview, marked as such
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test") as Browser:
             assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+            Browser.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
             Cat = (await Browser.get("/api/catalog")).json()
             assert Cat["products"]["available"] == ["charm", "ring"] and Cat["products"]["previewed"] == ["ring"] and Cat["products"]["preview"] is True
             assert len((await Browser.get("/api/gallery")).json()["items"]) == 2

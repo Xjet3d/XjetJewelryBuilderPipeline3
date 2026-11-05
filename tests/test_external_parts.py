@@ -29,6 +29,7 @@ Phrase = "GENERATE NEW 3D"
 async def HE(tmp_path):
     Obj = Harness(tmp_path, AdminKey=AdminKey)
     assert (await Obj.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    Obj.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     # Charms on offer to customers (an Admin's preview of a hidden product orders only on a test account)
     assert (await Obj.Client.put("/api/admin/products/availability", json={"product": "charm", "available": True},
                                  headers=Admin)).status_code == 200

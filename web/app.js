@@ -41,7 +41,17 @@ let PAUSED_STORY = null;
 // Studio screens: Design · Customize · Bag ('checkout', historical name) · Checkout steps ('order') · Confirmation
 const STUDIO_VIEWS = ['ai-studio', 'review', 'checkout', 'order', 'confirmation'];
 const CUSTOMER_FIELDS = ['first_name', 'last_name', 'email', 'phone'];
-const CO_DRAFT_KEY = 'p3_co_draft';               // the checkout draft (sessionStorage: this tab only, R-25)
+const CO_DRAFT_KEY = 'p3_co_draft';
+// An Admin's preview of the products hidden from customers: only when opened on purpose (?preview=on), for this tab,
+// ended by ?preview=off or the End preview button; the server also needs the browser's Admin sign-in
+const PREVIEW_KEY = 'p3_admin_preview';
+(() => {
+  const want = new URLSearchParams(location.search).get('preview');
+  if (want !== 'on' && want !== 'off') return;
+  try { want === 'on' ? sessionStorage.setItem(PREVIEW_KEY, '1') : sessionStorage.removeItem(PREVIEW_KEY); } catch (_) {}
+  const u = new URL(location.href); u.searchParams.delete('preview'); history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+})();
+function adminPreviewOn() { try { return sessionStorage.getItem(PREVIEW_KEY) === '1'; } catch (_) { return false; } }               // the checkout draft (sessionStorage: this tab only, R-25)
 const ADDRESS_FIELDS = ['recipient', 'line1', 'line2', 'city', 'region', 'postal_code', 'country'];
 const PAGE_VIEWS = ['home', 'inspiration', 'materials', 'technology', 'faq', 'designers',
                     'terms', 'privacy', 'shipping-returns', 'contact', 'warranty', 'accessibility'];
@@ -346,6 +356,7 @@ function p3App() {
     async api(method, path, body, opts = {}) {
       const headers = {};
       if (!opts.noAuth && this.token && !this.userSession?.session) headers['X-Access-Token'] = this.token;   // a legacy six-letter token
+      if (adminPreviewOn()) headers['X-P3-Preview'] = '1';                         // an Admin opened the site in preview (this tab)
       if (this.authCsrf && method !== 'GET') headers['X-CSRF-Token'] = this.authCsrf;                            // a cookie session
       let payload;
       if (body instanceof FormData) payload = body;
@@ -1646,11 +1657,12 @@ function p3App() {
     get previewedProducts() { return this.catalog?.products?.previewed || []; },  // hidden products an Admin's browser sees
     get pausedPreview() { return this.catalog?.products?.paused || []; },         // … of those, the ones switched OFF after their launch
     get charmPreview() { return this.previewedProducts.length > 0; },
+    endPreview() { try { sessionStorage.removeItem(PREVIEW_KEY); } catch (_) {} location.reload(); },
     get previewText() {
       const names = list => list.map(p => this.productPlural(p).toLowerCase()).join(' and ');
       const paused = this.previewedProducts.filter(p => this.pausedPreview.includes(p));
       const hidden = this.previewedProducts.filter(p => !this.pausedPreview.includes(p));
-      return [paused.length ? names(paused) + ' are paused for customers' : '', hidden.length ? names(hidden) + ' are hidden from customers' : '']
+      return [paused.length ? names(paused) + ' off for customers' : '', hidden.length ? names(hidden) + ' hidden from customers' : '']
         .filter(Boolean).join('; ');
     },
     productLabel(p) { return window.P3Products ? window.P3Products.label(p) : (p === 'charm' ? 'Charm' : 'Ring'); },

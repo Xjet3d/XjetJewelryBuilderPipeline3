@@ -44,6 +44,7 @@ async def test_the_admin_signs_in_with_its_key_and_only_the_admin_reaches_produc
         assert Cfg["identity_enforced"] is False and Cfg["key_login"] is True
         B = Browser(H)
         assert (await B.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        B.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
         assert (await B.get("/api/admin/orders")).status_code == 200                       # the remembered browser, no header
         Did, O = await _Placed(H, Qty=1)
         Url = f"/api/admin/orders/{O['id']}/production"

@@ -146,6 +146,7 @@ async def test_a_signed_in_admin_previews_charms_while_customers_cannot_see_them
     Item = (await H.Client.post("/api/admin/gallery", json={"design_id": Cid}, headers=Admin)).json()
     assert (await H.Client.get("/api/gallery")).json()["items"] == []
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200      # the browser's admin session
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     Tiles = (await H.Client.get("/api/gallery")).json()["items"]
     assert [T["id"] for T in Tiles] == [Item["id"]] and Tiles[0]["product_type"] == "charm"
     assert H.Ctx.Products.CharmsAvailable is False                                                   # still hidden for customers

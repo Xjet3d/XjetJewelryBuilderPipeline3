@@ -57,6 +57,7 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     H.Ctx.Db.Execute("UPDATE admin_sessions SET revoked_at = '2026-01-01T00:00:00+00:00'")
     assert (await H.Client.get("/api/admin/session")).status_code == 403
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     assert (await H.Client.get("/api/admin/session")).status_code == 200
     Rows = H.Ctx.Db.All("SELECT * FROM admin_sessions")
     assert len(Rows) == 2 and all(len(R["session_hash"]) == 64 for R in Rows) and Rows[1]["expires_at"] > Rows[1]["created_at"]
@@ -66,6 +67,7 @@ async def test_admin_sign_in_is_remembered_by_a_server_side_session_cookie(HA):
     assert H.Ctx.Db.One("SELECT COUNT(*) AS n FROM admin_sessions WHERE revoked_at IS NULL")["n"] == 0
     # "Sign out everywhere" revokes every remembered browser at once
     await H.Client.post("/api/admin/login", json={"key": AdminKey})
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     Other = await H.Client.post("/api/admin/login", json={"key": AdminKey}, headers={"Cookie": ""})
     assert Other.status_code == 200 and H.Ctx.Db.One("SELECT COUNT(*) AS n FROM admin_sessions WHERE revoked_at IS NULL")["n"] == 2
     assert (await H.Client.post("/api/admin/logout-everywhere")).json()["revoked"] == 2
@@ -242,6 +244,7 @@ async def test_a_basic_auth_header_from_another_app_on_the_host_does_not_hide_th
     in, and without a session the request is refused as before."""
     H = HA
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     Basic = {"Authorization": "Basic eGpldDpzZWNyZXQ="}
     assert (await H.Client.get("/api/admin/session", headers=Basic)).status_code == 200          # cookie + Basic
     assert (await H.Client.get("/api/admin/users", headers=Basic)).status_code == 200

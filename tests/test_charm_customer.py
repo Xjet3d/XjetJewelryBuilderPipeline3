@@ -11,7 +11,7 @@ from tests.conftest import Harness, OfferCharmSizes
 from tests.test_orders import Address, Customer
 
 AdminKey = "charm-customer-key"
-Admin = {"Authorization": f"Bearer {AdminKey}"}
+Admin = {"Authorization": f"Bearer {AdminKey}", "X-P3-Preview": "1"}   # an Admin previewing the site (5 Nov 2026)
 ProductKeys = {"product_type", "product_types", "charm_size", "size_label"}
 
 
@@ -65,6 +65,7 @@ async def test_a_ring_customer_gets_the_ring_only_answers_while_charms_are_hidde
     assert (L["product_type"], L["size_label"]) == ("ring", "US 7")
     # An Admin previewing charms gets the product fields on the same customer answers
     assert (await H.Client.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+    H.Client.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
     A = await Answers(H, B["design_id"])
     assert A["design"]["product_type"] == "ring" and A["designs"]["designs"][0]["product_type"] == "ring"
     assert O["ref"] in [X["ref"] for X in (await H.Client.get("/api/orders")).json()["orders"]]
@@ -108,6 +109,7 @@ async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):
     # The catalog's charm block, for an Admin previewing: charm materials with their customer names
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=H.App), base_url="http://p3.test") as Browser:
         assert (await Browser.post("/api/admin/login", json={"key": AdminKey})).status_code == 200
+        Browser.headers["X-P3-Preview"] = "1"                 # opened the site in preview (5 Nov 2026)
         Cat = (await Browser.get("/api/catalog")).json()
     assert Cat["products"]["preview"] is True
     assert [M["label"] for M in Cat["products"]["charm"]["materials"]][:3] == ["Stainless Steel", "Sterling Silver", "14K Gold over Stainless Steel"]
