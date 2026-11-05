@@ -156,6 +156,10 @@ def Validate(Doc: dict, Catalog, Sizes=Products.DefaultCharmSizes) -> dict:
         Set = list(Clean["level_prices"].values())
         if any(B <= A for A, B in zip(Set, Set[1:])):
             raise CharmPriceError(f"{Name}: the prices must rise with the size — small below medium below large.")
+        # The same prices per size on offer too: the code before 5 Nov 2026 reads them, so a rollback (or the auto-deploy's
+        # own) keeps every charm priced. This code reads level_prices first.
+        Clean["fixed_prices"] = {SizeKey(S): Clean["level_prices"][L] for S in Sizes
+                                 for L in (Products.CharmLevelOf(S, Sizes),) if L in Clean["level_prices"]}
         Out[Mid] = Clean
     # Every charm material has a row: one left out of the table has no prices (shown as unavailable)
     Out = {M.Id: Out.get(M.Id) or _EmptyRow() for M in Offered(Catalog)}
