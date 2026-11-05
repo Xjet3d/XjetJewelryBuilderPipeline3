@@ -269,7 +269,7 @@ async def test_the_admin_cookie_is_isolated_from_other_apps_on_the_host(HA):
         assert (await H.Client.get("/api/admin/session", headers={"Authorization": Auth, "Cookie": "xjet_user=someone"})).status_code == 403, Auth
     assert (await H.Client.get("/api/admin/session", headers={"Authorization": "Bearer " + AdminKey, "Cookie": "xjet_user=someone"})).status_code == 200
     # The Admin's preview of hidden products on the customer site uses the same cookie — and nothing else
-    assert "products" in (await H.Client.get("/api/catalog", headers={"Cookie": f"atelier_admin_session={Token}"})).json()
+    assert "products" in (await H.Client.get("/api/catalog", headers={"Cookie": f"atelier_admin_session={Token}", "X-P3-Preview": "1"})).json()
     assert "products" not in (await H.Client.get("/api/catalog", headers={"Cookie": f"p3_admin_session={Token}", "Authorization": "Basic eGpldDpzZWNyZXQ="})).json()
     # Sign-out clears it (and the old name) and revokes the session
     Out = await H.Client.post("/api/admin/logout", headers={"Cookie": f"atelier_admin_session={Token}"})

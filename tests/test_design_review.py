@@ -135,7 +135,7 @@ def test_a_cards_make_it_yours_starts_the_design():
     assert len(Cards) == 3
     for I in Cards:
         Card = Index[I:Index.index("</template>", I)]
-        assert '<button type="button" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="\'Make it yours: \' + g.title"' in Card
+        assert '<button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="\'Make it yours: \' + g.title"' in Card.replace(' x-cloak', '')
         assert 'data-gallery-tile class="g-link"' in Card                       # the card itself still opens the dialog
         assert 'Make it yours<span aria-hidden="true"> →</span>' in Card       # the visible words are in its name
     App = (WebDir / "app.js").read_text(encoding="utf-8")

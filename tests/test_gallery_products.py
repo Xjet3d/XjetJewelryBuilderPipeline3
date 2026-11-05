@@ -52,7 +52,8 @@ def CardBlocks(Page: str) -> list[str]:
 
 async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatches(HG):
     Page = (await HG.Client.get("/")).text
-    Cards = list(dict.fromkeys(CardBlocks(Page)))              # the home page is served as markup and as its template
+    # the home page is served as markup and as its template; the served copy cloaks its x-show parts (SitePages._Cloak)
+    Cards = list({re.sub(r' x-cloak(="")?', "", B): B for B in CardBlocks(Page)}.values())
     assert len(Cards) == 3                                     # homepage strip, Gallery page, Gallery dialog
     for Card in Cards:
         # One badge for both products — no charm-only exception — shown only while products are offered
