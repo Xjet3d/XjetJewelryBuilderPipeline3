@@ -235,6 +235,14 @@ class OrderService:
                         "snapshot_unit_price": L["unit_price"], "problem": Problem})
         return Out
 
+    def _VerifiedEmail(self, Who: Principal) -> str | None:
+        """The caller's verified email, for a promo code meant for one customer; None when unknown."""
+        Get = getattr(self.Ctx.Accounts, "VerifiedEmail", None)
+        try:
+            return Get(Who.AccountId) if Get and Who is not None else None
+        except Exception:  # noqa: BLE001 — an unknown account simply has no verified email
+            return None
+
     def Quote(self, Who: Principal, PromoCode: str | None = None, ShippingMethod: str = "standard",
               Visible: tuple | None = None, Market=None) -> dict:
         """The bag's totals. Market (B6): ₪ including VAT — each line's unit price converted from its USD list price and
@@ -252,7 +260,7 @@ class OrderService:
                 PromoError_ = {"code": "promo_no_items", "message": "Add a piece to your bag before using a promo code."}
             else:
                 try:
-                    Promo = self.Promos.Evaluate(PromoCode, Ok)
+                    Promo = self.Promos.Evaluate(PromoCode, Ok, AccountEmail=self._VerifiedEmail(Who), Market=Market)
                 except HttpError as E:
                     PromoError_ = {"code": E.Code, "message": E.Message}
         if Market:
@@ -265,7 +273,8 @@ class OrderService:
                 Eligible = round(sum(L["line_total"] for L in Ok) * Share, 2)        # the eligible lines' share, in ₪
                 Discount = round(Eligible * Promo["value"] / 100.0, 2) if Promo["kind"] == "percent" else min(Market.Plain(Promo["value"]), Eligible)
                 Promo = {**Promo, "usd_discount": Promo["discount"], "discount": Discount,
-                         "label": Promo["label"] if Promo["kind"] == "percent" else f"₪{Discount:,.2f} off"}
+                         "label": Promo["label"] if Promo["kind"] == "percent"
+                         else f"{'₪' if Market.currency == 'ILS' else '$'}{Discount:,.2f} off"}
         Subtotal = round(sum(L["line_total"] for L in Ok), 2)
         Currency = next((L["currency"] for L in Ok), Market.currency if Market else "USD")
         Discount = Promo["discount"] if Promo else 0.0

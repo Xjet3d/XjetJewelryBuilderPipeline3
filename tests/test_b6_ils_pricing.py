@@ -5,7 +5,7 @@ the bag, checkout and orders are what they were; switched on, the visitor's choi
 delivery country decides at checkout, and an order in ₪ keeps its VAT and how it was priced. No network: the Bank of
 Israel fetch is replaced."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -225,7 +225,8 @@ async def test_the_price_rate_moves_only_by_the_threshold_the_weekly_day_or_on_p
         assert I.Reprice(Now_=Wed)["rate"] == "3.2640" and "moved" in I.PriceRate()["reason"]
         I.Fetcher = _Fetcher("3.21", "2026-11-05")                  # small move, but Sunday is the weekly day
         I.Fetch()
-        Sun = datetime(2026, 11, 8, 17, tzinfo=Ils.Israel)
+        Today = datetime.now(Ils.Israel)                            # the stored rate is dated by the real clock
+        Sun = (Today + timedelta(days=7 - (Today.weekday() + 1) % 7)).replace(hour=17)   # the next Sunday after today
         assert I.Reprice(Now_=Sun)["reason"] == "weekly update"
         # both official sources down: reported, nothing invented, prices keep the last good rate
         def Down():

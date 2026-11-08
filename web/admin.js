@@ -1077,10 +1077,11 @@ function adminApp() {
       try { this.promos = (await this.api('GET', '/api/admin/promo-codes')).promo_codes; this.promosState = 'loaded'; }
       catch (e) { this.promoMsg = e.message; this.promoErr = true; this.promosState = 'failed'; }
     },
-    newPromo() { this.promoEdit = { id: null, code: '', kind: 'percent', value: 10, starts_at: '', ends_at: '', usage_limit: '', materials: [], min_subtotal: '', note: '', active: true }; this.promoMsg = ''; },
+    newPromo() { this.promoEdit = { id: null, code: '', kind: 'percent', value: 10, starts_at: '', ends_at: '', usage_limit: '', materials: [], min_subtotal: '', note: '', customer_email: '', active: true }; this.promoMsg = ''; },
     editPromo(p) {
       this.promoEdit = { id: p.id, code: p.code, kind: p.kind, value: p.value, starts_at: (p.starts_at || '').slice(0, 10), ends_at: (p.ends_at || '').slice(0, 10),
-                         usage_limit: p.usage_limit ?? '', materials: p.materials || [], min_subtotal: p.min_subtotal ?? '', note: p.note || '', active: p.active };
+                         usage_limit: p.usage_limit ?? '', materials: p.materials || [], min_subtotal: p.min_subtotal ?? '', note: p.note || '',
+                         customer_email: p.customer_email || '', active: p.active };
       this.promoMsg = '';
     },
     togglePromoMaterial(id) { const m = this.promoEdit.materials; const i = m.indexOf(id); if (i >= 0) m.splice(i, 1); else m.push(id); },
@@ -1103,6 +1104,7 @@ function adminApp() {
       const parts = [p.kind === 'percent' ? p.value + '% off' : '$' + Number(p.value).toFixed(2) + ' off'];
       if (p.materials?.length) parts.push(p.materials.map(m => this.materialLabel(m)).join(', ') + ' only');
       if (p.min_subtotal) parts.push('min $' + p.min_subtotal);
+      if (p.customer_email) parts.push('only for ' + p.customer_email);
       if (p.starts_at || p.ends_at) parts.push((p.starts_at ? this.date(p.starts_at) : '…') + ' → ' + (p.ends_at ? this.date(p.ends_at) : '…'));
       return parts.join(' · ');
     },

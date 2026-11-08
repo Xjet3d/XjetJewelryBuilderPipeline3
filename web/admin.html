@@ -2358,8 +2358,9 @@
           <div><label class="lbl block mb-1" for="pr-limit">Usage limit <span class="normal-case tracking-normal">(blank = unlimited)</span></label><input id="pr-limit" type="number" min="1" class="inp" x-model="promoEdit.usage_limit"></div>
           <div><label class="lbl block mb-1" for="pr-from">Valid from</label><input id="pr-from" type="date" class="inp" x-model="promoEdit.starts_at"></div>
           <div><label class="lbl block mb-1" for="pr-to">Valid until</label><input id="pr-to" type="date" class="inp" x-model="promoEdit.ends_at"></div>
-          <div><label class="lbl block mb-1" for="pr-min">Minimum subtotal $ <span class="normal-case tracking-normal">(optional)</span></label><input id="pr-min" type="number" step="any" min="0" class="inp" x-model="promoEdit.min_subtotal"></div>
+          <div><label class="lbl block mb-1" for="pr-min">Minimum subtotal $ <span class="normal-case tracking-normal">(optional; before VAT, shown in ₪ with VAT to Israeli customers)</span></label><input id="pr-min" type="number" step="any" min="0" class="inp" x-model="promoEdit.min_subtotal"></div>
           <div><label class="lbl block mb-1" for="pr-note">Note</label><input id="pr-note" class="inp" x-model="promoEdit.note" placeholder="Launch campaign"></div>
+          <div class="md:col-span-2"><label class="lbl block mb-1" for="pr-email">Customer email <span class="normal-case tracking-normal">(optional: only that customer's verified account can use it)</span></label><input id="pr-email" type="email" class="inp" x-model="promoEdit.customer_email" placeholder="blank = any customer" autocomplete="off"></div>
           <div class="md:col-span-4">
             <p class="lbl mb-1">Applies to <span class="normal-case tracking-normal">(none ticked = every material)</span></p>
             <div class="flex flex-wrap gap-3">

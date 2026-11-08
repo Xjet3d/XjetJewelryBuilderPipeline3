@@ -566,6 +566,14 @@ class LocalAccountProvider:
         self._Event(AccountId, "restored")
         return self.AdminGet(AccountId)
 
+    def VerifiedEmail(self, AccountId: str) -> str | None:
+        """The account's email address, lower case, when it is verified (its link confirmed, or vouched for by Google /
+        Apple) and the account is not removed; None otherwise. A promo code for one customer checks it (p3/promos.py)."""
+        Row = self.Db.One("SELECT email, verified_at, removed_at FROM accounts WHERE account_id = ?", (AccountId,))
+        if not Row or not Row["email"] or not Row["verified_at"] or Row["removed_at"]:
+            return None
+        return Row["email"].strip().lower()
+
     def _Account(self, AccountId: str) -> dict:
         Row = self.Db.One("SELECT * FROM accounts WHERE account_id = ?", (AccountId,))
         if Row is None:

@@ -1,6 +1,8 @@
 """Promo codes: percentage or fixed discounts with validity dates, a usage limit, an optional material
-restriction and a minimum subtotal. Validation is server-side only; the order keeps a snapshot of the
-code, the original amount, the discount and the final amount (p3/orders.py)."""
+restriction, a minimum subtotal and an optional customer (the verified email of the only account the code works for,
+8 Nov 2026). Validation is server-side only; the order keeps a snapshot of the code, the original amount, the discount
+and the final amount (p3/orders.py). The minimum and a fixed amount are in US dollars before VAT, as the price lists;
+a customer paying in shekels reads them converted, VAT included."""
 
 import json
 import re
@@ -11,6 +13,15 @@ from p3.db import Dumps, NewId, Now
 
 CodePattern = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,19}$")
 Kinds = ("percent", "fixed")
+
+
+def Amount(Usd: float, Market=None) -> str:
+    """A promo amount (USD before VAT, as the price lists) as the customer reads it: $100, or for a customer paying in
+    shekels ₪380.08 including VAT (the same conversion as a fixed discount: Market.Plain)."""
+    if not Market:
+        return f"${Usd:,.0f}" if float(Usd).is_integer() else f"${Usd:,.2f}"
+    V = Market.Plain(Usd)
+    return f"{'₪' if Market.currency == 'ILS' else '$'}{V:,.2f} including VAT"
 
 
 class PromoError(HttpError):
@@ -79,9 +90,14 @@ class PromoService:
                 raise HttpError(400, "invalid_promo", "Unknown material in the restriction list.")
         MinSub = Data.get("min_subtotal")
         MinSub = None if MinSub in (None, "") else float(MinSub)
+        from p3.accounts.local import EmailPattern
+        Email = str(Data.get("customer_email") or "").strip().lower() or None
+        if Email and not EmailPattern.match(Email):
+            raise HttpError(400, "invalid_promo", "The customer email is not a valid email address.")
         return {"code": Code, "kind": Kind, "value": round(Value, 2), **Dates, "usage_limit": Limit,
                 "materials_json": Dumps(sorted(Materials)) if Materials else None, "min_subtotal": MinSub,
-                "note": str(Data.get("note") or "")[:200], "active": 1 if Data.get("active", True) else 0}
+                "note": str(Data.get("note") or "")[:200], "active": 1 if Data.get("active", True) else 0,
+                "customer_email": Email}
 
     def Save(self, Data: dict, By: str, PromoId: str | None = None) -> dict:
         V = self._Validate(Data)
@@ -92,15 +108,17 @@ class PromoService:
         if PromoId:
             self.Get(PromoId)
             self.Ctx.Db.Execute("UPDATE promo_codes SET code = ?, active = ?, kind = ?, value = ?, starts_at = ?, ends_at = ?, "
-                                "usage_limit = ?, materials_json = ?, min_subtotal = ?, note = ?, updated_at = ? WHERE id = ?",
+                                "usage_limit = ?, materials_json = ?, min_subtotal = ?, note = ?, customer_email = ?, updated_at = ? "
+                                "WHERE id = ?",
                                 (V["code"], V["active"], V["kind"], V["value"], V["starts_at"], V["ends_at"], V["usage_limit"],
-                                 V["materials_json"], V["min_subtotal"], V["note"], T, PromoId))
+                                 V["materials_json"], V["min_subtotal"], V["note"], V["customer_email"], T, PromoId))
             return self.Get(PromoId)
         Id = NewId("pro")
         self.Ctx.Db.Execute("INSERT INTO promo_codes (id, code, active, kind, value, starts_at, ends_at, usage_limit, usage_count, "
-                            "materials_json, min_subtotal, note, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,0,?,?,?,?,?,?)",
+                            "materials_json, min_subtotal, note, customer_email, created_by, created_at, updated_at) "
+                            "VALUES (?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)",
                             (Id, V["code"], V["active"], V["kind"], V["value"], V["starts_at"], V["ends_at"], V["usage_limit"],
-                             V["materials_json"], V["min_subtotal"], V["note"], By, T, T))
+                             V["materials_json"], V["min_subtotal"], V["note"], V["customer_email"], By, T, T))
         return self.Get(Id)
 
     def SetActive(self, PromoId: str, Active: bool) -> dict:
@@ -114,14 +132,19 @@ class PromoService:
         R = self.Ctx.Db.One("SELECT * FROM promo_codes WHERE code = ?", (Code,)) if Code else None
         return self._Row(R) if R else None
 
-    def Evaluate(self, Code: str, Lines: list[dict], AtIso: str | None = None) -> dict:
-        """The discount a code gives on these lines (each {material_id, line_total}), or a PromoError
-        with a customer-friendly message. Server-side only — the browser never computes a discount."""
+    def Evaluate(self, Code: str, Lines: list[dict], AtIso: str | None = None, AccountEmail: str | None = None,
+                 Market=None) -> dict:
+        """The discount a code gives on these lines (each {material_id, line_total}, in USD), or a PromoError
+        with a customer-friendly message. Server-side only — the browser never computes a discount. AccountEmail: the
+        caller's verified email (None: not signed in, or not verified) — a code for one customer works only for it.
+        Market: how the customer reads amounts (₪ including VAT, or $ including VAT); None: USD."""
         P = self.Find(Code)
         if P is None:
             raise PromoError("promo_unknown", "This promo code is not valid.")
         if not P["active"]:
             raise PromoError("promo_inactive", "This promo code is no longer active.")
+        if P.get("customer_email") and (AccountEmail or "").strip().lower() != P["customer_email"]:
+            raise PromoError("promo_not_for_account", "This promo code is not valid for your account.")
         At = AtIso or Now()
         if P["starts_at"] and At < P["starts_at"]:
             raise PromoError("promo_not_started", "This promo code is not valid yet.")
@@ -136,7 +159,7 @@ class PromoService:
             Names = ", ".join(self.Ctx.Catalog.Get(M).Label for M in P["materials"] if self.Ctx.Catalog.Get(M))
             raise PromoError("promo_not_applicable", f"This promo code applies to {Names} pieces only.")
         if P["min_subtotal"] and Subtotal < P["min_subtotal"]:
-            raise PromoError("promo_minimum", f"This promo code needs a subtotal of at least ${P['min_subtotal']:.0f}.")
+            raise PromoError("promo_minimum", f"This promo code needs a subtotal of at least {Amount(P['min_subtotal'], Market)}.")
         if P["kind"] == "percent":
             Discount = round(EligibleSubtotal * P["value"] / 100.0, 2)
         else:

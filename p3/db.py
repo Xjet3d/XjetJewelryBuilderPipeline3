@@ -460,6 +460,7 @@ CREATE TABLE IF NOT EXISTS promo_codes (
     materials_json  TEXT,                          -- JSON list of material ids it applies to; NULL = every material
     min_subtotal    REAL,
     note            TEXT,
+    customer_email  TEXT,                          -- set: the code works only for the account with this verified email
     created_by      TEXT NOT NULL,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
@@ -699,6 +700,13 @@ def _InstallOrderTerms(Conn) -> None:
     column, old code ignores it; older orders keep their label and no hash."""
     if "terms_sha256" not in _Columns(Conn, "orders"):
         Conn.execute("ALTER TABLE orders ADD COLUMN terms_sha256 TEXT")
+
+
+def _InstallPromoCustomer(Conn) -> None:
+    """A promo code for one customer (owner, 8 Nov 2026): the verified email of the only account it works for. An additive
+    column, old code ignores it (and would accept the code from anyone: release it with this code)."""
+    if "customer_email" not in _Columns(Conn, "promo_codes"):
+        Conn.execute("ALTER TABLE promo_codes ADD COLUMN customer_email TEXT")
 
 
 def _InstallIlsPricing(Conn) -> None:
@@ -941,6 +949,7 @@ class Database:
                     _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
                     _InstallOrderTerms(Conn)              # an order's accepted Terms version and its hash (2026-11-02)
                     _InstallIlsPricing(Conn)              # an order in ₪: its VAT and how it was priced (B6, 2026-11-03)
+                    _InstallPromoCustomer(Conn)           # a promo code for one customer's verified email (2026-11-08)
                     _InstallCheckCategory(Conn)           # why a prompt check stopped a request (2026-10-28)
             if SchemaSql is None and Conn.execute("PRAGMA user_version").fetchone()[0] < SchemaVersion:
                 Conn.execute(f"PRAGMA user_version = {SchemaVersion}")
