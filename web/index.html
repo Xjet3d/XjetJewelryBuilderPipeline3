@@ -2368,7 +2368,7 @@
                                 <button x-show="coQuote?.promo || coPromoDeclined" @click="removePromo()" :disabled="co.busy" class="btn-outline px-5 shrink-0">Remove</button>
                             </div>
                             <p x-show="coQuote?.promo" class="text-[14px] mt-1.5" style="color:#146C43;" x-text="coQuote?.promo ? coQuote.promo.code + ' applied — ' + coQuote.promo.label + ' (−' + money(coQuote.discount, coQuote.currency) + ')' : ''"></p>
-                            <p x-show="coQuote?.promo_error" id="co-promo-error" class="ferr" role="alert"><span x-text="coQuote?.promo_error?.message"></span> <span x-show="coPromoDeclined">Remove it to place your order without a code, or type another code.</span></p>
+                            <p x-show="coQuote?.promo_error" id="co-promo-error" class="ferr" role="alert"><span x-text="(coQuote?.promo_error?.message || '') + (coPromoDeclined ? ' Remove it to place your order without a code, or type another code.' : '')"></span></p>
                         </div>
                         <div>
                             <label class="flbl" for="co-note">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
