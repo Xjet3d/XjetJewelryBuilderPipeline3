@@ -2729,6 +2729,8 @@ function p3App() {
     get coPostalLabel() { return this.co.address.country === 'US' ? 'ZIP code' : 'Postal code'; },
     get coShipping() { return (this.checkout?.shipping_options || []).find(s => s.id === this.co.shipping_method); },
     get coCanPlace() { return !!this.coQuote?.ok && this.co.terms === true && !this.co.busy && !this.coQuote?.promo_error; },
+    // A code the server declined is still attached to the quote (A3, 10 Nov 2026): the customer removes it, or types another
+    get coPromoDeclined() { return !!this.co.promo_code && !!this.coQuote?.promo_error; },
     coProblem(field) { return this.co.problems[field] || ''; },
     _setProblems(list) { this.co.problems = Object.fromEntries((list || []).map(p => [p.field, p.message])); },
     // The first field with a problem gets the focus; its message is tied to it with aria-describedby (R-24)
@@ -2857,7 +2859,17 @@ function p3App() {
       try { await this.coRequote(); } finally { this.co.busy = false; }
       if (this.coQuote?.promo) this.showToast(`Promo ${this.coQuote.promo.code} applied — ${this.coQuote.promo.label}`);
     },
-    async removePromo() { this.co.promo_code = ''; this.co.promo_input = ''; await this.coRequote(); },
+    async removePromo() {
+      this.co.promo_code = ''; this.co.promo_input = ''; this.co.busy = true;
+      try { await this.coRequote(); } finally { this.co.busy = false; }
+      this.$nextTick(() => document.getElementById('co-promo')?.focus());
+    },
+    // Typing over a declined code drops it, so Apply comes back for the new one and the order is no longer held by it
+    async promoEdited() {
+      if (!this.coPromoDeclined || this.co.promo_input.trim().toUpperCase() === this.co.promo_code.trim().toUpperCase()) return;
+      this.co.promo_code = '';
+      await this.coRequote();
+    },
     async setShipping(m) { this.co.shipping_method = m; this._saveCoDraft(); if (this.view === 'order') await this.coRequote(); },
     // confirmDuplicate: the customer chose "Place it again" for an order that repeats one of theirs from the last day
     async placeOrder({ confirmDuplicate = false } = {}) {
@@ -2893,6 +2905,8 @@ function p3App() {
         }
         if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
         if (e.code === 'bag_changed') { await this.refreshBag(); await this.coRequote(); this.co.error = e.message; }
+        // the code stopped working between the review and the click (expired, used up): show it on the field, with Remove
+        if (String(e.code || '').startsWith('promo_')) { await this.coRequote(); this.co.error = e.message; }
         if (e.code === 'duplicate_order') {                       // the same pieces to the same address, ordered within the day
           this.co.error = ''; this.co.duplicate = { ...(e.existingOrder || {}), message: e.message };
           this.$nextTick(() => document.getElementById('co-duplicate')?.focus());
