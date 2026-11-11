@@ -101,13 +101,13 @@ def test_the_shekel_wording_is_true_whether_israeli_pricing_is_on_or_off():
 
 
 def test_the_drafts_keep_the_owner_rules():
-    """No Apple sign-in; production "up to 14 days"; payment never holds production; the Privacy Policy names no
-    endpoint, key, model or infrastructure; no unverified insurance claim."""
+    """No Apple sign-in; production "up to 14 business days" once payment is confirmed (owner, 11 Nov 2026); the Privacy
+    Policy names no endpoint, key, model or infrastructure; no unverified insurance claim."""
     Terms, Privacy = SitePages.LegalText(Index, "terms"), SitePages.LegalText(Index, "privacy")
     Shipping = SitePages.LegalText(Index, "shipping-returns")
     for Text in (Terms, Privacy, Shipping):
-        assert "Apple" not in Text and "production starts after payment" not in Text.lower()
-    assert "up to 14 days" in Shipping and "fully insured" not in Shipping + (P3 / "orders.py").read_text(encoding="utf-8")
+        assert "Apple" not in Text
+    assert "Production: starts once your payment is confirmed and takes up to 14 business days." in Shipping and "fully insured" not in Shipping + (P3 / "orders.py").read_text(encoding="utf-8")
     for Word in ("fal", "nano-banana", "gemini", "openai", "cloudflare", "linode", "akamai", "/api/", "smtp", "microsoft 365"):
         assert not re.search(r"\b" + re.escape(Word) + r"\b", Privacy.lower()), Word
     # The cookie section is the live text, word for word (PRV-05)
@@ -137,7 +137,7 @@ def test_checkout_and_quote_notices_are_text_only():
                  "keeps order records as long as the law requires for tax and warranty purposes",
                  "A gallery design you order unchanged can be cancelled within 14 days of delivery.",
                  "'I understand that each personalised ' + bagKind + ' is made to order to my specification",
-                 "'Place order — payment arranged after confirmation'"):
+                 "— payment after our review", "'Place order'"):
         assert Text in Order, Text
     assert 'x-model="co.terms"' in Order and Order.count('id="co-terms"') == 1          # the same box, the same model
     assert "XJet Ltd. uses these details to prepare and send your quote and to contact you about it." in Index
@@ -150,7 +150,7 @@ def test_the_confirmation_email_is_a_durable_record_of_the_order():
              "promo_code": None, "terms_version": "v3"}
     _S, Html = Mail.OrderConfirmationEmail(Order, "https://a.example", "https://a.example/JewelryB2C3/#account")
     for Text in ("Our team will check that your design can be made", "You can cancel free of charge until then",
-                 "Production starts as soon as we confirm your order; we will contact you separately to arrange payment.",
+                 "We will then contact you to arrange payment; production starts once your payment is confirmed.",
                  Company + ". Made in Israel.", "A gallery design you order unchanged can be cancelled within 14 days",
                  "XJet Atelier is a service of XJet Ltd.,",
                  "https://a.example/JewelryB2C3/warranty", "Terms of Service version v3, available at https://a.example/JewelryB2C3/terms."):

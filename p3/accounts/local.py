@@ -37,7 +37,7 @@ from p3.db import Database, Now
 Issuer = "p3local"
 DefaultMaxGenerations = 10
 VerifyTtlHours = 24
-QuotaMessage = "You have used all the credits on this account. Contact us to extend your allowance."
+QuotaMessage = "You have no credits left. You can still customize and order the designs you've made."
 
 Schema = """
 CREATE TABLE IF NOT EXISTS accounts (

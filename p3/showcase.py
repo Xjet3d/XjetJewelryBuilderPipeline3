@@ -32,7 +32,7 @@ from p3 import products as Products
 from p3.context import Context
 from p3.gallery import ShareSlug
 
-Metals = ("silver", "gold_18k_yellow")      # the metal beat compares Silver and 18K Yellow Gold, then ends in gold
+Metals = ("silver", "gold_18k_yellow")      # the metal beat: 18K Yellow Gold (preview only), then Sterling Silver, the last frame (B1)
 Fillers = ("kind of", "sort of", "something like", "a bit", "like", "etc")    # trailing filler of a typed instruction
 
 

@@ -14,7 +14,7 @@ from tests.conftest import Harness
 
 AdminKey = "credits-admin-key"
 Admin = {"Authorization": f"Bearer {AdminKey}"}
-QuotaMessage = "You have used all the credits on this account. Contact us to extend your allowance."
+QuotaMessage = "You have no credits left. You can still customize and order the designs you've made."
 
 
 async def Status(H) -> dict:

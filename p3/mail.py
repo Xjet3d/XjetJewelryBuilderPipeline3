@@ -228,7 +228,7 @@ def _Made(Order: dict) -> str:
     Kinds = {"charm" if _IsCharm(L) else "ring" for L in Order.get("lines") or []} or {"ring"}
     Count = sum(int(L.get("quantity") or 1) for L in Order.get("lines") or []) or 1
     Noun = ("pieces" if Count > 1 else "piece") if len(Kinds) > 1 else Kinds.pop() + ("s" if Count > 1 else "")
-    return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — production takes up to 14 days."
+    return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — production takes up to 14 business days after your payment is confirmed."
 
 
 def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") -> tuple[str, str]:
@@ -254,8 +254,10 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
             </td>
             <td align="right" style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;white-space:nowrap;">{_Esc(_Money(L['line_total'], L['currency']))}</td>
           </tr>""" for L in Order["lines"])
+    Paid = (Order.get("payment_status") or "") in ("paid", "payment_confirmed")
     Steps = [("Design review.", "Our team checks the design for production feasibility and confirms the order to you (about 2 "
                                 "business days). Until then your order is a reservation."),
+             *([] if Paid else [("Payment.", "We contact you to arrange payment. Nothing is charged online.")]),
              ("Production.", _Made(Order)),
              ("Shipping.", f"{Order.get('shipping_label') or 'Delivery'}, {Order.get('shipping_eta') or ''}, tracked.")]
     Next = "".join(f"""
@@ -279,9 +281,8 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
     # delivery, cancelling and returns, the warranty and the Terms version. Published 3 Nov 2026 with the owner's
     # approval (the 14-day cancellation of an unchanged gallery design, Q2); legal counsel's review pending
     Site = AccountUrl.split("#", 1)[0].rstrip("/") if AccountUrl else ""
-    Paid = (Order.get("payment_status") or "") in ("paid", "payment_confirmed")
     Rights = [("Made by:", "XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233. Made in Israel."),
-              ("Delivery:", f"production up to 14 days; {Order.get('shipping_label') or 'delivery'}"
+              ("Delivery:", f"production up to 14 business days after your payment is confirmed; {Order.get('shipping_label') or 'delivery'}"
                             f"{(', ' + Order['shipping_eta']) if Order.get('shipping_eta') else ''}. Import charges: where the "
                             "destination country charges import VAT, customs duty or a carrier’s handling fee, the recipient "
                             "pays them."),
@@ -302,7 +303,7 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
         <p style="margin:0 0 14px;">{_Greeting(C.get('first_name') or '')}</p>
         <p style="margin:0 0 20px;"><strong>{Lead}</strong> Our team will check that your design can be made and confirm it to
            you within about 2 business days. You can cancel free of charge until then by replying to this email.
-           Production starts as soon as we confirm your order{'.' if Paid else '; we will contact you separately to arrange payment.'}</p>
+           {'Production starts as soon as we confirm your order.' if Paid else 'We will then contact you to arrange payment; production starts once your payment is confirmed.'}</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{Rows}</table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">{TotalRows}
           <tr><td style="padding:8px 0 0;{_Font}font-size:16px;font-weight:700;">Total</td>
@@ -611,7 +612,7 @@ def FulfillmentEmail(Milestone: str, Order: dict, View: dict, Payload: dict, Acc
     Foot = f'<p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">{ContactLine(Ref)}</p>'
     if Milestone == "review_approved":
         Pay = ("" if Order.get("payment_status") == "paid" else
-               '<p style="margin:0 0 12px;">We will contact you separately to arrange payment.</p>')   # payment never holds production (O1)
+               '<p style="margin:0 0 12px;">We will contact you to arrange payment; production starts once your payment is confirmed.</p>')
         Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">We reviewed <strong>{_Esc(Items)}</strong> '
                 f'(order {_Esc(Ref)}) for production and approved it.</p>{Pay}{Stages}{Button}{Foot}')
         return f"Order {Ref} — {FulfillmentSubjects[Milestone]}", _Layout("Approved for production", Body)

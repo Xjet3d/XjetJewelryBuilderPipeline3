@@ -1,6 +1,6 @@
 """Audit B4 (AI-01, PRD-01, CON-05, CON-07, PRV-05): the site says what it does — an AI-preview note where designs are
-chosen, no absolute claims for steel, no Apple sign-in while it is not offered, production "up to 14 days", payment that
-never holds production, and every storage item of the site in the Privacy page."""
+chosen, no absolute claims for steel, no Apple sign-in while it is not offered, production "up to 14 business days" after payment
+is confirmed (the owner's rule of 11 Nov 2026), and every storage item of the site in the Privacy page."""
 
 import pytest
 
@@ -21,11 +21,13 @@ def test_no_absolute_claims_for_steel():
     assert "If you have a metal allergy, check the material with your doctor before ordering." in Text(Web / "app.js")
 
 
-def test_production_is_up_to_14_days_and_payment_never_holds_it():
+def test_production_is_up_to_14_business_days_after_payment():
     for P in Sources:
         assert "7–10" not in Text(P) and "before production starts" not in Text(P), P.name
-        assert "Production starts once your payment is confirmed" not in Text(P), P.name
-    assert "production takes up to 14 days" in Text(P3 / "mail.py") and "Production takes up to 14 days." in Text(P3 / "sitepages.py")
+        assert "up to 14 days" not in Text(P) and "Up to 14 days" not in Text(P), P.name     # always business days
+        assert "Production starts as soon as we confirm your order;" not in Text(P), P.name
+    assert "production takes up to 14 business days after your payment is confirmed" in Text(P3 / "mail.py")
+    assert "confirmed and takes up to 14 business days." in Text(P3 / "sitepages.py")          # the FAQ (served: below)
 
 
 def test_the_ai_preview_note_on_design_and_customize():
@@ -51,6 +53,8 @@ async def H(tmp_path):
     await Obj.Close()
 
 
-async def test_the_served_faq_and_shipping_description_say_up_to_14_days(H):
-    assert "Production takes up to 14 days." in (await H.Client.get("/faq")).text
+async def test_the_served_faq_and_shipping_description_say_up_to_14_business_days(H):
+    Faq = (await H.Client.get("/faq")).text
+    assert "Production starts once your payment is confirmed and takes up to 14 business days." in Faq
+    assert "How do I pay?" in Faq and "Nothing is charged online." in Faq
     assert "7–10" not in (await H.Client.get("/shipping-returns")).text

@@ -134,7 +134,7 @@ async def test_credits_pay_for_images_and_movies_and_block_at_zero(tmp_path):
         R = await H.Client.post("/api/designs", data={"prompt": "Another band"})
         assert R.status_code == 402 and R.json()["error"] == {
             "code": "quota_exhausted",
-            "message": "You have used all the credits on this account. Contact us to extend your allowance."}
+            "message": "You have no credits left. You can still customize and order the designs you've made."}
         assert len(H.Provider.Submissions) == Subs                                    # nothing paid was started
     finally:
         await H.Close()

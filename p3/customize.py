@@ -17,7 +17,7 @@ from p3 import materialstatus as MaterialStatus
 from p3 import products as Products
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
-from p3.accounts import Principal
+from p3.accounts import InsufficientCredits, Principal
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.images import ImageService
@@ -94,7 +94,12 @@ class CustomizeService:
             else:
                 Db.Execute("DELETE FROM customize_entries WHERE customization_id = ?", (Existing["id"],))
         if Products.MovieAvailable(self.Ctx, D.get("product_type") or Products.Ring):
-            self.Movies.Ensure(Who, CandidateId)                # the product's movie switch is ON: start or reuse its movie
+            try:
+                self.Movies.Ensure(Who, CandidateId)            # the product's movie switch is ON: start or reuse its movie
+            except InsufficientCredits:
+                # B5 (11 Nov 2026): no credit for a new movie — Customize opens on the still images and the piece can be
+                # ordered; nothing is started or charged (an existing movie is reused above, for free)
+                pass
         Row = Db.One("SELECT * FROM customizations WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ?",
                      (Who.AccountId, DesignId, CandidateId))
         View = self._View(Row)

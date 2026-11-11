@@ -317,6 +317,12 @@
         .ld-art .ld:nth-child(4) { animation-delay: .6s; } .ld-art .ld:nth-child(5) { animation-delay: .8s; }
         @keyframes ld-draw { 0% { stroke-dashoffset: 1; opacity: 1; } 45% { stroke-dashoffset: 0; } 85% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
         @media (prefers-reduced-motion: reduce) { .ld-art .ld { animation: none; stroke-dashoffset: 0; } }
+        /* Generation progress (11 Nov 2026): a quiet bar that eases forward; the sheen and the easing stop with reduced motion */
+        .gen-track { height: 6px; border-radius: 999px; background: #E9E2D3; overflow: hidden; }
+        .gen-fill { position: relative; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #C1995A, #8A561B); transition: width .6s cubic-bezier(.2, .7, .2, 1); }
+        .gen-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); transform: translateX(-100%); animation: gen-sheen 1.8s ease-in-out infinite; }
+        @keyframes gen-sheen { to { transform: translateX(100%); } }
+        @media (prefers-reduced-motion: reduce) { .gen-fill { transition: none; } .gen-fill::after { animation: none; display: none; } }
         /* /materials before the catalog answers: the server's placeholder cards (p3/sitepages.py MaterialPlaceholders) at
            the cards' measured height below their picture, so nothing below them moves when the cards arrive (the fashion
            cards re-measured 2026-10-20 with the type scale: 375–430, 640–767, 820–834, 1024 and 1150–1600 px; .ph-charm:
@@ -666,15 +672,15 @@
                                 </button>
                             </div>
                             <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
-                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 310px, (min-width:768px) 26vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 310px, (min-width:768px) 26vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetalOf(g))" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetalOf(g) ? metalFilter(cardMetalOf(g)) : '' }" loading="lazy" decoding="async"></span>
                                 <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
                             </a>
                             <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                             <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                                 <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetalOf(g) === 'stainless_steel'" :class="cardMetalOf(g) === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetalOf(g) === 'silver'" :class="cardMetalOf(g) === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetalOf(g) === 'gold_18k_yellow'" :class="cardMetalOf(g) === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold — preview only, not available to order" title="Gold: preview only, not available to order"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
                                 <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                             </div>
@@ -699,7 +705,7 @@
                         <li x-show="charmFacts.sizes"><span>Sizes</span><b x-text="charmFacts.sizes"></b></li>
                         <li x-show="charmFacts.made"><span>Made in</span><b x-text="charmFacts.made"></b></li>
                         <li x-show="charmFacts.gold"><span>Gold</span><b x-text="charmFacts.gold"></b></li>
-                        <li><span>Production</span><b>Up to 14 days</b></li>
+                        <li><span>Production</span><b>Up to 14 business days after payment</b></li>
                     </ul>
                     <div><button type="button" @click="resetAIFlow('charm')" class="btn-gold hv-btn">Design a Charm</button></div>
                 </div>
@@ -716,7 +722,7 @@
                         <button type="button" @click="resetAIFlow('ring')" class="btn-outline hv-btn hv-btn-sm">Design a Ring</button>
                     </div>
                     <div class="hv-ring-imgs">
-                        <template x-for="g in homeRings" :key="'hr-' + g.id"><figure><a :href="galleryHref(g)" @click="galleryClick($event, g)" :aria-label="'Open ' + g.title"><img width="320" height="320" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 861px) 220px, 30vw" :src="thumb(g.image_url, 320)" :alt="galleryAlt(g)" loading="lazy" decoding="async"></a><figcaption x-text="g.title"></figcaption></figure></template>
+                        <template x-for="g in homeRings" :key="'hr-' + g.id"><figure><a :href="galleryHref(g)" @click="galleryClick($event, g)" :aria-label="'Open ' + g.title"><img width="320" height="320" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 861px) 220px, 30vw" :src="thumb(g.image_url, 320)" :alt="galleryAlt(g, galleryDefaultMetal)" :style="{ filter: metalFilter(galleryDefaultMetal) }" loading="lazy" decoding="async"></a><figcaption x-text="g.title"></figcaption></figure></template>
                     </div>
                 </div>
             </section>
@@ -757,7 +763,7 @@
                         <svg x-show="storyPaused" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
                         <span x-text="storyPaused ? 'Play' : 'Pause'" aria-hidden="true">Pause</span>
                     </button>
-                    <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Sterling Silver and Yellow Gold"
+                    <div class="sc-stage" role="img" aria-label="From an idea to a finished ring: four designs, one chosen and refined, seen from every angle, in Yellow Gold (preview only) and Sterling Silver"
                          data-sc-design="aurora-mesh"></div>
                 </div>
             </section>
@@ -823,15 +829,15 @@
                             </button>
                         </div>
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
-                            <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                            <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetalOf(g))" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetalOf(g) ? metalFilter(cardMetalOf(g)) : '' }" loading="lazy" decoding="async"></span>
                             <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
                         </a>
                         <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                         <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                             <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
-                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetalOf(g) === 'stainless_steel'" :class="cardMetalOf(g) === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetalOf(g) === 'silver'" :class="cardMetalOf(g) === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetalOf(g) === 'gold_18k_yellow'" :class="cardMetalOf(g) === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold — preview only, not available to order" title="Gold: preview only, not available to order"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                             </div>
                             <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                         </div>
@@ -879,7 +885,7 @@
                     <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
-                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g, galleryDefaultMetal)" :style="{ filter: metalFilter(galleryDefaultMetal) }" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
                             <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
@@ -983,7 +989,7 @@
                     <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
-                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g, galleryDefaultMetal)" :style="{ filter: metalFilter(galleryDefaultMetal) }" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
                             <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
@@ -1030,7 +1036,7 @@
                     <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
-                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g, galleryDefaultMetal)" :style="{ filter: metalFilter(galleryDefaultMetal) }" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
                             <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
@@ -1054,13 +1060,13 @@
             <section class="px-6 md:px-20 pb-16 max-w-6xl mx-auto">
                 <div class="flex flex-wrap items-baseline justify-between gap-3 mb-6">
                     <h2 class="brand-font text-2xl text-zinc-900">Available to order</h2>
-                    <p class="text-[14px] text-zinc-500">Production up to 14 days · standard delivery free</p>
+                    <p class="text-[14px] text-zinc-500">Production up to 14 business days after payment · standard delivery free</p>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <template x-for="m in pageMetals('fashion')" :key="m.id">
                         <article class="rounded-2xl border border-zinc-100 bg-white overflow-hidden flex flex-col hover:border-zinc-300 transition">
                             <div class="relative aspect-[4/3] flex items-center justify-center" style="background:#F7F5F0;">
-                                <template x-if="heroRing"><img width="800" height="800" :src="thumb(heroRing.image_url, 800)" :srcset="srcsetFor(heroRing.image_url)" sizes="(min-width: 768px) 240px, 60vw" :alt="heroRing.title + ' in ' + m.label" class="h-[80%] w-auto object-contain" :style="{ filter: metalFilter(m.id) }"></template>
+                                <template x-if="materialsHero"><img width="800" height="800" :src="thumb(materialsHero.image_url, 800)" :srcset="srcsetFor(materialsHero.image_url)" sizes="(min-width: 768px) 240px, 60vw" :alt="materialsHero.title + ' in ' + m.label" class="h-[80%] w-auto object-contain" :style="{ filter: metalFilter(m.id) }"></template>
                                 <div class="absolute bottom-3 left-3 w-10 h-10 rounded-full shadow-md border border-white/70" :style="'background-color:' + m.swatch"><div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 55%, rgba(0,0,0,0.15) 100%)"></div></div>
                             </div>
                             <div class="p-6 flex flex-col gap-3 flex-1">
@@ -1069,7 +1075,7 @@
                                     <p class="text-[14px] text-zinc-500" x-text="copy(m.id).sub"></p>
                                 </div>
                                 <p class="flex flex-wrap items-baseline gap-x-2 text-zinc-900"><span x-show="materialPrice(m.id).before" class="text-[14px] text-zinc-600" x-text="materialPrice(m.id).before"></span><span class="brand-font text-2xl" x-text="materialPrice(m.id).figure"></span><span x-show="materialPrice(m.id).words" class="text-[14px] text-zinc-600" x-text="'· ' + materialPrice(m.id).words"></span></p>
-                                <p class="text-[14px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="charmPriceText(m.id)"></p>
+                                <p class="text-[14px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="ringPriceText(m.id)"></p>
                                 <dl class="text-[14px] text-zinc-700 space-y-2 leading-snug">
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Finish</dt><dd x-text="info(m.id).finish"></dd></div>
@@ -1148,7 +1154,7 @@
                     <template x-if="!pageDesigns.length && pageDesignsSoon"><template x-for="i in pageDesignsSoon" :key="'pdp' + i"><div class="g-card" aria-hidden="true"><span class="block mx-[9%] mt-[9%]"><span class="block aspect-square w-full rounded-lg shimmer"></span></span><span class="g-name block px-3 py-2.5">&nbsp;</span></div></template></template>
                     <template x-for="g in pageDesigns" :key="'pd' + g.id">
                         <a :href="galleryHref(g)" @click="galleryClick($event, g)" class="g-card">
-                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g)" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
+                            <span class="block mx-[9%] mt-[9%]"><img width="320" height="320" :src="thumb(g.image_url, 320)" :srcset="srcsetFor(g.image_url)" sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw" :alt="galleryAlt(g, galleryDefaultMetal)" :style="{ filter: metalFilter(galleryDefaultMetal) }" loading="lazy" decoding="async" class="block aspect-square w-full object-contain"></span>
                             <span class="g-name block px-3 py-2.5" x-text="g.title"></span>
                         </a>
                     </template>
@@ -1169,12 +1175,13 @@
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
                         <!-- Shipping & Returns -->
                         <h1 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h1>
-                        <p class="text-[14px] text-zinc-500">Last updated: 4 November 2026</p>
+                        <p class="text-[14px] text-zinc-500">Last updated: 11 November 2026</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Timeline</h2>
                         <ul class="list-disc pl-5 space-y-1">
                             <li><strong>Design:</strong> same day. You choose and refine your design before anything is made.</li>
                             <li><strong>Design review:</strong> about 2 business days after you order, our team checks that your design can be made and confirms the order to you.</li>
-                            <li><strong>Production:</strong> up to 14 days. <span x-text="'Each ' + wording.noun + ' is printed to order in real metal.'"></span></li>
+                            <li><strong>Payment:</strong> nothing is charged online when you order. After the design review, we contact you to arrange payment.</li>
+                            <li><strong>Production:</strong> starts once your payment is confirmed and takes up to 14 business days. <span x-text="'Each ' + wording.noun + ' is printed to order in real metal.'"></span></li>
                             <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery. Express delivery is $45 (in shekels for delivery to Israel where shekel prices are offered, shown at checkout) and takes about 5 business days, with priority handling.</li>
                         </ul>
                         <p>We ship from Israel to the countries listed at checkout. Business days are Sunday to Thursday, excluding public holidays in Israel, for our design review and production, and the carrier’s working days for delivery; delivery times are the carrier’s estimates. The piece is at our risk until it is delivered to you.</p>
@@ -1452,8 +1459,9 @@
                                     <!-- Waiting screen while a design or refinement is generated -->
                                     <template x-if="waitVariant">
                                         <div class="w-full flex flex-col items-center text-center py-2 fade-in" role="status" aria-live="polite">
-                                            <!-- The piece being made, drawn line by line (R-23): a plain band for a ring, a coin charm on its
-                                                 jump ring for a charm — metal only, never a stone. Still with reduced motion. -->
+                                            <!-- The piece being made, drawn line by line (R-23): a plain band for a ring; for a charm a puffed heart
+                                                 on its bail and jump ring (11 Nov 2026: the coin read as a ring) — metal only, never a stone.
+                                                 Still with reduced motion. -->
                                             <div class="relative w-full max-w-[560px]" style="aspect-ratio:1088/720;">
                                                 <svg x-show="!isCharm(design)" class="ld-art absolute inset-0 w-full h-full rounded-xl" viewBox="0 0 1088 720" aria-hidden="true"
                                                      fill="none" stroke="#1F1F1F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="background:#DAD4C1;">
@@ -1464,18 +1472,25 @@
                                                 </svg>
                                                 <svg x-show="isCharm(design)" x-cloak class="ld-art absolute inset-0 w-full h-full rounded-xl" viewBox="0 0 1088 720" aria-hidden="true"
                                                      fill="none" stroke="#1F1F1F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="background:#DAD4C1;">
-                                                    <circle class="ld" pathLength="1" cx="544" cy="205" r="26"/>
-                                                    <path class="ld" pathLength="1" d="M528 262C528 226 560 226 560 262"/>
-                                                    <circle class="ld" pathLength="1" cx="544" cy="400" r="140"/>
-                                                    <circle class="ld" pathLength="1" cx="544" cy="400" r="118"/>
-                                                    <path class="ld" pathLength="1" d="M544 470C474 424 474 352 520 352C534 352 544 362 544 374C544 362 554 352 568 352C614 352 614 424 544 470Z"/>
+                                                    <ellipse class="ld" pathLength="1" cx="544" cy="246" rx="22" ry="36" transform="rotate(-22 544 246)"/>
+                                                    <path class="ld" pathLength="1" d="M534 308V290A10 10 0 0 1 554 290V308"/>
+                                                    <path class="ld" pathLength="1" d="M544 572C468 516 392 458 392 372C392 316 432 286 476 286C512 286 536 308 544 334C552 308 576 286 612 286C656 286 696 316 696 372C696 458 620 516 544 572Z"/>
+                                                    <path class="ld" pathLength="1" d="M664 292C694 304 714 334 714 382C714 466 638 524 560 582L544 572"/>
+                                                    <path class="ld" pathLength="1" d="M432 350C440 326 460 314 484 316"/>
                                                 </svg>
                                             </div>
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
                                             <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
-                                            <div class="mt-5 flex items-center justify-center gap-2 h-5 text-[14px]" style="color:#8A6420;">
-                                                <span class="w-2 h-2 rounded-full animate-pulse motion-reduce:animate-none shrink-0" style="background:#C9A96E;"></span>
-                                                <span x-text="waitStatus"></span>
+                                            <!-- Progress (11 Nov 2026): an estimate, never a countdown, and never full before the designs are ready -->
+                                            <div class="mt-6 w-full max-w-[380px] px-2">
+                                                <div class="flex items-baseline justify-between gap-3 text-[14px] font-medium" style="color:#5A4A2A;">
+                                                    <span x-text="genLabel"></span>
+                                                </div>
+                                                <div class="gen-track mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="genPercent"
+                                                     :aria-valuetext="genLabel + ' ' + genEstimateText" :aria-label="genLabel">
+                                                    <div class="gen-fill" :style="'width:' + genPercent + '%'"></div>
+                                                </div>
+                                                <p class="mt-2 text-[13px]" style="color:#6F6F6F;" x-text="genEstimateText"></p>
                                             </div>
                                             <p class="mt-3 text-[13px]" style="color:#6F6F6F;" x-text="readyCount(waitBatch) + ' of ' + waitBatch?.desired_count + ' designs ready'"></p>
                                             <!-- Past the 90-second limit with nothing ready yet: the images are still coming, in the background (R-41) -->
@@ -1565,7 +1580,16 @@
                             <!-- Composer: on a phone it sticks to the bottom of the workspace, so the next step is always in reach -->
                             <div class="w-full flex flex-col gap-3 sticky bottom-0 sm:static -mx-4 px-4 sm:mx-0 sm:px-0 pt-2 sm:pt-0 pb-[max(8px,env(safe-area-inset-bottom))] sm:pb-0 border-t sm:border-0 border-[#E8DDD0] sm:border-transparent"
                                  :class="design ? 'mt-auto' : ''" style="background:rgba(248,248,248,0.96); backdrop-filter:blur(6px);">
-                                <div x-show="!design && productsOn" x-cloak class="w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug"
+                                <!-- B5: no credit left for a new design or a refinement — what still works, and where -->
+                                <div x-show="outOfCredits" x-cloak class="w-full px-4 py-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3 text-[14px] leading-snug"
+                                     style="background:#FBF7EF; border:1px solid #E8DCC4; color:#3A2E12;" role="status">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="font-semibold">You've used your design credits</p>
+                                        <p style="color:#5A4A2A;">New designs and refinements need a credit. You can still open, customize and order every design you've made.</p>
+                                    </div>
+                                    <button type="button" @click="openPanel('designs')" class="btn-gold shrink-0 w-full sm:w-auto px-4 py-2.5">My Designs</button>
+                                </div>
+                                <div x-show="!design && productsOn && !outOfCredits" x-cloak class="w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
                                     <span id="product-choice-label" class="font-medium">What would you like to design?</span>
                                     <div class="inline-flex rounded-lg p-0.5" style="background:#EFEAE0;" role="radiogroup" aria-labelledby="product-choice-label">
@@ -1629,7 +1653,7 @@
                                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="color:#8A6420;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.931-8.931z"/></svg>
                                 </div>
 
-                                <div class="w-full flex items-center gap-2 sm:gap-3 rounded-3xl sm:rounded-[24px] px-3 sm:px-4 py-2 sm:py-3 bg-white min-h-[52px] sm:min-h-[72px]"
+                                <div x-show="!outOfCredits" class="w-full flex items-center gap-2 sm:gap-3 rounded-3xl sm:rounded-[24px] px-3 sm:px-4 py-2 sm:py-3 bg-white min-h-[52px] sm:min-h-[72px]"
                                      style="border:2px solid #C9A96E; box-shadow:0 14px 44px rgba(0,0,0,0.09);">
                                     <button x-show="!design" @click="requestUpload()" class="tap shrink-0 flex items-center justify-center rounded-xl transition w-9 h-9 sm:w-11 sm:h-11 bg-[#FAF6EE] text-[#8A6420] hover:bg-[#F1E7D6]"
                                             title="Upload a reference image (or paste one with Ctrl+V)" aria-label="Upload reference image">
@@ -1694,7 +1718,7 @@
                                 </div>
                                 <!-- Opening Customize makes the option's 360° movie, unless it has one already (R-07: the cost before the click) -->
                                 <p x-show="canCustomize && selectedCandidate?.movie_credits" class="text-center text-[13px]" style="color:#6F6F6F;"
-                                   x-text="'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
+                                   x-text="movieNeedsCredit ? 'You can still customize and order this design. A new 360° movie needs a credit, so Customize shows the still images.' : 'Customize makes its 360° movie: ' + selectedCandidate?.movie_credits + (selectedCandidate?.movie_credits === 1 ? ' credit.' : ' credits.')"></p>
                                 <p x-show="design && !selectedId && !waitVariant" class="hidden sm:block text-center text-[13px]" style="color:#6F6F6F;">Select one design to refine or customize it.</p>
                                 <p x-show="actionError" class="err-line justify-center text-center" role="alert" x-text="actionError"></p>
                             </div>
@@ -1833,7 +1857,7 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-600">Your Selected Design</span>
                 </div>
-                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff" role="group" aria-label="Show the image or the movie">
+                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff && !movieNone" role="group" aria-label="Show the image or the movie">
                     <button @click="mediaTab = 'image'" :aria-pressed="mediaTab === 'image'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition"
                             :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
                     <button @click="mediaTab = 'movie'" :aria-pressed="mediaTab === 'movie'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
@@ -1846,7 +1870,7 @@
                 <!-- Tablets get a larger stage (R-36: the movie was 288 px wide below 1024 px) -->
                 <div class="flex-1 relative overflow-hidden min-h-[320px] sm:min-h-[480px] md:min-h-[560px] lg:min-h-[320px]">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="movieOff || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
+                        <img x-show="movieOff || movieNone || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
                         <template x-if="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'">
                             <!-- Plays and loops as before; a tap (or the button) pauses it, and with reduced motion it waits for Play -->
                             <video x-ref="custMovie" :src="cust?.movie.movie_url" :poster="cust?.image_url" preload="auto" :autoplay="!reducedMotion" loop muted playsinline
@@ -1862,11 +1886,16 @@
                         <span x-text="moviePaused ? 'Play' : 'Pause'"></span>
                     </button>
                     <!-- While the movie is being made (or if it failed) the static image stays visible underneath. -->
-                    <div x-show="!movieOff && mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
+                    <div x-show="!movieOff && !movieNone && mediaTab === 'movie' && (movieBusy || !movieStatus)" class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none">
                         <div class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/90 backdrop-blur border shadow-sm text-zinc-600" style="border-color:#E8DCC4;">
                             <span class="w-2 h-2 rounded-full animate-pulse" style="background:#C9A96E;"></span>
                             <span class="text-[12px] uppercase tracking-widest">Creating your 360&deg; movie&hellip;</span>
                         </div>
+                    </div>
+                    <!-- B5: no movie and no credit to make one — the still images, and the piece can still be ordered -->
+                    <div x-show="movieNone" x-cloak class="absolute inset-x-0 bottom-4 flex justify-center px-4 pointer-events-none" role="note">
+                        <p class="px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center text-[14px] leading-snug max-w-md" style="border-color:#E8DCC4; color:#5A4A2A;"
+                           x-text="'The 360° movie needs a credit. Your ' + (custIsCharm ? 'charm' : 'ring') + ' can still be customized and ordered.'"></p>
                     </div>
                     <div x-show="!movieOff && mediaTab === 'movie' && movieFailed" class="absolute inset-x-0 bottom-4 flex justify-center px-4">
                         <div class="flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border shadow-sm text-center" style="border-color:#F1B7B7;">
@@ -2016,6 +2045,13 @@
                         <p x-show="!isLuxury && !isPreview && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[14px] text-zinc-600 mt-1.5"
                            x-text="custIsCharm ? 'The price for this size and material is not available right now.' : 'The price for this material is not available right now.'"></p>
                         <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
+                    </div>
+
+                    <!-- How ordering works, before the bag (B4/B6, 11 Nov 2026): payment, timing in business days, the policy page -->
+                    <div x-show="!isLuxury && !isPreview" class="rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
+                        <p><strong class="font-semibold">No payment online.</strong> After you order, we review your design (about 2 business days) and contact you to arrange payment.</p>
+                        <p class="mt-1">Production: up to 14 business days after your payment is confirmed. Standard shipping: up to 14 business days.</p>
+                        <p class="mt-1"><a href="{{BASE}}/shipping-returns" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Shipping, payment and returns</a></p>
                     </div>
 
                     <!-- Quantity -->
@@ -2204,6 +2240,7 @@
                     <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
                     <!-- Israeli pricing (B6): shown only while it is on -->
                     <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1"><span x-text="pricingChoice?.currency === 'USD' ? 'Prices in US dollars include 18% Israeli VAT for delivery in Israel.' : 'Prices in shekels include 18% VAT for delivery in Israel.'">Prices in shekels include 18% VAT for delivery in Israel.</span> Standard delivery is free; express delivery and any promo code are added at checkout. The delivery country you choose at checkout sets the final currency.</p>
+                    <p class="text-[14px] text-zinc-600 leading-snug pt-1">No payment is taken online: after our review (about 2 business days) we contact you to arrange payment. You can cancel an order free of charge until we confirm it to you.</p>
                     <div x-show="pricingChoice" x-cloak class="flex items-center justify-end gap-2 text-[13px] text-zinc-500 pt-1" role="group" aria-label="Currency">
                         <span>Prices in</span>
                         <button type="button" @click="setCurrency('ILS')" :aria-pressed="pricingChoice?.currency === 'ILS'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'ILS' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">₪ ILS</button>
@@ -2243,6 +2280,9 @@
                             </li>
                         </template>
                     </ol>
+
+                    <!-- How ordering works, from the first step (B4/B6, 11 Nov 2026) -->
+                    <p x-show="!checkout?.payment?.available" class="rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">No payment is taken online. You place your order, our team reviews your design (about 2 business days), and then we contact you to arrange payment. Production starts once your payment is confirmed.</p>
 
                     <!-- Step 1 · details -->
                     <section x-show="co.step === 'details'" class="space-y-5" aria-labelledby="co-h-details">
@@ -2359,14 +2399,14 @@
                         </div>
                         <div>
                             <label class="flbl" for="co-note">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
-                            <textarea id="co-note" class="fld" dir="auto" rows="3" maxlength="1000" x-model="co.note" placeholder="A gift note, a date you need it by…"></textarea>
+                            <textarea id="co-note" class="fld" dir="auto" rows="3" maxlength="1000" x-model="co.note" placeholder="A note for our team about your order…"></textarea>
                         </div>
                         <div class="rounded-xl p-5" :style="checkout?.payment?.available ? 'border:1px solid #E4E4E7;' : 'background:#FBF7EF; border:1px solid #E8DCC4;'">
                             <p class="flbl">Payment</p>
                             <template x-if="!checkout?.payment?.available">
                                 <div class="text-[13px] text-zinc-700 leading-relaxed">
-                                    <p class="font-semibold text-zinc-900 mb-1">Payment is arranged after you place the order</p>
-                                    <p x-text="'Online payment is not available yet. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + ' and we contact you to arrange payment.'"></p>
+                                    <p class="font-semibold text-zinc-900 mb-1">Payment is arranged after our review</p>
+                                    <p x-text="'No payment is taken online. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + '; after our review (about 2 business days) we contact you to arrange payment. Production starts once your payment is confirmed.'"></p>
                                     <p class="text-[14px] text-zinc-600 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
                                 </div>
                             </template>
@@ -2378,8 +2418,8 @@
                             <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233 · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
                             <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="money((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + money(coQuote?.total || 0, coQuote?.currency)"></span></p>
                             <p><strong class="font-semibold text-zinc-900">Import charges:</strong> where your country charges import VAT, customs duty or a carrier’s handling fee on delivery, the recipient pays them.</p>
-                            <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 days; delivery <span x-text="co.shipping_method === 'express' ? 'about 5 business days (Express)' : 'up to 14 business days (Standard)'"></span>.</p>
-                            <p x-show="!checkout?.payment?.available"><strong class="font-semibold text-zinc-900">Payment:</strong> nothing is charged now. Your order is a reservation until we confirm it; you can cancel free of charge until then. We arrange payment with you after you order.</p>
+                            <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 business days after your payment is confirmed; delivery <span x-text="co.shipping_method === 'express' ? 'about 5 business days (Express)' : 'up to 14 business days (Standard)'"></span>.</p>
+                            <p x-show="!checkout?.payment?.available"><strong class="font-semibold text-zinc-900">Payment:</strong> nothing is charged now. Your order is a reservation until we confirm it; you can cancel free of charge until then. We arrange payment with you after our review, and production starts once your payment is confirmed.</p>
                             <p><strong class="font-semibold text-zinc-900">Cancelling and returns:</strong> each personalised piece is made to your specification, so it cannot be returned for a change of mind once confirmed. A gallery design you order unchanged can be cancelled within 14 days of delivery. Faulty pieces are always covered.</p>
                             <p><strong class="font-semibold text-zinc-900">Warranty:</strong> <a href="{{BASE}}/warranty" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">two-year limited warranty</a>, in addition to your legal rights.</p>
                         </div>
@@ -2436,12 +2476,16 @@
             </div>
             <!-- sticky action bar -->
             <div class="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200">
-                <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
-                    <button @click="coBack()" class="btn-outline px-5 py-3" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></button>
-                    <div class="flex items-center gap-4">
-                        <span class="hidden sm:inline text-sm text-zinc-700"><span class="text-zinc-500">Total</span> <strong x-text="money(coQuote?.total || 0, coQuote?.currency)"></strong></span>
-                        <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-7 py-3 stream-glow"
-                                x-text="co.busy ? 'One moment…' : co.step === 'review' ? (checkout?.payment?.available ? 'Place order and pay' : 'Place order — payment arranged after confirmation') : 'Continue'"></button>
+                <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3">
+                    <!-- Why Place order can't be pressed yet (B4/B6): the Terms box, a declined promo code, nothing orderable -->
+                    <p x-show="coPlaceBlockedText" x-cloak id="co-place-why" class="text-[13px] leading-snug text-center sm:text-right mb-2" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
+                    <div class="flex items-center justify-between gap-3">
+                        <button @click="coBack()" class="btn-outline px-4 sm:px-5 py-3 shrink-0" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></button>
+                        <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                            <span class="text-sm text-zinc-700 whitespace-nowrap"><span class="text-zinc-500">Total</span> <strong x-text="money(coQuote?.total || 0, coQuote?.currency)"></strong></span>
+                            <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-5 sm:px-7 py-3 stream-glow"
+                                    :aria-describedby="coPlaceBlockedText ? 'co-place-why' : null"><span x-text="co.busy ? 'One moment…' : co.step === 'review' ? (checkout?.payment?.available ? 'Place order and pay' : 'Place order') : 'Continue'"></span><span x-show="!co.busy && co.step === 'review' && !checkout?.payment?.available" class="hidden sm:inline"> — payment after our review</span></button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2500,9 +2544,11 @@
                     <p class="flbl">What happens next</p>
                     <ol class="space-y-3 text-[13px] text-zinc-700">
                         <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">1.</span><span><strong class="text-zinc-900">Design review.</strong> Our team checks the design for production feasibility and confirms the order to you (about 2 business days). Until then your order is a reservation.</span></li>
-                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">2.</span><span><strong class="text-zinc-900">Production.</strong> <span x-text="orderMade(order)"></span></span></li>
-                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">3.</span><span><strong class="text-zinc-900">Shipping.</strong> <span x-text="(order.shipping_label || 'Delivery') + ', ' + (order.shipping_eta || '')"></span>, tracked.</span></li>
+                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">2.</span><span><strong class="text-zinc-900">Payment.</strong> <span x-text="order.payment_status === 'paid' ? 'Your payment is confirmed.' : 'We contact you to arrange payment. Nothing is charged online.'"></span></span></li>
+                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">3.</span><span><strong class="text-zinc-900">Production.</strong> <span x-text="orderMade(order)"></span></span></li>
+                        <li class="flex gap-3"><span class="font-semibold text-zinc-900 shrink-0 w-5">4.</span><span><strong class="text-zinc-900">Shipping.</strong> <span x-text="(order.shipping_label || 'Delivery') + ', ' + (order.shipping_eta || '')"></span>, tracked.</span></li>
                     </ol>
+                    <p class="text-[13px] text-zinc-700 mt-4">Questions, or want to cancel before we confirm your order? Reply to your order confirmation email or <a :href="mailto('Order ' + order.ref)" class="underline underline-offset-2 hover:text-black">email us</a> with your Order ID.</p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-3">
                     <button @click="design ? navigateTo('ai-studio') : resetAIFlow()" class="flex-1 btn-gold py-3.5">Continue designing</button>
@@ -2790,7 +2836,7 @@
                         </div>
                         <div class="text-[13px] mt-1.5 leading-snug" style="color:#6F6F6F;">
                             <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for, one per extra option you request and one per 360° movie. If a request can’t deliver all four designs, its credit comes back, and retrying the missing ones is free. Selecting, materials, sizes and a reused movie are free.</span>
-                            <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. Contact us to extend your allowance.</span>
+                            <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. You can still customize and order the designs you've made.</span>
                         </div>
                     </div>
 
@@ -2872,19 +2918,18 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
 
-                <!-- ── Sign-in (AJW-39): Google · Apple · email and password · a six-letter code from before ── -->
+                <!-- ── Sign-in (AJW-39): Google · Apple · email and password (the six-letter code was removed 11 Nov 2026, B10) ── -->
                 <div x-show="!legacyAuth">
                     <div class="mb-6 text-center">
                         <p class="text-[12px] uppercase tracking-[0.25em] text-zinc-500 mb-2">XJet Atelier</p>
                         <h2 id="reg-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel','Cinzel Fallback',serif;"
-                            x-text="{ signin: { favorites: 'Sign in to save favorites', bag: 'Sign in to see your bag' }[regReason] || 'Sign in', register: 'Create your account', forgot: 'Reset your password', code: 'Use your sign-in code', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
+                            x-text="{ signin: { favorites: 'Sign in to save favorites', bag: 'Sign in to see your bag' }[regReason] || 'Sign in', register: 'Create your account', forgot: 'Reset your password', claim: 'Secure your account' }[regMode] || 'Sign in'"></h2>
                         <p id="reg-desc" class="text-[15px] text-zinc-600 mt-2 leading-relaxed"
                            x-text="{ signin: { favorites: 'Your favorites, designs and orders stay with your account.',
                                                bag: 'Your bag, designs and orders stay with your account.' }[regReason]
                                              || 'Sign in to start designing. Your designs, credits and orders stay with your account.',
                                      register: 'Your designs are saved to your account.',
                                      forgot: 'Enter your email and we send you a link to choose a new password.',
-                                     code: 'Enter the 6-letter code from your welcome email — once — and we move your account to a real sign-in.',
                                      claim: 'Your designs, credits and orders are safe. Choose how you want to sign in from now on.' }[regMode] || ''"></p>
                     </div>
 
@@ -2934,8 +2979,6 @@
                         </button>
                         <p class="text-center text-[13px] text-zinc-600 mt-5">New to XJet Atelier?
                             <button type="button" @click="regSwitch('register')" class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Create an account</button></p>
-                        <p class="text-center text-[13px] text-zinc-600 mt-2">Have a 6-letter code from before?
-                            <button type="button" @click="regSwitch('code')" class="font-semibold text-black underline underline-offset-2 decoration-2 hover:text-amber-600 transition">Use it here</button></p>
                     </form>
 
                     <!-- Create an account -->
@@ -2980,21 +3023,7 @@
                         <p class="text-center text-[13px] text-zinc-600 mt-5"><button type="button" @click="regSwitch('signin')" class="underline underline-offset-2 hover:text-black">Back to sign in</button></p>
                     </form>
 
-                    <!-- A six-letter code from before: used once, to move the account to a real login -->
-                    <form x-show="regMode === 'code' && !regInfo" @submit.prevent="submitClaimCode()" novalidate>
-                        <div class="mb-5">
-                            <label for="cl-code" class="flbl">Sign-in code</label>
-                            <input id="cl-code" x-model="regForm.token" @input="regForm.token = regForm.token.toUpperCase()" type="text" required maxlength="6" autocomplete="one-time-code" spellcheck="false"
-                                   placeholder="e.g. XAJKLM" :disabled="regLoading" class="fld uppercase tracking-widest font-mono">
-                            <p class="text-[13px] text-zinc-500 mt-1.5">Lost it? No problem — use “Forgot password” with your email and your account is found by it.</p>
-                        </div>
-                        <button type="submit" :disabled="regLoading || regForm.token.trim().length < 6" class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em] transition stream-glow">
-                            <span x-show="!regLoading">Continue</span><span x-show="regLoading">Checking…</span>
-                        </button>
-                        <p class="text-center text-[13px] text-zinc-600 mt-5"><button type="button" @click="regSwitch('signin')" class="underline underline-offset-2 hover:text-black">Back to sign in</button></p>
-                    </form>
-
-                    <!-- Code accepted: attach a login (Google / Apple above, or an email and password here) -->
+                    <!-- An older six-letter session (a server in dual mode) attaches a login: Google / Apple above, or an email and password here -->
                     <form x-show="regMode === 'claim' && !regInfo" @submit.prevent="submitClaimPassword()" novalidate>
                         <div class="mb-4">
                             <label for="cp-email" class="flbl">Email</label>
@@ -3254,15 +3283,15 @@
                                 </button>
                             </div>
                             <a :href="galleryHref(g)" @click="galleryClick($event, g)" data-gallery-tile class="g-link" :aria-label="'Open ' + g.title">
-                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetal[g.id])" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetal[g.id] ? metalFilter(cardMetal[g.id]) : '' }" loading="lazy" decoding="async"></span>
+                                <span class="block mx-[9%] overflow-hidden"><img width="800" height="800" :srcset="srcsetFor(g.image_url)" sizes="(min-width:1280px) 230px, (min-width:1024px) 21vw, (min-width:768px) 27vw, 36vw" :src="thumb(g.image_url, 800)" :alt="galleryAlt(g, cardMetalOf(g))" class="block w-full aspect-square object-contain transition-[transform,filter] duration-500 group-hover:scale-105" :style="{ filter: cardMetalOf(g) ? metalFilter(cardMetalOf(g)) : '' }" loading="lazy" decoding="async"></span>
                                 <span class="g-name block px-2.5 pt-2" x-text="g.title"></span>
                             </a>
                             <!-- Metal preview (visual only: no AI, the design, the customer's material and the price are unchanged) -->
                             <div class="g-over mt-auto flex items-center justify-between pr-1.5">
                                 <div class="flex items-center" role="radiogroup" :aria-label="'Preview ' + g.title + ' in another metal'">
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetal[g.id] === 'stainless_steel'" :class="cardMetal[g.id] === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetal[g.id] === 'silver'" :class="cardMetal[g.id] === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
-                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetal[g.id] === 'gold_18k_yellow'" :class="cardMetal[g.id] === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'stainless_steel')" :aria-checked="cardMetalOf(g) === 'stainless_steel'" :class="cardMetalOf(g) === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'silver')" :aria-checked="cardMetalOf(g) === 'silver'" :class="cardMetalOf(g) === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
+                                    <button type="button" role="radio" class="metal-swatch" @click.stop="pickCardMetal(g, 'gold_18k_yellow')" :aria-checked="cardMetalOf(g) === 'gold_18k_yellow'" :class="cardMetalOf(g) === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold — preview only, not available to order" title="Gold: preview only, not available to order"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                                 </div>
                                 <button type="button" x-show="!isOff(g)" @click.stop="makeItYoursFromCard(g)" :disabled="galleryBusy" :aria-label="'Make it yours: ' + g.title" class="shrink-0 inline-flex items-center justify-center h-11 min-w-[44px] rounded-full transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A96E]"><span class="g-cue-word text-[12px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap px-1.5" style="color:#8A6420;">Make it yours<span aria-hidden="true"> →</span></span><span class="g-cue-arrow w-7 h-7 rounded-full items-center justify-center" style="border:1px solid #C9A96E; color:#8A6420;" aria-hidden="true"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
                             </div>
@@ -3286,16 +3315,16 @@
                 </button>
                 <div class="md:w-3/5 bg-white md:border-r border-[#F1ECE3] flex flex-col items-center justify-center p-4 md:p-6 gap-3 relative">
                     <span x-show="productsOn" x-cloak class="product-badge absolute top-3 left-3 z-[1] inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] uppercase tracking-[0.12em] font-semibold"><span x-html="productIcon(galleryItem.product_type || 'ring', 'w-3 h-3')"></span><span x-text="productLabel(galleryItem.product_type || 'ring')"></span></span>
-                    <!-- Opens in the metal its card shows (the original by default); the swatches apply the metal filter to this preview only -->
+                    <!-- Opens in the metal its card shows (Sterling Silver by default, B1); the swatches apply the metal filter to this preview only -->
                     <img :srcset="srcsetFor(galleryItem.image_url)" sizes="(min-width: 768px) 490px, 85vw" :src="thumb(galleryItem.image_url, 800)" width="1024" height="1024" fetchpriority="high" decoding="async" :alt="galleryAlt(galleryItem, galleryMetal)" class="gallery-shot object-contain transition-[filter] duration-300" :style="{ filter: galleryMetal ? metalFilter(galleryMetal) : '' }">
                     <div class="flex flex-col items-center gap-1">
                         <div class="flex flex-wrap items-center justify-center gap-1" role="radiogroup" aria-label="See it in another metal — preview only">
                             <button type="button" role="radio" @click="setGalleryMetal('')" :aria-checked="!galleryMetal" class="metal-chip mr-1" :class="!galleryMetal ? 'is-on' : ''">Original</button>
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('stainless_steel')" :aria-checked="galleryMetal === 'stainless_steel'" :class="galleryMetal === 'stainless_steel' ? 'is-on' : ''" aria-label="Preview in Stainless Steel" title="Preview in Stainless Steel"><span :style="'background:' + metalSwatch('stainless_steel')"></span></button>
                             <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('silver')" :aria-checked="galleryMetal === 'silver'" :class="galleryMetal === 'silver' ? 'is-on' : ''" aria-label="Preview in Sterling Silver" title="Preview in Sterling Silver"><span :style="'background:' + metalSwatch('silver')"></span></button>
-                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold" title="Preview in Gold"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
+                            <button type="button" role="radio" class="metal-swatch metal-swatch-lg" @click="setGalleryMetal('gold_18k_yellow')" :aria-checked="galleryMetal === 'gold_18k_yellow'" :class="galleryMetal === 'gold_18k_yellow' ? 'is-on' : ''" aria-label="Preview in Gold — preview only, not available to order" title="Gold: preview only, not available to order"><span :style="'background:' + metalSwatch('gold_18k_yellow')"></span></button>
                         </div>
-                        <p class="text-[13px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal ? 'Preview only — the design itself is unchanged' : 'See it in another metal — preview only'"></p>
+                        <p class="text-[13px] text-zinc-500 tracking-wide text-center" x-text="galleryMetal === 'gold_18k_yellow' ? 'Gold is shown as a preview only: it is not available to order' : galleryMetal ? 'Preview only — the design itself is unchanged' : 'The original image — see it in another metal'"></p>
                     </div>
                 </div>
                 <div class="md:w-2/5 px-7 pt-7 md:p-9 flex flex-col justify-center text-center md:text-left gap-4">

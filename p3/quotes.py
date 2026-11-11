@@ -186,7 +186,8 @@ class QuoteDesk:
             f"Hello {Name}," if Name else "Hello,",
             f"Thank you for your interest in {R['title']} in {R['material_label']}. Our quote for your {Noun} is below.",
             "To go ahead, approve the quote with the button below: we will ask for your shipping address and confirm your "
-            "order. We arrange payment with you separately, and production takes up to 14 days.",
+            "order. We arrange payment with you separately; production starts once your payment is confirmed and takes up to "
+            "14 business days.",
             "If you would like a change, decline the quote and tell us what you have in mind: we will gladly prepare a new one.",
             "Kind regards,\nThe XJet Atelier team"])
 

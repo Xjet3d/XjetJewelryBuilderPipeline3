@@ -30,7 +30,7 @@ class AuthError(Exception):
 class InsufficientCredits(Exception):
     """The account may not spend the requested units (quota / balance policy)."""
 
-    def __init__(self, Message: str = "You have used all the credits on this account. Contact us to extend your allowance."):
+    def __init__(self, Message: str = "You have no credits left. You can still customize and order the designs you've made."):
         super().__init__(Message)
         self.Message = Message
 

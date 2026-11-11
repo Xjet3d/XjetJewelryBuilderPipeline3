@@ -129,6 +129,9 @@ const MATERIAL_INFO = {
 };
 
 // Waiting-screen copy from Pipeline 2 (app-p2.js showLoading presets 'design' / 'refine').
+// Image generation, measured on proto (11 Nov 2026): a request's four images take a median 24–27 s (rings and charms,
+// designs and refinements); three in four within ~35 s. The bar says "about 25 seconds" and admits a delay after 45 s.
+const GEN_ESTIMATE_S = 25, GEN_LONG_S = 45, GEN_START = new Map();      // GEN_START: each batch's first sight (not reactive)
 const WAIT_PRESETS = {
   design: {
     title: 'Your jewelry is coming to life',
@@ -189,7 +192,7 @@ function p3App() {
     legal: null,
     termsGate: { open: false, mode: '', email: '', method: '', accept: false, loading: false, error: '' },
     termsRequired: false, _resumeAfterTerms: null,
-    quotaUsed: 0, quotaMax: 10,
+    quotaUsed: 0, quotaMax: 10, quotaKnown: false,          // quotaKnown: the server's numbers have arrived
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
     tariff: { design: 1, refinement: 1, option: 1, movie: 1 },       // the server's (Admin → Credits), from token-status
     // What a paid action costs, as its button says (R-07)
@@ -224,6 +227,7 @@ function p3App() {
     gallery: [], galleryPaused: [], galleryState: 'loading', galleryItem: null, galleryBusy: false, galleryError: '', galleryGridOpen: false,   // Inspiration Gallery
     galleryMetal: '', shareBusy: false, shareUrl: '', shareCopied: false, shareInfo: null, _restoreTitle: '',   // lightbox: metal preview (visual only) and Share
     cardMetal: {},                                                             // Gallery cards: the metal each card is previewed in (visual only)
+    galleryDefaultMetal: 'silver',                                             // B1: a card shows an orderable look until the visitor picks one
     favorites: [], favBusy: '', sidebarTab: 'designs', _pendingPanel: '',                       // ♥ Favorites: saved references to gallery masters
     panelRoute: '', _pendingRoute: '',     // the side panel's own address when opened as such; a step asked for before sign-in
     homeGallery: [],                                                           // the gallery in this visit's order (shuffled per page load)
@@ -274,6 +278,7 @@ function p3App() {
 
     _poll: null, _pollCust: null,
     waitStatusIndex: 0,
+    genNow: 0,                                                  // the progress bar's clock
 
     // ── lifecycle ─────────────────────────────────────────────────────
     async init() {
@@ -290,6 +295,7 @@ function p3App() {
       if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
         setInterval(() => { this.waitStatusIndex++; }, 3500);
       }
+      setInterval(() => { if (this.waitBatch) this.genNow = Date.now(); }, 500);     // the progress bar moves only while it shows
       // The health answer, the catalog and the gallery are independent: asked at once, not one after another
       const gallery = this.loadGallery();
       const [health, catalog] = await Promise.all([this.api('GET', '/api/health', null, { noAuth: true }).catch(() => null),
@@ -629,7 +635,7 @@ function p3App() {
     // where it is from, and the metal it is previewed in
     galleryAlt(g, metal = '') {
       return `${g.title} — custom ${g.product_type === 'charm' ? 'charm' : 'ring'} design from the XJet Atelier Inspiration Gallery`
-        + (metal ? `, shown in ${this.galleryMetalLabel(metal)}` : '');
+        + (metal ? `, shown in ${this.galleryMetalLabel(metal)}${metal === 'gold_18k_yellow' ? ' (preview only, not available to order)' : ''}` : '');
     },
     // A design of a product switched OFF (the owner's policy, 2026-10-15): viewable, read-only — no Make it yours,
     // refining, Customize or ordering, whichever way it was opened; the server refuses them too (design_unavailable)
@@ -645,7 +651,7 @@ function p3App() {
     // address: 'push' (a card: a history step, so Back closes the dialog), 'replace' (the page arrived on a design's
     // link: its address becomes the design's canonical one), 'none' (Back / Forward: the address is already right)
     openGallery(g, { address = 'push' } = {}) {
-      this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetal[g.id] || ''; this.shareUrl = ''; this.shareCopied = false;
+      this.galleryItem = g; this.galleryError = ''; this.galleryBusy = false; this.galleryMetal = this.cardMetalOf(g); this.shareUrl = ''; this.shareCopied = false;
       this._pauseStory();
       const href = this.galleryHref(g);
       if (g.slug && address !== 'none' && location.pathname !== href) {
@@ -676,7 +682,9 @@ function p3App() {
     // shown as "Gold": it is not a choice of karat.
     galleryMetalLabel(id) { return id === 'gold_18k_yellow' ? 'Gold' : this.metalLabel(id); },
     metalSwatch(id) { return this.material(id)?.swatch || '#d4d4d8'; },
-    pickCardMetal(g, id) { this.cardMetal = { ...this.cardMetal, [g.id]: this.cardMetal[g.id] === id ? '' : id }; },
+    // the metal a card shows: the visitor's pick, else Sterling Silver ('' = the original image, picked by clicking the shown swatch)
+    cardMetalOf(g) { return g && g.id in this.cardMetal ? this.cardMetal[g.id] : this.galleryDefaultMetal; },
+    pickCardMetal(g, id) { this.cardMetal = { ...this.cardMetal, [g.id]: this.cardMetalOf(g) === id ? '' : id }; },
     setGalleryMetal(id) {
       this.galleryMetal = id;
       if (this.galleryItem) this.cardMetal = { ...this.cardMetal, [this.galleryItem.id]: id };   // the card shows it too
@@ -1248,13 +1256,6 @@ function p3App() {
         this.regInfo = R.message;
       });
     },
-    submitClaimCode() {
-      return this._regCall(async () => {
-        const R = await this.api('POST', '/api/auth/claim', { token: this.regForm.token.trim() }, { noAuth: true });
-        this.claim = { ticket: R.ticket, name: R.name, email: R.email };
-        this.regForm.email = R.email || ''; this.regForm.token = ''; this.regMode = 'claim';
-      });
-    },
     submitClaimPassword() {
       return this._regCall(async () => {
         const R = await this.api('POST', '/api/auth/claim/password', { ticket: this.claim.ticket, email: this.regForm.email.trim(), password: this.regForm.password }, { noAuth: true });
@@ -1389,7 +1390,7 @@ function p3App() {
       if (!Q || !this.userSession) return;
       // A credit counts from the moment its request starts (reserved) and comes back if the request cannot deliver
       const used = Q.used + (Q.reserved || 0);
-      this.quotaUsed = used; this.quotaMax = Q.max;
+      this.quotaUsed = used; this.quotaMax = Q.max; this.quotaKnown = true;
       if (Q.tariff) this.tariff = Q.tariff;
       this.termsRequired = !!Q.terms_required;
       if (this.termsRequired) this._openTermsGate('account');
@@ -1435,7 +1436,7 @@ function p3App() {
       try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
       try { localStorage.removeItem(PROFILE_KEY); } catch (_) {}        // nothing of the person stays in the browser
       this.stopPolling();
-      this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10;
+      this.userSession = null; this.quotaUsed = 0; this.quotaMax = 10; this.quotaKnown = false;
       this.userProfile = { name: '', email: '' };
       this.favorites = []; this.sidebarTab = 'designs'; this._setPendingFav('');
       this.signInNotice = null;
@@ -1580,7 +1581,7 @@ function p3App() {
     materialPrice(id) {
       // a ring's fixed price where the metal is available for rings; else (charms only, or a metal available for charms
       // alone) the charm's prices
-      if (this.soleProduct === 'charm' || this.groupOfMaterial(id) !== 'fashion') {                                             // charms only: the fixed price per size
+      if (this.soleProduct === 'charm' || this.groupOfMaterial(id) !== 'fashion' || (this.wording.charm && this.charmMaterial(id)?.group === 'fashion')) {                                             // charms only: the fixed price per size
         const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
         return prices.length ? { before: 'from', figure: this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true), words: 'by charm size' }
                              : { before: '', figure: 'Price on request', words: '' };
@@ -1591,6 +1592,15 @@ function p3App() {
                                               : { before: '', figure: 'Price on request', words: '' };
     },
     charmMaterial(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id); },
+    // B11: the second price line on a Materials card when both products are on offer — the ring's, after the charm's
+    ringPriceText(id) {
+      if (this.groupOfMaterial(id) !== 'fashion') return 'Ring: ' + (this.groupOfMaterial(id) === 'preview' ? 'preview only' : 'by request');
+      const q = this.materialQuotes[id];
+      if (this.materialQuotesState !== 'loaded' || !q) return 'Ring: ' + (this.materialQuotesState === 'failed' ? 'price unavailable' : '…');
+      return 'Ring: ' + (q.pricing_status === 'available' ? this.money(q.unit_price, q.currency, true) + ', any ring size' : 'price on request');
+    },
+    // B11: the Materials cards show a charm when charms are on offer (else the homepage's ring)
+    get materialsHero() { return (this.wording.charm && this.homeGallery.find(g => (g.product_type || 'ring') === 'charm')) || this.heroRing; },
     charmPriceText(id, prefix = 'Charm: ') {
       const g = this.charmMaterial(id)?.group;                                      // the charm's own status (WP3)
       if (g !== 'fashion') { const t = g === 'preview' ? 'preview only' : g === 'luxury' ? 'by request' : 'not offered'; return prefix ? prefix + t : t[0].toUpperCase() + t.slice(1); }
@@ -1822,7 +1832,7 @@ function p3App() {
     },
     get bagKind() { return this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), 1); },
     get bagReserved() { const n = this.bagLines.length || 1; return 'Your ' + this.kindOf(this.bagLines.map(l => l.product_type || 'ring'), n) + (n > 1 ? ' are' : ' is') + ' reserved'; },
-    orderMade(o) { const n = o?.count || 1; return 'Your ' + this.kindOf(o?.product_types || ['ring'], n) + (n > 1 ? ' are' : ' is') + ' printed to order in real metal — production takes up to 14 days.'; },
+    orderMade(o) { const n = o?.count || 1; return 'Your ' + this.kindOf(o?.product_types || ['ring'], n) + (n > 1 ? ' are' : ' is') + ' printed to order in real metal — production takes up to 14 business days after your payment is confirmed.'; },
     isCharm(x) { return (x?.product_type || 'ring') === 'charm'; },
     get custIsCharm() { return this.isCharm(this.cust); },
     charmMaterialLabel(id) { return (this.catalog?.products?.charm?.materials || []).find(m => m.id === id)?.label; },
@@ -1855,7 +1865,7 @@ function p3App() {
       return this.canActOnSelection ? 'Describe how to refine the selected design…' : 'Select one of the designs above to refine it…';
     },
     get canSend() {
-      if (this.submitting) return false;
+      if (this.submitting || this.outOfCredits) return false;
       if (this.composerMode === 'create') return this.userInput.trim().length > 0 || !!this.uploadedFile;
       return this.canActOnSelection && !this.pendingBatch && this.userInput.trim().length > 0;
     },
@@ -2019,6 +2029,14 @@ function p3App() {
       return `Variation ${n}`;
     },
     // Credits: 1 per design request, 1 per refinement request, 1 per extra option, 1 per finished 360° movie (the server's tariff)
+    // B5: no credit left for a new design or a refinement — the composer gives way to a card pointing to My Designs
+    get outOfCredits() {
+      const need = Math.min(this.tariff?.design ?? 1, this.tariff?.refinement ?? 1);
+      return !!this.userSession && this.quotaKnown && need > 0 && this.quotaRemaining < need;
+    },
+    get lowCredits() { return !!this.userSession && this.quotaKnown && !this.outOfCredits && this.quotaRemaining <= 2; },
+    // A movie needs a credit the customer doesn't have: Customize says so instead of offering one
+    get movieNeedsCredit() { const n = this.tariff?.movie ?? 1; return this.quotaKnown && n > 0 && this.quotaRemaining < n; },
     get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} credits remaining`; },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
     // The waiting drawing is shown while a new design or a refinement is being generated.
@@ -2029,6 +2047,30 @@ function p3App() {
     get waitVariant() { return this.waitBatch ? (this.waitBatch.kind === 'refine' ? 'refine' : 'design') : null; },
     get waitPreset() { return WAIT_PRESETS[this.waitVariant || 'design']; },
     get waitStatus() { const s = this.waitPreset.statuses; return s[this.waitStatusIndex % s.length]; },
+    // ── generation progress: elapsed time eases the bar towards 92 %; each ready image raises its floor; full only when done
+    get genElapsedS() {
+      const b = this.waitBatch;
+      if (!b) return 0;
+      const key = b.id || 'pending', now = this.genNow || Date.now();
+      if (!GEN_START.has(key)) {
+        const made = Date.parse(b.created_at || '');             // a reload mid-way keeps its place (a bad clock: from now)
+        GEN_START.set(key, Number.isFinite(made) && made <= now && now - made < 30 * 60 * 1000 ? made : now);
+      }
+      return Math.max(0, (now - GEN_START.get(key)) / 1000);
+    },
+    get genPercent() {
+      const b = this.waitBatch;
+      if (!b) return 0;
+      const n = b.desired_count || 4, ready = this.readyCount(b);
+      if (ready >= n) return 100;
+      const byTime = 0.92 * (1 - Math.exp(-this.genElapsedS / 14)), byImages = 0.92 * ready / n;
+      return Math.round(100 * Math.max(0.04, byTime, byImages));
+    },
+    get genLabel() {
+      const noun = this.isCharm(this.design) ? 'charm' : 'ring';          // as the waiting drawing decides
+      return (this.waitVariant === 'refine' ? 'Refining your ' : 'Creating your ') + noun + '…';
+    },
+    get genEstimateText() { return this.genElapsedS > GEN_LONG_S ? 'Taking a little longer than usual…' : `Estimated time: about ${GEN_ESTIMATE_S} seconds`; },
     get bubbleBatch() { return this.pendingBatch || this.viewBatch; },
     get viewBatchGenerating() { return this.anyActive(this.viewBatch) && this.readyCount(this.viewBatch) === 0; },
 
@@ -2359,7 +2401,9 @@ function p3App() {
       } catch (e) { this.custError = e.message; }
     },
 
-    get movieOff() { return !!this.cust && this.cust.movie_available === false; },   // the product's movie switch is OFF: the still image only
+    get movieOff() { return !!this.cust && this.cust.movie_available === false; },
+    // B5: the movie switch is on but this design option has no movie (none could be started: no credit) — still images
+    get movieNone() { return !!this.cust?.id && !this.movieOff && !this.cust.movie; },   // the product's movie switch is OFF: the still image only
     // Reduced motion (the visitor's system setting): the Customize movie waits for Play instead of starting by itself
     get reducedMotion() { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } },
     toggleMovie() {
@@ -2377,7 +2421,7 @@ function p3App() {
     // white background included. Each material now has an SVG filter that (1) maps the image's
     // luminance onto that metal's colour ramp (shadow → base swatch → highlight) and (2) applies it
     // only where the image is not near-white, so the studio background stays white.
-    metalFilter(id) { return this.material(id) ? `url(#p3-metal-${id})` : ''; },
+    metalFilter(id) { return this.material(id) ? `url(#p3-metal-${id})` : (['silver', 'stainless_steel'].includes(id) ? 'grayscale(1)' : ''); },
     get metalFilterDefs() { return P3MetalFilterDefs(this.allMaterials); },     // web/metal.js
 
     toggleGroup(groupId) {
@@ -2729,6 +2773,15 @@ function p3App() {
     get coPostalLabel() { return this.co.address.country === 'US' ? 'ZIP code' : 'Postal code'; },
     get coShipping() { return (this.checkout?.shipping_options || []).find(s => s.id === this.co.shipping_method); },
     get coCanPlace() { return !!this.coQuote?.ok && this.co.terms === true && !this.co.busy && !this.coQuote?.promo_error; },
+    // Why Place order is disabled, in the order the customer can fix it (B4/B6): exactly coCanPlace's conditions
+    get coPlaceBlockedText() {
+      if (this.co.step !== 'review' || this.co.busy || !this.coQuote || this.coCanPlace) return '';
+      if (!this.coQuote.ok) return (this.coQuote.lines || []).some(l => !l.problem) ? 'Choose a delivery option to place your order.'
+                                                                                   : 'Nothing in your bag can be ordered right now. Go back to your bag to check it.';
+      if (this.coQuote.promo_error) return 'Remove the promo code, or type another, to place your order.';
+      if (this.co.terms !== true) return 'Tick the box to accept the Terms of Service and place your order.';
+      return '';
+    },
     // A code the server declined is still attached to the quote (A3, 10 Nov 2026): the customer removes it, or types another
     get coPromoDeclined() { return !!this.co.promo_code && !!this.coQuote?.promo_error; },
     coProblem(field) { return this.co.problems[field] || ''; },

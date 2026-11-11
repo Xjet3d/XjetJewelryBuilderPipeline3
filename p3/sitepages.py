@@ -123,7 +123,8 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
     Shekels = bool(Ils and Ils.Enabled())
     Vat = f" ({Ils.VatPct(Ils.Settings()).normalize():f}%)" if Shekels else ""
     Usd = ("Prices are in US dollars, except for delivery to an address in Israel: there they are shown and charged in "
-           f"Israeli shekels and include VAT{Vat}." if Shekels else "Yes — all prices are in US dollars.")         + (f" A {Charm}; {Ring[:1].lower() + Ring[1:]}." if R and C else f" {Ring}." if R else f" A {Charm}." if C else "")
+           f"Israeli shekels and include VAT{Vat}." if Shekels else "Yes — all prices are in US dollars.")
+    Sizes = (f"{Ring}. A {Charm}." if R and C else f"{Ring}." if R else f"A {Charm}." if C else "")
     Preview = ("Yes. You choose from four designs and can refine your favorite before adding it to your bag; rings also "
                "come with a 360° movie preview." if R and C else
                "Yes. You choose from four designs, refine your favorite and preview your ring in a 360° movie before adding "
@@ -137,7 +138,10 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
                "its metal and its size is free."
                + (f" A new account starts with {Start} credit{'' if Start == 1 else 's'}." if Start else "")
                # Counsel Book A-10b, published 4 Nov 2026 with the owner's approval of 3 Nov; legal counsel's review pending
-               + " Credits are free and do not expire, but they have no cash value and cannot be bought, sold or transferred.")
+               + " Credits are free and do not expire, but they have no cash value and cannot be bought, sold or transferred."
+               # B5 (11 Nov 2026): credits pay for creating, never for ordering
+               + " If you run out of credits, you can still open, customize and order every design you’ve made"
+               + ("; a new 360° movie needs a credit, so Customize then shows the still images." if R else "."))
     return [("What jewelry can I create?", What),
             ("What metals are available?", Metals),
             ("Do I need design experience?", "None at all. Just describe what you want in plain language or upload a "
@@ -145,8 +149,20 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
             ("Can I see the design before I buy?", Preview),
             ("How do credits work?", Credits),
             ("How is the price calculated?", Price),
-            ("How long does production take?", "Design happens the same day. Production takes up to 14 days. "
-             "Shipping adds about 5 business days with Express or up to 14 with free Standard delivery."),
+            *([("How do sizes work?", Sizes)] if Sizes else []),
+            ("How do I pay?", "Nothing is charged online. After you place your order, our team reviews your design "
+             "(about 2 business days) and contacts you to arrange payment. Production starts once your payment is confirmed."),
+            ("How long does production take?", "Design happens the same day. After you order, our team reviews your design "
+             "(about 2 business days) and then contacts you to arrange payment. Production starts once your payment is "
+             "confirmed and takes up to 14 business days. Shipping then takes up to 14 business days with free Standard "
+             "delivery, or about 5 business days with Express."),
+            ("Can I cancel my order?", "You can cancel an order free of charge until we confirm it to you: reply to your "
+             "order confirmation email or contact us with your Order ID. Cancelling after that, returns and faulty pieces "
+             "are covered on the Shipping & Returns page."),
+            ("Can I add a note to my order?", "Yes. At checkout, use “Anything we should know?” to add a note for our "
+             "team about your order."),
+            *([("Does a charm come with a chain or bracelet?", "No. A charm is sold on its own, without a chain or "
+                "bracelet.")] if C else []),
             ("Are prices in USD?", Usd),
             ("What is NanoParticle Jetting™?", "It is XJet's proprietary metal printing technology. It jets ultra-fine "
              "metal nanoparticles at 8-micron layer precision — enabling finer detail and more complex shapes than "
@@ -192,7 +208,7 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                         "metal and make it yours — or use it as the spark for your own."),
         "faq": ("FAQ — Designing Custom Jewelry with AI · XJet Atelier",
                 f"Answers about designing {W['text']} with AI at XJet Atelier: what you can create, the metals, how "
-                "prices work, production in up to 14 days and delivery."),
+                "prices work, payment, production and delivery."),
         "technology": ("NanoParticle Jetting™ — How XJet Prints in Metal · XJet Atelier",
                        "XJet's NanoParticle Jetting™ prints metal from a liquid ink in layers of about 8 microns, with "
                        f"soluble support for fine detail and complex shapes — the technology behind every XJet Atelier {W['noun']}."),
@@ -200,7 +216,8 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "XJet Atelier is the jewelry service of XJet Ltd., developer of NanoParticle Jetting™ — "
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
-                             "Production takes up to 14 days. Standard delivery is free (up to 14 business days), "
+                             "Production takes up to 14 business days after payment is confirmed. Standard delivery "
+                             "is free (up to 14 business days), "
                              "Express is $45 (about 5). Taxes and duties, cancelling, returns and the warranty."),
         "terms": ("Terms of Service · XJet Atelier",
                   "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: your "

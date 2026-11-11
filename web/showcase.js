@@ -237,13 +237,13 @@
                 put(X.chip, { x: (L.W - cw) / 2, y: L.hero.y + L.hero.h + 0.035 * L.H, w: cw }, ramp(t, s3 + 900, s3 + 1100) * (1 - ramp(t, s4, s4 + 220)));
             } else put(X.chip, { x: 0, y: 0 }, 0);
 
-            // the metals: Silver, then Yellow Gold — one still, the same angle and scale
+            // the metals: Yellow Gold (preview only), then Silver — one still, the same angle and scale
             const goldOn = t >= s5 + D.goldAt + 275;
             chips.forEach((c, i) => c.classList.toggle('sc-on', i === (goldOn ? 1 : 0)));
             put(X.metals, { x: (L.W - X.metals.offsetWidth) / 2, y: L.hero.y + L.hero.h + 0.035 * L.H },
                 ramp(t, s5 + 100, s5 + 400) * (1 - ramp(t, s6, s6 + 250)));
 
-            // the final frame: the gold ring, large, with its name and one line — nothing else
+            // the final frame: the ring in Sterling Silver, large, with its name and one line — nothing else
             const fin = E(t, s6 + 350, s6 + 950), outro = 1 - ramp(t, END - 450, END);
             put(X.name, { x: 0, y: L.final.y + L.final.h + 0.04 * L.H + (1 - fin) * 10, w: L.W }, t >= s6 ? fin * outro : 0);
 
@@ -288,10 +288,11 @@
             X.orig.alt = S.title ? S.title + ' — designed with XJet Atelier' : '';   // the refined and metal layers repeat it
             if (finalFirst) { X.silver.fetchPriority = 'high'; X.gold.fetchPriority = 'high'; }   // the picture shown first
             set(X.silver, S.still_url); set(X.gold, S.still_url);
-            // the render's own metal is shown untouched; only the other metal is a filter
+            // the render's own metal is shown untouched; only the other metal is a filter. B1 (11 Nov 2026): the first layer
+            // shows Gold (preview only), the second — on top, the last frame — Sterling Silver, an orderable metal
             const goldFilter = X.defs.querySelector('#sc-gold') ? 'url(#sc-gold)' : '';
-            X.silver.style.filter = S.tone === 'gold' ? 'url(#sc-silver)' : '';
-            X.gold.style.filter = S.tone === 'gold' ? '' : goldFilter;
+            X.silver.style.filter = S.tone === 'gold' ? '' : goldFilter;
+            X.gold.style.filter = S.tone === 'gold' ? 'url(#sc-silver)' : '';
             const v = X.video;
             v.muted = true; v.defaultMuted = true; v.loop = false; v.playsInline = true;
             v.onloadedmetadata = () => { VOFF = Math.max(0, (v.duration || VCOVER) - VCOVER - 0.03); try { v.currentTime = VOFF; } catch (_) {} };
@@ -301,11 +302,11 @@
             const playable = !v.canPlayType || v.canPlayType('video/mp4; codecs="avc1.64001F"') !== '';
             v.onerror = () => { if (!fellBack && playable && !sm && S.movie_url) { fellBack = true; v.src = S.movie_url; v.load(); } };
             if (playable) v.src = S.clip_url ? S.clip_url.replace('w=720', sm ? 'w=480' : 'w=720') : S.movie_url;
-            const shown = [['Sterling Silver', (S.metals || []).find(m => m.id === 'silver')], ['18K Yellow Gold', (S.metals || []).find(m => m.id === 'gold_18k_yellow')]].filter(x => x[1]);
+            const shown = [['18K Yellow Gold · preview only', (S.metals || []).find(m => m.id === 'gold_18k_yellow')], ['Sterling Silver', (S.metals || []).find(m => m.id === 'silver')]].filter(x => x[1]);
             X.metals.innerHTML = '';
             chips = shown.map(([label, m]) => { const c = document.createElement('span'); c.className = 'sc-metal'; c.innerHTML = `<i style="background:${m.swatch}"></i>`; c.append(label); X.metals.appendChild(c); return c; });
             X.title.textContent = S.title;
-            stage.setAttribute('aria-label', `${S.title}, designed with XJet Atelier: an idea, four possibilities, one chosen and refined, seen from every angle and in Sterling Silver and Yellow Gold`);
+            stage.setAttribute('aria-label', `${S.title}, designed with XJet Atelier: an idea, four possibilities, one chosen and refined, seen from every angle, previewed in Yellow Gold and shown in Sterling Silver`);
         }
         function preload() {
             const imgs = finalFirst ? [X.silver, X.gold] : [...X.opts.map(o => o.querySelector('img')), X.orig, X.ref];

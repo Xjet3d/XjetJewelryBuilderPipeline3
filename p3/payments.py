@@ -31,8 +31,8 @@ class PaymentProvider(Protocol):
 class NoPaymentProvider:
     Name = "none"
     Available = False
-    Message = ("Online payment is not available yet. Your order has been received and reserved; "
-               "we will contact you to arrange payment.")
+    Message = ("No payment is taken online. Your order has been received and reserved; after our review (about 2 "
+               "business days) we contact you to arrange payment. Production starts once your payment is confirmed.")
 
     def Begin(self, Order: dict) -> dict:
         return {"status": "pending", "ref": None, "client": None, "message": self.Message}
