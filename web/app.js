@@ -636,7 +636,7 @@ function p3App() {
     // where it is from, and the metal it is previewed in
     galleryAlt(g, metal = '') {
       return `${g.title} — custom ${g.product_type === 'charm' ? 'charm' : 'ring'} design from the XJet Atelier Inspiration Gallery`
-        + (metal ? `, shown in ${this.galleryMetalLabel(metal)}${metal === 'gold_18k_yellow' ? ' (preview only, not available to order)' : ''}` : '');
+        + (metal ? `, shown in ${this.galleryMetalLabel(metal)}${metal === 'gold_18k_yellow' ? this.goldNote(g) : ''}` : '');
     },
     // A design of a product switched OFF (the owner's policy, 2026-10-15): viewable, read-only — no Make it yours,
     // refining, Customize or ordering, whichever way it was opened; the server refuses them too (design_unavailable)
@@ -682,6 +682,11 @@ function p3App() {
     // the master design, the customer's own material and every price stay as they are. Gold is the 18K yellow look,
     // shown as "Gold": it is not a choice of karat.
     galleryMetalLabel(id) { return id === 'gold_18k_yellow' ? 'Gold' : this.metalLabel(id); },
+    // B1: what gold is for this design's product right now — never shown as orderable when it is not
+    goldNote(g) {
+      const s = (g?.product_type || 'ring') === 'charm' ? this.charmMaterial('gold_18k_yellow')?.group : this.groupOfMaterial('gold_18k_yellow');
+      return s === 'preview' ? ' — preview only, not available to order' : s === 'luxury' ? ' — available by request' : '';
+    },
     metalSwatch(id) { return this.material(id)?.swatch || '#d4d4d8'; },
     // the metal a card shows: the visitor's pick, else Sterling Silver ('' = the original image, picked by clicking the shown swatch)
     cardMetalOf(g) { return g && g.id in this.cardMetal ? this.cardMetal[g.id] : this.galleryDefaultMetal; },

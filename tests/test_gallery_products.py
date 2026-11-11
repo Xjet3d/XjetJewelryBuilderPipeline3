@@ -61,15 +61,17 @@ async def test_every_gallery_card_says_ring_or_charm_and_has_three_metal_swatche
         assert "productLabel(g.product_type || 'ring')" in Card and "productIcon(g.product_type || 'ring'" in Card
         assert "isCharm(g)" not in Card
         # Three swatches in this order, named for screen readers and on hover, with no visible text
-        assert re.findall(r'aria-label="Preview in ([^"]+)"', Card) == [L for _, L in Metals]
-        assert re.findall(r'title="Preview in ([^"]+)"', Card) == [L for _, L in Metals]
+        # gold's name says what gold is for the design's product right now (B1, 11 Nov 2026: preview only / by request)
+        assert re.findall(r' aria-label="Preview in ([^"]+)"', Card) == [L for _, L in Metals[:2]]
+        assert re.findall(r' title="Preview in ([^"]+)"', Card) == [L for _, L in Metals[:2]]
+        assert ":aria-label=\"'Preview in Gold' + goldNote(g)\"" in Card and ":title=\"'Preview in Gold' + goldNote(g)\"" in Card
         assert re.findall(r"pickCardMetal\(g, '([a-z0-9_]+)'\)", Card) == [I for I, _ in Metals]
-        assert "metalFilter(cardMetal[g.id])" in Card              # the card image takes the chosen metal's filter
+        assert "metalFilter(cardMetalOf(g))" in Card               # the card image takes the chosen metal's filter (silver by default)
         assert "<template" not in Card.split(">", 1)[1]            # no template nested in a card (Alpine 3.13 cleanup)
     # The View lightbox: the same badge and the same three swatches, plus Original
     Box = Page[Page.index('<template x-if="galleryItem">'):Page.index('<template x-if="previewOpen">')]
     assert Box.count('class="product-badge') == 1 and "productLabel(galleryItem.product_type || 'ring')" in Box
-    assert re.findall(r'aria-label="Preview in ([^"]+)"', Box) == [L for _, L in Metals]
+    assert re.findall(r' aria-label="Preview in ([^"]+)"', Box) == [L for _, L in Metals[:2]] and "goldNote(galleryItem)" in Box
     assert re.findall(r"setGalleryMetal\('([a-z0-9_]*)'\)", Box) == ["", *[I for I, _ in Metals]]
     assert "metalFilter(galleryMetal)" in Box and "<template" not in Box.split(">", 1)[1]
     # The design review (2026-10-20): each swatch a 44 × 44 button holding its dot (16 px; 40 × 44 and 14 px on a narrow
@@ -102,8 +104,8 @@ async def test_the_metal_preview_is_visual_only(HG):
     for Call in ("api(", "fetch(", "sendBeacon", "material_id", "Customiz", "quote"):
         assert Call not in Helpers, Call
     Lines = [L for L in App.splitlines() if "cardMetal" in L or re.search(r"galleryMetal\b", L)]
-    assert len(Lines) == 6 and not any("api(" in L or "fetch(" in L for L in Lines)
-    assert "this.galleryMetal = this.cardMetal[g.id] || ''" in App                  # View opens in the card's metal
+    assert len(Lines) == 7 and not any("api(" in L or "fetch(" in L for L in Lines)     # 11 Nov: + cardMetalOf (B1)
+    assert "this.galleryMetal = this.cardMetalOf(g);" in App                       # View opens in the card's metal
     assert "galleryMetalLabel(id) { return id === 'gold_18k_yellow' ? 'Gold' :" in App
     # Make it yours sends nothing but its request id: the preview metal never reaches the new design
     assert "this.api('POST', `/api/gallery/${encodeURIComponent(id)}/start`, { client_request_id: newRequestId() })" in App

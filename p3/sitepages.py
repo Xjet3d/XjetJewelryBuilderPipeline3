@@ -216,8 +216,8 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "XJet Atelier is the jewelry service of XJet Ltd., developer of NanoParticle Jetting™ — "
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
-                             "Production takes up to 14 business days after payment is confirmed. Standard delivery "
-                             "is free (up to 14 business days), "
+                             "Production up to 14 business days after payment. Standard delivery is free (up to 14 "
+                             "business days), "
                              "Express is $45 (about 5). Taxes and duties, cancelling, returns and the warranty."),
         "terms": ("Terms of Service · XJet Atelier",
                   "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: your "

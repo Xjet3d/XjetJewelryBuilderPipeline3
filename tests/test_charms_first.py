@@ -41,7 +41,7 @@ async def test_charms_come_first_and_a_design_that_names_no_product_is_a_charm(t
         Faq = (await H.Client.get("/faq")).text
         assert "Charms and Rings: choose one when you start a design." in Faq
         assert "A charm is priced by material and size. A ring is priced by material — its size does not change the price." in Faq
-        assert "A charm size is its total height in millimeters, including the loop at the top; ring sizes are US sizes" in Faq
+        assert "How do sizes work?" in Faq and "A charm size is its total height in millimeters, including the loop at the top." in Faq   # B8 (11 Nov 2026)
         assert "a charm is priced by material and size; a ring’s price does not depend on its size." in (await H.Client.get("/materials")).text
         assert "A charm size is its total height in millimeters" in (await H.Client.get("/contact")).text.split("Not sure about your ring size?")[0]
         # Rings alone: the ring-only site of before, a ring by default

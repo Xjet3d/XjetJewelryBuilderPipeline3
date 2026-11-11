@@ -265,7 +265,7 @@ async def test_structured_data_says_only_what_is_true(tmp_path):
         assert Home[0]["contactPoint"]["email"] == "help@example.com" and Home[1]["url"] == "https://atelier.example.com/"
         Faq = (await H.Client.get("/faq")).text
         [Data] = _JsonLd(Faq)
-        assert Data["@type"] == "FAQPage" and len(Data["mainEntity"]) == 11      # 2026-10-26: How do credits work? (R-15)
+        assert Data["@type"] == "FAQPage" and len(Data["mainEntity"]) == 15      # 2026-10-26: How do credits work? (R-15); 11 Nov: sizes, pay, cancel, notes (B8)
         Live = _Live(Faq, "faq")
         for Q in Data["mainEntity"]:                                    # exactly what the page shows
             assert html.escape(Q["name"], quote=True) in Live and html.escape(Q["acceptedAnswer"]["text"], quote=True) in Live
@@ -414,7 +414,7 @@ async def test_four_gallery_designs_close_about_materials_technology_and_faq(tmp
         for Other in ("/", "/gallery", "/contact"):
             assert SitePages.PageDesignsAnchor not in _Live((await H.Client.get(Other)).text, {"/": "home", "/gallery": "inspiration", "/contact": "contact"}[Other])
         # alt text: what the picture is, everywhere a gallery design is shown, and on its own page
-        assert Page.count(':alt="galleryAlt(g, cardMetal[g.id])"') == 3 and ':alt="galleryAlt(galleryItem, galleryMetal)"' in Page
+        assert Page.count(':alt="galleryAlt(g, cardMetalOf(g))"') == 3 and ':alt="galleryAlt(galleryItem, galleryMetal)"' in Page
         assert "design from the XJet Atelier Inspiration Gallery`" in Js
         Design = (await H.Client.get(f"/gallery/{Order[0]}")).text
         assert re.search(r'alt="[^"]+ — custom ring design from the XJet Atelier Inspiration Gallery"', Design)

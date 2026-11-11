@@ -74,7 +74,7 @@ def test_pictures_are_fetched_at_the_size_they_are_drawn():
     assert "42vw" not in Index and "25vw, 50vw" not in Index
     assert Index.count('sizes="(min-width: 1280px) 230px, (min-width: 768px) 21vw, 36vw"') == 4
     assert Index.count('(min-width:768px) 27vw, 36vw"') == 2 and Index.count('(min-width:768px) 26vw, 36vw"') == 1
-    assert ':srcset="srcsetFor(heroRing.image_url)" sizes="(min-width: 768px) 240px, 60vw"' in Index   # Materials' card
+    assert ':srcset="srcsetFor(materialsHero.image_url)" sizes="(min-width: 768px) 240px, 60vw"' in Index   # Materials' card
     # the two small Technology pictures at twice their 96 px box; the heading as every other page's
     for Name, Size in (("Ink-192.jpg", (192, 192)), ("Angel-192.jpg", (121, 192))):
         assert Image.open(Web / "images" / Name).size == Size, Name

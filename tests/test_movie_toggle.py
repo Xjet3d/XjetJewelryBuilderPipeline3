@@ -66,6 +66,6 @@ async def test_the_movie_switch_hides_and_stops_movies_per_product(tmp_path):
         assert (await H.Client.put("/api/admin/products/movie", json={"product": "hat", "on": True}, headers=Admin)).status_code == 400
         # The customer page shows the still image alone while the switch is off
         Page = (await H.Client.get("/")).text
-        assert 'x-show="!movieOff"' in Page and "movieOff || mediaTab === 'image'" in Page
+        assert 'x-show="!movieOff && !movieNone"' in Page and "movieOff || movieNone || mediaTab === 'image'" in Page
     finally:
         await H.Close()

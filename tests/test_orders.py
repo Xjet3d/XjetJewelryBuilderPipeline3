@@ -92,7 +92,7 @@ async def test_place_order_snapshots_everything_clears_the_bag_and_emails(HO):
     assert R.status_code == 200, R.text
     O = R.json()
     assert O["ref"] == "ORD-10001" and O["status"] == "new" and O["status_label"] == "New"
-    assert O["payment_status"] == "pending" and O["payment_provider"] is None and "not available yet" in O["payment_message"]
+    assert O["payment_status"] == "pending" and O["payment_provider"] is None and "No payment is taken online" in O["payment_message"]
     assert O["count"] == 3 and len(O["lines"]) == 2
     L1, L2 = O["lines"]
     assert (L1["title"], L1["ring_id"], L1["material_label"], L1["ring_size"], L1["quantity"]) == (L1["title"], "R-1001-A", "Sterling Silver", 7, 2)
