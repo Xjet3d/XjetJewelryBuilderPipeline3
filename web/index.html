@@ -1482,10 +1482,8 @@
                                             <h2 class="brand-font mt-6 sm:mt-7 text-[24px] sm:text-[30px] font-medium leading-tight" style="color:#2A2A2A;" x-text="waitPreset.title"></h2>
                                             <p class="mt-2.5 max-w-[500px] text-[15px] sm:text-[16px] leading-relaxed" style="color:#6F6F6F;" x-text="waitPreset.message"></p>
                                             <!-- Progress (11 Nov 2026): an estimate, never a countdown, and never full before the designs are ready -->
-                                            <div class="mt-6 w-full max-w-[380px] px-2">
-                                                <div class="flex items-baseline justify-between gap-3 text-[14px] font-medium" style="color:#5A4A2A;">
-                                                    <span x-text="genLabel"></span>
-                                                </div>
+                                            <div class="mt-6 w-full px-2" style="max-width:400px;">
+                                                <p class="text-[14px] font-medium" style="color:#5A4A2A;" x-text="genLabel"></p>
                                                 <div class="gen-track mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="genPercent"
                                                      :aria-valuetext="genLabel + ' ' + genEstimateText" :aria-label="genLabel">
                                                     <div class="gen-fill" :style="'width:' + genPercent + '%'"></div>

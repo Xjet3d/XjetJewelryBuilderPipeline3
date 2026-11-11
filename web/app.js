@@ -131,7 +131,8 @@ const MATERIAL_INFO = {
 // Waiting-screen copy from Pipeline 2 (app-p2.js showLoading presets 'design' / 'refine').
 // Image generation, measured on proto (11 Nov 2026): a request's four images take a median 24–27 s (rings and charms,
 // designs and refinements); three in four within ~35 s. The bar says "about 25 seconds" and admits a delay after 45 s.
-const GEN_ESTIMATE_S = 25, GEN_LONG_S = 45, GEN_START = new Map();      // GEN_START: each batch's first sight (not reactive)
+// GEN_START: when each batch was first seen (by id; a request not answered yet, by its own object) — not reactive
+const GEN_ESTIMATE_S = 25, GEN_LONG_S = 45, GEN_START = new Map(), GEN_START_PENDING = new WeakMap();
 const WAIT_PRESETS = {
   design: {
     title: 'Your jewelry is coming to life',
@@ -2051,12 +2052,13 @@ function p3App() {
     get genElapsedS() {
       const b = this.waitBatch;
       if (!b) return 0;
-      const key = b.id || 'pending', now = this.genNow || Date.now();
-      if (!GEN_START.has(key)) {
+      void this.genNow;                                          // re-read every half second while the bar shows
+      const now = Date.now(), store = b.id ? GEN_START : GEN_START_PENDING, key = b.id || b;
+      if (!store.has(key)) {
         const made = Date.parse(b.created_at || '');             // a reload mid-way keeps its place (a bad clock: from now)
-        GEN_START.set(key, Number.isFinite(made) && made <= now && now - made < 30 * 60 * 1000 ? made : now);
+        store.set(key, Number.isFinite(made) && made <= now && now - made < 30 * 60 * 1000 ? made : now);
       }
-      return Math.max(0, (now - GEN_START.get(key)) / 1000);
+      return Math.max(0, (now - store.get(key)) / 1000);
     },
     get genPercent() {
       const b = this.waitBatch;
