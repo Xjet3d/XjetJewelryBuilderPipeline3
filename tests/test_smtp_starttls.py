@@ -26,7 +26,7 @@ def Fake(Calls, StartTlsError=None):
             if StartTlsError:
                 raise StartTlsError
 
-        def send_message(self, Msg):
+        def send_message(self, Msg, from_addr=None):
             Calls.append(("send", Msg["To"]))
             return {}
     return FakeSmtp

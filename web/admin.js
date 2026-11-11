@@ -251,6 +251,7 @@ function adminApp() {
     scCap: '', scBusy: false, scMsg: '', scErr: false,                                     // … and the hard cap beside it
     clientIp: null,                              // the caller's address as the rate limits see it
     mailAddresses: null,                         // where customer mail goes on this site (read-only)
+    mailDeliveries: null,                        // the recent emails and what the relay answered (A1, 11 Nov 2026)
     falKey: null, falKeyInput: '', falKeyBusy: false, falKeyMsg: '', falKeyErr: false,
     stageOptions: [['started', 'Started'], ['generated', 'Generated'], ['selected', 'Selected'], ['customize', 'Customize'], ['bag', 'Bag'], ['checkout_clicked', 'Checkout'], ['order', 'Order']],
     chartKinds: [
@@ -426,6 +427,7 @@ function adminApp() {
           this.scCap = this.spendWarning?.own_cap_usd ?? '';
           this.clientIp = await this.api('GET', '/api/admin/client-ip').catch(() => null);
           this.mailAddresses = await this.api('GET', '/api/admin/mail-addresses').catch(() => null);
+          this.mailDeliveries = await this.api('GET', '/api/admin/mail-deliveries?limit=30').catch(() => null);
         }
       }
     },

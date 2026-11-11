@@ -258,7 +258,7 @@ def test_the_smtp_mailer_tells_a_failure_before_acceptance_from_an_unknown_outco
         def __exit__(self, *A):
             return False
 
-        def send_message(self, Msg):
+        def send_message(self, Msg, from_addr=None):
             if Calls.get("fail") == "send":
                 raise smtplib.SMTPServerDisconnected("connection lost")
             return Calls.get("refused", {})
