@@ -1158,7 +1158,7 @@
         </main>
     </template>
 
-    <!-- ── Legal & support pages (P2 plain-language drafts, pending legal review) ── -->
+    <!-- ── Legal & support pages ── -->
     <template x-if="['terms','privacy','shipping-returns','contact','warranty','accessibility'].includes(view)">
         <main class="flex-1 overflow-y-auto fade-in bg-white flex flex-col">
             <div class="flex-1 p-8 md:p-24">
@@ -1167,9 +1167,7 @@
 
                 <template x-if="view === 'shipping-returns'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <!-- Counsel Book Appendix A-3 (S1–S4, T4, N2–N4, N8, N9), published 4 Nov 2026 with the owner's approval of 3 Nov; legal
-                             counsel's review pending (Legal Review PDF). The owner chose the 14-day cancellation of an unchanged
-                             gallery design (Q2); no fixed reply or remedy periods beyond those already live -->
+                        <!-- Shipping & Returns -->
                         <h1 class="text-4xl brand-font text-zinc-900">Shipping &amp; Returns</h1>
                         <p class="text-[14px] text-zinc-500">Last updated: 4 November 2026</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Timeline</h2>
@@ -1187,7 +1185,7 @@
                         <h2 class="text-lg font-semibold text-zinc-900">Personalised pieces</h2>
                         <p>A piece made from a design you created or changed in Atelier — from your own description or image, or by changing a gallery design — is printed to order to your specification and cannot be resold. Once we have confirmed the order, it is not returnable for a change of mind, and, where the law allows, the right to cancel a purchase made at a distance does not apply to it.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Gallery designs ordered unchanged</h2>
-                        <!-- The owner's choice (Counsel Book Q2, 3 Nov 2026): the right to cancel applies -->
+                        <!-- Gallery designs ordered unchanged -->
                         <p>If you order a gallery design without changing it, you can cancel within 14 days of receiving it (in Israel: within 14 days of receiving it or the order confirmation with this information, whichever is later). To cancel, write to <a :href="mailto('Cancel my order')" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'us through the Contact page'">us through the Contact page</a>; we confirm we received it by email. Send the piece back unworn within 14 days after telling us; you pay the cost of returning it. We refund the price and the standard delivery cost within 14 days of receiving the piece back, to the way you paid (in Israel, less a cancellation fee of 5% of the price or ₪100, whichever is lower, where the law allows).</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Israeli customers: extended period</h2>
                         <p>If you live in Israel and are a person with a disability, a senior citizen (65 or older) or a new immigrant, and your order included a conversation with our team, you may cancel within four months instead of 14 days, where Israeli law gives you that right. We may ask you to show your status.</p>
@@ -1202,10 +1200,7 @@
 
                 <template x-if="view === 'terms'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <!-- Counsel Book Appendix A-1 — the whole Terms of Service (live text + T1–T12, A1, N7, N8, N9, N21), published
-                             3 Nov 2026 with the owner's approval; legal counsel's review pending (Legal Review PDF). N1's
-                             per-design gallery permission is not here: nothing asks for or records it yet. The changed text
-                             becomes the Terms' next version (p3/accounts/consent.py), as for any wording change -->
+                        <!-- Terms of Service -->
                         <h1 class="text-4xl brand-font text-zinc-900">Terms of Service</h1>
                         <p class="text-[14px] text-zinc-500">Last updated: 4 November 2026</p>
                         <h2 class="text-lg font-semibold text-zinc-900">1. Who we are and these terms</h2>
@@ -1222,10 +1217,7 @@
                         <p>Use only faces, names, logos, trademarks, club crests, characters and artwork you have the right to use. You may use your own face, or another person’s face with their permission. We make a design with a public figure’s likeness only if you state that you have the commercial permission to use it; we do not ask for proof, and you are responsible for that statement. Logos, brands, club crests and characters are not blocked when you make a request, so the responsibility for using them is yours. We do not make designs with sexual, hateful or violent content, intimate images of any person, or any sexual content involving minors. Requests are checked automatically before designs are made, and our AI providers apply their own safety rules: when a provider declines a design, we do not try to get around its decision. We may decline to make or produce a design we believe infringes someone else’s rights; if we decline after you have ordered, you pay nothing for it.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">6. Your photos and personal information</h2>
                         <p>We never show the photos you upload in the gallery or use them to promote Atelier. We do not display, promote or make for anyone else a design that shows an identifiable person or carries personal details such as a name, initials or a date, unless you allow it.</p>
-                        <!-- Your designs: the first paragraph is the owner's business-approved wording live since 29 Oct 2026 (T11),
-                             the same sentence beside every Terms acceptance (p3/sitepages.py DesignUseAcceptance); the second is
-                             N7 with the owner's Option A (3 Nov 2026). AI-03's per-design permission (Counsel Book A-7) waits for
-                             its consent mechanism (docs/LEGAL-DRAFT-N1-GALLERY-PERMISSION.md) -->
+                        <!-- Your designs (the first sentence is the same beside every Terms acceptance: p3/sitepages.py DesignUseAcceptance) -->
                         <h2 class="text-lg font-semibold text-zinc-900">7. Your designs</h2>
                         <p>XJet may display and promote the designs you create in Atelier, including in our public gallery, and may manufacture and sell jewelry based on them to other customers, without paying you royalties unless we agree otherwise in writing. To allow this, you grant XJet Ltd. a worldwide, non-exclusive, royalty-free license to reproduce, adapt, display and promote those designs and to manufacture and sell jewelry based on them. What you upload remains yours, and the protections in Your photos and personal information above still apply: we ask your separate permission before we publicly use an identifiable photograph, a person's likeness or personal information. The license covers only the rights you hold; other people's intellectual property stays theirs.</p>
                         <p>The law in many countries does not give anyone copyright in images made by AI, so we do not promise that a design is protected or exclusive. To the extent any rights exist in a design you create, they belong to you, subject to the license above.</p>
@@ -1255,10 +1247,7 @@
 
                 <template x-if="view === 'privacy'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <!-- Counsel Book Appendix A-2 — the Privacy Policy improved, not rewritten (PRV-01: live text + P1, P3–P10, N17,
-                             N19, N20), published 4 Nov 2026 with the owner's approval of 3 Nov; legal counsel's review pending. No
-                             endpoints, keys, model names or infrastructure; no fixed retention periods until they are verified
-                             (owner). The cookie section is the live text plus the currency choice (B6) -->
+                        <!-- Privacy Policy -->
                         <h1 class="text-4xl brand-font text-zinc-900">Privacy Policy</h1>
                         <p class="text-[14px] text-zinc-500">Last updated: 4 November 2026</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Who is responsible</h2>
@@ -1360,8 +1349,7 @@
 
                 <template x-if="view === 'warranty'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <!-- Counsel Book Appendix A-8 (CON-06, S4, T7, N22), published 4 Nov 2026 with the owner's approval of 3 Nov; legal
-                             counsel's review pending (US wording: Q40; gold-layer cover: Q41) -->
+                        <!-- Warranty -->
                         <h1 class="text-4xl brand-font text-zinc-900">XJet Atelier 2-Year Limited Warranty</h1>
                         <p class="text-[14px] text-zinc-500">Last updated: 4 November 2026</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Who gives it</h2>
@@ -1381,8 +1369,7 @@
 
                 <template x-if="view === 'accessibility'">
                     <div class="space-y-6 text-[16px] leading-relaxed text-zinc-700">
-                        <!-- Counsel Book Appendix A-9 (ACC-01, N12), published 4 Nov 2026 with the owner's approval of 3 Nov; legal counsel's review
-                             pending. What was done: only what was verified (axe on 12 pages, 3 Nov; R-24; U7; ACC-07) -->
+                        <!-- Accessibility statement -->
                         <h1 class="text-4xl brand-font text-zinc-900">Accessibility at XJet Atelier</h1>
                         <p class="text-[14px] text-zinc-500">Last reviewed: 4 November 2026</p>
                         <p>We want everyone to be able to design and order jewelry with XJet Atelier, including people who use assistive technology.</p>
@@ -2385,9 +2372,7 @@
                             </template>
                             <template x-if="checkout?.payment?.available"><p class="text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
                         </div>
-                        <!-- Counsel Book Appendix A-4 — the seller and pre-order summary (CHK-1), the Terms box (CHK-2), the short privacy
-                             notice (CHK-4) and the age statement (CHK-6), published 4 Nov 2026 with the owner's approval of 3 Nov;
-                             legal counsel's review pending. Text only: the order, its total and the Terms acceptance work as before -->
+                        <!-- Before you order: the seller and pre-order summary, the Terms box, the privacy notice and the age statement -->
                         <div class="rounded-xl p-5 text-[13px] text-zinc-700 leading-relaxed space-y-1" style="border:1px solid #E4E4E7;" data-testid="pre-order-summary">
                             <p class="flbl">Before you order</p>
                             <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233 · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
@@ -2969,9 +2954,7 @@
                             <p id="rg-hint" class="text-[13px] text-zinc-500 mt-1.5">At least 10 characters. A password manager can create one for you.</p>
                         </div>
                         <label class="inline-flex items-center gap-2 text-[13px] text-zinc-600 mb-5"><input type="checkbox" x-model="sec.showPw" class="w-4 h-4"> Show password</label>
-                        <!-- The Terms, accepted with an email sign-up and recorded when its emailed link makes the account (the owner's
-                             decisions of 28-29 Oct 2026: business-approved, not yet reviewed by legal counsel, Legal Review Pack T10;
-                             the commercial use of designs under each Terms box: T11) -->
+                        <!-- The Terms, accepted with an email sign-up and recorded when its emailed link makes the account -->
                         <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-5 leading-relaxed">
                             <input id="rg-terms" type="checkbox" x-model="regForm.acceptTerms" class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                             <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
@@ -3065,7 +3048,7 @@
                         <input id="reg-email" x-model="regForm.email" type="email" required :disabled="regLoading" autocomplete="email" inputmode="email"
                                placeholder="you@example.com" class="fld" :class="regLoading ? 'opacity-50' : ''">
                     </div>
-                    <!-- The same Terms acceptance as Create an account (owner's decision, 28 Oct 2026; not yet reviewed by counsel) -->
+                    <!-- The same Terms acceptance as Create an account -->
                     <label class="flex items-start gap-3 text-[14px] text-zinc-700 cursor-pointer mb-6 leading-relaxed">
                         <input id="reg-terms" type="checkbox" x-model="regForm.acceptTerms" required class="mt-0.5 w-5 h-5 shrink-0" style="accent-color:#8A561B;" aria-required="true">
                         <span>I accept the <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms of Service</a> and confirm that I have read the <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a>.</span>
@@ -3129,9 +3112,9 @@
         </div>
     </template>
 
-    <!-- ── The Terms, accepted before an account is used (2026-10-29): a new Google / Apple customer after identification —
-         the account is made when they accept — or an account XJet made, at its first sign-in. The server refuses designs,
-         credits and orders until then (403 terms_required). Business-approved wording, not yet reviewed by legal counsel. ── -->
+    <!-- ── The Terms, accepted before an account is used: a new Google / Apple customer after identification — the account is
+         made when they accept — or an account XJet made, at its first sign-in. The server refuses designs, credits and
+         orders until then (403 terms_required). ── -->
     <template x-teleport="body">
         <div x-show="termsGate.open" x-cloak class="fixed inset-0 z-[210] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75);">
             <div id="terms-dialog" class="bg-white w-full max-w-md p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true"
@@ -3219,7 +3202,7 @@
                             <button @click="sendQuoteRequest()" :disabled="quoteReq.busy" class="btn-gold flex-1 py-3" x-text="quoteReq.busy ? 'Sending…' : 'Send request'"></button>
                         </div>
                         <p class="text-[14px] text-zinc-600 text-center leading-snug" x-text="'We confirm your request right away, review it within one business day and aim to email your quote' + (quoteReq.customer.email ? ' to ' + quoteReq.customer.email : '') + ' within three business days. Nothing is ordered or charged.'"></p>
-                        <!-- Counsel Book A-4 CHK-5, PRV-03: published 4 Nov 2026 with the owner's approval of 3 Nov; legal counsel's review pending -->
+                        <!-- The quote form's privacy notice -->
                         <p class="text-[13px] text-zinc-500 text-center leading-snug">XJet Ltd. uses these details to prepare and send your quote and to contact you about it. See our <a href="{{BASE}}/privacy" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Privacy Policy</a> for how long we keep them and your rights.</p>
                     </div>
                 </template>
