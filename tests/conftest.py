@@ -43,7 +43,11 @@ class Harness:
                                         headers={"X-Access-Token": self.Token})
 
     async def Idle(self):
-        await self.Ctx.Runner.WaitIdle(10)
+        # A safety net, not a pace: it returns as soon as the tasks finish. 60 s, because one wait can cover real
+        # geometry work — each job is its own Python process, and measuring an oval bore takes 5–7 s on a Windows
+        # laptop, so a 3D result's measure + preview + integrity came to 7.5–8.5 s and failed at the old 10 s
+        # whenever the machine was a little busier (tests/test_stl_fix_reuse.py, 11 Nov 2026).
+        await self.Ctx.Runner.WaitIdle(60)
 
     async def Close(self):
         await self.Ctx.Runner.Shutdown()

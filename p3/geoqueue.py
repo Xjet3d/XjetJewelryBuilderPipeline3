@@ -9,6 +9,7 @@ preview 30 · render 40 (an external design's picture) · integrity 90 (backgrou
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -157,6 +158,15 @@ class GeometryQueue:
                 Proc.kill()
                 await Proc.wait()
                 raise RuntimeError(f"took longer than {JobTimeoutS // 60} minutes and was stopped")
+            except asyncio.CancelledError:
+                # The server is stopping (Runner.Shutdown; a test's harness closing): the job is queued again on the
+                # next start (Reconcile), so its worker stops with it — not left running unseen, using a core and
+                # memory and writing a result nobody reads
+                if Proc.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        Proc.kill()
+                    await Proc.wait()
+                raise
             Doc = json.loads(ResultPath.read_text(encoding="utf-8")) if ResultPath.is_file() else {"ok": False}
             if Proc.returncode == 3 or Doc.get("error") == "memory" or Proc.returncode in (-9, 137):
                 raise MemoryError
