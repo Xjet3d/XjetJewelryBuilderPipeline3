@@ -231,11 +231,13 @@ def _Made(Order: dict) -> str:
     return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — production takes up to 14 business days after your payment is confirmed."
 
 
-def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") -> tuple[str, str]:
+def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "", Site: str = "") -> tuple[str, str]:
     """Order received: what (with a picture of each piece), where, totals, payment status, the three next steps of the
-    confirmation page and a View Your Order button to My Account, where the customer signs in — the link carries no
-    order data (R-43). Origin: the public site (scheme and host) the pictures come from; without it they are left out.
-    Every customer value is escaped; nothing about production cost or 3D pricing is ever in it."""
+    confirmation page and a View Your Order button to the order's page in My Account (/account/orders/ORD-…, B7), where
+    the customer signs in — the link carries the Order ID only, never an internal id or customer data (R-43). Origin:
+    the public site (scheme and host) the pictures come from; without it they are left out. Site: the site's address
+    with its base path (the Terms and warranty links); else taken from an old-style …/#account link. Every customer
+    value is escaped; nothing about production cost or 3D pricing is ever in it."""
     from p3.media import ThumbUrl
     C = Order["customer"]
 
@@ -280,7 +282,7 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "") 
     # Counsel Book Appendix A-5 (EML-1, O1) — the order as a durable record: what happens until we confirm, who makes it,
     # delivery, cancelling and returns, the warranty and the Terms version. Published 3 Nov 2026 with the owner's
     # approval (the 14-day cancellation of an unchanged gallery design, Q2); legal counsel's review pending
-    Site = AccountUrl.split("#", 1)[0].rstrip("/") if AccountUrl else ""
+    Site = (Site or (AccountUrl.split("#", 1)[0] if AccountUrl else "")).rstrip("/")
     Rights = [("Made by:", "XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233. Made in Israel."),
               ("Delivery:", f"production up to 14 business days after your payment is confirmed; {Order.get('shipping_label') or 'delivery'}"
                             f"{(', ' + Order['shipping_eta']) if Order.get('shipping_eta') else ''}. Import charges: where the "

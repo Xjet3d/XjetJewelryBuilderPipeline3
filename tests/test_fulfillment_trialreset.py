@@ -55,6 +55,7 @@ async def test_the_approval_shows_on_the_line_and_a_trial_is_reset_so_the_line_i
         Before = H.Ctx.Db.One("SELECT COUNT(*) AS n FROM order_events WHERE order_id = ?", (O["id"],))["n"]
         Out = Trial.Reset(Db, "ORD-10001", "the owner's re-test of 2026-10-14", tmp_path / "cp1")
         assert Out["cleared"] == {"fulfillment_line_production": 1, "fulfillment_enrollments": 1, "fulfillment_projection": 1} and Out["lines"] == ["R-1001-A"]
+        assert Out["confirmation_undone"] is True                                  # B7: Fulfillment's approval had Confirmed it
         Cp = json.loads((tmp_path / "cp1" / "checkpoint.json").read_text())
         assert Cp["integrity"] == "ok" and Cp["counts"]["fulfillment_line_production"] == 1
         Copy = sqlite3.connect(tmp_path / "cp1" / Db.name)
@@ -66,7 +67,8 @@ async def test_the_approval_shows_on_the_line_and_a_trial_is_reset_so_the_line_i
         L = State["lines"][0]
         assert L["eligible"] and L["print_ready"] and L["production"] == {"sent": False} and L["stage"] is None
         Events = (await H.Client.get(f"/api/admin/orders/{O['id']}", headers=Admin)).json()["events"]
-        assert len(Events) == Before + 1 and [E["kind"] for E in Events].count("production_sent") == 1
+        assert len(Events) == Before + 2 and [E["kind"] for E in Events].count("production_sent") == 1    # the reset, and New again (B7)
+        assert Events[-1]["kind"] == "status" and Events[-1]["data"]["to"] == "new" and Events[-1]["by"] == "operator (trial reset)"
         Reset_ = next(E for E in Events if E["kind"] == "production_reset")
         assert Reset_["data"]["note"] == "the owner's re-test of 2026-10-14" and Reset_["data"]["item_ref"] == "R-1001-A" and Reset_["by"] == "operator (trial reset)"
         assert H.App.state.Bridge.CustomerView(O["id"]) is None and H.Svc.Orders.AdminGet(O["id"])["status"] == "new"

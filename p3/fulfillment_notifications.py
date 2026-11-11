@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 from p3.mail import FulfillmentEmail, MailNotAccepted, MailOutcomeUnknown
+from p3.orders import OrderPageUrl
 from p3.testrecords import ReservedEmail
 
 Logger = logging.getLogger("p3.fulfillment.notifications")
@@ -160,7 +161,8 @@ class NotificationService:
             self.Ctx.Db.Execute("UPDATE fulfillment_notification_intents SET state = 'failed', last_error = ?, updated_at = ? WHERE id = ?", ("no recipient", T, Intent["id"]))
             return "failed"
         Base = (self.Ctx.Settings.PublicBaseUrl or "").rstrip("/")
-        AccountUrl = f"{Base}{self.Ctx.Settings.BasePath or ''}/#account" if Base else ""
+        # the order's own page in My Account (B7): the Order ID only, opened after the customer's sign-in
+        AccountUrl = OrderPageUrl(f"{Base}{self.Ctx.Settings.BasePath or ''}", Order.get("ref")) if Base else ""
         Subject, Html = FulfillmentEmail(Intent["milestone"], Order, View, json.loads(Intent["payload_json"] or "{}"), AccountUrl)
         Attempt = Intent["attempts"] + 1
         self.Ctx.Db.Execute("UPDATE fulfillment_notification_intents SET attempts = ?, subject = ?, sent_to = ?, updated_at = ? WHERE id = ?", (Attempt, Subject, To, T, Intent["id"]))

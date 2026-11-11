@@ -82,9 +82,9 @@ async def test_the_checkout_note_and_the_order_email(HW):
     assert A["notes"] == "Customer's note: A gift — please no price inside."
     assert "notes" not in O                                                             # the customer's view has no team notes
     Mail = H.App.state.Mailer.List()[0]["html"]
-    # R-43: the confirmation page's three next steps, a picture of each piece, View Your Order (My Account: no order data in it)
+    # R-43: the confirmation page's three next steps, a picture of each piece, View Your Order (B7: the order's page — the Order ID only)
     assert "What happens next" in Mail and "Design review." in Mail and "printed to order in real metal" in Mail and "tracked." in Mail
-    assert 'href="http://p3.test/#account"' in Mail and "View Your Order" in Mail
+    assert f'href="http://p3.test/account/orders/{O["ref"]}"' in Mail and "View Your Order" in Mail
     assert re.search(r'<img src="http://p3\.test/thumb/[^"]+\?w=320&amp;f=jpg" width="64" height="64"', Mail)
     assert "token" not in Mail and O["id"] not in Mail
 

@@ -29,7 +29,7 @@ VerificationKey = "google_site_verification"   # the content of Search Console's
 VerificationPattern = re.compile(r"[A-Za-z0-9_-]{20,100}")
 
 # The customer app's view → its path under the base path ("" is the home page). The Design screens, My Account
-# (#account), checkout and confirmation are not pages: they live under the home URL and are never indexed.
+# (/account/…, AccountPaths), checkout and confirmation are not pages: never indexed, never in the sitemap.
 Paths = {"home": "", "inspiration": "gallery", "faq": "faq", "materials": "materials", "technology": "technology",
          "designers": "about", "shipping-returns": "shipping-returns", "terms": "terms", "privacy": "privacy",
          "contact": "contact", "warranty": "warranty", "accessibility": "accessibility"}
@@ -44,7 +44,19 @@ FlowPaths = ("design", "my-designs", "favorites", "customize", "bag", "checkout"
 ScreenTitles = {"ai-studio": "Design Studio · XJet Atelier", "my-designs": "My Designs · XJet Atelier",
                 "favorites": "Favorites · XJet Atelier", "review": "Customize · XJet Atelier",
                 "checkout": "Your Bag · XJet Atelier", "order": "Checkout · XJet Atelier",
-                "confirmation": "Your Order · XJet Atelier", "account": "My Account · XJet Atelier"}
+                "confirmation": "Your Order · XJet Atelier", "account": "My Account · XJet Atelier",
+                "account-order": "Your Order · XJet Atelier"}
+# My Account at its own addresses (B7, 11 Nov 2026; web/app.js ACCOUNT_TABS) and each order's page under account/orders/:
+# the app alone, like a step of the journey — never indexed, never in the sitemap, never cached
+AccountPaths = ("account", "account/orders", "account/quotes", "account/security")
+
+
+def IsAccountPath(Rel: str) -> bool:
+    """Rel: a path under the base path ("/account/orders/ORD-10016")."""
+    R = (Rel or "").strip("/")
+    return R == "account" or R.startswith("account/")
+
+
 FlowScreens = {"design": "ai-studio", "my-designs": "my-designs", "favorites": "favorites", "customize": "review",
                "bag": "checkout", "checkout": "order"}
 _LegalOpen = """<template x-if="['terms','privacy','shipping-returns','contact','warranty','accessibility'].includes(view)">"""

@@ -140,7 +140,8 @@
       var u = new URL(href, location.href), keep = new URLSearchParams();
       UTM.forEach(function (k) { var v = u.searchParams.get(k); if (v && /^[\w.\- ]{1,100}$/.test(v)) keep.set(k, v); });
       var q = keep.toString();
-      return u.origin + u.pathname + (q ? '?' + q : '');
+      // an order's page (/account/orders/ORD-10016, B7) is counted without its Order ID
+      return u.origin + u.pathname.replace(/(\/account\/orders\/)[^\/]+/, '$1order') + (q ? '?' + q : '');
     } catch (e) { return location.origin + location.pathname; }
   }
   // Google's and Apple's sign-in pages are a step of signing in here, never where a visitor came from (GA4's "unwanted

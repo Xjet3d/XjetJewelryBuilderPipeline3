@@ -47,9 +47,18 @@ ShippingOptions = {
     "express": {"id": "express", "label": "Express delivery", "price": 45.0, "eta": "about 5 business days",
                 "detail": "$45 · priority handling"},   # CON-07: the insurance claim is unverified (Counsel Book A-3), so it is not made (3 Nov 2026)
 }
-StatusOrder = ["new", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"]
-StatusLabels = {"new": "New", "payment_confirmed": "Payment confirmed", "three_d_ready": "3D ready", "production": "In production",
-                "qc": "Quality check", "shipped": "Shipped", "completed": "Completed", "cancelled": "Cancelled"}
+# "confirmed": the design review passed (B7, owner's approval 11 Nov 2026) — set by the Admin, or on a site with Fulfillment
+# when every part of the order is approved for production; the order then waits for its payment
+StatusOrder = ["new", "confirmed", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"]
+StatusLabels = {"new": "New", "confirmed": "Confirmed", "payment_confirmed": "Payment confirmed", "three_d_ready": "3D ready",
+                "production": "In production", "qc": "Quality check", "shipped": "Shipped", "completed": "Completed", "cancelled": "Cancelled"}
+# What the customer reads for each status in My Account (B7, owner's decisions 11 Nov 2026): one status per order, never an
+# internal word ("New", "3D ready"); 3D ready, In production and Quality check all read "Production"
+CustomerStatusLabels = {"new": "Design review", "confirmed": "Awaiting payment", "payment_confirmed": "Payment received",
+                        "three_d_ready": "Production", "production": "Production", "qc": "Production",
+                        "shipped": "Shipped", "completed": "Completed", "cancelled": "Cancelled"}
+_InProduction = ("three_d_ready", "production", "qc")
+_OrderRefPattern = re.compile(r"ORD-(\d{1,9})")
 ProductionStatuses = ("production", "qc", "shipped", "completed")     # need every line's 3D result complete (SetStatus)
 PhoneDigits = re.compile(r"\d")
 PhonePattern = re.compile(r"^\+?[0-9 ()./-]{7,24}$")
@@ -79,6 +88,15 @@ def OrderRef(No) -> str | None:
 
 def QuoteRef(No) -> str | None:
     return f"Q-{No}" if No is not None else None
+
+
+def OrderPageUrl(Site: str, Ref: str | None) -> str:
+    """The order's own page in My Account (B7, owner's approval 11 Nov 2026): the address of an email's View Your Order
+    button. It carries the Order ID only — never an internal id, a token or customer data — and opens only for the
+    order's owner once signed in. Emails sent before carry {site}/#account, which keeps opening My Orders."""
+    if not Site:
+        return ""
+    return f"{Site.rstrip('/')}/account/orders/{Ref}" if Ref else f"{Site.rstrip('/')}/account/orders"
 
 
 def _Like(Text: str) -> str:
@@ -485,8 +503,8 @@ class OrderService:
             return
         from p3.mail import OrderConfirmationEmail, StaffOrderEmail, Trace as MailTrace
         Origin = (self.Ctx.Settings.PublicBaseUrl or Origin or "").rstrip("/")
-        Account = f"{Origin}{self.Ctx.Settings.BasePath or ''}/#account" if Origin else ""
-        Subject, Body = OrderConfirmationEmail(Order, Origin, Account)
+        Site = f"{Origin}{self.Ctx.Settings.BasePath or ''}" if Origin else ""
+        Subject, Body = OrderConfirmationEmail(Order, Origin, OrderPageUrl(Site, Order["ref"]), Site=Site)
         To = Order["customer"]["email"]
         Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
         Test = ReservedEmail(To)
@@ -580,7 +598,12 @@ class OrderService:
         return Out
 
     def Get(self, Who: Principal, OrderId: str) -> dict:
-        O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? AND owner_account_id = ?", (OrderId, Who.AccountId))
+        """One of the customer's own orders, by its internal id or its Order ID (ORD-10016: the address of the order's
+        page and of the email's View Your Order button, B7). Another account's order and an unknown one give the same
+        answer, so an Order ID reveals nothing."""
+        M = _OrderRefPattern.fullmatch((OrderId or "").strip().upper())
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE (id = ? OR order_no = ?) AND owner_account_id = ?",
+                            (OrderId, int(M.group(1)) if M else -1, Who.AccountId))
         if O is None:
             raise HttpError(404, "order_not_found", "Order not found.")
         return self._ForCustomer(O)
@@ -593,10 +616,14 @@ class OrderService:
         """An order as its customer sees it in My Account: the order, its statuses with their dates (never the Admin's
         notes) and the quote it came from."""
         J = self.ToJson(O, self._Lines(O["id"]))
-        History = []
-        for E in self.Ctx.Db.All("SELECT kind, data_json, created_at FROM order_events WHERE order_id = ? AND kind IN ('placed', 'status') "
+        History, PaidAt = [], None
+        for E in self.Ctx.Db.All("SELECT kind, data_json, created_at FROM order_events WHERE order_id = ? AND kind IN ('placed', 'status', 'payment') "
                                  "ORDER BY id", (O["id"],)):
-            To = "new" if E["kind"] == "placed" else json.loads(E["data_json"] or "{}").get("to")
+            D = json.loads(E["data_json"] or "{}")
+            if E["kind"] == "payment":                       # when the payment was recorded (the Admin's entry or the provider's)
+                PaidAt = E["created_at"] if D.get("to") == "paid" else None
+                continue
+            To = "new" if E["kind"] == "placed" else D.get("to")
             History.append({"status": To, "label": "Order placed" if E["kind"] == "placed" else StatusLabels.get(To, To), "at": E["created_at"]})
         J["status_history"] = History
         Quote = self.Ctx.Db.One("SELECT request_no FROM quote_requests WHERE order_id = ?", (O["id"],))
@@ -606,6 +633,10 @@ class OrderService:
         if View:
             J["fulfillment"] = View
             J["fulfillment_stage"] = View.get("stage")
+        PaidAt = PaidAt if O["payment_status"] == "paid" else None
+        J["paid_at"] = PaidAt
+        J["customer_note"] = CustomerNote(O.get("notes"))
+        J.update(CustomerView(J, History, PaidAt))
         return J
 
     def ListQuotes(self, Who: Principal) -> list[dict]:
@@ -1372,7 +1403,7 @@ class OrderService:
                             "payment_ref = COALESCE(?, payment_ref), updated_at = ? WHERE id = ?", (Status, (Ref or "").strip() or None, T, O["id"]))
         self.Ctx.Db.Execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                             (O["id"], "payment", Dumps({"from": O["payment_status"], "to": Status, "note": Note[:300], "ref": Ref, "manual": True}), By, T))
-        if Status == "paid" and O["status"] == "new":
+        if Status == "paid" and O["status"] in ("new", "confirmed"):
             self._SetStatus(O["id"], "payment_confirmed", By, "Payment recorded")
         return self.AdminGet(O["id"])
 
@@ -1585,6 +1616,117 @@ def PurchaseSnapshot(L: dict) -> dict:
     return {"product": Product, "product_label": Products.Labels[Product], "size": Size,
             "material": {"id": L["material_id"], "label": L["material_label"]},
             "price": {"unit_price": L["unit_price"], "currency": L["currency"], "pricing_version": L["pricing_version"]}}
+
+
+_NotePattern = re.compile(r"(?:From quote Q-\d+ \(version \d+\)\. )?Customer's note: (.+)", re.S)
+
+
+def CustomerNote(Notes: str | None) -> str | None:
+    """The note the customer wrote at checkout or on a quote approval (R-45), as the order keeps it ("Customer's note: …",
+    after "From quote Q-5001 (version 1). " for a quote's order) — the customer's own words only, never anything else the
+    field holds (before notes were append-only, an Admin note could replace it: such a field gives None)."""
+    M = _NotePattern.fullmatch((Notes or "").strip())
+    return M.group(1).strip() or None if M else None
+
+
+def CustomerView(J: dict, History: list[dict], PaidAt: str | None) -> dict:
+    """What My Account shows for an order (B7, owner's decisions 11 Nov 2026), from the order status, the payment status
+    and the order's history only:
+      customer_status — one status in the customer's words (CustomerStatusLabels), a next-step line for the order's card
+                        and a longer "what happens now";
+      progress        — Order received → Design review → Payment → Production → Shipping → Completed: a step is done only
+                        when the history records it (its date) or a later recorded status implies it was passed (no
+                        date then); never assumed, never a promised date; the current step says what it waits for;
+      payment_view    — the payment as the customer reads it;
+      cancel_free     — the order is not confirmed yet: it can be cancelled free of charge (the published wording).
+    Every time is in business days."""
+    S, Pay = J["status"], J["payment_status"]
+    First: dict = {}
+    for H in History:
+        First.setdefault(H["status"], H["at"])
+
+    def At(*Statuses):
+        Times = [First[X] for X in Statuses if First.get(X)]
+        return min(Times) if Times else None
+
+    def Idx(X):
+        return StatusOrder.index(X) if X in StatusOrder else -1
+    # The furthest the order got: its status now (an Admin's step back wins), or for a cancelled order, before it was cancelled
+    Reached = Idx(S) if S != "cancelled" else max([Idx(H["status"]) for H in History] + [0])
+    Ship = (J.get("shipping_label") or "Delivery") + (", " + J["shipping_eta"] if J.get("shipping_eta") else "")
+    Failed = Pay == "failed"
+    Paid = Pay == "paid" or Reached >= Idx("payment_confirmed")
+    Steps = [
+        {"key": "received", "label": "Order received", "done": True, "at": J["created_at"], "text": ""},
+        {"key": "review", "label": "Design review", "done": Reached >= Idx("confirmed"), "at": At("confirmed"),
+         "text": "About 2 business days", "now": "In progress · about 2 business days"},
+        {"key": "payment", "label": "Payment", "done": Paid, "at": PaidAt or At("payment_confirmed"),
+         "text": "We contact you after the review to arrange it",
+         "now": "Your payment didn’t go through — we’ll contact you" if Failed else "We’ll contact you to arrange payment"},
+        {"key": "production", "label": "Production", "done": Reached >= Idx("shipped"), "at": At("shipped"),
+         "text": "Starts once your payment is confirmed · up to 14 business days",
+         "now": "In progress · up to 14 business days from your payment" if S in _InProduction else "Starts now · up to 14 business days",
+         "since": At(*_InProduction)},
+        {"key": "shipping", "label": "Shipping", "done": Reached >= Idx("completed"), "at": At("completed"),
+         "text": Ship + ", tracked", "now": "On its way · " + Ship + ", tracked", "since": At("shipped")},
+        {"key": "completed", "label": "Completed", "done": Reached >= Idx("completed"), "at": At("completed"), "text": ""},
+    ]
+    Progress, Current = [], None
+    for P in Steps:
+        if P["done"]:
+            State = "done"
+        elif S in ("cancelled", "completed"):
+            continue                                     # a cancelled order shows only what happened before
+        elif Current is None:
+            State = Current = "current"
+        else:
+            State = "upcoming"
+        Progress.append({"key": P["key"], "label": P["label"], "state": State, "at": P["at"] if State == "done" else None,
+                         "since": P.get("since") if State == "current" else None,
+                         "text": P.get("now", P["text"]) if State == "current" else P["text"] if State == "upcoming" else ""})
+    if S == "cancelled":
+        Progress.append({"key": "cancelled", "label": "Cancelled", "state": "done", "at": At("cancelled"), "since": None, "text": ""})
+    Words = {
+        "new": ("progress", "We’re reviewing your design (about 2 business days). Nothing to pay yet.",
+                "Our team is checking that your design can be made (about 2 business days). Nothing to pay yet — after the review "
+                "we contact you to arrange payment. You can still cancel free of charge."),
+        "confirmed": ("action", "Your design is confirmed. We’ll contact you to arrange payment.",
+                      "Your design is confirmed. We’ll contact you to arrange payment; production starts once your payment is "
+                      "confirmed and takes up to 14 business days."),
+        "payment_confirmed": ("progress", "Production starts now and takes up to 14 business days.",
+                              f"Your payment is confirmed. Production starts now and takes up to 14 business days; then we ship "
+                              f"your order ({Ship})."),
+        "shipped": ("progress", f"On its way: {Ship}.", f"Your order is on its way: {Ship}, tracked."),
+        "completed": ("done", "This order is complete.", "This order is complete. Questions about it? Email us with your Order ID."),
+        "cancelled": ("ended", "This order was cancelled.", "This order was cancelled."),
+    }
+    for X in _InProduction:
+        Words[X] = ("progress", "Being made — up to 14 business days from your payment.",
+                    f"Your order is being made. Production takes up to 14 business days from your payment; then we ship it ({Ship}).")
+    Tone, Next, Now_ = Words.get(S, ("progress", "", ""))
+    if Failed and S in ("new", "confirmed"):
+        Tone, Next = "action", "Your payment didn’t go through — we’ll contact you about it."
+        Now_ = Next
+    if Pay == "paid":
+        PayView = ("paid", "Paid", "Your payment is confirmed.", PaidAt)
+    elif Failed:
+        PayView = ("action", "Payment didn’t go through", "We’ll contact you about it.", None)
+    elif Pay == "refunded":
+        PayView = ("ended", "Refunded", "Your payment was refunded.", None)
+    elif Pay == "cancelled" or S == "cancelled":
+        PayView = ("ended", "Not due", "No payment is due for a cancelled order.", None)
+    elif Reached >= Idx("payment_confirmed"):
+        PayView = ("paid", "Payment confirmed", "Your payment is confirmed.", At("payment_confirmed"))
+    elif S == "confirmed":
+        PayView = ("action", "Awaiting payment", "We’ve confirmed your design and will contact you to arrange payment. No payment is "
+                                                 "taken online. Production starts once your payment is confirmed.", None)
+    else:
+        PayView = ("progress", "Not due yet", "No payment is taken online. After our review (about 2 business days) we contact you "
+                                              "to arrange payment. Production starts once your payment is confirmed.", None)
+    return {"customer_status": {"key": S, "label": CustomerStatusLabels.get(S, J.get("status_label") or S), "tone": Tone, "next": Next, "now": Now_},
+            "progress": Progress,
+            "payment_view": {"tone": PayView[0], "label": PayView[1], "text": PayView[2], "at": PayView[3]},
+            "cancel_free": S == "new"}
 
 
 def _OrderNo(Ref: str):

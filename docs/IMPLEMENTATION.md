@@ -586,8 +586,11 @@ charm (they read "US 20" before). Rings read as before. Tested in `tests/test_ch
   - Materials use the charm names. A charm has no suggested size: a chosen one counts as confirmed.
   - The price, summary, bag-button and gold-quote texts are charm-worded, and a quote request sends `charm_size`.
 - **Bag, checkout, confirmation, My Orders.**
-  - My Account → *Quotes & orders* is the `account` view (`#account`, `openAccountPage(anchor)`; signed out it asks
-    for sign-in first, `_pendingPanel = 'account'`): `GET /api/quote-requests` (`Orders.ListQuotes`: the customer's
+  - My Account (B7, 11 Nov 2026) is the `account` view with three tabs at their own addresses — `/account/orders`
+    (default), `/account/quotes`, `/account/security` — and each order's page is the `account-order` view at
+    `/account/orders/ORD-…` (`GET /api/orders/{Order ID}`, owner only; `customer_status`, `progress`,
+    `payment_view`, `customer_note`, `cancel_free` from `Orders.CustomerView`). `openAccountPage(anchor)`; signed
+    out the sign-in opens over the page and the destination is kept 30 minutes (`p3_account_return`). Before B7: `GET /api/quote-requests` (`Orders.ListQuotes`: the customer's
     own requests, a customer-safe history from `quote_events`) and `GET /api/orders` (each order with
     `status_history` from `order_events` and `quote_ref`). The order page shows *Status*, the quote it came from and
     the history; *What happens next* only while the order is not shipped, completed or cancelled.
@@ -654,7 +657,8 @@ where a per-product switch is on (product setting `prompt_check`, default off; A
     - `/customize`;
     - `/bag`: the `checkout` view;
     - `/checkout`: the `order` view, with its details, shipping and review steps.
-  - My Account stays `/#account`. An order's confirmation keeps the address it was reached at.
+  - My Account is `/account/…` (B7); the old `/#account` opens My Orders. An order's confirmation (right after
+    checkout) keeps the address it was reached at.
 - **History.**
   - `navigateTo(view, { history })` puts each screen at its address (`routePath`):
     - `push`: the visitor went there, so Back returns;

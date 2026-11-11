@@ -41,7 +41,7 @@ and the home page list every gallery design as a plain link to its page, the mat
 readers that run no scripts, removed as the page starts). How It Works is served exactly as written.
 
 **Never pages:** the Admin, the API, `/verify` (sign-in links), `/quote` (quote links), `/dev`, `/showcase`, the API
-docs, My Account (`#account`) and the customer's journey — `/design`, `/my-designs`, `/favorites`, `/customize`, `/bag`,
+docs, My Account (`/account/…`, noindex, no-store) and the customer's journey — `/design`, `/my-designs`, `/favorites`, `/customize`, `/bag`,
 `/checkout` (`SitePages.FlowPaths`: the app alone, with no canonical link, social tags, structured data, server-side copy
 or anything of a customer). They carry `X-Robots-Tag: noindex` (and a `noindex` meta tag where they are documents) and
 are never in the sitemap. Only the API is disallowed in `robots.txt`: a crawler

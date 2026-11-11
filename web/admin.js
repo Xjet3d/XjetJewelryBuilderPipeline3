@@ -582,7 +582,7 @@ function adminApp() {
     pageText(offset, limit, total) { return total ? (offset + 1) + '–' + Math.min(offset + limit, total) + ' of ' + total : ''; },
     orderStatusLabel(s) { return (this.ordersMeta.statuses.find(x => x.id === s) || { label: s })?.label || s; },
     orderStatusClass(s) {
-      return { new: 'bg-sky-100 text-sky-800', payment_confirmed: 'bg-emerald-100 text-emerald-800', three_d_ready: 'bg-green-100 text-green-700',
+      return { new: 'bg-sky-100 text-sky-800', confirmed: 'bg-indigo-100 text-indigo-800', payment_confirmed: 'bg-emerald-100 text-emerald-800', three_d_ready: 'bg-green-100 text-green-700',
                production: 'bg-violet-100 text-violet-700', qc: 'bg-amber-100 text-amber-800', shipped: 'bg-zinc-900 text-white',
                completed: 'bg-zinc-200 text-zinc-700', cancelled: 'bg-red-100 text-red-700' }[s] || 'bg-zinc-100 text-zinc-600';
     },
@@ -874,6 +874,12 @@ function adminApp() {
     statusNoteRequired() {
       const to = this.oStatusForm.status, from = this.od?.status;
       return (from === 'cancelled' && to !== 'cancelled') || (to === 'cancelled' && from !== 'cancelled' && !!this.of?.enrolled);
+    },
+    // B7: the design review passed — one click on a New order (the customer then reads "Awaiting payment")
+    confirmOrder() {
+      if (!this.od || this.od.status !== 'new') return;
+      this.oStatusForm.status = 'confirmed';
+      return this.setOrderStatus();
     },
     async setOrderStatus() {
       if (!this.od || this.oStatusForm.status === this.od.status) return;

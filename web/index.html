@@ -423,6 +423,95 @@
         @media (min-width: 1280px) and (max-width: 1439.98px) {             /* the account: icon, coin and count */
             .site-header:not(.is-studio) .h-name, .site-header:not(.is-studio) .h-name-dot { display: none; }
         }
+        /* My Account (B7, 11 Nov 2026): tabs that are links (their own addresses), order cards with pictures and a next-step
+           line, the order's page in two columns — one on a phone, the status and the progress before the pieces — and
+           progress that ticks only what the order's history records */
+        .acct-wrap { max-width: 1040px; margin: 0 auto; padding: 32px 24px 112px; }
+        .acct-tabs { display: flex; gap: 4px; border-bottom: 1px solid #E4E4E7; margin: 24px 0 8px; overflow-x: auto; scrollbar-width: none; }
+        .acct-tabs::-webkit-scrollbar { display: none; }
+        .acct-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 14px; font-size: 13px; letter-spacing: .12em;
+                    text-transform: uppercase; color: #52525B; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+        .acct-tab:hover { color: #1A1A1A; }
+        .acct-tab[aria-current="page"] { color: #1A1A1A; border-bottom-color: #8A6420; font-weight: 600; }
+        .acct-n { min-width: 20px; padding: 0 6px; border-radius: 10px; background: #F4F4F5; color: #52525B; font-size: 12px; letter-spacing: 0; text-align: center; }
+        .acct-tab[aria-current="page"] .acct-n { background: #FBF7EF; color: #8A6420; }
+        .acct-group { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: #6F6F6F; font-weight: 600; margin: 22px 0 10px; }
+        .acct-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 18px 20px;
+                     background: #fff; border: 1px solid #E8E2D6; border-radius: 12px; }
+        .acct-card + .acct-card { margin-top: 12px; }
+        .acct-card.is-action { border-color: #E9CF97; box-shadow: inset 3px 0 0 #D08A00; }
+        .acct-thumbs { display: flex; gap: 6px; }
+        .acct-thumb { flex: none; width: 76px; height: 76px; object-fit: contain; background: #F7F5F0; border: 1px solid #EDE8DF; border-radius: 8px; }
+        .acct-more { display: flex; align-items: center; justify-content: center; color: #6F6F6F; font-size: 13px; }
+        .acct-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; text-align: right; }
+        .acct-ref { font-size: 13px; color: #52525B; }
+        .acct-title { font-size: 15px; font-weight: 600; color: #1A1A1A; margin-top: 2px; }
+        .acct-sub { font-size: 13px; color: #52525B; margin-top: 2px; }
+        .acct-next { font-size: 13px; color: #3F3F46; margin-top: 6px; }
+        .acct-price { font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; font-size: 17px; color: #1A1A1A; }
+        .acct-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .acct-chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .75; }
+        .tone-progress { background: #FBF7EF; color: #8A6420; border-color: #E8DCC4; }
+        .tone-action { background: #FFF4DB; color: #7A4D00; border-color: #F0D9A8; }
+        .tone-paid, .tone-done { background: #ECFDF3; color: #146C43; border-color: #B7E4C7; }
+        .tone-ended { background: #F4F4F5; color: #52525B; border-color: #E4E4E7; }
+        .acct-link { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 16px; font-size: 12px; letter-spacing: .14em;
+                     text-transform: uppercase; color: #1A1A1A; border: 1px solid #1A1A1A; border-radius: 2px; white-space: nowrap; }
+        .acct-link:hover { background: #1A1A1A; color: #fff; }
+        .acct-empty { padding: 24px; border-radius: 12px; background: #FBF7EF; border: 1px solid #E8DCC4; font-size: 14px; color: #3F3F46; }
+        .acct-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 14px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+                     color: #3F3F46; border: 1px solid #D4D4D8; border-radius: 2px; }
+        .acct-back:hover { color: #1A1A1A; border-color: #1A1A1A; }
+        .acct-h1 { font-size: 30px; line-height: 1.2; color: #1A1A1A; outline: none; }
+        .acct-h1 .font-mono { font-size: .86em; font-weight: 600; }
+        .acct-banner { margin: 18px 0 22px; padding: 14px 18px; border-radius: 12px; background: #FBF7EF; border: 1px solid #E8DCC4; }
+        .acct-banner.is-action { background: #FFF8E8; border-color: #F0D9A8; }
+        .acct-cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+        .acct-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+        .acct-panel { padding: 18px 20px; background: #fff; border: 1px solid #E8E2D6; border-radius: 12px; }
+        .acct-line { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid #F1EDE5; }
+        .acct-line:last-child { border-bottom: 0; }
+        .acct-line .acct-thumb { width: 96px; height: 96px; border-radius: 10px; }
+        .acct-tot { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 14px; color: #3F3F46; }
+        .acct-tot.is-total { margin-top: 6px; padding-top: 10px; border-top: 1px solid #E8E2D6; font-family: 'Cinzel', 'Cinzel Fallback', Georgia, serif; font-size: 18px; color: #1A1A1A; }
+        .acct-fine { margin-top: 8px; font-size: 12px; color: #6F6F6F; }
+        .acct-steps { list-style: none; margin: 0; padding: 0; }
+        .acct-steps li { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; padding-bottom: 16px; }
+        .acct-steps li:last-child { padding-bottom: 0; }
+        .acct-steps li:not(:last-child)::before { content: ''; position: absolute; left: 12px; top: 28px; bottom: 2px; width: 2px; background: #E4E4E7; }
+        .acct-steps li.is-done:not(:last-child)::before { background: #C9A96E; }
+        .acct-dot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%;
+                    border: 2px solid #D4D4D8; background: #fff; color: #71717A; font-size: 12px; }
+        .acct-steps .is-done .acct-dot { background: #8A6420; border-color: #8A6420; color: #fff; }
+        .acct-steps .is-current .acct-dot { border-color: #8A6420; color: #8A6420; box-shadow: 0 0 0 4px #F3E9D6; }
+        .acct-steps .is-cancelled .acct-dot { background: #71717A; border-color: #71717A; color: #fff; }
+        .acct-step { font-size: 14px; font-weight: 600; color: #1A1A1A; }
+        .acct-steps .is-upcoming .acct-step { color: #52525B; font-weight: 500; }
+        .acct-when { font-size: 12px; color: #6F6F6F; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        .acct-sec { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
+        .acct-sec .acct-wide { grid-column: 1 / -1; }
+        @media (max-width: 767.98px) {
+            .acct-wrap { padding: 20px 16px 96px; }
+            .acct-h1 { font-size: 24px; }
+            .acct-cols { display: flex; flex-direction: column; align-items: stretch; gap: 18px; }
+            .acct-col { display: contents; }
+            .acct-o-progress { order: 1; } .acct-o-production { order: 2; } .acct-o-pieces { order: 3; } .acct-o-payment { order: 4; }
+            .acct-o-note { order: 5; } .acct-o-delivery { order: 6; } .acct-o-help { order: 7; }
+            .acct-sec { grid-template-columns: minmax(0, 1fr); }
+        }
+        @media (max-width: 639.98px) {
+            .acct-card { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+            .acct-side { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; text-align: left; }
+            .acct-thumb { width: 60px; height: 60px; }
+            .acct-line { grid-template-columns: 72px minmax(0, 1fr); }
+            .acct-line .acct-thumb { width: 72px; height: 72px; }
+            .acct-line .acct-line-price { grid-column: 2; }
+            .acct-tab { padding: 10px 12px; font-size: 12px; }
+            .acct-side .acct-link { flex-basis: 100%; }
+        }
+        .acct-tab-short { display: none; }
+        @media (max-width: 439.98px) { .acct-tab-long { display: none; } .acct-tab-short { display: inline; } }
     </style>
     <!-- Tailwind last in <head>, exactly where the former CDN script injected its styles, so the cascade is unchanged:
          on equal specificity the utilities win over the page's own rules above -->
@@ -2500,7 +2589,7 @@
                     <div class="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center" style="background:#F8F4EE;"><svg class="w-7 h-7" fill="none" stroke="#8A6420" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
                     <h1 class="text-3xl brand-font text-zinc-900 mb-2" x-text="order.status === 'new' ? 'Your order has been received' : 'Your order'"></h1>
                     <p class="text-[15px] text-zinc-700">Order ID <span class="font-mono font-semibold text-zinc-900" x-text="order.ref"></span> · <span x-text="orderDate(order.created_at)"></span></p>
-                    <p class="mt-3"><span class="inline-block text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(order)" x-text="'Status: ' + order.status_label"></span></p>
+                    <p class="mt-3"><span class="inline-block text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(order)" x-text="'Status: ' + orderStatusText(order)"></span></p>
                     <p x-show="order.quote_ref" class="text-[13px] text-zinc-600 mt-2">From your quote request <button type="button" class="font-mono underline" @click="openAccountPage('quote-' + order.quote_ref)" x-text="order.quote_ref"></button></p>
                     <p class="text-[13px] text-zinc-500 mt-2"><span x-text="emailText(order.confirmation_email, order.customer.email)"></span> Quote the Order ID in any question.</p>
                 </div>
@@ -2556,23 +2645,112 @@
         </main>
     </template>
 
-    <!-- ── My Account → Quotes & orders (#account): every quote request and order, where each stands, its history ── -->
+    <!-- ── My Account (B7, owner's approval 11 Nov 2026): three tabs at their own addresses — My Orders (/account/orders,
+         the default; the old /#account of emails sent before opens it), My Quotes (/account/quotes) and Account & Security
+         (/account/security). Signed out: the sign-in opens over it and the tab follows (web/app.js _openAccount) ── -->
     <template x-if="view === 'account'">
         <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
-            <div class="max-w-3xl mx-auto px-6 pt-10 pb-28">
-                <div class="mb-8">
-                    <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My account</p>
-                    <h1 class="text-3xl brand-font text-zinc-900">Your account</h1>
-                    <p class="text-[14px] text-zinc-600 mt-2">How you sign in, and every quote you asked for and order you placed, and where each one stands.</p>
+            <div class="acct-wrap">
+                <p class="text-[12px] uppercase tracking-[0.2em] font-semibold mb-2" style="color:#8A6420;">My Account</p>
+                <h1 id="account-title" tabindex="-1" class="acct-h1 brand-font" x-text="accountHello"></h1>
+                <div x-show="!userSession" class="acct-empty mt-6">
+                    <p class="mb-4" x-text="accountTab === 'security' ? 'Sign in to manage your account.' : accountTab === 'quotes' ? 'Sign in to see your quotes.' : 'Sign in to see your orders and where each one stands.'"></p>
+                    <button type="button" @click="openAccountPage(accountTab)" class="btn-gold px-6 py-3">Sign in</button>
                 </div>
-                <div x-show="!userSession" class="rounded-xl p-6 text-[14px] text-zinc-700" style="background:#FBF7EF; border:1px solid #E8DCC4;">
-                    <p class="mb-4">Sign in to see your quotes and orders.</p>
-                    <button type="button" @click="openAccountPage()" class="btn-gold px-6 py-3">Sign in</button>
-                </div>
-                <div x-show="userSession" class="space-y-8">
-                    <!-- Sign-in & security -->
-                    <section id="account-security" aria-labelledby="sec-title" class="border border-zinc-200 rounded-sm p-5 scroll-mt-20">
-                        <h2 id="sec-title" class="flbl">Sign-in &amp; security</h2>
+                <nav x-show="userSession" class="acct-tabs" aria-label="My Account">
+                    <a href="{{BASE}}/account/orders" @click="accountLink($event, 'orders')" class="acct-tab" :aria-current="accountTab === 'orders' ? 'page' : null">My Orders<span x-show="orders.length" class="acct-n" x-text="orders.length"></span></a>
+                    <a href="{{BASE}}/account/quotes" @click="accountLink($event, 'quotes')" class="acct-tab" :aria-current="accountTab === 'quotes' ? 'page' : null">My Quotes<span x-show="myQuotes.length" class="acct-n" x-text="myQuotes.length"></span></a>
+                    <a href="{{BASE}}/account/security" @click="accountLink($event, 'security')" class="acct-tab" :aria-current="accountTab === 'security' ? 'page' : null"><span class="acct-tab-long">Account &amp; Security</span><span class="acct-tab-short">Account</span></a>
+                </nav>
+
+                <!-- My Orders: in progress first, then completed and cancelled; newest first in each -->
+                <section x-show="userSession && accountTab === 'orders'" aria-label="My Orders">
+                    <p x-show="ordersLoading && !orders.length" class="text-[14px] text-zinc-500 mt-6">Loading…</p>
+                    <div x-show="!ordersLoading && !orders.length" class="acct-empty mt-6">
+                        <p class="mb-4">You haven’t placed an order yet. Your orders appear here, with where each one stands.</p>
+                        <button type="button" @click="resetAIFlow()" class="btn-gold px-6 py-3">Start designing</button>
+                    </div>
+                    <template x-for="grp in orderGroups" :key="grp.key">
+                        <div>
+                            <h2 class="acct-group" x-text="grp.label"></h2>
+                            <template x-for="o in grp.orders" :key="o.id">
+                                <article class="acct-card" :class="orderTone(o) === 'action' ? 'is-action' : ''" :aria-labelledby="'ocard-' + o.ref">
+                                    <div class="acct-thumbs" aria-hidden="true">
+                                        <template x-for="l in (o.lines || []).slice(0, 2)" :key="l.id">
+                                            <img width="320" height="320" :src="thumb(l.image_url, 320)" alt="" class="acct-thumb" loading="lazy" :style="{ filter: metalFilter(l.material_id) }">
+                                        </template>
+                                        <span x-show="(o.lines || []).length > 2" class="acct-thumb acct-more" x-text="'+' + ((o.lines || []).length - 2)"></span>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="acct-ref">Order <span class="font-mono font-semibold text-zinc-900" x-text="o.ref"></span> · <span x-text="orderDate(o.created_at)"></span></p>
+                                        <h3 :id="'ocard-' + o.ref" class="acct-title" x-text="orderTitle(o)"></h3>
+                                        <p class="acct-sub" x-text="orderSummary(o)"></p>
+                                        <p class="acct-next" x-text="orderNext(o)"></p>
+                                    </div>
+                                    <div class="acct-side">
+                                        <span class="acct-chip" :class="'tone-' + orderTone(o)" x-text="orderStatusText(o)"></span>
+                                        <span class="acct-price" x-text="money(o.total, o.currency)"></span>
+                                        <a :href="orderHref(o)" @click="orderLink($event, o)" class="acct-link" :aria-label="'View order ' + o.ref">View order</a>
+                                    </div>
+                                </article>
+                            </template>
+                        </div>
+                    </template>
+                </section>
+
+                <!-- My Quotes: open requests first, then the decided and closed ones; newest first in each -->
+                <section x-show="userSession && accountTab === 'quotes'" aria-label="My Quotes">
+                    <p x-show="myQuotesLoading && !myQuotes.length" class="text-[14px] text-zinc-500 mt-6">Loading…</p>
+                    <div x-show="!myQuotesLoading && !myQuotes.length" class="acct-empty mt-6">
+                        <p>No quote requests. When a material is offered by request, you can ask for a quote on Customize and it appears here.</p>
+                    </div>
+                    <template x-for="grp in quoteGroups" :key="grp.key">
+                        <div>
+                            <h2 class="acct-group" x-text="grp.label"></h2>
+                            <template x-for="q in grp.quotes" :key="q.id">
+                                <article :id="'quote-' + q.ref" class="acct-card scroll-mt-20" :aria-labelledby="'qcard-' + q.ref">
+                                    <div class="acct-thumbs" aria-hidden="true"><img x-show="q.image_url" width="320" height="320" :src="thumb(q.image_url, 320)" alt="" class="acct-thumb" loading="lazy"></div>
+                                    <div class="min-w-0">
+                                        <p class="acct-ref">Quote <span class="font-mono font-semibold text-zinc-900" x-text="q.ref"></span> · requested <span x-text="orderDate(q.created_at)"></span></p>
+                                        <h3 :id="'qcard-' + q.ref" class="acct-title" x-text="q.title + ' · ' + q.material_label"></h3>
+                                        <p class="acct-sub"><span x-text="lineIdLabel(q)"></span> <span class="font-mono" x-text="q.ring_id || '—'"></span> · Size <span x-text="q.size_label"></span> · Qty <span x-text="q.quantity"></span></p>
+                                        <p x-show="q.offer" class="acct-sub text-zinc-900" x-text="'Quote: ' + (q.offer ? money(q.offer.total) : '') + (q.offer?.valid_until ? ' · valid until ' + orderDate(q.offer.valid_until + 'T12:00:00Z') : '')"></p>
+                                        <p class="acct-next" x-text="quoteNextStep(q)"></p>
+                                        <details x-show="(q.history || []).length > 1" class="mt-2 text-[13px]">
+                                            <summary class="cursor-pointer text-zinc-600 underline underline-offset-2">History</summary>
+                                            <ol class="mt-2 space-y-1" :aria-label="'History of ' + q.ref">
+                                                <template x-for="(h, i) in q.history" :key="i">
+                                                    <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span>
+                                                        <span class="text-zinc-800"><span x-text="h.label"></span><span x-show="h.total != null" x-text="' — ' + money(h.total || 0) + (h.valid_until ? ', valid until ' + orderDate(h.valid_until + 'T12:00:00Z') : '')"></span></span></li>
+                                                </template>
+                                            </ol>
+                                        </details>
+                                    </div>
+                                    <div class="acct-side">
+                                        <span class="acct-chip" :class="'tone-' + quoteTone(q)" x-text="q.offer_expired ? 'Quote expired' : q.status_label"></span>
+                                        <a x-show="q.order_ref" :href="orderHref({ ref: q.order_ref })" @click="orderLink($event, { ref: q.order_ref })" class="acct-link" x-text="'Order ' + (q.order_ref || '')"></a>
+                                    </div>
+                                </article>
+                            </template>
+                        </div>
+                    </template>
+                </section>
+
+                <!-- Account & Security: profile, credits, sign-in and security (the controls as they were), privacy -->
+                <section x-show="userSession && accountTab === 'security'" aria-label="Account and security">
+                    <div class="acct-sec">
+                        <section class="acct-panel" aria-labelledby="acct-profile">
+                            <h2 id="acct-profile" class="flbl">Profile</h2>
+                            <p class="text-[15px] font-semibold text-zinc-900" x-show="displayName" x-text="displayName"></p>
+                            <p class="text-[14px] text-zinc-700 break-words" x-text="displayEmail || 'No email address on this account yet.'"></p>
+                        </section>
+                        <section class="acct-panel" aria-labelledby="acct-credits">
+                            <h2 id="acct-credits" class="flbl">Credits</h2>
+                            <p class="text-[15px] text-zinc-900" x-show="quotaKnown"><strong x-text="quotaRemaining"></strong> <span x-text="'of ' + quotaMax + ' design credits left'"></span></p>
+                            <p class="text-[14px] text-zinc-600 mt-1">New designs and refinements use credits. If you run out of credits, you can still open, customize and order every design you’ve made. <a href="{{BASE}}/faq" @click="pageLink($event, 'faq')" class="underline underline-offset-2">How credits work</a></p>
+                        </section>
+                        <section id="account-security" aria-labelledby="sec-title" class="acct-panel acct-wide scroll-mt-20">
+                            <h2 id="sec-title" class="flbl">Sign-in &amp; security</h2>
 
                         <!-- Still on a six-letter code: move to a real login -->
                         <div x-show="userSession && !userSession.session" class="text-[14px] text-zinc-700">
@@ -2652,77 +2830,134 @@
                                 </div>
                             </template>
                         </div>
-                    </section>
-                    <p x-show="(ordersLoading || myQuotesLoading) && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-500">Loading…</p>
-                    <p x-show="!ordersLoading && !myQuotesLoading && !orders.length && !myQuotes.length" class="text-[14px] text-zinc-600">No quotes or orders yet. Quote requests (for gold) and orders appear here.</p>
-                    <!-- Quote requests -->
-                    <section x-show="myQuotes.length" aria-labelledby="account-quotes">
-                        <h2 id="account-quotes" class="flbl">Quote requests</h2>
-                        <div class="space-y-4">
-                            <template x-for="q in myQuotes" :key="q.id">
-                                <article :id="'quote-' + q.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
-                                    <div class="flex gap-5">
-                                        <div class="w-20 h-20 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100"><img width="320" height="320" x-show="q.image_url" :src="thumb(q.image_url, 320)" :alt="q.title" class="w-full h-full object-contain" loading="lazy"></div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                                <p class="text-[13px] text-zinc-600">Quote <span class="font-mono font-semibold text-zinc-900" x-text="q.ref"></span> · <span x-text="orderDate(q.created_at)"></span></p>
-                                                <span class="text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="quoteChip(q)" x-text="q.status_label"></span>
-                                            </div>
-                                            <p class="text-base font-medium text-zinc-900 mt-1" x-text="q.title"></p>
-                                            <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(q)"></span> <span class="font-mono text-zinc-700" x-text="q.ring_id || '—'"></span></p>
-                                            <p class="text-[13px] text-zinc-600 mt-1"><span x-text="q.material_label"></span> · Size <span x-text="q.size_label"></span> · Qty <span x-text="q.quantity"></span></p>
-                                            <p x-show="q.offer" class="text-[14px] text-zinc-900 mt-2" x-text="'Quote: ' + (q.offer ? money(q.offer.total) : '') + (q.offer?.valid_until ? ' · valid until ' + orderDate(q.offer.valid_until + 'T12:00:00Z') : '')"></p>
-                                            <p class="text-[13px] text-zinc-600 mt-1" x-text="quoteNextStep(q)"></p>
-                                        </div>
-                                    </div>
-                                    <ol class="mt-4 pt-3 border-t border-zinc-100 space-y-1.5 text-[13px]" :aria-label="'History of ' + q.ref">
-                                        <template x-for="(h, i) in q.history" :key="i">
-                                            <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span>
-                                                <span class="text-zinc-800"><span x-text="h.label"></span><span x-show="h.total != null" x-text="' — ' + money(h.total || 0) + (h.valid_until ? ', valid until ' + orderDate(h.valid_until + 'T12:00:00Z') : '')"></span>
-                                                    <template x-if="h.order_ref"><span> — order <button type="button" class="font-mono underline" @click="openOrderByRef(h.order_ref)" x-text="h.order_ref"></button></span></template></span></li>
-                                        </template>
-                                    </ol>
-                                </article>
-                            </template>
+                        </section>
+                        <section class="acct-panel acct-wide" aria-labelledby="acct-privacy">
+                            <h2 id="acct-privacy" class="flbl">Privacy</h2>
+                            <p class="text-[14px] text-zinc-700"><button type="button" data-cookie-settings class="underline underline-offset-2 hover:text-black">Cookie Settings</button> · <a href="{{BASE}}/privacy" @click="pageLink($event, 'privacy')" class="underline underline-offset-2 hover:text-black">Privacy Policy</a></p>
+                            <p class="text-[14px] text-zinc-600 mt-1">To close your account or ask about your personal data, see the Privacy Policy.</p>
+                        </section>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </template>
+
+    <!-- ── An order's own page (B7): /account/orders/ORD-10016 — the email's View Your Order and My Orders open it. Only the
+         order's owner sees it (another account and an unknown Order ID read "not found"); Back to My Orders at the top and the
+         bottom, the browser's Back works too. Built only from what the order records: a step is ticked only when it happened ── -->
+    <template x-if="view === 'account-order'">
+        <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
+            <div class="acct-wrap">
+                <a href="{{BASE}}/account/orders" @click="backToOrdersLink($event)" class="acct-back mb-5"><span aria-hidden="true">←</span> Back to My Orders</a>
+                <div x-show="!userSession" class="acct-empty">
+                    <h1 class="acct-h1 brand-font mb-2">Your order</h1>
+                    <p class="mb-4">Sign in to see this order.</p>
+                    <button type="button" @click="openAccountPage('order-' + orderRef)" class="btn-gold px-6 py-3">Sign in</button>
+                </div>
+                <p x-show="userSession && orderPageState === 'loading' && !orderPage" class="text-[14px] text-zinc-500" role="status">Loading your order…</p>
+                <div x-show="userSession && orderPageState === 'notfound'" class="acct-empty" role="alert">
+                    <h1 class="acct-h1 brand-font mb-2" style="font-size:24px;">We can’t find this order in your account.</h1>
+                    <p x-show="displayEmail">You’re signed in as <strong class="break-words" x-text="displayEmail"></strong>. If you placed it with another account, sign in with that one.</p>
+                    <a href="{{BASE}}/account/orders" @click="accountLink($event, 'orders')" class="acct-link mt-4">My Orders</a>
+                </div>
+                <div x-show="userSession && orderPageState === 'error' && !orderPage" class="acct-empty" role="alert">
+                    <p class="mb-4">We couldn’t load this order. Please check your connection and try again.</p>
+                    <button type="button" @click="loadOrderPage(orderRef)" class="btn-gold px-6 py-3">Try again</button>
+                </div>
+                <template x-if="userSession && orderPage && orderPageState !== 'notfound'">
+                    <div>
+                        <div class="flex flex-wrap items-baseline justify-between gap-3">
+                            <h1 id="order-title" tabindex="-1" class="acct-h1 brand-font">Order <span class="font-mono" x-text="orderPage.ref"></span></h1>
+                            <span class="acct-chip" :class="'tone-' + orderTone(orderPage)" x-text="orderStatusText(orderPage)"></span>
                         </div>
-                    </section>
-                    <!-- Orders -->
-                    <section x-show="orders.length" aria-labelledby="account-orders">
-                        <h2 id="account-orders" class="flbl">Orders</h2>
-                        <div class="space-y-4">
-                            <template x-for="o in orders" :key="o.id">
-                                <article :id="'order-' + o.ref" class="border border-zinc-100 rounded-sm p-5 scroll-mt-20">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <p class="text-[13px] text-zinc-600">Order <span class="font-mono font-semibold text-zinc-900" x-text="o.ref"></span> · <span x-text="orderDate(o.created_at)"></span></p>
-                                        <span class="text-[12px] font-semibold px-2.5 py-1 rounded-full" :style="orderChip(o)" x-text="o.status_label"></span>
-                                    </div>
-                                    <p class="text-base font-medium text-zinc-900 mt-1" x-text="(o.lines || []).map(l => l.title).join(', ')"></p>
-                                    <p class="text-[13px] text-zinc-600 mt-1" x-text="orderCountText(o) + ' · ' + money(o.total, o.currency) + ' · ' + o.payment_label"></p>
-                                    <!-- With production: the stage of the order and of each piece, a message from the workshop, the parcels with their tracking -->
-                                    <template x-if="o.fulfillment">
-                                        <div class="mt-2 text-[13px] text-zinc-600">
-                                            <p><span class="text-zinc-500">Production:</span> <span class="font-medium text-zinc-900" x-text="o.fulfillment.stage || o.status_label"></span>
-                                                <template x-for="p in (o.fulfillment.parts || []).filter(p => p.stage && (o.fulfillment.parts || []).length > 1)" :key="p.display_no"><span x-text="' · ' + p.display_no + ': ' + p.stage"></span></template></p>
-                                            <p x-show="o.fulfillment.message" class="mt-1 text-zinc-900" x-text="o.fulfillment.message"></p>
-                                            <template x-for="s in (o.fulfillment.shipments || [])" :key="s.display_no">
-                                                <p class="mt-1"><span x-text="(s.state === 'DELIVERED' ? 'Delivered' : s.state === 'SHIPPED' ? 'Shipped' : 'Parcel prepared') + (s.carrier ? ' · ' + s.carrier + ' ' + (s.tracking_no || '') : '')"></span>
-                                                    <a x-show="s.tracking_url" class="underline ml-1" :href="s.tracking_url" target="_blank" rel="noopener noreferrer">Track the parcel</a>
-                                                    <span x-show="s.alternative_delivery" class="text-zinc-500"> · delivered as agreed with you</span></p>
-                                            </template>
+                        <p class="text-[14px] text-zinc-600 mt-1" x-text="orderMeta(orderPage)"></p>
+                        <p x-show="orderPage.quote_ref" class="text-[13px] text-zinc-600 mt-1">From your quote request <a :href="'{{BASE}}/account/quotes'" @click.prevent="openAccountPage('quote-' + orderPage.quote_ref)" class="font-mono underline" x-text="orderPage.quote_ref"></a></p>
+                        <section class="acct-banner" :class="orderTone(orderPage) === 'action' ? 'is-action' : ''" aria-labelledby="order-now">
+                            <h2 id="order-now" class="text-[14px] font-semibold text-zinc-900">What happens now</h2>
+                            <p class="text-[14px] text-zinc-700 mt-1" x-text="orderNow(orderPage)"></p>
+                        </section>
+                        <div class="acct-cols">
+                            <div class="acct-col">
+                                <section class="acct-panel acct-o-pieces" aria-labelledby="order-pieces">
+                                    <h2 id="order-pieces" class="flbl">Your pieces</h2>
+                                    <template x-for="l in orderPage.lines" :key="l.id">
+                                        <div class="acct-line">
+                                            <img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="acct-thumb" :style="{ filter: metalFilter(l.material_id) }">
+                                            <div class="min-w-0">
+                                                <p class="text-[15px] font-semibold text-zinc-900" x-text="l.title"></p>
+                                                <p class="text-[12px] text-zinc-500"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
+                                                <p class="text-[13px] text-zinc-600" x-text="l.material_label + ' · Size ' + lineSize(l) + ' · Qty ' + l.quantity"></p>
+                                            </div>
+                                            <p class="acct-line-price text-[15px] text-zinc-900 tabular-nums" x-text="money(l.line_total, l.currency)"></p>
                                         </div>
                                     </template>
-                                    <p x-show="o.quote_ref" class="text-[13px] text-zinc-600 mt-1">From your quote request <button type="button" class="font-mono underline" @click="document.getElementById('quote-' + o.quote_ref)?.scrollIntoView({ behavior: 'smooth', block: 'start' })" x-text="o.quote_ref"></button></p>
-                                    <ol class="mt-4 pt-3 border-t border-zinc-100 space-y-1.5 text-[13px]" :aria-label="'History of ' + o.ref">
-                                        <template x-for="(h, i) in orderHistory(o)" :key="i">
-                                            <li class="flex gap-3"><span class="text-zinc-500 tabular-nums shrink-0 w-24" x-text="historyDate(h.at)"></span><span class="text-zinc-800" x-text="h.label"></span></li>
+                                    <div class="mt-2">
+                                        <div class="acct-tot"><span>Subtotal</span><span x-text="money(orderPage.subtotal, orderPage.currency)"></span></div>
+                                        <div x-show="orderPage.discount" class="acct-tot" style="color:#146C43;"><span x-text="'Promo ' + (orderPage.promo_code || '')"></span><span x-text="'−' + money(orderPage.discount || 0, orderPage.currency)"></span></div>
+                                        <div class="acct-tot"><span x-text="orderPage.shipping_label || 'Delivery'"></span><span x-text="orderPage.shipping ? money(orderPage.shipping, orderPage.currency) : 'Free'"></span></div>
+                                        <div class="acct-tot is-total"><span>Total</span><span x-text="money(orderPage.total, orderPage.currency)"></span></div>
+                                        <p class="acct-fine" x-text="orderPage.vat_amount != null ? 'Shekels, including VAT (' + money(orderPage.vat_amount || 0, orderPage.currency) + '). Prices are fixed when you order.' : 'Prices are fixed when you order.'"></p>
+                                    </div>
+                                </section>
+                                <section class="acct-panel acct-o-payment" aria-labelledby="order-payment">
+                                    <h2 id="order-payment" class="flbl">Payment</h2>
+                                    <p><span class="acct-chip" :class="'tone-' + (orderPage.payment_view?.tone || 'progress')" x-text="orderPage.payment_view?.label || orderPage.payment_label"></span></p>
+                                    <p class="text-[14px] text-zinc-700 mt-2" x-text="orderPage.payment_view?.text || orderPage.payment_message"></p>
+                                    <p x-show="orderPage.payment_view?.at" class="acct-when mt-1" x-text="'Recorded ' + orderDate(orderPage.payment_view?.at)"></p>
+                                </section>
+                                <section x-show="orderPage.customer_note" class="acct-panel acct-o-note" aria-labelledby="order-note">
+                                    <h2 id="order-note" class="flbl">Your note</h2>
+                                    <p class="text-[14px] text-zinc-700 break-words" style="white-space:pre-line;" x-text="orderPage.customer_note"></p>
+                                </section>
+                            </div>
+                            <div class="acct-col">
+                                <section class="acct-panel acct-o-progress" aria-labelledby="order-progress">
+                                    <h2 id="order-progress" class="flbl">Progress</h2>
+                                    <ol class="acct-steps">
+                                        <template x-for="(p, i) in (orderPage.progress || [])" :key="p.key">
+                                            <li :class="'is-' + p.state + (p.key === 'cancelled' ? ' is-cancelled' : '')" :aria-current="p.state === 'current' ? 'step' : null">
+                                                <span class="acct-dot" aria-hidden="true" x-text="p.key === 'cancelled' ? '×' : p.state === 'done' ? '✓' : i + 1"></span>
+                                                <div class="min-w-0">
+                                                    <p class="acct-step"><span x-text="p.label"></span><span class="sr-only" x-text="p.state === 'done' ? ' — done' : p.state === 'current' ? ' — now' : ' — not yet'"></span></p>
+                                                    <p x-show="p.at" class="acct-when" x-text="historyDate(p.at)"></p>
+                                                    <p x-show="p.text" class="text-[13px] text-zinc-600" x-text="p.text + (p.since ? ' · since ' + historyDate(p.since) : '')"></p>
+                                                </div>
+                                            </li>
                                         </template>
                                     </ol>
-                                    <button type="button" @click="openOrder(o)" class="btn-outline mt-4 px-5 py-2.5 !text-[13px]">View order</button>
-                                </article>
-                            </template>
+                                    <p class="acct-fine">A step is ticked once it has happened. Times are in business days.</p>
+                                </section>
+                                <template x-if="orderPage.fulfillment">
+                                    <section class="acct-panel acct-o-production" aria-labelledby="order-production">
+                                        <h2 id="order-production" class="flbl">Production</h2>
+                                        <p class="text-[14px] text-zinc-900 font-medium" x-text="orderPage.fulfillment.stage || orderStatusText(orderPage)"></p>
+                                        <template x-for="p in (orderPage.fulfillment.parts || []).filter(p => p.stage && (orderPage.fulfillment.parts || []).length > 1)" :key="p.display_no">
+                                            <p class="text-[13px] text-zinc-600" x-text="p.display_no + ': ' + p.stage"></p>
+                                        </template>
+                                        <p x-show="orderPage.fulfillment.message" class="text-[14px] text-zinc-900 mt-2" x-text="orderPage.fulfillment.message"></p>
+                                        <template x-for="s in (orderPage.fulfillment.shipments || [])" :key="s.display_no">
+                                            <p class="text-[13px] text-zinc-600 mt-2"><span x-text="(s.state === 'DELIVERED' ? 'Delivered' : s.state === 'SHIPPED' ? 'Shipped' : 'Parcel prepared') + (s.carrier ? ' · ' + s.carrier + ' ' + (s.tracking_no || '') : '')"></span>
+                                                <a x-show="s.tracking_url" class="underline ml-1" :href="s.tracking_url" target="_blank" rel="noopener noreferrer">Track the parcel</a>
+                                                <span x-show="s.alternative_delivery" class="text-zinc-500"> · delivered as agreed with you</span></p>
+                                        </template>
+                                    </section>
+                                </template>
+                                <section class="acct-panel acct-o-delivery" aria-labelledby="order-delivery">
+                                    <h2 id="order-delivery" class="flbl">Delivery</h2>
+                                    <template x-for="(ln, i) in (orderPage.address_lines || [])" :key="i"><p class="text-[14px] text-zinc-800 break-words" x-text="ln"></p></template>
+                                    <p class="text-[13px] text-zinc-600 mt-2" x-text="(orderPage.shipping_label || 'Delivery') + ' · ' + (orderPage.shipping ? money(orderPage.shipping, orderPage.currency) : 'free') + (['completed', 'cancelled'].includes(orderPage.status) ? '' : ' · ' + (orderPage.shipping_eta || '') + ' after production, tracked')"></p>
+                                </section>
+                                <section class="acct-panel acct-o-help" aria-labelledby="order-help">
+                                    <h2 id="order-help" class="flbl">Need help?</h2>
+                                    <p class="text-[14px] text-zinc-700">Questions about this order? <a :href="mailto('Order ' + orderPage.ref)" class="underline underline-offset-2 hover:text-black">Email us</a> with your Order ID.</p>
+                                    <p x-show="orderPage.cancel_free" class="text-[14px] text-zinc-700 mt-2">Want to cancel before we confirm your order? Reply to your order confirmation email or <a :href="mailto('Order ' + orderPage.ref)" class="underline underline-offset-2 hover:text-black">email us</a> with your Order ID.</p>
+                                    <p class="text-[14px] text-zinc-700 mt-2">Delivery, cancellation and returns: <a href="{{BASE}}/shipping-returns" @click="pageLink($event, 'shipping-returns')" class="underline underline-offset-2 hover:text-black">Shipping &amp; Returns</a>.</p>
+                                </section>
+                            </div>
                         </div>
-                    </section>
-                </div>
+                        <a href="{{BASE}}/account/orders" @click="backToOrdersLink($event)" class="acct-back mt-8"><span aria-hidden="true">←</span> Back to My Orders</a>
+                    </div>
+                </template>
             </div>
         </main>
     </template>
@@ -2851,10 +3086,10 @@
                         <div class="text-[12px] mt-1.5 leading-snug" style="color:#6F6F6F;">Use this code to sign in on another device. It's tied to your account and its movie allowance — keep it private.</div>
                     </div>
 
-                    <!-- Quotes & orders: the latest of each here, everything on the Quotes & orders page -->
+                    <!-- Orders and quotes: the latest here, everything in My Account (My Orders, My Quotes) -->
                     <div x-show="orders.length || myQuotes.length || ordersLoading" x-cloak>
                         <div class="flex items-center justify-between mb-1.5">
-                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold" style="color:#8A6420;">Quotes &amp; orders</span>
+                            <span class="text-[12px] uppercase tracking-[0.2em] font-semibold" style="color:#8A6420;">Orders &amp; quotes</span>
                             <button type="button" @click="openAccountPage()" class="text-[12px] underline" style="color:#6F6F6F;">See all</button>
                         </div>
                         <p x-show="ordersLoading && !orders.length && !myQuotes.length" class="text-[12px]" style="color:#6F6F6F;">Loading…</p>
@@ -2866,7 +3101,7 @@
                             </template>
                             <template x-for="o in orders" :key="o.id">
                                 <li><button type="button" @click="openOrder(o)" class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-zinc-50 rounded px-1 -mx-1 transition">
-                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + orderCountText(o) + ' · ' + o.status_label"></span></span>
+                                    <span class="min-w-0"><span class="font-mono text-[12px]" style="color:#1A1A1A;" x-text="o.ref"></span><span class="block text-[12px] truncate" style="color:#6F6F6F;" x-text="orderDate(o.created_at) + ' · ' + orderCountText(o) + ' · ' + orderStatusText(o)"></span></span>
                                     <span class="text-[12px] shrink-0" style="color:#1A1A1A;" x-text="money(o.total, o.currency)"></span></button></li>
                             </template>
                         </ul>
@@ -2880,18 +3115,18 @@
                         <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>My Designs
                     </button>
                     <button type="button" @click="openAccountPage()" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
-                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l2 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7l2-3z" stroke-linejoin="round"/><path d="M5 7h14M9 11h6M9 15h4" stroke-linecap="round"/></svg>Quotes &amp; orders
-                        <span x-show="myQuotes.length + orders.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="myQuotes.length + orders.length"></span>
+                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l2 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7l2-3z" stroke-linejoin="round"/><path d="M5 7h14M9 11h6M9 15h4" stroke-linecap="round"/></svg>My Orders
+                        <span x-show="orders.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="orders.length"></span>
                     </button>
                     <button type="button" @click="openPanel('favorites')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
                         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true" style="color:#B8873A;"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" stroke-linejoin="round"/></svg>Favorites
                         <span x-show="favorites.length" class="ml-auto text-[12px] font-semibold tabular-nums" style="color:#8A6420;" x-text="favorites.length"></span>
                     </button>
                 </div>
-                <!-- Sign-in & security — connected logins, password, browsers -->
+                <!-- Account & Security (My Account's third tab) — profile, credits, connected logins, password, browsers, privacy -->
                 <div class="py-1.5" style="border-top:1px solid #F0ECE4;">
                     <button type="button" @click="openAccountPage('security')" class="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-left transition hover:bg-[#FBF8F3]" style="color:#1A1A1A;">
-                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke-linecap="round"/></svg>Sign-in &amp; security
+                        <svg class="w-4 h-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke-linecap="round"/></svg>Account &amp; Security
                     </button>
                 </div>
                 <!-- Sign out — the last option -->

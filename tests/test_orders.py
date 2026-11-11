@@ -219,7 +219,7 @@ async def test_admin_orders_list_search_lifecycle_payment_and_stl_name(HO):
     assert (await H.Client.get("/api/admin/orders")).status_code == 403
     L = (await H.Client.get("/api/admin/orders", headers=Admin)).json()
     assert [X["ref"] for X in L["orders"]] == ["ORD-10001"] and L["orders"][0]["mock"] and L["orders"][0]["three_d_state"] is None
-    assert [S["id"] for S in L["statuses"]][:2] == ["new", "payment_confirmed"] and L["quote_counts"]["new"] == 0
+    assert [S["id"] for S in L["statuses"]][:3] == ["new", "confirmed", "payment_confirmed"] and L["quote_counts"]["new"] == 0
     assert (L["total"], L["offset"], L["limit"]) == (1, 0, 50)
     Row = L["orders"][0]
     assert Row["customer"]["email"] == "dana@atelier-customer.co.il" and Row["lines"][0]["ring_id"] == "R-1001-A" and Row["address_validation"] == "unverified"

@@ -36,7 +36,7 @@ ContractVersion = "atelier-fulfillment/v1"
 EnvironmentKey = "fulfillment_environment_id"
 Prefix = "/api/integrations/fulfillment/v1"
 ProjectionStatuses = ("production", "qc", "shipped", "completed")    # written by the projection; never a commercial change
-EligibleOrderStatuses = ("new", "payment_confirmed", "three_d_ready")   # a quotation is never enrolled (D-10): its order is
+EligibleOrderStatuses = ("new", "confirmed", "payment_confirmed", "three_d_ready")   # a quotation is never enrolled (D-10): its order is
 MaxChanges, MaxEvents, MaxCheckItems = 500, 200, 100
 # The print file of an order line (the owner's decisions of 2026-10-14, Fulfillment I-35): judged from the line's 3D
 # version, result, link and state only — never from its order — each state with what the Admin sees and what to do.
@@ -1475,7 +1475,9 @@ class FulfillmentBridge:
         # sent order keeps its commercial status, and every line shows its own stage
         if EntityType == "order" and Public.get("order_status") in ProjectionStatuses and self._AllLinesSent(Conn, EntityId):
             self._ProjectStatus(Conn, EntityId, Public["order_status"], T)
-        Summary = str(Public.get("summary") or E.get("summary") or E["event_type"])[:300]
+        if EntityType == "order" and E["event_type"] == "fulfillment.review_approved":
+            self._ConfirmOnApproval(Conn, EntityId, State.get("parts"), T)
+        Summary =str(Public.get("summary") or E.get("summary") or E["event_type"])[:300]
         if Row:
             Conn.execute("UPDATE fulfillment_projection SET aggregate_version = ?, state_json = ?, last_event_id = ?, last_event_at = ?, updated_at = ? "
                          "WHERE entity_type = ? AND entity_id = ?", (int(E["aggregate_version"]), Dumps(State), E["event_id"], E["occurred_at"], T, EntityType, EntityId))
@@ -1543,6 +1545,21 @@ class FulfillmentBridge:
                 Timeline.append({"at": D.get("at") or R["created_at"], "label": Label, "status": D.get("event_type")})
                 Last = Label
         return {"stage": Proj.get("customer_status"), "parts": Parts, "shipments": Shipments, "timeline": Timeline, "message": Message}
+
+    def _ConfirmOnApproval(self, Conn, OrderId: str, Parts, T: str) -> None:
+        """Fulfillment approved the order for production (B7, owner's approval 11 Nov 2026): a New order becomes Confirmed —
+        the design review passed — once every line is in Production and every part's review is approved. Never another
+        status (a later one stays), never a partly approved order; recorded in the history as Fulfillment's."""
+        Row = Conn.execute("SELECT status FROM orders WHERE id = ?", (OrderId,)).fetchone()
+        Parts = [P for P in (Parts or []) if isinstance(P, dict)]
+        if not Row or Row["status"] != "new" or not Parts or not self._AllLinesSent(Conn, OrderId):
+            return
+        Lines = Conn.execute("SELECT COUNT(*) FROM order_lines WHERE order_id = ?", (OrderId,)).fetchone()[0]
+        if len(Parts) < Lines or any(P.get("review_status") != "approved" for P in Parts):
+            return
+        Conn.execute("UPDATE orders SET status = 'confirmed', updated_at = ? WHERE id = ?", (T, OrderId))
+        Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                     (OrderId, "status", Dumps({"from": "new", "to": "confirmed", "note": "Approved for production"}), "fulfillment", T))
 
     def _ProjectStatus(self, Conn, OrderId: str, Target: str, T: str) -> None:
         """Fulfillment's progress written into the order's status (D-4): production → qc → shipped → completed, forward

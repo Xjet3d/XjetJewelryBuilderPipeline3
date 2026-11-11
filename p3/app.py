@@ -376,6 +376,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Resp.headers["Cache-Control"] = (Immutable if Shared else PrivateMedia) if Ok else "no-store"
         elif Rel.startswith("/static/vendor/fonts/"):
             Resp.headers.setdefault("Cache-Control", "public, max-age=2592000" if Ok else "no-store")
+        elif SitePages.IsAccountPath(Rel):
+            Resp.headers["Cache-Control"] = "no-store"             # My Account and an order's page: never kept (B7)
         elif Rel in ("/", "/dev", "/admin", "/admin/", "/showcase") or Rel.startswith(("/static/", "/design/", "/gallery/")) \
                 or Rel.strip("/") in SitePages.Views or Rel.strip("/") in SitePages.FlowPaths:
             Resp.headers["Cache-Control"] = Immutable if Ok and Req.query_params.get("v") else "no-cache"
@@ -385,6 +387,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             H.setdefault("X-Robots-Tag", "noindex, nofollow")       # the Admin, the tools and the API are never indexed
         if Rel.strip("/") in SitePages.FlowPaths:
             H.setdefault("X-Robots-Tag", "noindex")                 # a step of a customer's journey is never indexed
+        if SitePages.IsAccountPath(Rel):
+            H.setdefault("X-Robots-Tag", "noindex, nofollow")       # My Account and an order's page (B7)
         H.setdefault("X-Content-Type-Options", "nosniff")
         H.setdefault("X-Frame-Options", "DENY")
         H.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -557,8 +561,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             Html = SitePages.ServerView(Html, View, Fill, Before, Shown)
         if Design:                                     # the design's name is the page's heading, not the site's tagline
             Html = SitePages.DesignHeading(Html)
-        if Flow:                                       # the step's own title, the one the app shows there
-            Title = SitePages.ScreenTitles[SitePages.FlowScreens[Flow]]
+        if Flow:                                       # the step's own title, the one the app shows there (My Account: "account")
+            Title = SitePages.ScreenTitles[SitePages.FlowScreens.get(Flow, Flow)]
         if View != "home" or Flow:
             Html = re.sub(r"<title>.*?</title>", lambda _M: f"<title>{html.escape(Title, quote=False)}</title>", Html, count=1, flags=re.S)
         if Data:
@@ -624,6 +628,19 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     for _Flow in SitePages.FlowPaths:
         App_.add_api_route("/" + _Flow, _FlowRoute(_Flow), methods=["GET"], include_in_schema=False)
+
+    # My Account at its own addresses (B7): its tabs and each order's page (/account/orders/ORD-10016) — the app, which shows
+    # them to the signed-in customer or asks them to sign in first (web/app.js ACCOUNT_TABS); never indexed, never kept in a
+    # cache, nothing of a customer in the page. The old /#account (emails sent before) is the home page's: it opens My Orders.
+    async def AccountPage(request: Request):
+        return HTMLResponse(RenderPage(request, "home", Flow="account"))
+
+    for _Path in SitePages.AccountPaths:
+        App_.add_api_route("/" + _Path, AccountPage, methods=["GET"], include_in_schema=False, name="Account_" + _Path.replace("/", "_"))
+
+    @App_.get("/account/orders/{Ref}", include_in_schema=False)
+    async def AccountOrderPage(Ref: str, request: Request):
+        return HTMLResponse(RenderPage(request, "home", Flow="account"))
 
     @App_.get("/dev", include_in_schema=False)
     async def DevPage():

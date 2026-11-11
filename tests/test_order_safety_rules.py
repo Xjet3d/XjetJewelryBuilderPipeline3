@@ -55,7 +55,7 @@ async def test_a_cancellation_in_production_is_undone_only_after_fulfillment_rej
                       cancellation={"part": "MP-10001-001", "decision": "rejected", "quantity": 0, "remaining": 1, "reason": "already printing"})
         S = await _State(H, O["id"])
         assert S["reinstate"]["possible"] is True and S["reinstate"]["lines"][0]["decision"] == "rejected"
-        assert H.Svc.Orders.AdminGet(O["id"])["allowed_statuses"] == ["new", "payment_confirmed", "three_d_ready", "cancelled"]
+        assert H.Svc.Orders.AdminGet(O["id"])["allowed_statuses"] == ["new", "confirmed", "payment_confirmed", "three_d_ready", "cancelled"]
         R = await _SetStatus(H, O["id"], "new")
         assert R.status_code == 400 and R.json()["error"]["code"] == "reason_required"
         R = await _SetStatus(H, O["id"], "new", "the customer called back: they still want it")
@@ -98,7 +98,7 @@ async def test_undoing_any_cancellation_needs_a_reason_and_the_choices_are_what_
     H = _On(tmp_path)
     try:
         _Did, O = await _Placed(H, Qty=1)                                       # never handed over
-        Every = ["new", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed", "cancelled"]
+        Every = ["new", "confirmed", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed", "cancelled"]
         assert H.Svc.Orders.AdminGet(O["id"])["allowed_statuses"] == Every
         assert (await _SetStatus(H, O["id"], "cancelled")).status_code == 200      # before the hand-over a reason stays optional
         R = await _SetStatus(H, O["id"], "new")

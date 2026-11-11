@@ -84,7 +84,7 @@ def test_the_app_walks_the_journey_with_the_browser():
     assert "window.addEventListener('popstate', () => this._onHistory());" in Js
     assert "if (P3_FLOW) await this._openFlow(P3_FLOW, { history: 'replace', restore: true });" in Js
     assert "STUDIO_VIEWS.includes(st.view) && P3_PAGE === 'home'" not in Js            # the Design screen is not at '/' any more
-    assert "if (!this.token) { if (P3_FLOW) this._signInFor(P3_FLOW); return; }" in Js     # signed out: sign in first
+    assert "if (P3_FLOW) this._signInFor(P3_FLOW); else if (P3_ACCOUNT && !authStatus) this._signInForAccount(P3_ACCOUNT);" in Js     # signed out: sign in first
     assert "sessionStorage.setItem('p3_pending_route', flow);" in Js                      # kept across Google / Apple
     Route = Js[Js.index("    routePath() {"):Js.index("    _goBackOr(v) {")]
     assert "design.id" not in Route and "designId" not in Route                          # no design in an address

@@ -108,7 +108,7 @@ async def test_on_one_email_per_order_and_milestone_deduplicated_coalesced_and_t
         Sent = _Mails(H)
         assert len(Sent) == 1 and Sent[0]["to"] == Email and Sent[0]["subject"] == f"Order {O['ref']} — approved for production"
         Html = Sent[0]["html"]
-        assert "approved it" in Html and "contact you to arrange payment; production starts once your payment is confirmed" in Html and "MP-10001-001: Preparing for production" in Html and "https://atelier.example/#account" in Html
+        assert "approved it" in Html and "contact you to arrange payment; production starts once your payment is confirmed" in Html and "MP-10001-001: Preparing for production" in Html and f"https://atelier.example/account/orders/{O['ref']}" in Html
         States = {I["event_id"]: I["state"] for I in (await _Intents(H))["intents"]}
         assert States == {"a2": "coalesced", "a3": "sent"}
         assert H.Ctx.Db.One("SELECT data_json FROM order_events WHERE order_id = ? AND kind = 'email' ORDER BY id DESC LIMIT 1", (O["id"],))["data_json"].count("fulfillment_review_approved") == 1

@@ -9,7 +9,8 @@ send the line again and follow the hand-over from the start.
 
 Cleared, for that order only: its hand-over rows (`fulfillment_line_production`), its enrollment and its projection
 (what Fulfillment reported). Kept: the order and its lines, prices, payment, pins, 3D versions and files; its history
-(`order_events` — one more entry per line records the reset, with the reason), the events received from Fulfillment
+(`order_events` — one more entry per line records the reset, with the reason; an order Confirmed by Fulfillment's
+approval alone goes back to New, B7), the events received from Fulfillment
 (`fulfillment_inbox`) and the changes feed (`fulfillment_outbox`: Fulfillment's cursor is past its rows, they are never
 read again). The customer's timeline shows only the milestones of the next hand-over (fulfillment_bridge.CustomerView).
 
@@ -132,13 +133,22 @@ def Reset(DbPath: Path, Ref: str, Reason: str, CheckpointDir: Path, By: str = "o
                 Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
                              (Id, "production_reset", json.dumps({"line_id": L["line_id"], "item_ref": L["item_ref"], "part": L.get("part_display_no"),
                                                                   "note": Reason, "checkpoint": str(CheckpointDir)}), By, T))
+            # B7: the order Confirmed by Fulfillment's approval (and nothing since) goes back to New — the approval is cleared
+            # with the trial and the next hand-over is reviewed again; a confirmation the Admin made stays
+            Last = Conn.execute("SELECT data_json, by FROM order_events WHERE order_id = ? AND kind = 'status' ORDER BY id DESC LIMIT 1", (Id,)).fetchone()
+            Undone = bool(P["status"] == "confirmed" and Last and Last["by"] == "fulfillment" and json.loads(Last["data_json"] or "{}").get("to") == "confirmed")
+            if Undone:
+                Conn.execute("UPDATE orders SET status = 'new', updated_at = ? WHERE id = ?", (T, Id))
+                Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                             (Id, "status", json.dumps({"from": "confirmed", "to": "new", "note": "trial reset: Fulfillment's approval cleared"}), By, T))
             Conn.execute("COMMIT")
         except BaseException:
             Conn.execute("ROLLBACK")
             raise
     finally:
         Conn.close()
-    return {"order": P["order"], "lines": [L["item_ref"] for L in P["lines"]], "cleared": Counts, "reason": Reason, "checkpoint": Cp}
+    return {"order": P["order"], "lines": [L["item_ref"] for L in P["lines"]], "cleared": Counts, "reason": Reason, "checkpoint": Cp,
+            "confirmation_undone": Undone}
 
 
 def Main(Argv=None) -> int:

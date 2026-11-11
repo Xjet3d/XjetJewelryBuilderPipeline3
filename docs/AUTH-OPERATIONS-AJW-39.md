@@ -7,7 +7,7 @@ AI providers, pricing, payment, credit, order and fulfillment logic are untouche
 
 - Sign up and sign in with **Google**, **Apple**, or **email and password**; confirm their email; reset a forgotten password.
 - Stay signed in (a cookie session), sign out, sign out of other browsers, see where they are signed in.
-- Connect or disconnect Google / Apple / password on the **Your account** page (`#account`, section *Sign-in & security*).
+- Connect or disconnect Google / Apple / password in My Account → **Account & Security** (`/account/security`, section *Sign-in & security*).
   A method can be disconnected only while another one remains. Changing how you sign in needs a recent sign-in (10 minutes).
 - A customer of the old system moves to a real login **once**, with their six-letter code (or without it, by email — "Forgot
   password" finds the account by its address). Credits, designs, assets, quotes, orders and history stay on the same account.

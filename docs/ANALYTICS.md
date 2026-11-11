@@ -176,7 +176,7 @@ and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
 | Design · My Designs · Favorites | `/design` · `/my-designs` · `/favorites` | Design Studio · My Designs · Favorites |
 | Customize · Bag · Checkout | `/customize` · `/bag` · `/checkout` | Customize · Your Bag · Checkout |
 | An order's confirmation | where it was reached (`/checkout`) | Your Order |
-| My Account | `/` (its `#account` is not sent) | My Account |
+| My Account | `/account/orders`, `/account/quotes`, `/account/security`; an order's page as `/account/orders/order` (never its Order ID) | My Account · Your Order |
 
 - The page served at a step's address carries that step's title (`ScreenTitles`), so a reload or a link sends the same
   screen the app then shows: one page view, not two. The same screen again sends nothing.

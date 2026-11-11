@@ -108,7 +108,7 @@ async def test_every_public_page_has_its_own_url_title_description_canonical_and
         assert "this._route(history);" in Nav and Nav.index("this._screenShown();") > Nav.index("this._route(history);")
         assert "_screenShown() { document.title = this.screenTitle(); this.measureScreen(); }," in App
         Route = App[App.index("    routePath() {"):App.index("    _goBackOr(v) {")]
-        assert "if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);" in Route and "if (v === 'account') return BASE + '/#account';" in Route
+        assert "if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);" in Route and "if (v === 'account') return BASE + '/account/' +" in Route
         assert "if (!to || how === 'none' || to === here) return;" in Route                 # the same address adds no step
         assert (await H.Client.get("/faq/")).status_code in (200, 307)                     # a trailing slash still finds it
     finally:

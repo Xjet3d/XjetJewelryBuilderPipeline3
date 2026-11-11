@@ -401,7 +401,7 @@ CREATE TABLE IF NOT EXISTS orders (
     id                  TEXT PRIMARY KEY,
     order_no            INTEGER UNIQUE,
     owner_account_id    TEXT NOT NULL,
-    status              TEXT NOT NULL,            -- new | payment_confirmed | three_d_ready | production | qc | shipped | completed | cancelled
+    status              TEXT NOT NULL,            -- new | confirmed | payment_confirmed | three_d_ready | production | qc | shipped | completed | cancelled
     payment_status      TEXT NOT NULL,            -- pending | paid | failed | refunded | cancelled
     payment_provider    TEXT,                     -- NULL until a provider is connected (adapter name)
     payment_ref         TEXT,                     -- the provider's reference (intent / charge id)

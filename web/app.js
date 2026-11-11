@@ -78,6 +78,31 @@ const FLOW_PATHS = { design: 'design', 'my-designs': 'my-designs', favorites: 'f
 const FLOW_OF = { 'ai-studio': 'design', review: 'customize', checkout: 'bag', order: 'checkout' };      // a screen's own step
 const flowOf = p => { const r = (p || '').slice(BASE.length).replace(/^\/+|\/+$/g, ''); return Object.keys(FLOW_PATHS).find(k => FLOW_PATHS[k] === r) || ''; };
 const P3_FLOW = flowOf(location.pathname);               // the step this page was opened at (F5, a link): restored at init
+// My Account at its own addresses (B7, owner's approval 11 Nov 2026; p3/sitepages.py AccountPaths): the tabs
+// /account/orders (the default; /account too), /account/quotes and /account/security, and each order's page
+// /account/orders/ORD-10016 — the email's View Your Order. Never indexed. The old /#account (emails sent before) opens My
+// Orders. A destination asked for while signed out is kept on this device for 30 minutes (ACCOUNT_RETURN_KEY): it survives
+// a Google / Apple round trip and a password-reset or verification email opened in a new tab. Only these addresses are
+// ever kept or opened from it — never another site's.
+const ACCOUNT_TABS = ['orders', 'quotes', 'security'];
+const ORDER_REF = /^ORD-\d{1,9}$/;
+const ACCOUNT_RETURN_KEY = 'p3_account_return' + (BASE ? ':' + BASE : '');
+const ACCOUNT_RETURN_MS = 30 * 60 * 1000;
+const accountOf = p => {                                  // a path under the base path → { tab } | { ref } | null
+  const r = (p || '').slice(BASE.length).replace(/^\/+|\/+$/g, '');
+  if (r === 'account') return { tab: 'orders' };
+  const m = /^account\/(orders|quotes|security)(?:\/([^/]+))?$/.exec(r);
+  if (!m) return null;
+  if (!m[2]) return { tab: m[1] };
+  if (m[1] !== 'orders') return null;
+  let ref = '';
+  try { ref = decodeURIComponent(m[2]).trim().toUpperCase(); } catch (_) {}
+  return { ref };
+};
+// An order's page reaches the analytics tools without its Order ID (web/consent.js cleans the first hit the same way)
+const analyticsPath = p => (p || '').replace(/(\/account\/orders\/)[^/?#]+/, '$1order');
+const P3_ACCOUNT = accountOf(location.pathname) || (location.hash === '#account' ? { tab: 'orders' } : null);
+const byNewest = (a, b) => ((a.created_at || '') < (b.created_at || '') ? 1 : (a.created_at || '') > (b.created_at || '') ? -1 : 0);
 
 // Copy text to the clipboard. The Clipboard API exists only on https (and localhost); on a plain-http site such
 // as proto the older selection copy still works inside a click. Returns whether the text was copied.
@@ -260,7 +285,9 @@ function p3App() {
 
     // ── checkout & orders ─────────────────────────────────────────────
     checkout: null, coQuote: null, order: null, orders: [], ordersLoading: false,
-    myQuotes: [], myQuotesLoading: false,          // My Account → Quotes & orders: the customer's quote requests
+    myQuotes: [], myQuotesLoading: false,          // My Account → My Quotes: the customer's quote requests
+    accountTab: 'orders',                          // My Account's tab (B7): orders · quotes · security
+    orderRef: '', orderPage: null, orderPageState: '',   // an order's page (/account/orders/ORD-…): loading · ok · notfound · error
     co: { step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
           address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
           shipping_method: 'standard', promo_code: '', promo_input: '', terms: false, busy: false, error: '',
@@ -289,7 +316,8 @@ function p3App() {
       // the screen the sign-in opens, or the page it came back to when it did not complete.
       const h = (location.hash || '').replace('#', ''), T = window.__p3?.titles || {};
       const authReturn = /(?:^|&)(?:auth|token)=/.test(h);
-      const landing = PAGE_VIEWS.includes(h) ? [this.pageUrl(h), T[h]] : [location.pathname, h === 'account' ? T.account : ''];
+      const landing = PAGE_VIEWS.includes(h) ? [this.pageUrl(h), T[h]]
+                    : [analyticsPath(location.pathname), P3_ACCOUNT ? T[P3_ACCOUNT.ref ? 'account-order' : 'account'] : ''];
       if (!authReturn) try { window.AtelierAnalytics?.page(landing[0], landing[1] || document.title); } catch (_) {}
       const st = loadStore();
       // Rotate the waiting-screen status line every 3.5 s (P2 cadence); skipped for reduced motion.
@@ -328,14 +356,21 @@ function p3App() {
       });
       // Back / Forward: the address names the screen (a page, a step of the journey) and the gallery design that is open
       window.addEventListener('popstate', () => this._onHistory());
-      if (hashView === 'account') { this.view = 'account'; this._screenShown(); }   // signed out, the page offers the sign-in
+      if (P3_ACCOUNT) this._showAccount(P3_ACCOUNT, { history: 'replace' });   // My Account at once (signed out: it asks to sign in)
       if (authStatus === 'accept_terms') { await this._openPendingTerms(); this.measureScreen(); return; }   // a new Google / Apple customer
       if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
       const signedInNow = !!this.token && (fromLink || authStatus === 'ok' || authStatus === 'created');
       if (authReturn && !signedInNow) this.measureScreen();                        // a sign-in that did not complete
-      if (!this.token) { if (P3_FLOW) this._signInFor(P3_FLOW); return; }          // a step of the journey: sign in first
+      if (!this.token) {                                                            // a step of the journey, My Account: sign in first
+        if (P3_FLOW) this._signInFor(P3_FLOW); else if (P3_ACCOUNT && !authStatus) this._signInForAccount(P3_ACCOUNT);
+        return;
+      }
       this.refreshBag();
-      if (hashView === 'account') { this.loadOrders(); this.loadMyQuotes(); this.loadSecurity(); }
+      if (P3_ACCOUNT && authStatus !== 'ok' && authStatus !== 'created') {           // My Account (a link, F5): that tab or order
+        if (fromLink) { this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {}); this.measure('login', { method: 'link' }); }
+        this._loadAccount(P3_ACCOUNT);
+        return;
+      }
       if (authStatus === 'ok' || authStatus === 'created') {
         try { this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
         this._measureSignIn(authStatus === 'created');
@@ -467,7 +502,8 @@ function p3App() {
     routePath() {
       const v = this.view;
       if (PAGE_VIEWS.includes(v)) return this.pageUrl(v);
-      if (v === 'account') return BASE + '/#account';
+      if (v === 'account') return BASE + '/account/' + (ACCOUNT_TABS.includes(this.accountTab) ? this.accountTab : 'orders');
+      if (v === 'account-order') return BASE + '/account/orders/' + encodeURIComponent(this.orderRef);
       if (v === 'ai-studio' && this.sidebarOpen && this.panelRoute) return BASE + '/' + FLOW_PATHS[this.panelRoute];
       return FLOW_OF[v] ? BASE + '/' + FLOW_PATHS[FLOW_OF[v]] : null;
     },
@@ -524,7 +560,7 @@ function p3App() {
     // and an order's confirmation keep the address they are shown at — and the tab's title. One page view per screen:
     // the same screen again is not counted, nor a screen a restore only passes through.
     measureScreen() {
-      const path = this.galleryItem ? this.galleryHref(this.galleryItem) : (this.routePath() || location.pathname).replace(/#.*$/, '');
+      const path = this.galleryItem ? this.galleryHref(this.galleryItem) : analyticsPath((this.routePath() || location.pathname).replace(/#.*$/, ''));
       try { window.AtelierAnalytics?.page(path, document.title); } catch (_) {}
     },
     measureItem(product, materialId, price, quantity) {
@@ -835,7 +871,9 @@ function p3App() {
       const flow = flowOf(p);
       if (flow) { this._openFlow(flow, { history: 'none' }); return; }
       const rel = p.slice(BASE.length).replace(/^\/+|\/+$/g, '');
-      if (!rel && location.hash === '#account') { this.openAccountPage('', { history: 'none' }); return; }
+      const acc = accountOf(p);                                            // My Account's tab or an order's page (B7)
+      if (acc) { this._openAccount(acc, { history: 'none' }); return; }
+      if (!rel && location.hash === '#account') { this._openAccount({ tab: 'orders' }, { history: 'replace' }); return; }   // an old link's step
       const v = Object.keys(PAGE_PATHS).find(k => PAGE_PATHS[k] === rel);
       if (v) this.navigateTo(v, { history: 'none' });
     },
@@ -1014,6 +1052,14 @@ function p3App() {
         this._openTermsGate('account');
         return;
       }
+      const account = this._takeAccountReturn();  // My Account or an order's page (an email's link) asked for before signing in
+      if (account) {
+        this._pendingPanel = ''; this._takePendingRoute(); this.showRegModal = false; this.signInNotice = null; this.closePreview();
+        this.loadDesigns(); this.loadFavorites();
+        this._openAccount(account, { history: accountOf(location.pathname) ? 'replace' : 'push' });
+        this._focusAccountTitle(account.ref ? 'order-title' : 'account-title');     // the dialog closed: the page's heading
+        return;
+      }
       const pending = this._pendingGallery();
       if (pending) { await this.startFromGallery(pending); return; }
       const fav = this._pendingFav();
@@ -1060,6 +1106,9 @@ function p3App() {
     closeRegModal() {
       this.showRegModal = false;
       this._setPendingGallery(''); this._setPendingFav(''); this._pendingPanel = '';
+      // My Account asked for, the sign-in declined: forgotten — unless an email is on its way (a password reset or a
+      // verification, opened in a new tab: the order's page follows that sign-in)
+      if (!this.userSession && !this.regInfo) this._setAccountReturn(null);
       if (this._takePendingRoute() && !this.userSession) { this._route('replace'); this._screenShown(); }   // a step's address, not signed in: home's
       const el = this._returnFocus; this._returnFocus = null;
       if (el && el.isConnected) setTimeout(() => el.focus(), 0);
@@ -2985,24 +3034,144 @@ function p3App() {
       try { this.orders = (await this.api('GET', '/api/orders')).orders; } catch (_) { /* keep what we have */ }
       finally { this.ordersLoading = false; }
     },
-    openOrder(o) { this.order = o; this.closeAccountPanel(); this.navigateTo('confirmation'); },
+    // An order from My Orders, the account menu or an earlier-order notice: its own page (B7), shown at once from the list
+    openOrder(o) { this.closeAccountPanel(); this._openAccount({ ref: o.ref, order: o }); },
     async loadMyQuotes() {
       if (!this.token) return;
       this.myQuotesLoading = true;
       try { this.myQuotes = (await this.api('GET', '/api/quote-requests')).quote_requests; } catch (_) { /* keep what we have */ }
       finally { this.myQuotesLoading = false; }
     },
-    // My Account → Quotes & orders (#account); anchor: a quote or order on it ("quote-Q-5001", "order-ORD-10001")
+    // ── My Account (B7): tabs and an order's page at their own addresses ──
+    // anchor: '' or 'orders' (My Orders), 'quotes', 'security', a quote on My Quotes ("quote-Q-5001") or an order's page
+    // ("order-ORD-10001")
     openAccountPage(anchor = '', { history = 'push' } = {}) {
       this.closeAccountPanel(); this.menuOpen = false;
-      if (!this.userSession) { this._pendingPanel = 'account'; this.openRegModal(); return; }
-      this.navigateTo('account', { history });
-      this.loadSecurity();
-      if (anchor) setTimeout(() => document.getElementById(anchor === 'security' ? 'account-security' : anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+      const A = anchor.startsWith('order-') ? { ref: anchor.slice(6) } : anchor.startsWith('quote-') ? { tab: 'quotes', quote: anchor.slice(6) }
+              : { tab: ACCOUNT_TABS.includes(anchor) ? anchor : 'orders' };
+      this._openAccount(A, { history });
     },
-    openOrderByRef(ref) {
-      const o = this.orders.find(x => x.ref === ref);
-      if (o) this.openOrder(o); else this.openAccountPage('order-' + ref);
+    openOrderByRef(ref) { this.openAccountPage('order-' + ref); },
+    // A: { tab } | { ref, order? } (order: the list's copy, shown at once while the page reads it fresh)
+    _openAccount(A, { history = 'push' } = {}) {
+      this.closeAccountPanel(); this.menuOpen = false;
+      if (!this.userSession) { this._showAccount(A, { history }); this._signInForAccount(A); return; }
+      const fromOrder = this.view === 'account-order' && !A.ref;
+      this._showAccount(A, { history });
+      this._loadAccount(A);
+      // the focus follows a move between the list and an order's page (a screen reader hears where it is); a tab keeps it
+      if (history !== 'replace' && (A.ref || fromOrder)) this._focusAccountTitle(A.ref ? 'order-title' : 'account-title');
+    },
+    // The screen and its address, signed in or not (signed out, the page asks to sign in)
+    _showAccount(A, { history = 'push' } = {}) {
+      if (A.ref) {
+        if (this.orderRef !== A.ref || !this.orderPage) {
+          this.orderPage = A.order || this.orders.find(o => o.ref === A.ref) || null;
+          this.orderPageState = this.orderPage ? 'ok' : 'loading';
+        }
+        this.orderRef = A.ref;
+        this.navigateTo('account-order', { history });
+      } else {
+        this.accountTab = ACCOUNT_TABS.includes(A.tab) ? A.tab : 'orders';
+        this.navigateTo('account', { history });
+      }
+    },
+    _loadAccount(A) {
+      this.loadOrders(); this.loadMyQuotes(); this.loadSecurity();
+      if (A.ref) this.loadOrderPage(A.ref);
+      if (A.quote) setTimeout(() => document.getElementById('quote-' + A.quote)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    },
+    _focusAccountTitle(id) {
+      let n = 0;
+      const go = () => { const el = document.getElementById(id); if (el) el.focus({ preventScroll: true }); else if (++n < 20) setTimeout(go, 100); };
+      this.$nextTick(() => setTimeout(go, 30));
+    },
+    async loadOrderPage(ref) {
+      if (!ORDER_REF.test(ref || '')) { this.orderPage = null; this.orderPageState = 'notfound'; return; }
+      if (!this.orderPage || this.orderPage.ref !== ref) this.orderPage = this.orders.find(o => o.ref === ref) || null;
+      this.orderPageState = this.orderPage ? 'ok' : 'loading';
+      try {
+        const o = await this.api('GET', '/api/orders/' + encodeURIComponent(ref));
+        if (this.orderRef === ref) { this.orderPage = o; this.orderPageState = 'ok'; document.title = this.screenTitle(); }
+      } catch (e) {
+        if (this.orderRef !== ref) return;
+        if (e.status === 404) { this.orderPage = null; this.orderPageState = 'notfound'; }
+        else if (!this.orderPage) this.orderPageState = 'error';
+      }
+    },
+    // Signed out: the sign-in opens over the page, and that tab or order follows it (kept 30 minutes on this device)
+    _signInForAccount(A) {
+      this._setAccountReturn(A);
+      if (!this.showRegModal) this.openRegModal();
+    },
+    _setAccountReturn(A) {
+      try {
+        if (!A) { localStorage.removeItem(ACCOUNT_RETURN_KEY); return; }
+        const to = A.ref ? (ORDER_REF.test(A.ref) ? 'order:' + A.ref : 'orders') : (ACCOUNT_TABS.includes(A.tab) ? A.tab : 'orders');
+        localStorage.setItem(ACCOUNT_RETURN_KEY, JSON.stringify({ to, at: Date.now(), quote: A.quote || undefined }));
+      } catch (_) {}
+    },
+    _takeAccountReturn() {
+      let R = null;
+      try { R = JSON.parse(localStorage.getItem(ACCOUNT_RETURN_KEY) || 'null'); localStorage.removeItem(ACCOUNT_RETURN_KEY); } catch (_) { R = null; }
+      if (!R || typeof R.to !== 'string' || !(Date.now() - (R.at || 0) < ACCOUNT_RETURN_MS)) return null;
+      if (R.to.startsWith('order:')) { const ref = R.to.slice(6); return ORDER_REF.test(ref) ? { ref } : null; }
+      return ACCOUNT_TABS.includes(R.to) ? { tab: R.to, ...(typeof R.quote === 'string' && /^Q-\d{1,9}$/.test(R.quote) ? { quote: R.quote } : {}) } : null;
+    },
+    // A link in My Account: a plain click opens it in place; Ctrl/⌘/Shift/middle click opens its address as the browser does
+    accountLink(e, tab) {
+      if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0)) return;
+      e?.preventDefault();
+      if (this.view === 'account' && this.accountTab === tab) return;
+      this.openAccountPage(tab);
+    },
+    orderHref(o) { return BASE + '/account/orders/' + encodeURIComponent(o?.ref || ''); },
+    orderLink(e, o) {
+      if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0)) return;
+      e?.preventDefault();
+      this.openOrder(o);
+    },
+    // Back to My Orders: one step back when the order was opened from My Orders in this page load (where the browser's Back
+    // goes too); from an email's link, My Orders as a new step, so the browser's Back returns to the order
+    backToOrdersLink(e) {
+      if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0)) return;
+      e?.preventDefault();
+      const s = history.state, prev = s && s.p3Pushed === PAGE_LOAD ? String(s.p3Prev || '').replace(/#.*$/, '') : '';
+      if (prev && accountOf(prev)?.tab === 'orders') { history.back(); return; }
+      this.openAccountPage('orders');
+    },
+    get accountHello() {
+      const first = (this.displayName || '').split(/\s+/)[0];
+      return this.userSession && first && !first.includes('@') ? 'Hello, ' + first : 'My Account';
+    },
+    // My Orders: in progress (anything not completed or cancelled), then the finished ones; newest first in each
+    get orderGroups() {
+      const done = o => ['completed', 'cancelled'].includes(o.status);
+      return [{ key: 'open', label: 'In progress', orders: this.orders.filter(o => !done(o)).sort(byNewest) },
+              { key: 'done', label: 'Completed and cancelled', orders: this.orders.filter(done).sort(byNewest) }].filter(G => G.orders.length);
+    },
+    // My Quotes: open requests (no decision yet, quote still valid) first, then the rest
+    get quoteGroups() {
+      const open = q => ['new', 'quoted', 'answered'].includes(q.status) && !q.offer_expired;
+      return [{ key: 'open', label: 'Open', quotes: this.myQuotes.filter(open).sort(byNewest) },
+              { key: 'closed', label: 'Decided and closed', quotes: this.myQuotes.filter(q => !open(q)).sort(byNewest) }].filter(G => G.quotes.length);
+    },
+    // The order's status in the customer's words (the server's customer_status: 3D ready, In production and QC read Production)
+    orderStatusText(o) { return o?.customer_status?.label || o?.status_label || ''; },
+    orderTone(o) { return o?.customer_status?.tone || (o?.status === 'cancelled' ? 'ended' : ['shipped', 'completed'].includes(o?.status) ? 'done' : 'progress'); },
+    orderNext(o) { return o?.customer_status?.next || ''; },
+    orderNow(o) { return o?.customer_status?.now || o?.customer_status?.next || ''; },
+    quoteTone(q) { return q.offer_expired ? 'ended' : q.status === 'approved' ? 'done' : ['rejected', 'closed'].includes(q.status) ? 'ended' : q.status === 'quoted' ? 'action' : 'progress'; },
+    orderTitle(o) {
+      const L = o?.lines || [];
+      return L.length ? L[0].title + (L.length > 1 ? ' and ' + (L.length - 1) + ' more' : '') : 'Order ' + (o?.ref || '');
+    },
+    orderSummary(o) {
+      const L = o?.lines || [], one = L.length === 1 ? L[0] : null;
+      return this.orderCountText(o) + (one ? ' · ' + one.material_label + ' · ' + this.lineSize(one) : '');
+    },
+    orderMeta(o) {
+      return 'Placed ' + this.orderDate(o.created_at) + ' · ' + this.orderCountText(o) + ' · ' + this.money(o.total, o.currency) + (o.vat_amount != null ? ' including VAT' : '');
     },
     // Where a quote request stands and what the customer can do next (the Admin's statuses, in the customer's words)
     quoteNextStep(q) {
