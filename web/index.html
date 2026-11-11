@@ -2280,7 +2280,7 @@
                     </ol>
 
                     <!-- How ordering works, from the first step (B4/B6, 11 Nov 2026) -->
-                    <p x-show="!checkout?.payment?.available" class="rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">No payment is taken online. You place your order, our team reviews your design (about 2 business days), and then we contact you to arrange payment. Production starts once your payment is confirmed.</p>
+                    <p x-show="!checkout?.payment?.available" class="mb-5 rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">No payment is taken online. You place your order, our team reviews your design (about 2 business days), and then we contact you to arrange payment. Production starts once your payment is confirmed.</p>
 
                     <!-- Step 1 · details -->
                     <section x-show="co.step === 'details'" class="space-y-5" aria-labelledby="co-h-details">
@@ -2478,7 +2478,7 @@
                     <!-- Why Place order can't be pressed yet (B4/B6): the Terms box, a declined promo code, nothing orderable -->
                     <p x-show="coPlaceBlockedText" x-cloak id="co-place-why" class="text-[13px] leading-snug text-center sm:text-right mb-2" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
                     <div class="flex items-center justify-between gap-3">
-                        <button @click="coBack()" class="btn-outline px-4 sm:px-5 py-3 shrink-0" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></button>
+                        <button @click="coBack()" class="btn-outline px-4 sm:px-5 py-3 shrink-0" :aria-label="co.step === 'details' ? 'Back to bag' : 'Back'"><span class="sm:hidden" aria-hidden="true">←</span><span class="hidden sm:inline" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></span></button>
                         <div class="flex items-center gap-3 sm:gap-4 min-w-0">
                             <span class="text-sm text-zinc-700 whitespace-nowrap"><span class="text-zinc-500">Total</span> <strong x-text="money(coQuote?.total || 0, coQuote?.currency)"></strong></span>
                             <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-5 sm:px-7 py-3 stream-glow"
