@@ -191,7 +191,7 @@ def test_smtp_mailer_matches_pipeline2_and_records_delivery(tmp_path, monkeypatc
         def __init__(self, Host, Port, timeout=None): Sent.append({"host": Host, "port": Port})
         def __enter__(self): return self
         def __exit__(self, *A): return False
-        def send_message(self, Msg): Sent[-1]["msg"] = Msg; return {}
+        def send_message(self, Msg, from_addr=None): Sent[-1]["msg"] = Msg; return {}
 
     monkeypatch.setattr(mail.smtplib, "SMTP", FakeSmtp)
     monkeypatch.setattr(mail.socket, "getaddrinfo", lambda *A: [(None, None, None, None, ("52.0.0.1", 0))])

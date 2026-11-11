@@ -253,7 +253,7 @@ class QuoteDesk:
         if self.Mailer is None:
             QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "update", "to": To, "error": "no mail delivery"}, "system")
             return self.AdminDetail(R["id"])
-        from p3.mail import QuoteUpdateEmail
+        from p3.mail import QuoteUpdateEmail, Trace as MailTrace
         Subject, Body = QuoteUpdateEmail(self.Orders.QuoteRequestJson(R), Message)
         Mode = getattr(self.Mailer, "Mode", None)
 
@@ -263,8 +263,8 @@ class QuoteDesk:
                 QuoteEvent(self.Ctx.Db, R["id"], "email_skipped", {"type": "update", "to": To, "reason": "test request: reserved test domain"}, "system")
                 return
             try:
-                self.Mailer.Send(To, Subject, Body)
-                QuoteEvent(self.Ctx.Db, R["id"], "email", {"type": "update", "to": To, "delivery": Mode}, "system")
+                Mid = self.Mailer.Send(To, Subject, Body)
+                QuoteEvent(self.Ctx.Db, R["id"], "email", {"type": "update", "to": To, "delivery": Mode, **MailTrace(self.Mailer, Mid)}, "system")
             except Exception as E:  # noqa: BLE001 — the update stays in the history; the Admin sees that the email failed
                 QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "update", "to": To, "error": str(E)[:200]}, "system")
         (SendMail or (lambda Fn: Fn()))(Send)
@@ -324,7 +324,7 @@ class QuoteDesk:
         if self.Mailer is None:
             QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "offer", "to": Offer["to"], "error": "no mail delivery"}, "system")
             return
-        from p3.mail import QuoteOfferEmail
+        from p3.mail import QuoteOfferEmail, Trace as MailTrace
         Subject, Body = QuoteOfferEmail(self.Orders.QuoteRequestJson(R), Offer)
         Mode = getattr(self.Mailer, "Mode", None)
 
@@ -335,9 +335,9 @@ class QuoteDesk:
                                                                    "reason": "test request: reserved test domain"}, "system")
                 return
             try:
-                self.Mailer.Send(Offer["to"], Subject, Body)
+                Mid = self.Mailer.Send(Offer["to"], Subject, Body)
                 QuoteEvent(self.Ctx.Db, R["id"], "email", {"type": "offer", "to": Offer["to"], "version": Offer["version"],
-                                                           "delivery": Mode}, "system")
+                                                           "delivery": Mode, **MailTrace(self.Mailer, Mid)}, "system")
             except Exception as E:  # noqa: BLE001 — the quote stays sent; the Admin sees that the email failed
                 QuoteEvent(self.Ctx.Db, R["id"], "email_failed", {"type": "offer", "to": Offer["to"], "version": Offer["version"],
                                                                   "error": str(E)[:200]}, "system")

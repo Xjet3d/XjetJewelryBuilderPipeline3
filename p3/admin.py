@@ -1290,7 +1290,19 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 else "P3_SUPPORT_EMAIL" if os.environ.get("P3_SUPPORT_EMAIL", "").strip() else "default",
                 "team": list(S.StaffNotifyEmails), "team_source": "off" if Staff.lower() in ("none", "off") else
                 "P3_STAFF_NOTIFY_EMAILS" if Staff else "default",
-                "sender": os.environ.get("MAIL_FROM", "no-reply@xjet3d.com"), "mail_mode": S.MailMode}
+                "sender": os.environ.get("MAIL_FROM", "no-reply@xjet3d.com"), "mail_mode": S.MailMode,
+                **({"relay": {"server": Mailer_.Server, "port": Mailer_.Port, "starttls": Mailer_.StartTls,
+                              "return_path": Mailer_.ReturnPath}} if (Mailer_ := getattr(Ctx, "Mailer", None)) is not None
+                   and getattr(Mailer_, "Mode", "") == "smtp" else {})}
+
+    # ── the recent deliveries: what the relay said about each email (A1, 11 Nov 2026) ──
+    @App_.get("/api/admin/mail-deliveries")
+    async def MailDeliveries(authorization: str | None = Header(None), limit: int = 30):
+        Admin(authorization)
+        M = getattr(Ctx, "Mailer", None)
+        Items = M.List(max(1, min(int(limit), 100))) if M is not None and hasattr(M, "List") else []
+        return {"mode": getattr(M, "Mode", None), "deliveries": [{K: X.get(K) for K in ("id", "to", "subject", "sent_at", "delivery", "message_id")}
+                                                                for X in Items]}
 
     # ── Search engines: may they index the public pages? (off by default; production always indexes) ──
     def _IndexingState(request: Request) -> dict:

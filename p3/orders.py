@@ -483,7 +483,7 @@ class OrderService:
         Order button (My Account) point there."""
         if self.Mailer is None or not Order["customer"]["email"]:
             return
-        from p3.mail import OrderConfirmationEmail, StaffOrderEmail
+        from p3.mail import OrderConfirmationEmail, StaffOrderEmail, Trace as MailTrace
         Origin = (self.Ctx.Settings.PublicBaseUrl or Origin or "").rstrip("/")
         Account = f"{Origin}{self.Ctx.Settings.BasePath or ''}/#account" if Origin else ""
         Subject, Body = OrderConfirmationEmail(Order, Origin, Account)
@@ -500,8 +500,8 @@ class OrderService:
                 Event("email_skipped", {"to": To, "reason": "test order: the address is at a reserved test domain"})
             else:
                 try:
-                    self.Mailer.Send(To, Subject, Body)
-                    Event("email", {"to": To, "subject": Subject, "delivery": self.Mailer.Mode})
+                    Mid = self.Mailer.Send(To, Subject, Body)
+                    Event("email", {"to": To, "subject": Subject, "delivery": self.Mailer.Mode, **MailTrace(self.Mailer, Mid)})
                 except Exception as E:  # noqa: BLE001 — an email problem never undoes an order
                     Event("email_failed", {"to": To, "error": str(E)[:200]})
             if Staff:                                            # the people who act on a new order (P3_STAFF_NOTIFY_EMAILS)
@@ -699,7 +699,7 @@ class OrderService:
         Test = ReservedEmail(Customer.get("email"))
         Out["email_status"] = "not_configured" if self.Mailer is None else ("skipped" if Test else "pending" if self.Mailer.Mode == "smtp" else "not_sent")
         if self.Mailer is not None:
-            from p3.mail import QuoteRequestEmail, StaffQuoteEmail
+            from p3.mail import QuoteRequestEmail, StaffQuoteEmail, Trace as MailTrace
             Subject, Html = QuoteRequestEmail(Out)
             Staff = tuple(getattr(self.Ctx.Settings, "StaffNotifyEmails", ()) or ())
             Mode = self.Mailer.Mode
@@ -709,8 +709,9 @@ class OrderService:
                     QuoteEvent(Db, Id, "email_skipped", {"type": "request_confirmation", "to": Customer["email"], "reason": "test request: reserved test domain"})
                 else:
                     try:
-                        self.Mailer.Send(Customer["email"], Subject, Html)
-                        QuoteEvent(Db, Id, "email", {"type": "request_confirmation", "to": Customer["email"], "delivery": Mode})
+                        Mid = self.Mailer.Send(Customer["email"], Subject, Html)
+                        QuoteEvent(Db, Id, "email", {"type": "request_confirmation", "to": Customer["email"], "delivery": Mode,
+                                                     **MailTrace(self.Mailer, Mid)})
                     except Exception as E:  # noqa: BLE001
                         QuoteEvent(Db, Id, "email_failed", {"type": "request_confirmation", "to": Customer["email"], "error": str(E)[:200]})
                 if Staff:

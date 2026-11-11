@@ -466,13 +466,13 @@ class OutboxMailer:
     def __init__(self, OutboxDir: Path):
         self.Dir = Path(OutboxDir)
 
-    def Send(self, To: str, Subject: str, HtmlBody: str, Delivery: str = "outbox") -> str:
+    def Send(self, To: str, Subject: str, HtmlBody: str, Delivery: str = "outbox", MessageId: str | None = None) -> str:
         self.Dir.mkdir(parents=True, exist_ok=True)
         Stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         Id = f"{Stamp}-{uuid.uuid4().hex[:8]}"
         (self.Dir / f"{Id}.json").write_text(json.dumps(
-            {"id": Id, "to": To, "subject": Subject, "html": HtmlBody, "sent_at": Stamp, "delivery": Delivery},
-            indent=2), encoding="utf-8")
+            {"id": Id, "to": To, "subject": Subject, "html": HtmlBody, "sent_at": Stamp, "delivery": Delivery,
+             **({"message_id": MessageId} if MessageId else {})}, indent=2), encoding="utf-8")
         Logger.info("Outbox mail %s to %s: %s", Id, _MaskTo(To), Subject)
         return Id
 
@@ -503,8 +503,10 @@ class SmtpMailer:
     SMTP_STARTTLS=true encrypts the connection, with the relay's certificate and name verified; when the relay
     cannot do that, the message is not sent at all (never in plain text instead). Off by default, as in P2.
 
-    Each sent message is also recorded in the developer outbox (var/outbox, readable only via
-    the admin-key /api/dev/outbox) with the relay's verdict, so delivery can be diagnosed.
+    Each sent message is also recorded in the outbox (var/outbox; Admin → System → Customer email lists the recent
+    ones) with the relay's verdict, its reply to the message data and the Message-ID, so a message can be found in the
+    relay's message trace (A1, 11 Nov 2026). Bounces go to MAIL_RETURN_PATH, else the support inbox: a message the
+    relay accepts and cannot deliver comes back to someone who reads it, instead of to no-reply.
     """
     Mode = "smtp"
 
@@ -516,6 +518,8 @@ class SmtpMailer:
         self.StartTls = os.environ.get("SMTP_STARTTLS", "false").lower() in ("1", "true", "yes")
         self.From = os.environ.get("MAIL_FROM", "no-reply@xjet3d.com")
         self.FromName = os.environ.get("MAIL_FROM_NAME", "XJet Atelier")
+        self.ReturnPath = os.environ.get("MAIL_RETURN_PATH", "").strip() or ContactAddress()   # the envelope sender
+        self._Traces: dict[str, str] = {}                       # Message-ID → the verdict, for the order / quote event
         # Replies reach the support inbox (MAIL_REPLY_TO, else P3_SUPPORT_EMAIL, else the shared inbox), never no-reply
         self.ReplyTo = ContactAddress()
 
@@ -538,11 +542,19 @@ class SmtpMailer:
             else:
                 Host = socket.getaddrinfo(self.Server, None, socket.AF_INET)[0][4][0] if self.PreferIpv4 else self.Server
                 Smtp = smtplib.SMTP(Host, self.Port, timeout=30)      # relay whitelists the IP: no auth
+            Reply = []
+            Data = getattr(Smtp, "data", None)
+            if callable(Data):                                  # keep the relay's answer to the message data (its queue ID)
+                def Recorded(M, _Data=Data):
+                    Code, Text = _Data(M)
+                    Reply[:] = [Code, Text]
+                    return Code, Text
+                Smtp.data = Recorded
             with Smtp:
                 if self.StartTls:
                     Smtp.starttls(context=ssl.create_default_context())   # a refused or unverified TLS sends nothing
                 Phase = "send"
-                Refused = Smtp.send_message(Msg)
+                Refused = Smtp.send_message(Msg, from_addr=self.ReturnPath)
         except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as E:   # the relay answered: the message was not taken
             if self.Record:
                 self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp FAILED: {type(E).__name__}: {E}")
@@ -558,10 +570,20 @@ class SmtpMailer:
                 self.Record.Send(To, Subject, HtmlBody, Delivery=f"smtp refused: {Refused}")
             raise MailNotAccepted(f"recipients refused: {Refused}")
         Verdict = f"smtp accepted by {self.Server}:{self.Port}" + (" over TLS" if self.StartTls else "")
+        if Reply:
+            Text = Reply[1].decode("utf-8", "replace") if isinstance(Reply[1], bytes) else str(Reply[1])
+            Verdict += f" — relay: {Reply[0]} {' '.join(Text.split())[:240]}"
         if self.Record:
-            self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict)
-        Logger.info("SMTP mail to %s: %s — %s", _MaskTo(To), Subject, Verdict)
+            self.Record.Send(To, Subject, HtmlBody, Delivery=Verdict, MessageId=Msg["Message-ID"])
+        if len(self._Traces) > 200:
+            self._Traces.clear()
+        self._Traces[Msg["Message-ID"]] = Verdict
+        Logger.info("SMTP mail to %s: %s — %s — %s", _MaskTo(To), Subject, Msg["Message-ID"], Verdict)
         return Msg["Message-ID"]
+
+    def Trace(self, MessageId: str | None) -> str | None:
+        """What the relay said about this message (for the event that records it); asked once."""
+        return self._Traces.pop(MessageId, None) if MessageId else None
 
     def List(self, Limit: int = 50) -> list[dict]:
         return self.Record.List(Limit) if self.Record else []
@@ -620,6 +642,14 @@ def FulfillmentEmail(Milestone: str, Order: dict, View: dict, Payload: dict, Acc
     Body = (f'<p style="margin:0 0 12px;">{_Greeting(C.get("first_name"))}</p><p style="margin:0 0 12px;">Parcel <strong>{_Esc(S.get("display_no") or "")}</strong> '
             f'of order {_Esc(Ref)} was delivered: {_Esc(Pieces)}. We hope you love it.</p>{Button}{Foot}')
     return f"Order {Ref} — {FulfillmentSubjects.get(Milestone, Milestone)}", _Layout("Delivered", Body)
+
+
+def Trace(Mailer, MessageId) -> dict:
+    """The facts an order or quote event keeps about an email it sent: its Message-ID and, through a relay, the relay's
+    answer (what IT looks up in the message trace). Empty for a mailer without them."""
+    Out = {"message_id": MessageId} if isinstance(MessageId, str) and MessageId.startswith("<") else {}
+    Relay = Mailer.Trace(MessageId) if callable(getattr(Mailer, "Trace", None)) else None
+    return {**Out, **({"relay": Relay} if Relay else {})}
 
 
 def BuildMailer(DataDir: Path):
