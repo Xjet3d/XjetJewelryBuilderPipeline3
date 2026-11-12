@@ -188,6 +188,8 @@ function adminApp() {
     key: '', keyInput: '', ok: false, busy: false, error: '', mode: '',
     authCfg: { identity_enforced: false, key_login: true, providers: {} },   // how this server lets administrators in
     users: [], search: '', showRemoved: false,
+    // More credits (P1, 12 Nov): customers' requests, approved or rejected here; each grant is added once
+    crq: null, crqGrant: {}, crqReason: {}, crqBusy: '', crqMsg: '', crqErr: false, crqDefault: null, crqHistory: false,
     form: { Name: '', Email: '', MaxGenerations: 10 },
     credits: null, tariffEdit: null, tariffMsg: '', tariffErr: false,       // Settings → Products → Credits
     startingEdit: null,                                                     // … and the credits a new account starts with (R-16)
@@ -336,6 +338,7 @@ function adminApp() {
         for (const m of cat.products?.charm?.materials || []) this.charmMaterials[m.id] = m.label;    // "Sterling Silver" …
       } catch (_) {}
       this.api('GET', '/api/admin/quote-requests?limit=1').then(r => { this.quoteCounts = r.counts || {}; }).catch(() => {});
+      this.loadCreditRequests();                                   // the Users badge: requests for more credits waiting
       this.route();
     },
     // The key is sent once, to /api/admin/login, and never kept in the browser.
@@ -1128,6 +1131,38 @@ function adminApp() {
         this.users = r.users; this.usersState = 'loaded';
       } catch (e) { this.usersState = 'failed'; this.usersMsg = e.message; }
       try { this.termsInfo = await this.api('GET', '/api/admin/terms'); } catch (_) { this.termsInfo = null; }
+      await this.loadCreditRequests();
+    },
+    // ── credit requests ──
+    get crqCount() { return this.crq?.pending_count || 0; },
+    _crqSet(r) {
+      this.crq = r; if (this.crqDefault === null || this.crqDefault === '') this.crqDefault = r.default_credits;
+      for (const p of r.pending || []) if (!(p.id in this.crqGrant)) this.crqGrant[p.id] = r.default_credits;
+    },
+    async loadCreditRequests() { try { this._crqSet(await this.api('GET', '/api/admin/credit-requests')); } catch (_) {} },
+    async crqApprove(p) {
+      const n = Number(this.crqGrant[p.id]);
+      if (!Number.isInteger(n) || n < 1 || n > (this.crq?.max_credits || 100)) { this.crqErr = true; this.crqMsg = 'Credits to grant: a whole number from 1 to ' + (this.crq?.max_credits || 100) + '.'; return; }
+      if (!await this.ask({ title: 'Approve ' + n + ' credit' + (n === 1 ? '' : 's') + '?', text: (p.name || p.email || 'This customer') + ' has ' + p.current_credits + ' credit' + (p.current_credits === 1 ? '' : 's') + ' now and will have ' + (p.current_credits + n) + '.', confirmLabel: 'Approve', cancelLabel: 'Cancel' })) return;
+      await this._crqAct(p, 'approve', { credits: n }, 'Approved: ' + n + ' credit' + (n === 1 ? '' : 's') + ' added for ' + (p.name || p.email) + '.');
+    },
+    async crqReject(p) {
+      if (!await this.ask({ title: 'Reject this request?', text: 'The balance does not change. The customer can ask again after 24 hours.', confirmLabel: 'Reject', cancelLabel: 'Cancel', danger: true })) return;
+      await this._crqAct(p, 'reject', { reason: (this.crqReason[p.id] || '').trim() }, 'Rejected the request of ' + (p.name || p.email) + '.');
+    },
+    async _crqAct(p, action, body, done) {
+      if (this.crqBusy) return;
+      this.crqBusy = p.id; this.crqMsg = ''; this.crqErr = false;
+      try { const r = await this.api('POST', '/api/admin/credit-requests/' + encodeURIComponent(p.id) + '/' + action, body); this._crqSet(r); this.crqMsg = done; this.load(); }
+      catch (e) { this.crqErr = true; this.crqMsg = e.code === 'credit_request_resolved' ? 'This request was already handled — the list is refreshed.' : e.message; await this.loadCreditRequests(); }
+      finally { this.crqBusy = ''; }
+    },
+    async crqSaveDefault() {
+      const n = Number(this.crqDefault);
+      if (!Number.isInteger(n) || n < 1 || n > (this.crq?.max_credits || 100)) { this.crqErr = true; this.crqMsg = 'Default credits: a whole number from 1 to ' + (this.crq?.max_credits || 100) + '.'; return; }
+      this.crqBusy = 'default'; this.crqMsg = ''; this.crqErr = false;
+      try { this._crqSet(await this.api('PUT', '/api/admin/credit-requests/default', { default_credits: n })); this.crqDefault = this.crq.default_credits; this.crqMsg = 'Default saved: ' + n + ' credits per approved request (past approvals unchanged).'; }
+      catch (e) { this.crqErr = true; this.crqMsg = e.message; } finally { this.crqBusy = ''; }
     },
     termsLabel(t) { return (TERMS[t?.status] || TERMS.legacy)[0]; },
     termsClass(t) { return (TERMS[t?.status] || TERMS.legacy)[1]; },

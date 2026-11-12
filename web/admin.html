@@ -181,7 +181,8 @@
       </div>
       <nav class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs uppercase tracking-widest">
         <template x-for="t in [['dashboard','Dashboard'],['sessions','Sessions'],['users','Users'],['orders','Orders'],['gallery','Gallery'],['settings','Settings']]">
-          <a :href="'#/' + t[0]" :class="tab === t[0] ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'"><span x-text="t[1]"></span><span x-show="t[0] === 'orders' && quoteNewCount" x-cloak
+          <a :href="'#/' + t[0]" :class="tab === t[0] ? 'text-black font-semibold' : 'text-zinc-500 hover:text-black'"><span x-text="t[1]"></span><span x-show="t[0] === 'users' && crqCount" x-cloak
+               class="badge !text-[10px] !px-1.5 ml-1 bg-amber-100 text-amber-800 normal-case tracking-normal" :title="crqCount + ' credit request' + (crqCount === 1 ? '' : 's') + ' waiting'" x-text="crqCount"></span><span x-show="t[0] === 'orders' && quoteNewCount" x-cloak
                class="badge !text-[10px] !px-1.5 ml-1 bg-amber-100 text-amber-800 normal-case tracking-normal" :title="quoteNewCount + ' quote request' + (quoteNewCount === 1 ? '' : 's') + ' awaiting a reply'" x-text="quoteNewCount"></span></a>
         </template>
         <a :href="BASE + '/dev'" class="text-zinc-500 hover:text-black">Developer tools</a>
@@ -222,6 +223,90 @@
 
   <!-- ══════════════════════════ Users list ══════════════════════════ -->
   <main x-show="ok && tab === 'users' && !userId" x-cloak class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+
+    <!-- Credit requests (P1, 12 Nov): customers who asked for more credits. Approve adds the number to their balance once;
+         Reject changes nothing. Both are written to the customer's history. -->
+    <section class="card" aria-labelledby="crq-title">
+      <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100">
+        <p id="crq-title" class="lbl flex items-center gap-2">Credit requests
+          <span class="badge !text-[10px] !px-1.5 normal-case tracking-normal" :class="crqCount ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'"
+                x-text="crqCount ? crqCount + ' pending' : 'none pending'"></span></p>
+        <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+          <label for="crq-default">Default credits per approved request</label>
+          <input id="crq-default" style="width:5rem" class="inp !py-1 !px-2 text-right tabular-nums" type="number" min="1" :max="crq?.max_credits || 100" step="1" x-model="crqDefault">
+          <button class="btn !py-1 !px-2 !text-xs" @click="crqSaveDefault()" :disabled="!!crqBusy || Number(crqDefault) === crq?.default_credits">Save</button>
+        </div>
+      </div>
+      <div x-show="crqMsg" x-cloak class="px-6 py-2 text-sm border-b border-zinc-100" :class="crqErr ? 'text-red-600' : 'text-emerald-700'" role="status" x-text="crqMsg"></div>
+      <!-- phones: one card per request -->
+      <div class="md:hidden divide-y divide-zinc-100" x-show="crq?.pending?.length">
+        <template x-for="p in (crq?.pending || [])" :key="'m' + p.id">
+          <div class="px-5 py-4 space-y-3">
+            <div class="flex items-start justify-between gap-3">
+              <button class="text-left" @click="go('#/users/' + encodeURIComponent(p.account_id))">
+                <span class="font-semibold block" x-text="p.name || '—'"></span><span class="text-zinc-500 text-xs break-all" x-text="p.email || '—'"></span></button>
+              <span class="badge bg-amber-100 text-amber-800 shrink-0">Pending</span>
+            </div>
+            <p class="text-xs text-zinc-600"><span x-text="'Current credits: ' + p.current_credits"></span> · <span x-text="dateTime(p.requested_at)"></span></p>
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-zinc-600" :for="'crq-m-' + p.id">Credits to grant</label>
+              <input :id="'crq-m-' + p.id" style="width:5rem" class="inp !py-1 !px-2 text-right tabular-nums" type="number" min="1" :max="crq?.max_credits || 100" step="1" x-model="crqGrant[p.id]">
+            </div>
+            <input class="inp !py-1 !px-2 !text-xs" maxlength="300" x-model="crqReason[p.id]" placeholder="Reason if rejected (optional, Admin only)" :aria-label="'Reason if rejected, ' + (p.name || p.email)">
+            <div class="flex gap-3">
+              <button class="btn flex-1" @click="crqApprove(p)" :disabled="!!crqBusy" x-text="crqBusy === p.id ? '…' : 'Approve'"></button>
+              <button class="flex-1 border border-zinc-300 text-xs uppercase tracking-widest text-red-600" @click="crqReject(p)" :disabled="!!crqBusy">Reject</button>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="table-wrap hidden md:block" x-show="crq?.pending?.length">
+        <table class="w-full" aria-label="Pending credit requests">
+          <thead><tr><th>Customer</th><th class="text-right">Current credits</th><th>Requested at</th><th>Status</th><th>Credits to grant</th><th>Reason if rejected (optional)</th><th class="text-right">Actions</th></tr></thead>
+          <tbody>
+            <template x-for="p in (crq?.pending || [])" :key="p.id">
+              <tr>
+                <td><button class="text-left hover:underline" @click="go('#/users/' + encodeURIComponent(p.account_id))">
+                  <span class="font-semibold block" x-text="p.name || '—'"></span><span class="text-zinc-500 text-xs" x-text="p.email || '—'"></span></button></td>
+                <td class="text-right tabular-nums font-semibold" :class="p.current_credits === 0 ? 'text-red-600' : ''" x-text="p.current_credits"></td>
+                <td class="text-zinc-600 whitespace-nowrap" x-text="dateTime(p.requested_at)"></td>
+                <td><span class="badge bg-amber-100 text-amber-800">Pending</span></td>
+                <td><input style="width:5rem" class="inp !py-1 !px-2 text-right tabular-nums" type="number" min="1" :max="crq?.max_credits || 100" step="1" x-model="crqGrant[p.id]"
+                           :aria-label="'Credits to grant to ' + (p.name || p.email)"></td>
+                <td><input class="inp !py-1 !px-2 !text-xs" maxlength="300" x-model="crqReason[p.id]" placeholder="Admin only" :aria-label="'Reason if rejected, ' + (p.name || p.email)"></td>
+                <td class="text-right whitespace-nowrap space-x-2">
+                  <button class="btn !py-1 !px-2 !text-xs" @click="crqApprove(p)" :disabled="!!crqBusy" x-text="crqBusy === p.id ? '…' : 'Approve'"></button>
+                  <button class="text-xs text-red-500 hover:underline px-1" @click="crqReject(p)" :disabled="!!crqBusy">Reject</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p x-show="crq && !crq.pending.length" class="px-6 py-4 text-sm text-zinc-500">No requests waiting. A customer out of credits can ask for more from the website.</p>
+      <div class="px-6 py-3 border-t border-zinc-100" x-show="crq?.history?.length">
+        <button class="text-xs uppercase tracking-widest text-zinc-500 hover:text-black" @click="crqHistory = !crqHistory" :aria-expanded="crqHistory"
+                x-text="(crqHistory ? 'Hide' : 'Show') + ' recent decisions (' + (crq?.history?.length || 0) + ')'"></button>
+        <div x-show="crqHistory" x-cloak class="table-wrap mt-3">
+          <table class="w-full" aria-label="Recent credit request decisions">
+            <thead><tr><th>Customer</th><th>Requested at</th><th>Status</th><th class="text-right">Granted</th><th>Decided</th><th>By</th><th>Reason</th></tr></thead>
+            <tbody>
+              <template x-for="h in (crq?.history || [])" :key="h.id">
+                <tr>
+                  <td><span x-text="h.name || '—'"></span> <span class="text-zinc-500 text-xs" x-text="h.email"></span></td>
+                  <td class="text-zinc-600 whitespace-nowrap" x-text="dateTime(h.requested_at)"></td>
+                  <td><span class="badge" :class="h.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-600'" x-text="h.status === 'approved' ? 'Approved' : 'Rejected'"></span></td>
+                  <td class="text-right tabular-nums" x-text="h.credits_granted ?? '—'"></td>
+                  <td class="text-zinc-600 whitespace-nowrap" x-text="dateTime(h.resolved_at)"></td>
+                  <td class="text-zinc-600 text-xs" x-text="h.resolved_by || '—'"></td>
+                  <td class="text-zinc-600 text-xs" x-text="h.reason || '—'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
     <!-- Create -->
     <section class="card p-6">
@@ -266,7 +351,7 @@
             <tbody>
             <tr class="row-link" :class="['inactive','removed'].includes(u.status) ? 'opacity-50' : ''" @click="go('#/users/' + encodeURIComponent(u.account_id))" tabindex="0" @keydown.enter="go('#/users/' + encodeURIComponent(u.account_id))" :aria-label="'Open user ' + (u.name || u.email || '')">
               <td class="font-mono font-bold tracking-wider" x-text="u.token || '—'"></td>
-              <td x-text="u.name || '—'"></td>
+              <td><span x-text="u.name || '—'"></span> <span x-show="u.credit_request_pending" class="badge !text-[10px] !px-1.5 bg-amber-100 text-amber-800" title="Asked for more credits: see Credit requests above">Credits requested</span></td>
               <td class="text-zinc-600" x-text="u.email || '—'"></td>
               <td :class="u.used >= u.max ? 'text-red-600 font-semibold' : ''" x-text="u.used + ' / ' + u.max"></td>
               <td class="text-right tabular-nums" x-text="u.sessions ?? '—'"></td>

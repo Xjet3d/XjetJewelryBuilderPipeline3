@@ -203,7 +203,8 @@ CREATE TABLE IF NOT EXISTS product_settings_log (
 """
 
 Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie": 1, "mesh": 0},   # p3/credits.py decides
-            "starting_credits": None,                                                # p3/credits.py: none = the default (10)
+            "starting_credits": None,
+            "credit_request_default": None,                                          # p3/creditrequests.py: none = 5                                                # p3/credits.py: none = the default (10)
             "rings_available": True, "charms_available": False, "rings_movie": True, "charms_movie": True,
             "charm_sizes": list(DefaultCharmSizes),
             "charm_sizes_enabled": None,                                             # the sizes customers choose from: none = all

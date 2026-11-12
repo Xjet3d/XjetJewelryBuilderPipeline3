@@ -52,6 +52,7 @@ from p3.materialprices import MaterialPriceError
 from p3.db import Now
 from p3.usage import AccountActivity
 from p3 import credits as Credits
+from p3 import creditrequests as CreditRequests
 from p3 import adminkey as AdminKeys
 from p3 import falkey as FalKeys
 from p3.registration import PublicOrigin
@@ -647,8 +648,37 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     async def ListUsers(include_removed: bool = False, authorization: str | None = Header(None)):
         Admin(authorization)
         Users = Ctx.Accounts.AdminList(IncludeRemoved=include_removed)
-        return {"users": [{**U, **UserCost(Ctx, U["account_id"], Prices)} for U in Users],
+        Asked = CreditRequests.PendingByAccount(Ctx)                       # a customer waiting for more credits
+        return {"users": [{**U, **UserCost(Ctx, U["account_id"], Prices), "credit_request_pending": U["account_id"] in Asked}
+                          for U in Users],
                 "cost_basis": "Live sessions only, estimated at list prices; mock requests are $0."}
+
+    # ── Credit requests (Admin → Users): approve with the suggested or another number, or reject; each grant is added to
+    # the balance once (p3/creditrequests.py) and written to the account's history ──
+    @App_.get("/api/admin/credit-requests")
+    async def ListCreditRequests(authorization: str | None = Header(None)):
+        Admin(authorization)
+        return CreditRequests.AdminList(Ctx)
+
+    @App_.post("/api/admin/credit-requests/{RequestId}/approve")
+    async def ApproveCreditRequest(RequestId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return {"request": CreditRequests.Approve(Ctx, RequestId, Body_.get("credits"), Who.Id, Body_.get("note") or ""),
+                **CreditRequests.AdminList(Ctx)}
+
+    @App_.post("/api/admin/credit-requests/{RequestId}/reject")
+    async def RejectCreditRequest(RequestId: str, Body_: dict = Body(default={}), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return {"request": CreditRequests.Reject(Ctx, RequestId, Who.Id, Body_.get("reason") or ""), **CreditRequests.AdminList(Ctx)}
+
+    @App_.put("/api/admin/credit-requests/default")
+    async def SetCreditRequestDefault(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """{"default_credits": 5} — the number suggested when approving; past approvals keep theirs."""
+        Who = Admin(authorization)
+        New = CreditRequests.ValidateGrant(Body_.get("default_credits"), "The default credits per approved request")
+        if New != CreditRequests.Default(Ctx):
+            Ctx.Products.Set(CreditRequests.DefaultKey, New, Who.Id, str(Body_.get("note") or "")[:300])
+        return CreditRequests.AdminList(Ctx)
 
     @App_.get("/api/admin/terms")
     async def TermsOverview(authorization: str | None = Header(None)):

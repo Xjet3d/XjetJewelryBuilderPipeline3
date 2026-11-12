@@ -1674,7 +1674,11 @@
                                         <p class="font-semibold">You've used your design credits</p>
                                         <p style="color:#5A4A2A;">New designs and refinements need a credit. You can still open, customize and order every design you've made.</p>
                                     </div>
-                                    <button type="button" @click="openPanel('designs')" class="btn-gold shrink-0 w-full sm:w-auto px-4 py-2.5">My Designs</button>
+                                    <div class="flex flex-col sm:flex-row gap-2 shrink-0">
+                                        <button type="button" x-show="!creditReqPending" @click="openCreditRequest('blocked_action')" class="btn-gold w-full sm:w-auto px-4 py-2.5">Request More Credits</button>
+                                        <p x-show="creditReqPending" class="text-[13px] font-medium self-center" style="color:#8A6420;">Your request is pending approval.</p>
+                                        <button type="button" @click="openPanel('designs')" class="w-full sm:w-auto min-h-[44px] border px-4 py-2.5 text-[12px] uppercase tracking-widest" style="border-color:#C9A96E;color:#3A2E12;">My Designs</button>
+                                    </div>
                                 </div>
                                 <div x-show="!design && productsOn && !outOfCredits" x-cloak class="w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-3.5 py-2 rounded-lg text-[13px] leading-snug"
                                      style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
@@ -2772,6 +2776,8 @@
                             <h2 id="acct-credits" class="flbl">Credits</h2>
                             <p class="text-[15px] text-zinc-900" x-show="quotaKnown"><strong x-text="quotaRemaining"></strong> <span x-text="'of ' + quotaMax + ' design credits left'"></span></p>
                             <p class="text-[14px] text-zinc-600 mt-1">New designs and refinements use credits. If you run out of credits, you can still open, customize and order every design you’ve made. <a href="{{BASE}}/faq" @click="pageLink($event, 'faq')" class="underline underline-offset-2">How credits work</a></p>
+                            <p x-show="creditReqStatusText" class="text-[14px] mt-2" style="color:#8A6420;" role="status" x-text="creditReqStatusText"></p>
+                            <button type="button" x-show="creditReqLinkShown && !creditReqPending" @click="openCreditRequest('account')" class="mt-2 text-[14px] font-medium underline underline-offset-2" style="color:#8A6420;">Request more credits</button>
                         </section>
                         <section id="account-security" aria-labelledby="sec-title" class="acct-panel acct-wide scroll-mt-20">
                             <h2 id="sec-title" class="flbl">Sign-in &amp; security</h2>
@@ -3095,6 +3101,10 @@
                             <span x-show="quotaRemaining > 0">One credit per design or refinement you ask for, one per extra option you request and one per 360° movie. If a request can’t deliver all four designs, its credit comes back, and retrying the missing ones is free. Selecting, materials, sizes and a reused movie are free.</span>
                             <span x-show="quotaRemaining === 0" style="color:#B4443A;">You've used all your credits. You can still customize and order the designs you've made.</span>
                         </div>
+                        <div x-show="creditReqLinkShown" class="mt-2 text-[13px] leading-snug">
+                            <span x-show="creditReqPending" style="color:#8A6420;">Your request is pending approval.</span>
+                            <button type="button" x-show="!creditReqPending" @click="accountPanelOpen = false; openCreditRequest('account')" class="font-medium underline underline-offset-2" style="color:#8A6420;">Request more credits</button>
+                        </div>
                     </div>
 
                     <!-- Sign-in code (a six-letter token session only: a cookie session has none) -->
@@ -3394,6 +3404,42 @@
                     Not ready to sign in? <button type="button" @click="closeRegModal()" class="underline underline-offset-2 hover:text-black transition">Keep browsing</button>
                     <span x-text="regReason ? '— the gallery, materials and prices are open to everyone.' : '— signing in is only needed to start a design.'">— signing in is only needed to start a design.</span>
                 </p>
+            </div>
+        </div>
+    </template>
+
+    <!-- ── More credits (P1, 12 Nov): out of credits → a request our team reviews in Admin → Users. Nothing is granted or
+         paid here, and no paid work starts. ── -->
+    <template x-teleport="body">
+        <div x-show="creditReqOpen" x-cloak class="fixed inset-0 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6); z-index:205;"
+             @click.self="creditReqOpen = false" @keydown.escape.window="creditReqOpen = false">
+            <div id="credit-dialog" x-effect="dialogFocus('credit-request', creditReqOpen, $el)" @keydown="trapFocus($event, 'credit-dialog')"
+                 class="bg-white w-full max-w-md p-8 shadow-2xl relative" role="dialog" aria-modal="true" aria-labelledby="cr-title" aria-describedby="cr-desc">
+                <button type="button" @click="creditReqOpen = false" class="absolute top-3 right-3 w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-black" aria-label="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+                <div class="text-center">
+                    <svg class="mx-auto mb-4" width="34" height="34" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                        <circle cx="8.5" cy="8.5" r="8" fill="#C9A96E" stroke="#8A6420" stroke-width="0.5"/>
+                        <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A6420" stroke-width="0.7" opacity="0.45"/>
+                        <circle cx="8.5" cy="8.5" r="1.4" fill="#7A5A10" opacity="0.5"/>
+                    </svg>
+                    <h2 id="cr-title" class="text-2xl font-semibold tracking-wide" style="font-family:'Cinzel','Cinzel Fallback',serif;"
+                        x-text="creditReqSent ? 'Request sent' : 'Need more credits?'"></h2>
+                    <p id="cr-desc" class="text-[15px] text-zinc-600 mt-3 leading-relaxed" role="status"
+                       x-text="creditReqSent ? 'Your request has been sent. We\u2019ll review it and let you know when additional credits are available.'
+                               : creditReqPending ? 'Your request is pending approval. We\u2019ll add the credits here as soon as it is approved.'
+                               : 'You\u2019ve used your available design credits. You can request more credits, and our team will review your request.'"></p>
+                    <p x-show="!creditReqSent && !creditReqPending && creditReq?.request?.status === 'rejected'" class="text-[13px] text-zinc-500 mt-2" x-text="creditReqStatusText"></p>
+                    <p x-show="creditReqError" role="alert" class="mt-4 px-4 py-3 border text-sm" style="background:#fff5f5;border-color:#fca5a5;color:#b91c1c;" x-text="creditReqError"></p>
+                </div>
+                <div class="mt-6 flex flex-col gap-3">
+                    <button type="button" x-show="!creditReqSent && !creditReqPending" @click="sendCreditRequest()" :disabled="creditReqBusy"
+                            class="btn-gold w-full py-3.5 text-[12px] uppercase tracking-[0.2em]" x-text="creditReqBusy ? 'Sending…' : 'Request More Credits'"></button>
+                    <button type="button" @click="creditReqOpen = false" class="w-full min-h-[44px] border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition"
+                            x-text="creditReqSent || creditReqPending ? 'Close' : 'Not Now'"></button>
+                    <p x-show="!creditReqSent && !creditReqPending" class="text-[13px] text-zinc-500 text-center">You can still open, customize and order every design you’ve made.</p>
+                </div>
             </div>
         </div>
     </template>

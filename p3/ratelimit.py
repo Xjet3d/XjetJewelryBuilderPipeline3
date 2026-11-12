@@ -26,7 +26,8 @@ Limits = {                      # name: (requests, window in seconds)
     "mail:ip": (12, 3600),          # security emails (confirm, reset, link): per visitor …
     "mail:email": (4, 3600),        # … and per recipient, so the form cannot be used to flood an inbox
     "claim:ip": (12, 900),          # tries of a legacy six-letter code
-    "token:ip": (40, 900),          # consuming an emailed link
+    "token:ip": (40, 900),
+    "credit_request:ip": (20, 3600),  # requests for more credits (each account also has its own limits)          # consuming an emailed link
 }
 MaxWindows = 50_000             # before pruning expired windows
 

@@ -221,6 +221,8 @@ function p3App() {
     termsGate: { open: false, mode: '', email: '', method: '', accept: false, loading: false, error: '' },
     termsRequired: false, _resumeAfterTerms: null,
     quotaUsed: 0, quotaMax: 10, quotaKnown: false,          // quotaKnown: the server's numbers have arrived
+    // More credits (P1, 12 Nov): the customer asks, our team approves in Admin → Users; nothing is granted or paid here
+    creditReq: null, creditReqOpen: false, creditReqBusy: false, creditReqSent: false, creditReqError: '', creditReqSource: 'account',
     get quotaRemaining() { return Math.max(0, this.quotaMax - this.quotaUsed); },
     tariff: { design: 1, refinement: 1, option: 1, movie: 1 },       // the server's (Admin → Credits), from token-status
     // What a paid action costs, as its button says (R-07)
@@ -328,6 +330,9 @@ function p3App() {
         setInterval(() => { this.waitStatusIndex++; }, 3500);
       }
       setInterval(() => { if (this.waitBatch) this.genNow = Date.now(); }, 500);     // the progress bar moves only while it shows
+      // A request for more credits waiting for our team: its answer and the new balance show without signing out
+      setInterval(() => { if (this.creditReqPending && !document.hidden) this._refreshQuota(); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && this.creditReqPending) this._refreshQuota(); });
       // The health answer, the catalog and the gallery are independent: asked at once, not one after another
       const gallery = this.loadGallery();
       const [health, catalog] = await Promise.all([this.api('GET', '/api/health', null, { noAuth: true }).catch(() => null),
@@ -415,7 +420,7 @@ function p3App() {
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         const err = data.error || {};
-        if (resp.status === 402) this._refreshQuota();
+        if (resp.status === 402) { this._refreshQuota(); if (err.code === 'quota_exhausted' && !opts.noCreditPopup) this.openCreditRequest('blocked_action'); }
         if (resp.status === 403 && err.code === 'csrf' && !opts._retried) {          // the CSRF token went stale: fetch a fresh one once
           const S = await fetch(url('/api/auth/session'), { credentials: 'same-origin' }).then(r => r.json()).catch(() => null);
           if (S?.authenticated) { this.authCsrf = S.csrf; return this.api(method, path, body, { ...opts, _retried: true }); }
@@ -1450,6 +1455,13 @@ function p3App() {
       const used = Q.used + (Q.reserved || 0);
       this.quotaUsed = used; this.quotaMax = Q.max; this.quotaKnown = true;
       if (Q.tariff) this.tariff = Q.tariff;
+      if ('credit_request' in Q) {
+        const was = this.creditReq?.request;
+        this.creditReq = Q.credit_request;
+        const now = Q.credit_request?.request;
+        if (was?.status === 'pending' && now?.id === was.id && now.status === 'approved')
+          this.showToast(`Your request was approved — ${now.credits_granted} credit${now.credits_granted === 1 ? '' : 's'} added`, { ms: 7000 });
+      }
       this.termsRequired = !!Q.terms_required;
       if (this.termsRequired) this._openTermsGate('account');
       Object.assign(this.userSession, { quotaUsed: used, quotaMax: Q.max });
@@ -2107,6 +2119,30 @@ function p3App() {
     // A movie needs a credit the customer doesn't have: Customize says so instead of offering one
     get movieNeedsCredit() { const n = this.tariff?.movie ?? 1; return this.quotaKnown && n > 0 && this.quotaRemaining < n; },
     get quotaText() { return `${this.quotaRemaining} of ${this.quotaMax} credits remaining`; },
+    get creditReqPending() { return this.creditReq?.request?.status === 'pending'; },
+    // The account's link: shown when credits are low or gone, or while a request is pending or just answered
+    get creditReqLinkShown() { return !!this.userSession && this.quotaKnown && (this.lowCredits || this.outOfCredits || this.creditReqPending); },
+    get creditReqStatusText() {
+      const r = this.creditReq?.request;
+      if (!r) return '';
+      if (r.status === 'pending') return 'Your request is pending approval.';
+      if (r.status === 'approved') return `Your last request was approved: ${r.credits_granted} credit${r.credits_granted === 1 ? '' : 's'} added.`;
+      return 'Your last request was not approved.';
+    },
+    openCreditRequest(source = 'account') {
+      if (!this.userSession) { this.openRegModal(); return; }
+      this.creditReqSource = source; this.creditReqSent = false; this.creditReqError = ''; this.creditReqOpen = true;
+    },
+    async sendCreditRequest() {
+      if (this.creditReqBusy || this.creditReqPending) return;
+      this.creditReqBusy = true; this.creditReqError = '';
+      try {
+        this.creditReq = await this.api('POST', '/api/credit-requests', { source: this.creditReqSource });
+        this.creditReqSent = true;
+      } catch (e) {
+        this.creditReqError = e.code === 'credit_request_limit' ? 'You can send another request later.' : e.message;
+      } finally { this.creditReqBusy = false; }
+    },
     anyActive(b) { return !!b && (b.status === 'queued' || b.status === 'generating'); },
     // The waiting drawing is shown while a new design or a refinement is being generated.
     get waitBatch() {

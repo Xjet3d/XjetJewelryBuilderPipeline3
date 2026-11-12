@@ -32,6 +32,7 @@ from p3 import products as Products
 from p3 import showcase as Showcase
 from p3.gallerysync import LastRun as GallerySyncLastRun
 from p3 import credits as Credits
+from p3 import creditrequests as CreditRequests
 from p3.ratelimit import ClientIp, RateLimiter
 from p3.quotes import QuoteDesk
 
@@ -228,6 +229,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   Pricing=PricingService(Catalog, S.PricingProfilePath, S.AllowUnapprovedPricing),
                   Accounts=Accounts)
     Ctx.Products = Products.ProductSettings(Ctx.Db)   # rings and charms (charms hidden from customers by default)
+    CreditRequests.Install(Ctx)                    # requests for more credits, beside the balance (accounts.db)
     Accounts.StartingCredits = lambda: Credits.StartingCredits(Ctx)   # a new account's credits: the Admin's number (R-16)
     Ctx.Models = ModelConfigStore(Ctx.Db)        # seeds v1 from generation.json + prompts on first start
     Ctx.MaterialPrices = MaterialPriceBook(Ctx.Db, Catalog)   # material pricing table (Admin), seeded once
@@ -918,7 +920,20 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/token-status")
     async def TokenStatus(x_access_token: str | None = Header(None)):
-        return {**Ctx.Accounts.Profile(TokAny(x_access_token)), "tariff": Credits.Tariff(Ctx)}
+        Who = TokAny(x_access_token)
+        return {**Ctx.Accounts.Profile(Who), "tariff": Credits.Tariff(Ctx),
+                "credit_request": CreditRequests.Status(Ctx, Who.AccountId)}     # the latest request for more credits
+
+    # ── more credits: the customer asks, an Admin approves (Admin → Users); nothing is granted or paid here ──
+    @App_.get("/api/credit-requests")
+    async def CreditRequestStatus(x_access_token: str | None = Header(None)):
+        return CreditRequests.Status(Ctx, Tok(x_access_token).AccountId)
+
+    @App_.post("/api/credit-requests")
+    async def RequestCredits(request: Request, Body_: dict = Body(default={}), x_access_token: str | None = Header(None)):
+        Who = Tok(x_access_token)
+        Ctx.RateLimiter.Hit("credit_request:ip", ClientIp(request))
+        return CreditRequests.Create(Ctx, Who.AccountId, str(Body_.get("source") or "account"))
 
     @App_.get("/verify", include_in_schema=False)
     async def VerifyEmail(Req: Request, Background: BackgroundTasks, token: str = ""):
