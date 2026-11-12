@@ -100,7 +100,8 @@ async def test_the_customer_page_offers_charms_only_through_the_catalog(HC5):
     # Products are offered only while the catalog lists them (productsOn); the ring-only note stays for the ring-only site
     assert 'x-show="!design && productsOn && !outOfCredits"' in Page and "What would you like to design?" in Page
     assert 'x-show="!design && !productsOn"' in Page and 'x-text="composerNote"' in Page
-    assert 'id="charm-size-heading" x-show="custIsCharm"' in Page and 'id="ring-size-heading" x-show="!custIsCharm"' in Page
+    # the charm size choice shows with two or more sizes shown to customers (12 Nov 2026: one alone needs no choice)
+    assert 'id="charm-size-heading" x-show="custSizeChoice"' in Page and 'id="ring-size-heading" x-show="!custIsCharm"' in Page
     assert Page.count('x-for="g in galleryShown"') == 2 and 'x-for="g in homeCards"' in Page          # the home strip: one product at a time (WP6)
     assert 'x-show="charmPreview"' in Page and "Admin preview" in Page
     assert re.search(r'/static/products\.js\?v=\d+', Page)

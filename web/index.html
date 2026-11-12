@@ -791,7 +791,7 @@
                     <h2 class="hv-display hv-h2">Small Charms,<br>Personal Stories</h2>
                     <p>Initials, shells, stars and hearts — or something only you would think of. Describe it in your own words or start from a photo, then refine your favorite of four designs.</p>
                     <ul class="hv-facts">
-                        <li x-show="charmFacts.sizes"><span>Sizes</span><b x-text="charmFacts.sizes"></b></li>
+                        <li x-show="charmFacts.sizes"><span x-text="charmFacts.sizesLabel">Sizes</span><b x-text="charmFacts.sizes"></b></li>
                         <li x-show="charmFacts.made"><span>Made in</span><b x-text="charmFacts.made"></b></li>
                         <li x-show="charmFacts.gold"><span>Gold</span><b x-text="charmFacts.gold"></b></li>
                         <li><span>Production</span><b>Up to 14 business days after payment</b></li>
@@ -2060,10 +2060,11 @@
                         </div>
                     </div>
 
-                    <!-- Charm size: the total height, the loop included; each size has its own price. The choices read
+                    <!-- Charm size: the total height, the eyelet included; each size has its own price. The choices read
                          "14 mm — Classic · Recommended": the recommended size is suggested (like a ring's US 10) until the
-                         customer confirms it or picks another. -->
-                    <div id="charm-size-heading" x-show="custIsCharm" x-cloak>
+                         customer confirms it or picks another. Shown only while customers have two or more charm sizes
+                         (Admin → Charm sizes); with one, that size is selected and named in the details below. -->
+                    <div id="charm-size-heading" x-show="custSizeChoice" x-cloak>
                         <h2 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h2>
                         <p class="text-[13px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
                         <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
@@ -2112,6 +2113,29 @@
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterialLabel"></span></div>
                         <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : (currentGroup === 'preview' ? 'Preview only' : 'Luxury')"></span></div>
                         <div class="flex justify-between text-sm"><span class="text-zinc-500" x-text="custIsCharm ? 'Charm Size' : 'Ring Size'"></span><span class="font-medium text-zinc-800" x-text="custIsCharm ? (cust?.size_label || '—') : (cust?.ring_size != null ? 'US ' + cust?.ring_size : '—')"></span></div>
+                    </div>
+
+                    <!-- About Charm Size (12 Nov 2026): collapsed by default, under the details that name the size. What a charm
+                         size measures — the total height, the attachment eyelet included — and this charm's own height; never
+                         a claim about chains or bracelets. -->
+                    <div x-show="custIsCharm" x-cloak class="-mt-3 border-b border-zinc-100" data-testid="charm-size-about">
+                        <button type="button" @click="sizeAboutOpen = !sizeAboutOpen" :aria-expanded="String(sizeAboutOpen)" aria-controls="charm-size-about-text"
+                                class="w-full min-h-[44px] flex items-center justify-between gap-3 py-2 text-left text-[13px] font-medium text-zinc-700 hover:text-black transition">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-[#8A6420] shrink-0" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5"/><circle cx="12" cy="7.75" r=".6" fill="currentColor" stroke="none"/></svg>
+                                About Charm Size
+                            </span>
+                            <svg :class="sizeAboutOpen ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="charm-size-about-text" x-show="sizeAboutOpen" x-transition.opacity class="pb-4 flex items-start gap-4">
+                            <!-- the measure: from the lowest point to the top of the eyelet -->
+                            <svg class="shrink-0 mt-0.5" width="40" height="54" viewBox="0 0 48 64" fill="none" aria-hidden="true">
+                                <circle cx="20" cy="8" r="5" stroke="#8A6420" stroke-width="1.5"/>
+                                <path d="M20 13C32 13 37 25 37 36C37 49 29 58 20 58C11 58 3 49 3 36C3 25 8 13 20 13Z" fill="#FBF7EF" stroke="#8A6420" stroke-width="1.5"/>
+                                <path d="M44 3V58M40.5 3H47.5M40.5 58H47.5" stroke="#71717A" stroke-width="1.2" stroke-linecap="round"/>
+                            </svg>
+                            <p class="text-[13px] leading-relaxed text-zinc-600" x-text="charmSizeAbout"></p>
+                        </div>
                     </div>
 
                     <!-- Price -->
@@ -2301,7 +2325,7 @@
                                 <div class="flex flex-wrap gap-1.5 mt-2">
                                     <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
                                     <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
-                                    <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;" x-text="l.unavailable ? 'Currently unavailable for customization or ordering' : (l.material_status === 'preview' ? 'Preview only — not available to order' : 'Cannot be ordered yet')">Cannot be ordered yet</span>
+                                    <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;" x-text="l.unavailable ? 'Currently unavailable for customization or ordering' : (l.material_status === 'preview' ? 'Preview only — not available to order' : (l.size_not_offered ? 'This size is no longer offered' : 'Cannot be ordered yet'))">Cannot be ordered yet</span>
                                 </div>
                                 <div class="mt-3 flex items-center justify-between gap-3">
                                     <div class="flex items-center gap-2" role="group" :aria-label="'Quantity of ' + l.title">

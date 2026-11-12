@@ -231,8 +231,10 @@ class OrderService:
                 Problem = MaterialProblems(self.Ctx, Product, Status)
             elif Product == Products.Charm:
                 # a charm's price depends on its size: the size is checked first
-                if L["charm_size"] is None or not self.Ctx.Products.IsValidCharmSize(L["charm_size"]):
+                if L["charm_size"] is None:
                     Problem = "Please choose one of the charm sizes."
+                elif not self.Ctx.Products.IsValidCharmSize(L["charm_size"]):    # switched off in Admin → Charm sizes
+                    Problem = "This charm size is no longer offered — remove this line and add the charm again from Customize."
                 elif not Q.IsAvailable:
                     Problem = "The price for this charm in this size and material is not available right now."
             elif not Q.IsAvailable:

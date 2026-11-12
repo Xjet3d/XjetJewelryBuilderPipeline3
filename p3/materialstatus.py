@@ -127,7 +127,7 @@ def HiddenText() -> str:
 
 # ── the Admin: the Customer status column (Admin → Settings → Pricing & Materials) ─────────────────────────────────────
 def _Missing(Ctx, Product: str, Mat) -> list[str]:
-    """What a metal lacks to be available: a fixed price (a charm: for every size on offer), its density and its cost."""
+    """What a metal lacks to be available: a fixed price (a charm: for every size customers can choose), its density and its cost."""
     Ring = Ctx.MaterialPrices.Row(Mat.Id) if getattr(Ctx, "MaterialPrices", None) else {}
     Out = []
     if Product == Products.Charm:
@@ -135,7 +135,7 @@ def _Missing(Ctx, Product: str, Mat) -> list[str]:
         if Mat.Id not in CharmPrices.FixedPriceMaterials:
             return ["a fixed charm price (gold charms are quoted individually)"]
         Fixed = Row.get("fixed_prices") or {}
-        Sizes = [S for S in Ctx.Products.CharmSizes if not Fixed.get(CharmPrices.SizeKey(S))]
+        Sizes = [S for S in Ctx.Products.CharmSizesEnabled if not Fixed.get(CharmPrices.SizeKey(S))]   # the sizes customers can choose
         if Sizes:
             Out.append("a fixed price for " + ", ".join(f"{S:g} mm" for S in Sizes))
         Cost = Row.get("cost_per_g")

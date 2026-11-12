@@ -232,7 +232,9 @@ class CharmPriceBook:
             return Unavailable(Reason)
         if Size is None:
             return Unavailable("charm_size_required")
-        Level = self.Settings.CharmLevel(Size)
+        # a size customers cannot choose now (switched off in Admin → Charm sizes) has no price for them; the price of one
+        # they can is its level among all the sizes on offer, so switching others off never changes it
+        Level = self.Settings.CharmLevel(Size) if self.Settings.IsValidCharmSize(Size) else None
         if Level is None:
             return Unavailable("charm_size_not_offered")
         Price = (Doc["materials"].get(Mat.Id) or {}).get("level_prices", {}).get(Level)
@@ -270,6 +272,7 @@ class CharmPriceBook:
         Levels = [{"level": L, "label": Products.CharmLevelLabels[L], "size": S, "name": Names.get(L) or None}
                   for S in Sizes for L in (Products.CharmLevelOf(S, Sizes),) if L]
         return {**Doc, "history": self.History(), "rows": Rows, "sizes": Sizes, "levels": Levels,
+                "sizes_enabled": self.Settings.CharmSizesEnabled,
                 "size_names": self.Settings.CharmSizeNames, "default_size": self.Settings.CharmDefaultSize,
                 "other_priced_sizes": [], "size_definition": Products.CharmSizeDefinition}
 

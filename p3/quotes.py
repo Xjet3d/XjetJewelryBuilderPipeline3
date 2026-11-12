@@ -220,7 +220,7 @@ class QuoteDesk:
                 "history": History, "suggestion": Sug, "suggested_reply": self.SuggestedReply(R), "due": self.Due(R, History),
                 "defaults": {"size": Size, "quantity": R["quantity"],
                              "valid_until": (_Today() + timedelta(days=DefaultValidDays)).isoformat()},
-                "sizes": [float(S) for S in (self.Ctx.Products.CharmSizes if Charm else self.Ctx.Catalog.RingSizes)],
+                "sizes": [float(S) for S in (self.Ctx.Products.CharmSizesEnabled if Charm else self.Ctx.Catalog.RingSizes)],
                 "statuses": list(QuoteManualStatuses), "can_send": R["status"] in QuoteOpen,
                 # why no quote can be sent for it now (product off for customers, material not quoted); None: it can
                 "offer_problem": QuoteOfferProblem(self.Ctx, R) if R["status"] in QuoteOpen else None,

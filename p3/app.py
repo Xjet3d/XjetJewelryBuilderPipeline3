@@ -519,6 +519,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # them (the filter, the wording, the grid's loading squares), so nothing moves when the catalog and the cards arrive
         Config = {**PageConfig, "view": View, "ssr": View, "titles": Titles, "analytics": Analytics.Public(Ctx.Products),
                   "products": list(Visible)}
+        if Products.Charm in Visible:                  # the charm sizes customers choose from: the wording names one alone
+            Config["charm_sizes"] = Ctx.Products.CharmSizesEnabled
         if View == "inspiration":
             Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
         Foot = SitePages.PageDesigns(GalleryLinks(request), View) if View in SitePages.PageDesignOffsets and not Flow else []
@@ -1040,8 +1042,9 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
             if Products.Charm in Visible:
                 Sizes = Ctx.Products.CharmSizeOptions()
                 Statuses = MaterialStatus.Map(Ctx, Products.Charm)        # a charm's own statuses, set apart from a ring's
+                # the sizes customers can choose (Admin → Charm sizes): one alone, and the site names that size without a choice
                 Out["products"]["charm"] = {
-                    "sizes": Ctx.Products.CharmSizes, "size_options": Sizes, "recommended_size": Ctx.Products.CharmDefaultSize,
+                    "sizes": Ctx.Products.CharmSizesEnabled, "size_options": Sizes, "recommended_size": Ctx.Products.CharmDefaultSize,
                     "size_definition": Products.CharmSizeDefinition,
                     "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": MaterialStatus.GroupOf(Statuses[M.Id]),
                                    "purchasable": Statuses[M.Id] == MaterialStatus.Available,

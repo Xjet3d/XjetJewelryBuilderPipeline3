@@ -66,6 +66,8 @@ const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'hom
 // The products on offer as the server rendered the page — the app's until the catalog says so itself, so the Gallery's
 // filter, the badges and the wording are right from the first frame and nothing moves when the catalog arrives
 const SERVER_PRODUCTS = Array.isArray(window.__p3?.products) ? window.__p3.products : null;
+// The charm sizes customers choose from (Admin → Charm sizes), as the page was served: the wording names one alone
+const SERVER_CHARM_SIZES = Array.isArray(window.__p3?.charm_sizes) ? window.__p3.charm_sizes : null;
 // This page load's own history steps (a screen the visitor went to, a gallery design opened from its card) carry this
 // mark: Back may step through them in place. A step kept from before a reload belongs to the page load that is gone.
 const PAGE_LOAD = Math.random().toString(36).slice(2);
@@ -267,6 +269,7 @@ function p3App() {
     menuOpen: false,                   // mobile navigation
     aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
+    sizeAboutOpen: false,              // Customize's About Charm Size: collapsed each time a customization opens
     _returnFocus: null,                // element to focus again when a modal closes
     _sizeGuideReturn: null,            // the same for the size guide
 
@@ -1638,6 +1641,7 @@ function p3App() {
       // alone) the charm's prices
       if (this.soleProduct === 'charm' || this.groupOfMaterial(id) !== 'fashion' || (this.wording.charm && this.charmMaterial(id)?.group === 'fashion')) {                                             // charms only: the fixed price per size
         const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
+        if (prices.length && this.oneCharmSize) return { before: '', figure: this.money(prices[0].price, prices[0].currency, true), words: this.oneCharmSize + ' charm' };
         return prices.length ? { before: 'from', figure: this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true), words: 'by charm size' }
                              : { before: '', figure: 'Price on request', words: '' };
       }
@@ -1660,7 +1664,9 @@ function p3App() {
       const g = this.charmMaterial(id)?.group;                                      // the charm's own status (WP3)
       if (g !== 'fashion') { const t = g === 'preview' ? 'preview only' : g === 'luxury' ? 'by request' : 'not offered'; return prefix ? prefix + t : t[0].toUpperCase() + t.slice(1); }
       const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
-      const text = prices.length ? 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true) + ' per charm, by size' : 'price on request';
+      const text = !prices.length ? 'price on request'
+                 : this.oneCharmSize ? this.money(prices[0].price, prices[0].currency, true) + ' per ' + this.oneCharmSize + ' charm'
+                 : 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true) + ' per charm, by size';
       return prefix ? prefix + text : text[0].toUpperCase() + text.slice(1);
     },
     // Support: one address everywhere, with the right context in the subject line
@@ -1717,6 +1723,10 @@ function p3App() {
     // The product Design opens on: the server's default — the first product on offer, charms first (WP4)
     get defaultProduct() { return this.catalog?.products?.default || this.productsList[0] || 'ring'; },
     get productsOn() { return this.productsList.length > 1; },                 // a choice to make: selector, filters, badges
+    // The charm sizes customers can choose (Admin → Charm sizes) and, while there is one alone, that size ("18 mm"):
+    // Customize then shows it without a choice and the site names it — never a fixed size (12 Nov 2026)
+    get charmSizesOn() { return this.catalog?.products?.charm?.sizes || SERVER_CHARM_SIZES || []; },
+    get oneCharmSize() { return this.charmSizesOn.length === 1 ? +this.charmSizesOn[0] + ' mm' : ''; },
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
     get nothingOnOffer() { return (!!this.catalog || !!SERVER_PRODUCTS) && this.productsList.length === 0; },
     get previewedProducts() { return this.catalog?.products?.previewed || []; },  // hidden products an Admin's browser sees
@@ -1796,6 +1806,7 @@ function p3App() {
       const gold = mats.filter(m => /gold|vermeil/.test(m.id) && m.group !== 'fashion').map(m => m.group);
       return {
         sizes: sizes.length ? (sizes.length > 1 ? sizes.slice(0, -1).join(', ') + ' or ' + sizes[sizes.length - 1] : sizes[0]) + ' mm' : '',
+        sizesLabel: sizes.length === 1 ? 'Size' : 'Sizes',
         made: this._sentenceOrder(mats.filter(m => m.group === 'fashion')).map(m => m.label).join(' · '),
         gold: !gold.length ? '' : gold.every(g => g === 'preview') ? 'Preview only' : gold.every(g => g === 'luxury') ? 'By request' : 'By request or preview only',
       };
@@ -1830,8 +1841,9 @@ function p3App() {
     get materialsTitle() { return 'Real metal, one fixed price per ' + this.wording.noun; },
     get materialsIntro() {
       const r = this.wording.ring, c = this.wording.charm;
-      const how = r && c ? 'Fashion metals have a fixed price per piece — a charm is priced by material and size; a ring’s price does not depend on its size.'
-                : c ? 'Fashion metals have a fixed price per charm, set by material and size — any design.'
+      const size = this.oneCharmSize ? '' : ' and size';          // a single charm size: priced by material alone
+      const how = r && c ? 'Fashion metals have a fixed price per piece — a charm is priced by material' + size + '; a ring’s price does not depend on its size.'
+                : c ? 'Fashion metals have a fixed price per charm, set by material' + size + ' — any design.'
                 : 'Fashion metals have a fixed price per ring — any size, any design.';
       // the metals by their status (WP3): a sentence only for a group the page lists (p3/sitepages.py, the same words)
       // until the catalog answers, the groups the server's copy listed (p3/app.py page_groups): the intro keeps its length
@@ -1843,8 +1855,9 @@ function p3App() {
     get materialsNote() {
       const r = this.wording.ring, c = this.wording.charm;
       // no currency: the prices beside it are in the visitor's (₪ including VAT for Israel while B6 is on)
-      const fixed = r && c ? 'Prices are fixed for the material — a charm is priced by size; a ring’s size does not change its price.'
-                  : c ? 'Prices are per charm, fixed for the material and size.'
+      const one = !!this.oneCharmSize;
+      const fixed = r && c ? (one ? 'Prices are fixed for the material — a ring’s size does not change its price.' : 'Prices are fixed for the material — a charm is priced by size; a ring’s size does not change its price.')
+                  : c ? 'Prices are per charm, fixed for the material' + (one ? '.' : ' and size.')
                   : 'Prices are per ring, fixed for the material — the ring size does not change the price.';
       return fixed + ' Each ' + this.wording.noun + ' is made to order, and its price does not change with its final weight.'
              + (this.pageGroupOf('vermeil') ? ' 14K Gold over Stainless Steel is stainless steel plated with 14K gold.' : '');
@@ -1876,7 +1889,8 @@ function p3App() {
     get sizingHelp() {
       const r = this.wording.ring, c = this.wording.charm;
       const ring = 'Not sure about your ring size? Use the size guide on the Customize screen (tap any row to pick a size) or send us your finger circumference in mm.';
-      const charm = 'A charm size is its total height in millimeters, including the loop — ask us if you are unsure which size suits you.';
+      const charm = this.oneCharmSize ? 'Every charm is ' + this.oneCharmSize + ' tall, including the attachment eyelet — ask us if you have any questions about size.'
+                  : 'A charm size is its total height in millimeters, including the attachment eyelet — ask us if you are unsure which size suits you.';
       return [c ? charm : '', r ? ring : ''].filter(Boolean).join(' ') || 'Ask us anything about sizes and a specialist will help.';
     },
     // The bag's and an order's wording: "ring" when every line is a ring, "charm" — or "piece(s)" for a mix
@@ -2412,6 +2426,7 @@ function p3App() {
       // A ring opens on a suggested size until the customer confirms it — once confirmed, the server remembers it for
       // the design (R-21); a charm has no suggestion — its size was chosen
       if (!same) this.sizeConfirmed = this.isCharm(c) ? c.charm_size != null : !!c.size_confirmed;
+      if (!same) this.sizeAboutOpen = false;
       this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.custGroupOf(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
@@ -2600,6 +2615,17 @@ function p3App() {
       return (this.custIsCharm ? (this.cust?.charm_size ?? this.cust?.recommended_size) : this.cust?.ring_size) == size;
     },
     suggestedCharmSize() { return this.custIsCharm && !this.sizeConfirmed ? (this.cust?.charm_size ?? this.cust?.recommended_size ?? null) : null; },
+    // Customize shows the size choice only when customers have two or more charm sizes (Admin → Charm sizes); with one,
+    // that size is selected for them and named in the product details — no control to operate
+    get custSizeChoice() { return this.custIsCharm && (this.cust?.charm_sizes || []).length > 1; },
+    // About Charm Size (collapsed by default): what a size measures and this charm's own height — only what the size
+    // definition says (p3/products.py CharmSizeDefinition: the total height, eyelet included); nothing about chains or bracelets
+    get charmSizeAbout() {
+      const size = this.cust?.charm_size != null ? this.cust?.size_label : '';
+      const what = 'Charm size is the total height of the charm, measured from its lowest point to the top of the attachment eyelet.';
+      if (!this.custSizeChoice) return what + (size ? ' Your charm is ' + size + ' tall, eyelet included.' : '');
+      return what + ' Each size above is that total height' + (size ? ', so your charm is ' + size + ' tall, eyelet included.' : '.');
+    },
     suggestedCharmLabel() {
       const s = this.suggestedCharmSize(), o = (this.cust?.charm_sizes || []).find(x => x.size == s);
       return o ? o.label.replace(' · Recommended', '') : (s != null ? s + ' mm' : '');

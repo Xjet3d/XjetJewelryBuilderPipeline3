@@ -196,4 +196,5 @@ def test_the_customer_page_shows_a_paused_design_read_only_from_every_entry_poin
     assert "Love this design? Make it yours." not in Page                  # one display heading: the design's name (2026-10-20)
     assert "x-text=\"isOff(f) ? 'Currently unavailable for customization or ordering' : 'Inspiration Gallery'\"" in Page
     assert ("x-text=\"l.unavailable ? 'Currently unavailable for customization or ordering' : (l.material_status === 'preview' ? "
-            "'Preview only — not available to order' : 'Cannot be ordered yet')\"") in Page          # WP3: a Preview Only metal
+            "'Preview only — not available to order' : (l.size_not_offered ? 'This size is no longer offered' : "
+            "'Cannot be ordered yet'))\"") in Page          # WP3: a Preview Only metal; a charm size switched off (12 Nov 2026)

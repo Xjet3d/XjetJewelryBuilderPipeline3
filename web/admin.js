@@ -226,6 +226,7 @@ function adminApp() {
     // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
     mstat: null, mstatEdit: {}, mstatNote: '', mstatBusy: false, mstatMsg: '', mstatErr: false,
     sizesEdit: null, levelNames: {}, sizeDefault: null, sizesNote: '', sizesBusy: false, sizesMsg: '', sizesErr: false,
+    sizesOn: [],                       // the charm sizes shown to customers (at least one; one alone: no size choice)
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
@@ -2541,23 +2542,32 @@ function adminApp() {
       this.sizesEdit = [...(this.products?.charm_sizes || [])].sort((a, b) => a - b);
       this.levelNames = { ...(this.products?.charm_level_names || {}) };     // "1" small · "2" medium · "3" large
       this.sizeDefault = this.products?.charm_default_size ?? null;
+      this.sizesOn = [...(this.products?.charm_sizes_enabled || this.products?.charm_sizes || [])].sort((a, b) => a - b);
     },
     // A size ticked or unticked on the grid: always kept smallest first (its level is its place)
     toggleCharmSize(v, on) {
       if (v === this.products?.charm_required_size && !on) return;            // 18 mm is always on offer
       this.sizesEdit = on ? [...new Set([...this.sizesEdit, v])].sort((a, b) => a - b) : this.sizesEdit.filter(x => x !== v);
+      // a size added to the offer is shown to customers; one taken off is no longer shown
+      this.sizesOn = (on ? [...new Set([...this.sizesOn, v])] : this.sizesOn.filter(x => x !== v)).sort((a, b) => a - b);
       if (!this.sizesEdit.includes(this.sizeDefault)) this.sizeDefault = null; // the server falls back to the middle size
+    },
+    // "Shown to customers": at least one; the recommended size is always one of them (the server falls back to their middle)
+    toggleSizeOn(v, on) {
+      this.sizesOn = (on ? [...new Set([...this.sizesOn, v])] : this.sizesOn.filter(x => x !== v)).sort((a, b) => a - b);
+      if (!this.sizesOn.includes(this.sizeDefault)) this.sizeDefault = this.sizesOn.length === 1 ? this.sizesOn[0] : null;
     },
     charmSizeName(s) { return (this.cprices?.size_names || this.products?.charm_size_names || {})[this.sizeKey(s)] || ''; },
     async saveCharmSizes() {
       this.sizesBusy = true; this.sizesMsg = ''; this.sizesErr = false;
       try {
         const level_names = Object.fromEntries(Object.entries(this.levelNames || {}).filter(([, n]) => n && n.trim()));
-        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, level_names, default: this.sizeDefault, note: this.sizesNote });
+        const enabled = this.sizesOn.filter(s => this.sizesEdit.includes(s));
+        const r = await this.api('PUT', '/api/admin/products/charm-sizes', { sizes: this.sizesEdit, enabled, level_names, default: this.sizeDefault, note: this.sizesNote });
         this.products = r; this.sizesEdit = null; this.cprices = null;          // the charm price columns follow the sizes
         this.sizesMsg = 'Charm sizes saved.' + (r.removed_in_bags?.length ? ' Still in customers\u2019 bags: ' +
           r.removed_in_bags.map(x => x.size + ' mm (' + x.bag_lines + (x.bag_lines === 1 ? ' line' : ' lines') + ')').join(', ') +
-          ' \u2014 those lines will ask for another size.' : '');
+          ' \u2014 those lines cannot be ordered; the customer adds the charm again in a size on offer.' : '');
       } catch (e) { this.sizesErr = true; this.sizesMsg = e.message; } finally { this.sizesBusy = false; }
     },
     num(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d).replace(/\.?0+$/, ''); },

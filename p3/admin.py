@@ -502,7 +502,7 @@ def SessionDetail(Ctx: Context, Production, SessionId: str, Prices, Gallery=None
                    {"charm_sizes": Ctx.Products.CharmSizes, "charm_default_size": Ctx.Products.CharmDefaultSize,
                     # a 3D is made at any size of the grid, offered or not (the owner's rule of 5 Nov 2026), smallest first
                     "charm_3d_sizes": list(Products.CharmSizeGrid),
-                    "charm_size_options": Ctx.Products.CharmSizeOptions(), "size_definition": Products.CharmSizeDefinition,
+                    "charm_size_options": Ctx.Products.CharmSizeOptions(Every=True), "size_definition": Products.CharmSizeDefinition,
                     "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "density_g_cm3": M.DensityGCm3}
                                   for M in CharmPrices.Offered(Ctx.Catalog)]},
         # Shared gallery design: every customer journey on it (the master's own page and each use show it).
@@ -1423,26 +1423,40 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         first. Their names follow their levels ({"1": "Delicate", "2": "Classic", "3": "Bold"}, or per size as
         before: {"14": "Classic"}), with the recommended size (the one Customize suggests and a 3D is made in by
         default). Prices are set per level (Pricing & Materials → Charm): the smallest size at the low price, the
-        middle at the medium and the biggest at the high one."""
+        middle at the medium and the biggest at the high one.
+        "enabled": the sizes customers can choose (at least one of the three; 12 Nov 2026). One alone: Customize shows it
+        without a size choice; two or more: the choice. Switching a size off never changes another size's price (its
+        level stays its rank among the three). Not given: the sizes shown so far that are still on offer (all of them
+        while all were shown). The recommended size is always one of the shown sizes."""
         Who = Admin(authorization)
         Note = str(Body_.get("note") or "")[:300]
         New, Old = Products.ValidateCharmSizes(Body_.get("sizes")), Ctx.Products.CharmSizes
+        OldOn, AllShown = Ctx.Products.CharmSizesEnabled, Ctx.Products.Get("charm_sizes_enabled") is None
+        if "enabled" in Body_:
+            On = Products.ValidateCharmSizesEnabled(Body_["enabled"], New)
+        else:
+            On = list(New) if AllShown else ([S for S in New if S in OldOn] or list(New))
         if "level_names" in Body_:
             Levels = Products.ValidateCharmLevelNames(Body_["level_names"])
         elif "names" in Body_:                                       # per size, as the older page sends them
             Levels = Products.CharmLevelNamesOf(Products.ValidateCharmSizeNames(Body_["names"], New), New)
         else:
             Levels = Ctx.Products.CharmLevelNames
-        # none given: the middle size (the medium price), whatever was recommended before
-        Default = Products.ValidateCharmDefaultSize(Body_.get("default"), New) or Products.CharmDefaultSize(New)
+        # none given, or one customers cannot choose: the middle of the shown sizes (the only one when one is shown)
+        Default = Products.ValidateCharmDefaultSize(Body_.get("default"), New)
+        if Default not in On:
+            Default = Products.CharmDefaultSize(On)
         if New != Old:
             Ctx.Products.Set("charm_sizes", New, Who.Id, Note)
+        Stored = None if On == list(New) else On                      # null: every size on offer is shown
+        if Stored != Ctx.Products.Get("charm_sizes_enabled"):
+            Ctx.Products.Set("charm_sizes_enabled", Stored, Who.Id, Note)
         if Levels != Ctx.Products.CharmLevelNames or not Ctx.Products._Stored("charm_level_names"):
             Ctx.Products.Set("charm_level_names", Levels, Who.Id, Note)
         if Default != Ctx.Products.Get("charm_default_size"):       # stored explicitly (also a kept or fallen-back one)
             Ctx.Products.Set("charm_default_size", Default, Who.Id, Note)
         InBags = [{"size": S, "bag_lines": Ctx.Db.One("SELECT COUNT(*) AS n FROM bag_lines WHERE product_type = 'charm' AND charm_size = ?",
-                                                     (S,))["n"]} for S in sorted(set(Old) - set(New))]
+                                                     (S,))["n"]} for S in sorted(set(OldOn) - set(On))]
         return {**_ProductsState(), "removed_in_bags": [X for X in InBags if X["bag_lines"]]}
 
     # ── Credits: what a customer's credit buys (the tariff) and the day's AI spend against the cap ──

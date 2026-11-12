@@ -69,7 +69,7 @@ async def test_a_charm_is_measured_once_and_scaled_by_its_height(H3):
         ("charm", 22.0, None, "22 mm", "Sterling Silver")
     # The size is the total height, loop included: a closed charm model is complete, nothing to review
     assert T["status"] == "measured" and T["production_state"] == "complete" and T["review"] == []
-    assert T["height_basis"] == "The total height of the charm, including the attachment loop at the top."
+    assert T["height_basis"] == "The total height of the charm, including the attachment eyelet at the top."
     Price = T["price"]
     assert Price["cost_model_version"] == "charms-v2" and Price["breakdown"]["pricing"] == "charm"
     assert math.isclose(Price["weight_g"], Prod["volume_mm3"] / 1000 * Price["density_g_cm3"], rel_tol=1e-3)

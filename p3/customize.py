@@ -123,11 +123,15 @@ class CustomizeService:
 
     def _View(self, Row: dict) -> dict:
         """What Customize shows for a customization: its saved choices — or, entered again and not acted on since, the
-        metal Customize opens on (and a charm's default size), the saved record untouched (WP3)."""
+        metal Customize opens on (and a charm's default size), the saved record untouched (WP3). While customers have a
+        single charm size (Admin → Charm sizes), a charm saved in a size no longer shown shows that size instead — there
+        is no size choice to wait for; adding it to the bag saves it. With two or more, it asks for another size as before."""
         E = self._Entry(Row["id"])
-        if E is None:
-            return Row
-        return {**Row, "material_id": E["material_id"], **({"charm_size": E["charm_size"]} if E["charm_size"] is not None else {})}
+        V = Row if E is None else             {**Row, "material_id": E["material_id"], **({"charm_size": E["charm_size"]} if E["charm_size"] is not None else {})}
+        On = self.Ctx.Products.CharmSizesEnabled
+        if V.get("charm_size") is not None and len(On) == 1 and float(V["charm_size"]) != On[0]:
+            V = {**V, "charm_size": On[0]}
+        return V
 
     def Update(self, Who: Principal, CustomizationId: str, Changes: dict) -> dict:
         Row = self._Owned(Who, CustomizationId)
@@ -252,8 +256,10 @@ class CustomizeService:
     # ── bag ──────────────────────────────────────────────────────────────
     def AddToBag(self, Who: Principal, CustomizationId: str, Visible: tuple | None = None) -> dict:
         Row = self._Owned(Who, CustomizationId)
-        if self._Entry(Row["id"]):                  # adding what Customize shows: it becomes the saved choice first
-            self.Update(Who, CustomizationId, {})
+        Shown = self._View(Row)                     # a charm's size no longer shown: the single size Customize shows
+        Fix = {"charm_size": Shown["charm_size"]} if Shown.get("charm_size") != Row.get("charm_size") else {}
+        if self._Entry(Row["id"]) or Fix:           # adding what Customize shows: it becomes the saved choice first
+            self.Update(Who, CustomizationId, Fix)
             Row = self._Owned(Who, CustomizationId)
         Product = Products.Of(self.Ctx.Db, Row["design_id"])          # the line is a snapshot of the design's product
         Quote = CharmPrices.QuoteFor(self.Ctx, Product, Row["material_id"], Row.get("charm_size"))
@@ -367,6 +373,9 @@ class CustomizeService:
                           "price_is_stale": L["pricing_version"] != Q.pricing_version,
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
                           **({"unavailable": True} if Off else {}),
+                          # a charm in a size customers can no longer choose: the bag says so (the line keeps its size)
+                          **({"size_not_offered": True} if not Off and Product == Products.Charm and L.get("charm_size") is not None
+                             and not self.Ctx.Products.IsValidCharmSize(L["charm_size"]) else {}),
                           # the metal's status when it is not Available ("preview": the bag says Preview only)
                           **({"material_status": Status} if Status != MaterialStatus.Available else {}),
                           "quote": json.loads(L["quote_json"])})

@@ -2708,8 +2708,11 @@
         </div>
         <p class="text-[12px] text-zinc-600"><strong>What a size measures:</strong> <span x-text="products.charm_size_definition?.text"></span></p>
         <div class="flex flex-wrap gap-2" x-show="!sizesEdit">
-          <template x-for="o in (products.charm_size_options || [])" :key="'cs' + o.size"><span class="badge bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8]" x-text="o.label"></span></template>
+          <template x-for="o in (products.charm_size_options || [])" :key="'cs' + o.size"><span class="badge" :class="o.enabled === false ? 'bg-zinc-100 text-zinc-500 border border-zinc-200' : 'bg-[#FBF7EF] text-[#7A5A10] border border-[#E8D9B8]'" x-text="o.label + (o.enabled === false ? ' \u00b7 hidden from customers' : '')"></span></template>
         </div>
+        <!-- The sizes customers choose from (12 Nov 2026): one alone, Customize shows it without a size choice -->
+        <p class="text-[12px] text-zinc-600" x-show="!sizesEdit && (products.charm_sizes_enabled || []).length" data-testid="charm-sizes-shown"
+           x-text="(products.charm_sizes_enabled || []).length === 1 ? 'Customers get ' + products.charm_sizes_enabled[0] + ' mm, the only size shown: Customize shows it without a size choice.' : 'Customers choose from ' + (products.charm_sizes_enabled || []).map(s => s + ' mm').join(', ') + ' in Customize.'"></p>
         <template x-if="sizesEdit">
           <div class="space-y-3">
             <!-- The grid (10\u201330 mm in 4 mm steps): exactly three ticked, 18 mm always among them -->
@@ -2735,17 +2738,19 @@
                   <td class="pr-3 whitespace-nowrap font-medium" x-text="s + ' mm'"></td>
                   <td class="pr-3 whitespace-nowrap text-zinc-500" x-text="(products.charm_level_labels || {})[String(i + 1)] + ' price'"></td>
                   <td class="pr-3"><input class="inp !w-40" maxlength="30" x-model="levelNames[String(i + 1)]" placeholder="Name (optional)" :aria-label="'Name of the ' + (products.charm_level_labels || {})[String(i + 1)] + ' size'"></td>
-                  <td class="pr-3 whitespace-nowrap"><label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="radio" name="charm-size-default" :value="s" :checked="sizeDefault === s" @change="sizeDefault = s"> Recommended</label></td>
+                  <td class="pr-3 whitespace-nowrap"><label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox" :checked="sizesOn.includes(s)" @change="toggleSizeOn(s, $event.target.checked)" :aria-label="s + ' mm shown to customers'"> Shown to customers</label></td>
+                  <td class="pr-3 whitespace-nowrap"><label class="inline-flex items-center gap-1.5" :class="sizesOn.includes(s) ? 'cursor-pointer' : 'text-zinc-400'"><input type="radio" name="charm-size-default" :value="s" :checked="sizeDefault === s" :disabled="!sizesOn.includes(s)" @change="sizeDefault = s"> Recommended</label></td>
                 </tr>
               </template>
             </tbody></table>
             <div class="flex flex-wrap items-center gap-3">
               <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="sizesNote">
-              <button class="btn" @click="saveCharmSizes()" :disabled="sizesBusy || sizesEdit.length !== products.charm_sizes_on_offer">Save charm sizes</button>
+              <button class="btn" @click="saveCharmSizes()" :disabled="sizesBusy || sizesEdit.length !== products.charm_sizes_on_offer || !sizesOn.some(s => sizesEdit.includes(s))">Save charm sizes</button>
             </div>
+            <p class="text-[12px] text-amber-700" x-show="!sizesOn.some(s => sizesEdit.includes(s))">Show at least one size to customers.</p>
           </div>
         </template>
-        <p class="text-[12px] text-zinc-500" x-text="'Tick exactly ' + products.charm_sizes_on_offer + ' of ' + (products.charm_size_grid || []).join(', ') + ' mm; ' + products.charm_required_size + ' mm is always on offer. They are always shown smallest first. Prices follow the order (Pricing & Materials \u2192 Charm): the smallest size at the small price, the middle at the medium and the biggest at the large one, so the biggest size always costs the most. Each level keeps its name. The recommended size is suggested in Customize and used for a 3D when the customer chose none; a 3D can be made at any of the six sizes. Ring sizes are not affected.'"></p>
+        <p class="text-[12px] text-zinc-500" x-text="'Tick exactly ' + products.charm_sizes_on_offer + ' of ' + (products.charm_size_grid || []).join(', ') + ' mm; ' + products.charm_required_size + ' mm is always on offer. They are always shown smallest first. Prices follow the order (Pricing & Materials \u2192 Charm): the smallest size at the small price, the middle at the medium and the biggest at the large one, so the biggest size always costs the most. Each level keeps its name. The recommended size is suggested in Customize and used for a 3D when the customer chose none; a 3D can be made at any of the six sizes. Shown to customers: the sizes customers can choose \u2014 untick one to stop offering it without changing any price; with a single size shown, Customize selects it and shows no size choice. Ring sizes are not affected.'"></p>
         <p x-show="sizesMsg" class="text-sm" :class="sizesErr ? 'text-red-600' : 'text-emerald-700'" x-text="sizesMsg"></p>
       </div>
       </template>
@@ -2786,7 +2791,7 @@
         <table class="w-full !text-[12px]"><tbody>
           <template x-for="(l, i) in (products?.log || [])" :key="i"><tr>
             <td class="whitespace-nowrap text-zinc-500" x-text="dateTime(l.at)"></td>
-            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_level_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => ({1: 'small', 2: 'medium', 3: 'large'})[k] + ' ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : (l.key === 'starting_credits' ? 'New accounts start with ' + l.value + (l.value === 1 ? ' credit' : ' credits') : l.key)))))))"></td>
+            <td x-text="l.key.endsWith('_available') ? (l.key.replace('_available', '').replace(/^./, c => c.toUpperCase()) + ' ' + (l.value ? 'shown to' : 'hidden from') + ' customers') : (l.key.endsWith('_movie') ? (l.key.replace('_movie', '').replace(/^./, c => c.toUpperCase()) + ' 360° movie ' + (l.value ? 'on' : 'off')) : (l.key === 'charm_sizes' ? 'Charm sizes: ' + (l.value || []).map(v => v + ' mm').join(', ') : (l.key === 'charm_size_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => k + ' mm ' + n).join(', ') || 'none') : (l.key === 'charm_level_names' ? 'Charm size names: ' + (Object.entries(l.value || {}).map(([k, n]) => ({1: 'small', 2: 'medium', 3: 'large'})[k] + ' ' + n).join(', ') || 'none') : (l.key === 'charm_default_size' ? 'Recommended charm size: ' + l.value + ' mm' : (l.key === 'charm_sizes_enabled' ? 'Charm sizes shown to customers: ' + (l.value ? l.value.map(v => v + ' mm').join(', ') : 'all') : (l.key === 'credit_tariff' ? 'Credits tariff: ' + Object.entries(l.value || {}).map(([k, v]) => v + ' per ' + k.replace('_', ' ')).join(', ') : (l.key === 'starting_credits' ? 'New accounts start with ' + l.value + (l.value === 1 ? ' credit' : ' credits') : l.key))))))))"></td>
             <td class="text-zinc-500" x-text="l.by"></td><td class="text-zinc-500" x-text="l.note || ''"></td>
           </tr></template>
         </tbody></table>

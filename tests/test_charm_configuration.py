@@ -139,7 +139,7 @@ async def test_customers_create_charms_only_while_charms_are_available(HK):
     Cat = (await H.Client.get("/api/catalog", headers=Customer)).json()
     assert Cat["products"]["available"] == ["charm", "ring"] and Cat["products"]["preview"] is False
     assert Cat["products"]["charm"]["sizes"] == [10.0, 14.0, 18.0] and Cat["products"]["charm"]["recommended_size"] == 14.0
-    assert Cat["products"]["charm"]["size_definition"]["text"] == "The total height of the charm, including the attachment loop at the top."
+    assert Cat["products"]["charm"]["size_definition"]["text"] == "The total height of the charm, including the attachment eyelet at the top."
     assert Cat["products"]["charm"]["size_definition"]["includes_loop"] is True
     Off = await H.Client.put("/api/admin/products/availability", json={"charms_available": False}, headers=Admin)
     Paused = await Try()                     # launched, then OFF: said plainly (WP2), no longer "Unknown product"
