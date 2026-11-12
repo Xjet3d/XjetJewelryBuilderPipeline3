@@ -15,6 +15,7 @@ import json
 from p3 import charmprices as CharmPrices
 from p3 import materialstatus as MaterialStatus
 from p3 import products as Products
+from p3.pricing.service import PublicPromotion
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3.accounts import InsufficientCredits, Principal
@@ -243,7 +244,8 @@ class CustomizeService:
         Sizes = []
         for O in self.Ctx.Products.CharmSizeOptions():       # '14 mm — Classic · Recommended', each with its price
             Q = self.Ctx.CharmPrices.QuoteFor(Row["material_id"], O["size"])
-            Sizes.append({**O, "unit_price": Q.unit_price, "currency": Q.currency, "pricing_status": Q.pricing_status})
+            Sizes.append({**O, "unit_price": Q.unit_price, "currency": Q.currency, "pricing_status": Q.pricing_status,
+                          **({"promotion": PublicPromotion(Q.promotion)} if Q.promotion else {})})
         return {"product_type": Products.Charm, "charm_size": Row.get("charm_size"),
                 "size_label": Products.SizeLabel(Products.Charm, None, Row.get("charm_size")),
                 "recommended_size": self.Ctx.Products.CharmDefaultSize,     # suggested until the customer picks a size
@@ -372,6 +374,8 @@ class CustomizeService:
                           "currency": L["currency"], "line_total": Total, "pricing_version": L["pricing_version"],
                           "price_is_stale": L["pricing_version"] != Q.pricing_version,
                           "current_unit_price": Q.unit_price if Q.IsAvailable else None, "orderable": LineOk,
+                          # today's promotion on it (its price above is what it was added at; checkout charges today's)
+                          **({"promotion": PublicPromotion(Q.promotion)} if Q.IsAvailable and Q.promotion else {}),
                           **({"unavailable": True} if Off else {}),
                           # a charm in a size customers can no longer choose: the bag says so (the line keeps its size)
                           **({"size_not_offered": True} if not Off and Product == Products.Charm and L.get("charm_size") is not None

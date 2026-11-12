@@ -429,6 +429,22 @@
         .acct-wrap { max-width: 1040px; margin: 0 auto; padding: 32px 24px 112px; }
         .acct-tabs { display: flex; gap: 4px; border-bottom: 1px solid #E4E4E7; margin: 24px 0 8px; overflow-x: auto; scrollbar-width: none; }
         .acct-tabs::-webkit-scrollbar { display: none; }
+        /* The promotion banner (P1): a slim XJet-red bar, ivory type, quiet — no motion. Its height is --promo-h (app.js),
+           taken from the Design screen's own height on phones (.studio-h). The promotion's prices: the promotional price
+           leads; the regular price smaller, grey and crossed out; the saving in the site's bronze. */
+        .promo-banner { flex-shrink: 0; width: 100%; background: #AB0000; color: #FBF6EE; text-align: center;
+            font-size: 10px; line-height: 1.45; letter-spacing: .08em; text-transform: uppercase; font-weight: 500; padding: 8px 12px; }
+        @media (min-width: 420px) { .promo-banner { font-size: 11px; letter-spacing: .14em; padding: 8px 16px; } }
+        .promo-banner a, .promo-banner span { color: inherit; text-decoration: none; }
+        .promo-banner-link { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; }
+        .promo-banner-link:hover, .promo-banner-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+        .promo-banner-link:focus-visible { outline: 2px solid #FBF6EE; outline-offset: 2px; }
+        .promo-banner-arrow { font-size: 13px; letter-spacing: 0; }
+        @media (min-width: 768px) { .promo-banner { font-size: 12px; letter-spacing: .22em; padding: 9px 24px; } }
+        .promo-on .studio-h { height: calc(100dvh - 61px - var(--promo-h, 0px)); }
+        @media (min-width: 1024px) { .promo-on .studio-h { height: 100%; } }
+        .promo-was { color: #A1A1AA; text-decoration: line-through; text-decoration-thickness: 1px; }
+        .promo-note { font-size: 12px; color: #8A6420; margin-top: 2px; }
         .acct-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 14px; font-size: 13px; letter-spacing: .12em;
                     text-transform: uppercase; color: #52525B; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
         .acct-tab:hover { color: #1A1A1A; }
@@ -518,7 +534,7 @@
     <link rel="stylesheet" href="{{BASE}}/static/vendor/tailwind.css">
 </head>
 <!-- Alpine calls init() itself: an x-init="init()" ran it twice (every startup request twice, timers doubled) -->
-<body x-data="p3App()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white">
+<body x-data="p3App()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white" :class="bannerShown ? 'promo-on' : ''">
     <!-- The first stop of the keyboard: straight to the screen's own content, past the header (ACC-06) -->
     <a href="#content" class="skip-link" @click.prevent="skipToContent()">Skip to content</a>
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
@@ -538,6 +554,10 @@
         <span class="font-semibold uppercase tracking-[0.16em]">Mock mode</span>
         · Designs, movies and 3D files are simulated placeholders. No AI provider is called and nothing is charged.
     </div><!--/mock-->
+
+    <!-- ── The promotion banner (P1, 12 Nov 2026): slim, XJet red, above the header. Written by the server only while the
+         promotion it announces is active and the claim holds (p3/promobanner.py); the app takes it down at its end. ── -->
+    {{PROMO_BANNER}}
 
     <!-- ── Header ────────────────────────────────────────────────────────────
          One grid (nav.site-header, arranged in the style block above), so every control exists once:
@@ -1163,7 +1183,8 @@
                                     <h3 class="brand-font text-2xl text-zinc-900" x-text="m.label"></h3>
                                     <p class="text-[14px] text-zinc-500" x-text="copy(m.id).sub"></p>
                                 </div>
-                                <p class="flex flex-wrap items-baseline gap-x-2 text-zinc-900"><span x-show="materialPrice(m.id).before" class="text-[14px] text-zinc-600" x-text="materialPrice(m.id).before"></span><span class="brand-font text-2xl" x-text="materialPrice(m.id).figure"></span><span x-show="materialPrice(m.id).words" class="text-[14px] text-zinc-600" x-text="'· ' + materialPrice(m.id).words"></span></p>
+                                <p class="flex flex-wrap items-baseline gap-x-2 text-zinc-900"><span x-show="materialPrice(m.id).before" class="text-[14px] text-zinc-600" x-text="materialPrice(m.id).before"></span><s x-show="materialPrice(m.id).was" class="promo-was brand-font text-lg" x-text="materialPrice(m.id).was"></s><span class="brand-font text-2xl" x-text="materialPrice(m.id).figure"></span><span x-show="materialPrice(m.id).words" class="text-[14px] text-zinc-600" x-text="'· ' + materialPrice(m.id).words"></span></p>
+                                <p x-show="materialPrice(m.id).save" x-cloak class="text-[13px] -mt-2 tracking-wide" style="color:#8A6420" x-text="materialPrice(m.id).save"></p>
                                 <p class="text-[14px] text-zinc-600" x-show="wording.ring && wording.charm" x-cloak x-text="ringPriceText(m.id)"></p>
                                 <dl class="text-[14px] text-zinc-700 space-y-2 leading-snug">
                                     <div><dt class="text-[12px] uppercase tracking-[0.14em] text-zinc-500 font-semibold">Appearance</dt><dd x-text="info(m.id).appearance"></dd></div>
@@ -1494,7 +1515,7 @@
     <template x-if="view === 'ai-studio'">
         <div role="main" class="flex-1 flex overflow-hidden relative fade-in min-h-0" style="background:#F8F8F8;">
             <h1 x-show="design" class="vh" x-text="design?.title || 'Your design'"></h1>
-            <div class="w-full flex h-[calc(100dvh-61px)] lg:h-full min-h-0 overflow-hidden">
+            <div class="studio-h w-full flex h-[calc(100dvh-61px)] lg:h-full min-h-0 overflow-hidden">
 
                 <!-- CENTER workspace -->
                 <div class="flex-1 flex flex-col ai-grid-bg overflow-hidden min-w-0">
@@ -2079,8 +2100,10 @@
                                         :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
                                         class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
                                     <span x-text="s.label"></span>
-                                    <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'"
-                                          x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : 'Unavailable')"></span>
+                                    <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'">
+                                        <s x-show="!isLuxury && !isPreview && promoWas(s.promotion, s.currency)" class="promo-was mr-1" x-text="promoWas(s.promotion, s.currency, true)"></s><span
+                                           x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : 'Unavailable')"></span>
+                                    </span>
                                 </button>
                             </template>
                         </div>
@@ -2144,11 +2167,15 @@
 
                     <!-- Price -->
                     <div>
-                        <div class="flex items-baseline gap-3">
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <!-- a promotion (P1): the regular price crossed out, only when the server sent it (verified) -->
+                            <s x-show="promoWas(custPromo, cust?.quote?.currency)" x-cloak class="promo-was brand-font font-light text-xl" data-testid="price-was"
+                               x-text="promoWas(custPromo, cust?.quote?.currency)" :aria-label="'Regular price ' + promoWas(custPromo, cust?.quote?.currency)"></s>
                             <span class="font-light brand-font transition-colors duration-500"
                                   :class="priceAvailable ? 'text-3xl text-zinc-900' : 'text-2xl text-zinc-500'" x-text="priceText"></span>
                             <span x-show="priceAvailable" class="text-[12px] text-zinc-500 uppercase tracking-widest">Per piece</span>
                         </div>
+                        <p x-show="custPromo" x-cloak class="text-[13px] mt-1 tracking-wide" style="color:#8A6420" data-testid="price-save" x-text="promoLine(custPromo, cust?.quote?.currency, true)"></p>
                         <p x-show="priceAvailable && !custIsCharm" class="text-[14px] text-zinc-600 mt-1.5 leading-snug">
                             Fixed price for <span x-text="currentMaterial?.label"></span>, any size.
                         </p>
@@ -2340,6 +2367,7 @@
                                     <div class="text-right whitespace-nowrap">
                                         <p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p>
                                         <p class="text-[13px] text-zinc-500" x-text="money(l.unit_price, l.currency) + ' each'"></p>
+                                        <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
                                     </div>
                                 </div>
                                 <button @click="removeLine(l)" class="mt-1 min-h-[44px] text-[13px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
@@ -2575,6 +2603,7 @@
                                     <p class="text-[13px] font-medium text-zinc-900 truncate" x-text="l.title"></p>
                                     <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
                                     <p class="text-zinc-500"><span x-text="l.quantity"></span> × <span x-text="money(l.unit_price, l.currency)"></span></p>
+                                    <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
                                     <p x-show="l.problem" class="text-red-700" x-text="'Not in this order — it stays in your bag: ' + l.problem"></p>
                                 </div>
                                 <p class="text-[13px] shrink-0" :class="l.problem ? 'text-zinc-400' : 'text-zinc-900'" :style="l.problem ? 'text-decoration: line-through' : ''" x-text="money(l.line_total, l.currency)"></p>
@@ -2634,6 +2663,7 @@
                                 <p class="text-base font-medium text-zinc-900" x-text="l.title"></p>
                                 <p class="text-[12px] text-zinc-500 mt-0.5"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
                                 <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · Size <span x-text="lineSize(l)"></span> · Qty <span x-text="l.quantity"></span></p>
+                                <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
                             </div>
                             <div class="text-right shrink-0"><p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p><p class="text-[12px] text-zinc-500 mt-1" x-text="money(l.unit_price, l.currency) + ' each'"></p></div>
                         </div>
@@ -2922,6 +2952,7 @@
                                                 <p class="text-[15px] font-semibold text-zinc-900" x-text="l.title"></p>
                                                 <p class="text-[12px] text-zinc-500"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
                                                 <p class="text-[13px] text-zinc-600" x-text="l.material_label + ' · Size ' + lineSize(l) + ' · Qty ' + l.quantity"></p>
+                                                <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
                                             </div>
                                             <p class="acct-line-price text-[15px] text-zinc-900 tabular-nums" x-text="money(l.line_total, l.currency)"></p>
                                         </div>

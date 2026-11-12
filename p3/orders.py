@@ -29,6 +29,8 @@ from p3 import charmprices as CharmPrices
 from p3 import materialstatus as MaterialStatus
 from p3 import payments as Payments
 from p3 import products as Products
+from p3.pricing.service import PublicPromotion
+from p3 import ilspricing as IlsPricingMod
 from p3 import ringids as RingIds
 from p3 import sessions as Sessions
 from p3 import versions as Versions
@@ -260,7 +262,10 @@ class OrderService:
                         "pricing_version": Q.pricing_version if Q else None,
                         "line_total": round(Unit * L["quantity"], 2) if Unit is not None else None,
                         "repriced": Unit is not None and round(Unit, 2) != round(L["unit_price"], 2),
-                        "snapshot_unit_price": L["unit_price"], "problem": Problem})
+                        "snapshot_unit_price": L["unit_price"], "problem": Problem,
+                        # a promotional price (p3/charmprices.py): the whole record, kept with the order line; the
+                        # customer's answer carries its public part only (Quote)
+                        "_promotion": Q.promotion if Q and Q.IsAvailable and Q.promotion else None})
         return Out
 
     def _VerifiedEmail(self, Who: Principal) -> str | None:
@@ -272,10 +277,12 @@ class OrderService:
             return None
 
     def Quote(self, Who: Principal, PromoCode: str | None = None, ShippingMethod: str = "standard",
-              Visible: tuple | None = None, Market=None) -> dict:
+              Visible: tuple | None = None, Market=None, Internal: bool = False) -> dict:
         """The bag's totals. Market (B6): ₪ including VAT — each line's unit price converted from its USD list price and
         rounded by the rule, the delivery converted the same way, a promo checked on the USD lines (its rules and minimum
-        are in USD) and its discount taken from the ₪ lines. None: USD, as before."""
+        are in USD) and its discount taken from the ₪ lines. None: USD, as before. A line at a promotional price carries
+        its promotion (its regular price and saving converted too); a promo code never discounts such a line (no double
+        discount, P1 12 Nov 2026). Internal: the whole promotion record stays on the lines (an order keeps it)."""
         Lines = self._BagLines(Who, Visible)
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Lines}))
         for L in Lines:
@@ -297,6 +304,8 @@ class OrderService:
                 if L["unit_price"] is not None and L["currency"] == "USD":
                     L["usd_unit_price"], L["unit_price"], L["currency"] = L["unit_price"], Market.Unit(L["unit_price"]), Market.currency
                     L["line_total"] = round(L["unit_price"] * L["quantity"], 2)
+                    if L["_promotion"]:
+                        L["_promotion"] = IlsPricingMod.LocalizePromotion(L["_promotion"], L["unit_price"], Market)
             if Promo:
                 Share = Promo["eligible_subtotal"] / max(sum(L["usd_unit_price"] * L["quantity"] for L in Ok), 0.01)
                 Eligible = round(sum(L["line_total"] for L in Ok) * Share, 2)        # the eligible lines' share, in ₪
@@ -304,6 +313,10 @@ class OrderService:
                 Promo = {**Promo, "usd_discount": Promo["discount"], "discount": Discount,
                          "label": Promo["label"] if Promo["kind"] == "percent"
                          else f"{'₪' if Market.currency == 'ILS' else '$'}{Discount:,.2f} off"}
+        for L in Lines:                       # each line's promotion as the customer reads it; the whole record only inside
+            L["promotion"] = PublicPromotion(L["_promotion"])
+            if not Internal:
+                del L["_promotion"]
         Subtotal = round(sum(L["line_total"] for L in Ok), 2)
         Currency = next((L["currency"] for L in Ok), Market.currency if Market else "USD")
         Discount = Promo["discount"] if Promo else 0.0
@@ -381,7 +394,7 @@ class OrderService:
             Problems.append({"field": "terms_accepted", "message": "Please accept the Terms of Service to place the order."})
         if Problems:
             raise _Invalid(Problems)
-        Q = self.Quote(Who, Body.get("promo_code"), Method, Visible, Market)
+        Q = self.Quote(Who, Body.get("promo_code"), Method, Visible, Market, Internal=True)
         if not Q["lines"]:
             raise HttpError(409, "bag_empty", "Your bag is empty.")
         if Q["promo_error"]:
@@ -595,7 +608,9 @@ class OrderService:
                        "product_type": L.get("product_type") or Products.Ring, "charm_size": L.get("charm_size"),
                        "size_label": Products.SizeLabel(L.get("product_type") or Products.Ring, L["ring_size"], L.get("charm_size")),
                        "ring_size": L["ring_size"], "quantity": L["quantity"], "unit_price": L["unit_price"],
-                       "line_total": L["line_total"], "currency": L["currency"], "image_url": self.Ctx.AssetUrl(L["image_path"])}
+                       "line_total": L["line_total"], "currency": L["currency"], "image_url": self.Ctx.AssetUrl(L["image_path"]),
+                       # the promotional price it was ordered at, as recorded then (P1): never today's promotion
+                       **({"promotion": P} if (P := LinePromotion(L, Full=not ForCustomer)) else {})}
                       for L in Lines],
         }
         if not ForCustomer:
@@ -1626,9 +1641,25 @@ def PurchaseSnapshot(L: dict) -> dict:
                 "definition": Products.CharmSizeDefinition["text"]}
     else:
         Size = {"value": L.get("ring_size"), "system": "US", "label": Products.SizeLabel(Product, L.get("ring_size"))}
+    Promo = L.get("_promotion")
     return {"product": Product, "product_label": Products.Labels[Product], "size": Size,
             "material": {"id": L["material_id"], "label": L["material_label"]},
-            "price": {"unit_price": L["unit_price"], "currency": L["currency"], "pricing_version": L["pricing_version"]}}
+            "price": {"unit_price": L["unit_price"], "currency": L["currency"], "pricing_version": L["pricing_version"]},
+            # a promotional price (P1, 12 Nov 2026): its label, the regular price and the saving at that moment (in the
+            # order's currency; the USD figures too for an order in ₪), and whether they were verified reference prices
+            **({"promotion": {K: Promo.get(K) for K in ("label", "regular_unit_price", "savings", "ends_at", "claims",
+                                                       "usd_regular_unit_price", "usd_savings") if Promo.get(K) is not None
+                              or K == "claims"}} if Promo else {})}
+
+
+def LinePromotion(L: dict, Full: bool = False) -> dict | None:
+    """The promotion an order line was placed at (its purchase snapshot), as the customer may read it: the label, and the
+    regular price and saving only when they were verified reference prices then. Full: all of it (the Admin)."""
+    try:
+        Snap = json.loads(L.get("purchase_json") or "{}")
+    except (TypeError, ValueError):
+        return None
+    return (Snap.get("promotion") or None) if Full else PublicPromotion(Snap.get("promotion"))
 
 
 _NotePattern = re.compile(r"(?:From quote Q-\d+ \(version \d+\)\. )?Customer's note: (.+)", re.S)

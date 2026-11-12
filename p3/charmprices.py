@@ -15,10 +15,20 @@ The materials: Stainless Steel, Sterling Silver and 14K Gold over Stainless Stee
 the quote flow, exactly like a gold ring (no fixed price). Every save is a new version ("charms-v<N>": who,
 when, note). The table starts empty — no charm price is invented — so every charm is "Price unavailable"
 until an Admin sets its prices.
+
+The promotion (P1, 12 Nov 2026 — the Christmas offer): per material a promotional price per size in mm (promo_prices,
+"18" → 39.0: a size of its own, never a level, so a size added later is never in the promotion unless an Admin gives it
+a price), below that size's regular price; and one promotion for the table — on/off, an optional start and end, the
+label customers read, and whether the regular prices are verified reference prices. While the promotion is active a
+priced size with a promotional price costs that price everywhere (Customize, the bag, checkout, the order); the regular
+price and the saving are shown only when verified (reference_verified, with how). It starts and ends by the clock — no
+save, no job: every quote reads it — and its quotes carry their own version ("charms-v<N>-promo"), so a bag priced
+before it started or ended is repriced at checkout. Orders keep what they were placed at.
 """
 
 import json
 import math
+from datetime import datetime, timezone
 
 from p3 import products as Products
 from p3.db import Database, Dumps, Now
@@ -63,7 +73,67 @@ def Label(Catalog, MaterialId: str) -> str:
 
 
 def _EmptyRow() -> dict:
-    return {"price_per_g": None, "cost_per_g": None, "level_prices": {}}
+    return {"price_per_g": None, "cost_per_g": None, "level_prices": {}, "promo_prices": {}}
+
+
+# ── the promotion ─────────────────────────────────────────────────────────────────────────────────────────────────────
+DefaultPromotion = {"enabled": False, "starts_at": None, "ends_at": None, "label": "Holiday price",
+                    "reference_verified": False, "reference_note": ""}
+PromotionLabelMax, ReferenceNoteMax = 40, 500
+
+
+def _When(Name: str, Raw) -> str | None:
+    """An optional moment, ISO 8601 with its time zone (the Admin's browser sends UTC), kept in UTC to the second."""
+    if Raw in (None, ""):
+        return None
+    try:
+        D = datetime.fromisoformat(str(Raw).strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise CharmPriceError(f"{Name} is not a date and time.") from None
+    if D.tzinfo is None:
+        raise CharmPriceError(f"{Name} needs its time zone.")
+    return D.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _Dt(Iso: str | None) -> datetime | None:
+    return datetime.fromisoformat(Iso) if Iso else None
+
+
+def ValidatePromotion(Raw) -> dict:
+    """The promotion to save: on/off, an optional start and end (the end after the start), the label customers read next
+    to the price, and whether the regular prices are verified reference prices — said how (who, when, on what basis):
+    only then are a crossed-out regular price and a saving shown."""
+    if Raw is None:
+        return dict(DefaultPromotion)
+    if not isinstance(Raw, dict):
+        raise CharmPriceError("The promotion is given as an object.")
+    Label_ = str(Raw.get("label") or "").strip() or DefaultPromotion["label"]
+    if len(Label_) > PromotionLabelMax:
+        raise CharmPriceError(f"The promotion's label is a short text (at most {PromotionLabelMax} characters).")
+    Out = {"enabled": Raw.get("enabled") is True,
+           "starts_at": _When("The promotion's start", Raw.get("starts_at")),
+           "ends_at": _When("The promotion's end", Raw.get("ends_at")),
+           "label": Label_,
+           "reference_verified": Raw.get("reference_verified") is True,
+           "reference_note": str(Raw.get("reference_note") or "").strip()[:ReferenceNoteMax]}
+    if Out["starts_at"] and Out["ends_at"] and _Dt(Out["ends_at"]) <= _Dt(Out["starts_at"]):
+        raise CharmPriceError("The promotion must end after it starts.")
+    if Out["reference_verified"] and not Out["reference_note"]:
+        raise CharmPriceError("Say how the regular prices were verified as reference prices (who, when, on what basis) "
+                              "before a crossed-out price and a saving are shown.")
+    return Out
+
+
+def PromotionState(P: dict, At: datetime | None = None) -> str:
+    """"off" · "scheduled" (on, its start still ahead) · "active" · "ended" (on, its end passed)."""
+    if not (P or {}).get("enabled"):
+        return "off"
+    Now_ = At or datetime.now(timezone.utc)
+    if P.get("starts_at") and Now_ < _Dt(P["starts_at"]):
+        return "scheduled"
+    if P.get("ends_at") and Now_ >= _Dt(P["ends_at"]):
+        return "ended"
+    return "active"
 
 
 def _LegacyLevels(Fixed: dict, Sizes) -> dict:
@@ -126,7 +196,8 @@ def _SizeLevels(Name: str, Fixed, Sizes) -> dict:
 
 def Validate(Doc: dict, Catalog, Sizes=Products.DefaultCharmSizes) -> dict:
     """A price table to save: per material its price and cost per gram and its three level prices (level_prices, or
-    fixed_prices per size on offer), each above the one before — the biggest size at the highest price."""
+    fixed_prices per size on offer), each above the one before — the biggest size at the highest price; its promotional
+    prices per size on offer (promo_prices), each above zero and below that size's regular price; and the promotion."""
     Mats = Doc.get("materials")
     if not isinstance(Mats, dict):
         raise CharmPriceError("The table needs a 'materials' object.")
@@ -160,10 +231,41 @@ def Validate(Doc: dict, Catalog, Sizes=Products.DefaultCharmSizes) -> dict:
         # own) keeps every charm priced. This code reads level_prices first.
         Clean["fixed_prices"] = {SizeKey(S): Clean["level_prices"][L] for S in Sizes
                                  for L in (Products.CharmLevelOf(S, Sizes),) if L in Clean["level_prices"]}
+        Clean["promo_prices"] = _PromoPrices(Name, Mid, Row.get("promo_prices"), Clean["level_prices"], Sizes)
         Out[Mid] = Clean
     # Every charm material has a row: one left out of the table has no prices (shown as unavailable)
     Out = {M.Id: Out.get(M.Id) or _EmptyRow() for M in Offered(Catalog)}
-    return {"currency": Doc.get("currency") or "USD", "materials": Out}
+    return {"currency": Doc.get("currency") or "USD", "materials": Out, "promotion": ValidatePromotion(Doc.get("promotion"))}
+
+
+def _PromoPrices(Name: str, Mid: str, Raw, Levels: dict, Sizes) -> dict:
+    """A material's promotional prices per size in mm ({"18": 39.0}): a size on offer, a fixed-price metal, above zero and
+    below that size's regular price. Empty: not in the promotion."""
+    if Raw in (None, ""):
+        return {}
+    if not isinstance(Raw, dict):
+        raise CharmPriceError(f"{Name}: promotional prices are given per size.")
+    On = [float(S) for S in Sizes]
+    Out = {}
+    for K, V in Raw.items():
+        try:
+            S = float(K)
+        except (TypeError, ValueError):
+            raise CharmPriceError(f"{Name}: {K!r} is not a size in mm.") from None
+        P = _Number(f"{Name}: the {S:g} mm promotional price", V)
+        if P is None:
+            continue
+        if Mid not in FixedPriceMaterials:
+            raise CharmPriceError(f"{Name}: gold charms are quoted individually and have no promotional price.")
+        if S not in On:
+            raise CharmPriceError(f"{Name}: {S:g} mm is not a size on offer; a promotional price is for a size on offer.")
+        Regular = Levels.get(Products.CharmLevelOf(S, On))
+        if not Regular:
+            raise CharmPriceError(f"{Name}: set the regular {S:g} mm price before its promotional price.")
+        if P >= Regular:
+            raise CharmPriceError(f"{Name}: the {S:g} mm promotional price must be below its regular price ({Regular:g}).")
+        Out[SizeKey(S)] = round(P, 2)
+    return {K: Out[K] for K in sorted(Out, key=float)}
 
 
 class CharmPriceBook:
@@ -195,7 +297,8 @@ class CharmPriceBook:
         R = self.Db.One("SELECT * FROM charm_price_lists ORDER BY id DESC LIMIT 1")
         Doc = json.loads(R["price_json"])
         Sizes = self.Settings.CharmSizes
-        return {**Doc, "materials": {M: _WithSizes(Row, Sizes) for M, Row in (Doc.get("materials") or {}).items()},
+        return {**Doc, "materials": {M: _WithSizes({"promo_prices": {}, **Row}, Sizes) for M, Row in (Doc.get("materials") or {}).items()},
+                "promotion": {**DefaultPromotion, **(Doc.get("promotion") or {})},
                 "version": f"charms-v{R['id']}", "updated_at": R["created_at"], "updated_by": R["created_by"],
                 "update_note": R["note"]}
 
@@ -203,6 +306,13 @@ class CharmPriceBook:
         return self.Db.All("SELECT id, created_at, created_by, note FROM charm_price_lists ORDER BY id DESC LIMIT ?", (Limit,))
 
     def Save(self, Doc: dict, By: str, Note: str = "") -> dict:
+        """A new version. What the document leaves out is carried over from the table in force: the promotion, and each
+        material's promotional prices (a page that edits only the regular prices never ends a promotion)."""
+        if self.Db.One("SELECT 1 AS x FROM charm_price_lists LIMIT 1"):
+            Cur = self.Current()
+            Doc = {**Doc, "promotion": Doc["promotion"] if "promotion" in Doc else Cur.get("promotion"),
+                   "materials": {M: ({**(R or {}), "promo_prices": (Cur["materials"].get(M) or {}).get("promo_prices") or {}}
+                                     if "promo_prices" not in (R or {}) else R) for M, R in (Doc.get("materials") or {}).items()}}
         Clean = Validate(Doc, self.Catalog, self.Settings.CharmSizes)
         self.Db.Execute("INSERT INTO charm_price_lists (price_json, created_at, created_by, note) VALUES (?,?,?,?)",
                         (Dumps(Clean), Now(), By, Note))
@@ -213,8 +323,27 @@ class CharmPriceBook:
     def Row(self, MaterialId: str) -> dict:
         return self.Current()["materials"].get(MaterialId) or _WithSizes(_EmptyRow(), self.Settings.CharmSizes)
 
-    def QuoteFor(self, MaterialId: str, Size) -> Quote:
-        """One charm of this material and size at its fixed price — or why there is none. Never a ring price."""
+    def SavePromotion(self, Promotion: dict, By: str, Note: str = "") -> dict:
+        """The promotion alone, as a new version of the table (its prices unchanged)."""
+        Cur = self.Current()
+        Mats = {M: {K: R.get(K) for K in ("price_per_g", "cost_per_g", "level_prices", "promo_prices")} for M, R in Cur["materials"].items()}
+        return self.Save({"currency": Cur.get("currency") or "USD", "materials": Mats, "promotion": Promotion}, By, Note)
+
+    def Promotion(self, Doc: dict | None = None) -> dict:
+        return (Doc or self.Current())["promotion"]
+
+    def PromotionPrice(self, Doc: dict, MaterialId: str, Size, At: datetime | None = None, Always: bool = False) -> float | None:
+        """The promotional price of this material and size: while the promotion is active (Always: whatever its state — the
+        Admin's view of what it covers), for a size customers can choose, below the regular price; else None."""
+        if Size is None or (not Always and PromotionState(Doc["promotion"], At) != "active"):
+            return None
+        P = ((Doc["materials"].get(MaterialId) or {}).get("promo_prices") or {}).get(SizeKey(Size))
+        return float(P) if P else None
+
+    def QuoteFor(self, MaterialId: str, Size, At: datetime | None = None) -> Quote:
+        """One charm of this material and size at its fixed price — or why there is none. Never a ring price. While the
+        promotion is active and the size has a promotional price below its regular one, that price (At: the moment to
+        price at; now by default)."""
         Mat = self.Catalog.Get(MaterialId)
         if Mat is None:
             raise KeyError(MaterialId)
@@ -240,6 +369,17 @@ class CharmPriceBook:
         Price = (Doc["materials"].get(Mat.Id) or {}).get("level_prices", {}).get(Level)
         if not Price:
             return Unavailable("charm_price_not_set")
+        Promo = self.PromotionPrice(Doc, Mat.Id, Size, At)
+        if Promo is not None and Promo < float(Price):
+            P = Doc["promotion"]
+            return Quote(material_id=Mat.Id, material_group=Mat.Group, pricing_status="available",
+                         unit_price=round(Promo, 2), currency=Doc["currency"], assumed_volume_cm3=None,
+                         pricing_version=Doc["version"] + "-promo", profile_approved=True,
+                         notes=[f"Promotional charm price for {SizeKey(Size)} mm ({P['label']}) from Admin → Pricing · Charm; "
+                                f"regular {float(Price):g}."],
+                         promotion={"label": P["label"], "regular_unit_price": round(float(Price), 2),
+                                    "savings": round(float(Price) - Promo, 2), "ends_at": P.get("ends_at"),
+                                    "claims": bool(P.get("reference_verified"))})
         return Quote(material_id=Mat.Id, material_group=Mat.Group, pricing_status="available",
                      unit_price=round(float(Price), 2), currency=Doc["currency"], assumed_volume_cm3=None,
                      pricing_version=Doc["version"], profile_approved=True,
@@ -272,9 +412,38 @@ class CharmPriceBook:
         Levels = [{"level": L, "label": Products.CharmLevelLabels[L], "size": S, "name": Names.get(L) or None}
                   for S in Sizes for L in (Products.CharmLevelOf(S, Sizes),) if L]
         return {**Doc, "history": self.History(), "rows": Rows, "sizes": Sizes, "levels": Levels,
-                "sizes_enabled": self.Settings.CharmSizesEnabled,
+                "sizes_enabled": self.Settings.CharmSizesEnabled, "promotion_state": PromotionState(Doc["promotion"]),
                 "size_names": self.Settings.CharmSizeNames, "default_size": self.Settings.CharmDefaultSize,
                 "other_priced_sizes": [], "size_definition": Products.CharmSizeDefinition}
+
+
+def Coverage(Ctx, At: datetime | None = None) -> dict:
+    """What the promotion covers among the charms customers can order now — each size they can choose in each metal
+    available for charms that has a price — by its promotional prices (whatever the promotion's state; "state" says it).
+    "all": every one of them has a promotional price; "savings": the savings in USD (one value: the same saving for all).
+    The banner (p3/promobanner.py) never claims more than this."""
+    from p3 import materialstatus as MaterialStatus
+    Book = Ctx.CharmPrices
+    Doc = Book.Current()
+    Statuses = MaterialStatus.Map(Ctx, Products.Charm)
+    In, Out = [], []
+    for S in Ctx.Products.CharmSizesEnabled:
+        for M in Offered(Book.Catalog):
+            if Statuses.get(M.Id) != MaterialStatus.Available:
+                continue
+            Regular = Book.QuoteFor(M.Id, S, At)
+            Base = Regular.promotion["regular_unit_price"] if Regular.promotion else Regular.unit_price
+            if not Regular.IsAvailable or not Base:
+                continue
+            Item = {"size": float(S), "material_id": M.Id, "label": f"{float(S):g} mm {Label(Book.Catalog, M.Id)}", "regular": Base}
+            Promo = Book.PromotionPrice(Doc, M.Id, S, At, Always=True)
+            if Promo is not None and Promo < Base:
+                In.append({**Item, "price": Promo, "savings": round(Base - Promo, 2)})
+            else:
+                Out.append(Item)
+    Savings = sorted({X["savings"] for X in In})
+    return {"state": PromotionState(Doc["promotion"], At), "eligible": In, "not_eligible": Out, "savings": Savings,
+            "all": bool(In) and not Out, "uniform": len(Savings) == 1}
 
 
 # ── one entry point for both products ───────────────────────────────────────────

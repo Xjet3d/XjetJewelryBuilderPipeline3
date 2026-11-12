@@ -29,6 +29,7 @@ from p3 import analytics as Analytics
 from p3 import merge as Merge
 from p3 import naming as Naming
 from p3 import charmprices as CharmPrices
+from p3 import promobanner as PromoBanner
 from p3 import materialstatus as MaterialStatus
 from p3.charmprices import CharmPriceError
 from p3.ilspricing import IlsPricingError
@@ -1514,19 +1515,52 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         return Credits.Status(Ctx)
 
     # ── Charm pricing: its own versioned table (a fixed price per material and size; price and cost per gram) ──
+    def _CharmPricesState() -> dict:
+        """The charm price table, the promotion with what it covers now, and the banner: its settings and what it shows
+        now — to a visitor reading US dollars, and to one reading shekels (when Israeli pricing is on)."""
+        Ils = Ctx.IlsPricing.MarketFor("ILS") if Ctx.IlsPricing.Enabled() else None
+        Banner = {"settings": PromoBanner.Settings(Ctx), "usd": PromoBanner.Decide(Ctx),
+                  "ils": PromoBanner.Decide(Ctx, Ils) if Ils else None,
+                  "log": [{**L, "value": json.loads(L["value_json"])} for L in Ctx.Db.All(
+                      "SELECT value_json, note, at, by FROM product_settings_log WHERE key = ? ORDER BY id DESC LIMIT 10", (PromoBanner.Key,))]}
+        return {**Ctx.CharmPrices.AdminTable(), "coverage": CharmPrices.Coverage(Ctx), "banner": Banner}
+
     @App_.get("/api/admin/charm-prices")
     async def GetCharmPrices(authorization: str | None = Header(None)):
         Admin(authorization)
-        return Ctx.CharmPrices.AdminTable()
+        return _CharmPricesState()
 
     @App_.put("/api/admin/charm-prices")
     async def SaveCharmPrices(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The regular prices per level and, per material, the promotional prices per size (promo_prices: left out, they
+        stay as they are). The promotion itself is saved on its own (below)."""
         Who = Admin(authorization)
         try:
             Ctx.CharmPrices.Save({"materials": Body_.get("materials") or {}}, Who.Id, str(Body_.get("note") or "Edited in Admin")[:200])
         except CharmPriceError as E:
             raise HttpError(400, "invalid_charm_prices", str(E)) from E
-        return Ctx.CharmPrices.AdminTable()
+        return _CharmPricesState()
+
+    @App_.put("/api/admin/charm-prices/promotion")
+    async def SaveCharmPromotion(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The charm promotion (P1): {"promotion": {enabled, starts_at, ends_at, label, reference_verified,
+        reference_note}, "note"} — a new version of the price table, its prices unchanged."""
+        Who = Admin(authorization)
+        try:
+            Ctx.CharmPrices.SavePromotion(Body_.get("promotion"), Who.Id, str(Body_.get("note") or "Promotion edited in Admin")[:200])
+        except CharmPriceError as E:
+            raise HttpError(400, "invalid_charm_promotion", str(E)) from E
+        return _CharmPricesState()
+
+    @App_.put("/api/admin/promo-banner")
+    async def SavePromoBanner(Body_: dict = Body(...), authorization: str | None = Header(None)):
+        """The promotion banner (p3/promobanner.py): {"banner": {enabled, text, plain_text, link, starts_at, ends_at,
+        names_scope}, "note"} — logged like every setting."""
+        Who = Admin(authorization)
+        New = PromoBanner.Validate(Body_.get("banner"))
+        if New != PromoBanner.Settings(Ctx):
+            Ctx.Products.Set(PromoBanner.Key, New, Who.Id, str(Body_.get("note") or "")[:300])
+        return _CharmPricesState()
 
     # ── Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default. Every save is a version; the
     # simulator shows every list price under the current and the edited settings before anything is saved ──────────────

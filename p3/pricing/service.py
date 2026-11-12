@@ -35,13 +35,30 @@ class Quote:
     estimated_weight_g: float | None = None
     unavailable_reason: str | None = None
     notes: list = field(default_factory=list)
+    # A charm at a promotional price (p3/charmprices.py, P1 12 Nov 2026): {label, regular_unit_price, savings, ends_at,
+    # claims}. unit_price is then the promotional price — what is charged. None: no promotion (left out of the answer).
+    promotion: dict | None = None
 
     @property
     def IsAvailable(self) -> bool:
         return self.pricing_status == "available"
 
     def ToJson(self) -> dict:
-        return dict(self.__dict__)
+        """The quote as answers carry it. A promotion whose regular prices are not verified as reference prices (claims
+        False) carries no regular price and no saving: only its label — the site never shows an unverified saving."""
+        Out = {K: V for K, V in self.__dict__.items() if K != "promotion"}
+        if self.promotion:
+            Out["promotion"] = PublicPromotion(self.promotion)
+        return Out
+
+
+def PublicPromotion(P: dict | None) -> dict | None:
+    """What a customer's answer may say about a promotion: its label and end; the regular price and the saving only while
+    they are verified reference prices (claims)."""
+    if not P:
+        return None
+    Keep = ("label", "ends_at", "claims") + (("regular_unit_price", "savings") if P.get("claims") else ())
+    return {K: P.get(K) for K in Keep}
 
 
 class PricingProfileError(ValueError):

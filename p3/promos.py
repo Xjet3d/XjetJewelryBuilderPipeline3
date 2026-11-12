@@ -152,9 +152,13 @@ class PromoService:
             raise PromoError("promo_expired", "This promo code has expired.")
         if P["usage_limit"] is not None and P["usage_count"] >= P["usage_limit"]:
             raise PromoError("promo_exhausted", "This promo code has been fully used.")
-        Eligible = [L for L in Lines if not P["materials"] or L["material_id"] in P["materials"]]
+        # A line already at a promotional price (p3/charmprices.py) is never discounted again (P1, 12 Nov 2026)
+        Eligible = [L for L in Lines if (not P["materials"] or L["material_id"] in P["materials"])
+                    and not (L.get("_promotion") or L.get("promotion"))]
         Subtotal = round(sum(L["line_total"] for L in Lines), 2)
         EligibleSubtotal = round(sum(L["line_total"] for L in Eligible), 2)
+        if not Eligible and any(L.get("_promotion") or L.get("promotion") for L in Lines):
+            raise PromoError("promo_not_with_promotion", "This promo code cannot be combined with a promotional price.")
         if not Eligible:
             Names = ", ".join(self.Ctx.Catalog.Get(M).Label for M in P["materials"] if self.Ctx.Catalog.Get(M))
             raise PromoError("promo_not_applicable", f"This promo code applies to {Names} pieces only.")

@@ -217,7 +217,8 @@ Defaults = {"credit_tariff": {"design": 1, "refinement": 1, "option": 1, "movie"
             "analytics": {"enabled": False, "host": "", "providers": {}},  # p3/analytics.py: off, no tool, nothing loads
             "ai_spend_warning": {"threshold_usd": None, "to": ""},                  # p3/spendwarning.py: off
             "ai_daily_spend_cap": {"cap_usd": None},                               # p3/credits.py: the server's cap
-            "ai_spend_warning_sent": {}}
+            "ai_spend_warning_sent": {},
+            "promo_banner": None}                                                    # p3/promobanner.py: off
 
 
 def ValidateCharmSizeNames(Raw, Sizes) -> dict:

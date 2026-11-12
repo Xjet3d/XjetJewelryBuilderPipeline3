@@ -231,6 +231,17 @@ def _Made(Order: dict) -> str:
     return f"Your {Noun} {'are' if Count > 1 else 'is'} printed to order in real metal — production takes up to 14 business days after your payment is confirmed."
 
 
+def _PromoNote(L: dict) -> str:
+    """A line placed at a promotional price (P1, 12 Nov 2026): its label and, when the regular price was a verified
+    reference price then, the regular price and the saving — as the order recorded them."""
+    P = L.get("promotion")
+    if not P:
+        return ""
+    Saved = (f" · regular {_Money(P['regular_unit_price'], L['currency'])}, you save {_Money(P['savings'], L['currency'])} each"
+             if P.get("claims") and P.get("regular_unit_price") is not None and P.get("savings") is not None else "")
+    return f'<br><span style="color:#8A6420;font-size:13px;">{_Esc(P.get("label") or "Promotional price")}{_Esc(Saved)}</span>'
+
+
 def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "", Site: str = "") -> tuple[str, str]:
     """Order received: what (with a picture of each piece), where, totals, payment status, the three next steps of the
     confirmation page and a View Your Order button to the order's page in My Account (/account/orders/ORD-…, B7), where
@@ -252,7 +263,7 @@ def OrderConfirmationEmail(Order: dict, Origin: str = "", AccountUrl: str = "", 
           <tr>{Picture(L)}
             <td style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;">
               <strong>{_Esc(L['title'])}</strong><br>
-              <span style="color:#6F6F6F;font-size:13px;">{_Esc(_IdLabel(L))} {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}</span>
+              <span style="color:#6F6F6F;font-size:13px;">{_Esc(_IdLabel(L))} {_Esc(L['ring_id'] or '—')} · {_Esc(L['material_label'])} · {_Esc(_Size(L))} · ×{_Esc(L['quantity'])}</span>{_PromoNote(L)}
             </td>
             <td align="right" style="padding:8px 0;border-bottom:1px solid #EDE8DF;{_Font}font-size:14px;white-space:nowrap;">{_Esc(_Money(L['line_total'], L['currency']))}</td>
           </tr>""" for L in Order["lines"])

@@ -224,6 +224,8 @@ function adminApp() {
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
     pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
+    promoEdit: null, promoNote: '', promoBusy: false, promoMsg: '', promoErr: false,          // the charm promotion (P1)
+    bannerEdit: null, bannerNote: '', bannerBusy: false, bannerMsg: '', bannerErr: false,     // its banner
     ils: null, ilsEdit: null, ilsNote: '', ilsBusy: false, ilsMsg: '', ilsErr: false, ilsUsd: '',   // Israeli pricing (B6)
     // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
     mstat: null, mstatEdit: {}, mstatNote: '', mstatBusy: false, mstatMsg: '', mstatErr: false,
@@ -2494,7 +2496,8 @@ function adminApp() {
       this.cpMsg = ''; this.cpNote = '';
       this.cpEdit = this.cprices.rows.map(r => ({ id: r.id, label: r.label, fixed_price_allowed: r.fixed_price_allowed,
         price_per_g: r.price_per_g ?? '', cost_per_g: r.cost_per_g ?? '',
-        fixed: Object.fromEntries(this.charmSizeCols().map(s => [this.sizeKey(s), r.fixed_prices?.[this.sizeKey(s)] ?? ''])) }));
+        fixed: Object.fromEntries(this.charmSizeCols().map(s => [this.sizeKey(s), r.fixed_prices?.[this.sizeKey(s)] ?? ''])),
+        promo: Object.fromEntries(this.charmSizeCols().map(s => [this.sizeKey(s), r.promo_prices?.[this.sizeKey(s)] ?? ''])) }));
     },
     async saveCharmPrices() {
       const was = Object.fromEntries((this.cprices?.rows || []).map(r => [r.id, r]));
@@ -2509,16 +2512,67 @@ function adminApp() {
           const a = w.fixed_prices?.[size] ?? '';
           if (String(a === '' ? '' : Number(a)) !== String(b === '' ? '' : Number(b))) lines.push(r.label + ' ' + size + ' mm: ' + this.fmtVal(a) + ' → ' + this.fmtVal(b));
         }
+        for (const [size, b] of Object.entries(r.promo || {})) {
+          const a = w.promo_prices?.[size] ?? '';
+          if (String(a === '' ? '' : Number(a)) !== String(b === '' ? '' : Number(b))) lines.push(r.label + ' ' + size + ' mm promotional: ' + this.fmtVal(a) + ' → ' + this.fmtVal(b));
+        }
       }
       if (!await this.confirmChanges(lines, 'Change the charm prices on the website now?', 'Charm prices and quotes use them at once; ring prices are unchanged. Orders already placed keep their prices.', 'Save the charm prices')) return;
       this.cpBusy = true; this.cpMsg = ''; this.cpErr = false;
       try {
         const n = v => (v === '' || v == null) ? null : Number(v);
         const materials = Object.fromEntries(this.cpEdit.map(r => [r.id, { price_per_g: n(r.price_per_g), cost_per_g: n(r.cost_per_g),
-          fixed_prices: r.fixed_price_allowed ? Object.fromEntries(Object.entries(r.fixed).filter(([, v]) => n(v) != null).map(([k, v]) => [k, n(v)])) : {} }]));
+          fixed_prices: r.fixed_price_allowed ? Object.fromEntries(Object.entries(r.fixed).filter(([, v]) => n(v) != null).map(([k, v]) => [k, n(v)])) : {},
+          promo_prices: r.fixed_price_allowed ? Object.fromEntries(Object.entries(r.promo || {}).filter(([, v]) => n(v) != null).map(([k, v]) => [k, n(v)])) : {} }]));
         this.cprices = await this.api('PUT', '/api/admin/charm-prices', { materials, note: this.cpNote || 'Edited in Admin' });
         this.cpEdit = null; this.cpMsg = 'Saved as ' + this.cprices.version + '. Charm quotes use it now; ring prices are unchanged.';
       } catch (e) { this.cpErr = true; this.cpMsg = e.message; } finally { this.cpBusy = false; }
+    },
+    // ── the charm promotion and its banner (P1, 12 Nov 2026) ──
+    // A moment for an <input type="datetime-local"> (the Admin's own time) and back (UTC, as the server keeps it)
+    toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); },
+    fromLocalInput(v) { return v ? new Date(v).toISOString() : null; },
+    promoWhen(p) {
+      if (!p) return '—';
+      const f = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      if (!p.starts_at && !p.ends_at) return p.enabled === false ? 'Off' : 'No dates (until switched off)';
+      return (p.starts_at ? 'from ' + f(p.starts_at) : 'from now') + (p.ends_at ? ' until ' + f(p.ends_at) : ', no end');
+    },
+    editPromotion() {
+      const p = this.cprices?.promotion || {};
+      this.promoMsg = ''; this.promoNote = '';
+      this.promoEdit = { enabled: !!p.enabled, label: p.label || '', starts_at: this.toLocalInput(p.starts_at), ends_at: this.toLocalInput(p.ends_at),
+                         reference_verified: !!p.reference_verified, reference_note: p.reference_note || '' };
+    },
+    async savePromotion() {
+      const e = this.promoEdit, was = this.cprices?.promotion || {};
+      const lines = [['On', was.enabled ? 'yes' : 'no', e.enabled ? 'yes' : 'no'], ['Label', was.label, e.label],
+                     ['Starts', this.toLocalInput(was.starts_at) || '—', e.starts_at || '—'], ['Ends', this.toLocalInput(was.ends_at) || '—', e.ends_at || '—'],
+                     ['Reference prices verified', was.reference_verified ? 'yes' : 'no', e.reference_verified ? 'yes' : 'no']]
+        .filter(([, a, b]) => String(a ?? '') !== String(b ?? '')).map(([k, a, b]) => k + ': ' + a + ' → ' + b);
+      if (!await this.confirmChanges(lines, 'Change the charm promotion now?', 'Charm prices on the website follow it at once (and by its dates). Orders already placed keep their prices.', 'Save the promotion')) return;
+      this.promoBusy = true; this.promoMsg = ''; this.promoErr = false;
+      try {
+        this.cprices = await this.api('PUT', '/api/admin/charm-prices/promotion', { note: this.promoNote || 'Promotion edited in Admin',
+          promotion: { ...e, starts_at: this.fromLocalInput(e.starts_at), ends_at: this.fromLocalInput(e.ends_at) } });
+        this.promoEdit = null; this.promoMsg = 'Saved as ' + this.cprices.version + ' — the promotion is ' + this.cprices.promotion_state + '.';
+      } catch (err) { this.promoErr = true; this.promoMsg = err.message; } finally { this.promoBusy = false; }
+    },
+    editBanner() {
+      const b = this.cprices?.banner?.settings || {};
+      this.bannerMsg = ''; this.bannerNote = '';
+      this.bannerEdit = { enabled: !!b.enabled, text: b.text || '', plain_text: b.plain_text || '', link: b.link || '',
+                          starts_at: this.toLocalInput(b.starts_at), ends_at: this.toLocalInput(b.ends_at), names_scope: !!b.names_scope };
+    },
+    async saveBanner() {
+      this.bannerBusy = true; this.bannerMsg = ''; this.bannerErr = false;
+      try {
+        const e = this.bannerEdit;
+        this.cprices = await this.api('PUT', '/api/admin/promo-banner', { note: this.bannerNote,
+          banner: { ...e, starts_at: this.fromLocalInput(e.starts_at), ends_at: this.fromLocalInput(e.ends_at) } });
+        this.bannerEdit = null;
+        this.bannerMsg = this.cprices.banner.usd.shown ? 'Saved — the banner shows now.' : 'Saved — not shown now: ' + this.cprices.banner.usd.why;
+      } catch (err) { this.bannerErr = true; this.bannerMsg = err.message; } finally { this.bannerBusy = false; }
     },
     // ── Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default; every save a version ──
     async loadIls() { this.ils = await this.api('GET', '/api/admin/ils-pricing').catch(() => null); },

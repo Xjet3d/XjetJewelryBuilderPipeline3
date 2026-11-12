@@ -2315,7 +2315,10 @@
                   <a class="text-[12px] underline text-zinc-500 hover:text-black" :href="'#/sessions/' + encodeURIComponent(l.session_id)">Open session</a></td>
                 <td class="whitespace-nowrap"><span class="inline-block w-3 h-3 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(l.material_id)"></span><span x-text="l.material_label + ' · ' + sizeOf(l)"></span></td>
                 <td class="text-right tabular-nums" x-text="l.quantity"></td>
-                <td class="text-right tabular-nums" x-text="money(l.unit_price)"></td>
+                <td class="text-right tabular-nums"><span x-text="money(l.unit_price)"></span>
+                  <!-- placed at a promotional price (P1): its label and the regular price then -->
+                  <span x-show="l.promotion" class="block text-[11px] whitespace-nowrap" style="color:#AB0000"
+                        x-text="(l.promotion?.label || 'Promotion') + (l.promotion?.regular_unit_price != null ? ' · regular ' + money(l.promotion.regular_unit_price) : '') + (l.promotion?.claims ? '' : ' · saving not shown')"></span></td>
                 <td class="text-right tabular-nums font-semibold" x-text="money(l.line_total)"></td>
                 <td class="max-w-[260px]">
                   <!-- Only a result for THIS size and material counts as the line's 3D; anything else is "not prepared yet" -->
@@ -2994,8 +2997,12 @@
           <template x-if="!cpEdit"><template x-for="r in (cprices?.rows || [])" :key="r.id"><tr>
             <td class="whitespace-nowrap"><span class="inline-block w-2.5 h-2.5 rounded-full border border-zinc-300 mr-1.5 align-middle" :style="'background:' + swatch(r.id)"></span><span x-text="r.label"></span></td>
             <template x-for="s in charmSizeCols()" :key="r.id + '-' + s">
-              <td class="text-right tabular-nums" :class="!r.fixed_price_allowed || r.fixed_prices[sizeKey(s)] == null ? 'text-zinc-500' : 'font-semibold'"
-                  x-text="!r.fixed_price_allowed ? 'Quote' : (r.fixed_prices[sizeKey(s)] == null ? 'NA' : '$' + num(r.fixed_prices[sizeKey(s)]))"></td>
+              <td class="text-right tabular-nums" :class="!r.fixed_price_allowed || r.fixed_prices[sizeKey(s)] == null ? 'text-zinc-500' : 'font-semibold'">
+                <span x-text="!r.fixed_price_allowed ? 'Quote' : (r.fixed_prices[sizeKey(s)] == null ? 'NA' : '$' + num(r.fixed_prices[sizeKey(s)]))"></span>
+                <!-- the promotional price (P1) and its saving -->
+                <span x-show="r.promo_prices?.[sizeKey(s)] != null" class="block font-normal text-[11px]" style="color:#AB0000"
+                      x-text="'promo $' + num(r.promo_prices?.[sizeKey(s)]) + ' · save $' + num((r.fixed_prices[sizeKey(s)] || 0) - (r.promo_prices?.[sizeKey(s)] || 0))"></span>
+              </td>
             </template>
             <td class="text-right tabular-nums" x-text="num(r.price_per_g)"></td>
             <td class="text-right tabular-nums" x-text="num(r.cost_per_g)"></td>
@@ -3005,7 +3012,10 @@
             <td class="whitespace-nowrap" x-text="r.label"></td>
             <template x-for="s in charmSizeCols()" :key="r.id + '-e-' + s">
               <td class="text-right">
-                <template x-if="r.fixed_price_allowed"><input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.fixed[sizeKey(s)]" placeholder="NA" :aria-label="r.label + ' ' + s + ' mm price'"></template>
+                <template x-if="r.fixed_price_allowed"><div class="flex flex-col items-end gap-1">
+                  <input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" x-model="r.fixed[sizeKey(s)]" placeholder="NA" :aria-label="r.label + ' ' + s + ' mm price'">
+                  <input type="number" step="any" min="0" class="inp !py-1 !px-2 w-20 text-right tabular-nums" style="border-color:#E8B4B4" x-model="r.promo[sizeKey(s)]" placeholder="promo" :aria-label="r.label + ' ' + s + ' mm promotional price'" title="Promotional price (empty: not in the promotion)">
+                </div></template>
                 <template x-if="!r.fixed_price_allowed"><span class="text-zinc-400">Quote</span></template>
               </td>
             </template>
@@ -3023,12 +3033,94 @@
       <ul class="text-[12px] text-zinc-500 space-y-0.5 list-disc pl-4">
         <li><strong>Fixed price</strong> is what the website shows for a charm in that material, at three levels: the smallest size on offer at the small price, the middle at the medium and the biggest at the large one. Each must be above the one before, so the biggest size always costs the most. Empty = NA: "Price unavailable". A ring price is never used for a charm.</li>
         <li><strong>Size</strong>: <span x-text="cprices?.size_definition?.text"></span> The three sizes on offer are set in Settings → Products; when they change, each level keeps its price for its new size.</li>
+        <li><strong>Promotional price</strong> (the second box under a price, in red): the price while the promotion below is active, for that size only — a size shown later is not in the promotion until it gets one. Below the regular price; empty = not in the promotion. Customers are charged it everywhere while the promotion runs; orders keep the price they were placed at.</li>
         <li><strong>Gold</strong> charms have no fixed price: Quote Only (Request a quote) or Preview Only, like gold rings.</li>
         <li><strong>Customer status</strong>: Available — sold at the fixed price · Preview Only — seen in Customize, never priced, added to the bag or quoted · Quote Only — by quote request · Hidden — offered nowhere (what was made in it still opens). Available needs a fixed price, density and cost; Stainless Steel stays Available while Customize opens on it. Saved apart from the prices (no new price version) and logged.</li>
         <li><strong>Weight</strong> = 3D volume × the material's sintered density (Ring view, Pricing · materials) · <strong>Production cost</strong> = weight × cost $/g · <strong>3D calculated price</strong> = weight × price $/g.</li>
       </ul>
       <p class="text-[12px] text-zinc-500" x-text="'Version ' + cprices?.version + ' · updated ' + dateTime(cprices?.updated_at) + ' by ' + cprices?.updated_by + (cprices?.update_note ? ' — ' + cprices.update_note : '')"></p>
       <p x-show="cpMsg" class="text-sm" :class="cpErr ? 'text-red-600' : 'text-emerald-700'" x-text="cpMsg"></p>
+    </section>
+
+    <!-- The charm promotion (P1, 12 Nov 2026): one switch with optional dates, the label, the reference-price check, and what
+         it covers now; the banner that announces it. Each save is logged (the price table's versions; the settings log). -->
+    <section class="card p-5 space-y-3" style="border-color:#E8B4B4" x-show="sub === 'pricing' && pProduct === 'charm' && cprices" aria-label="Charm promotion">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl flex items-center gap-2">Promotion · charms
+          <span class="badge" :class="{active: 'bg-emerald-100 text-emerald-800', scheduled: 'bg-amber-100 text-amber-800', ended: 'bg-zinc-100 text-zinc-600', off: 'bg-zinc-100 text-zinc-600'}[cprices?.promotion_state]"
+                x-text="{active: 'Active now', scheduled: 'Scheduled', ended: 'Ended', off: 'Off'}[cprices?.promotion_state]"></span></p>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="promoEdit ? (promoEdit = null) : editPromotion()" x-text="promoEdit ? 'Cancel edit' : 'Edit'"></button>
+      </div>
+      <template x-if="!promoEdit"><div class="grid gap-3 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+        <div><p class="text-[12px] text-zinc-500">Label customers read</p><p x-text="cprices?.promotion?.label"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Runs</p><p x-text="promoWhen(cprices?.promotion)"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Regular prices as reference prices</p>
+          <p :class="cprices?.promotion?.reference_verified ? 'text-emerald-700' : 'text-amber-700'" x-text="cprices?.promotion?.reference_verified ? 'Verified — crossed-out prices and savings are shown' : 'Not verified — no crossed-out price or saving is shown'"></p>
+          <p x-show="cprices?.promotion?.reference_note" class="text-[12px] text-zinc-500" x-text="cprices?.promotion?.reference_note"></p></div>
+      </div></template>
+      <template x-if="promoEdit"><div class="space-y-3 text-sm">
+        <label class="inline-flex items-center gap-2 font-semibold"><input type="checkbox" x-model="promoEdit.enabled"> Promotion on</label>
+        <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+          <label class="block"><span class="text-[12px] text-zinc-500">Label customers read (beside the price)</span><input class="inp w-full" maxlength="40" x-model="promoEdit.label" placeholder="Holiday price"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Starts (your time; empty = at once)</span><input type="datetime-local" class="inp w-full" x-model="promoEdit.starts_at"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Ends (your time; empty = until switched off)</span><input type="datetime-local" class="inp w-full" x-model="promoEdit.ends_at"></label>
+        </div>
+        <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="promoEdit.reference_verified"> The regular prices are verified reference prices — show them crossed out, and the saving</label>
+        <label class="block" x-show="promoEdit.reference_verified"><span class="text-[12px] text-zinc-500">How they were verified (who, when, on what basis) — required</span>
+          <textarea class="inp w-full" rows="2" maxlength="500" x-model="promoEdit.reference_note"></textarea></label>
+        <div class="flex flex-wrap items-center gap-3">
+          <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="promoNote">
+          <button class="btn" @click="savePromotion()" :disabled="promoBusy">Save the promotion</button>
+        </div>
+      </div></template>
+      <div class="text-[13px] space-y-1">
+        <p class="font-semibold">What it covers among the charms customers can order now</p>
+        <template x-for="x in (cprices?.coverage?.eligible || [])" :key="'pe' + x.label"><p x-text="x.label + ': $' + num(x.regular) + ' → $' + num(x.price) + ' (save $' + num(x.savings) + ')'"></p></template>
+        <template x-for="x in (cprices?.coverage?.not_eligible || [])" :key="'pn' + x.label"><p class="text-amber-700" x-text="x.label + ': $' + num(x.regular) + ' — not in the promotion'"></p></template>
+        <p x-show="!(cprices?.coverage?.eligible || []).length" class="text-zinc-500">No charm on offer has a promotional price (Pricing · charms above).</p>
+      </div>
+      <p class="text-[12px] text-zinc-500">While it is active, each size with a promotional price costs that price everywhere — Customize, the Materials page, the bag, checkout and the order. It starts and ends by the clock; a bag priced before is repriced at checkout. A promo code never discounts a charm already at its promotional price. Ring prices are not affected.</p>
+      <p x-show="promoMsg" class="text-sm" :class="promoErr ? 'text-red-600' : 'text-emerald-700'" x-text="promoMsg"></p>
+    </section>
+
+    <section class="card p-5 space-y-3" style="border-color:#E8B4B4" x-show="sub === 'pricing' && pProduct === 'charm' && cprices?.banner" aria-label="Promotion banner">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <p class="lbl">Promotion banner · top of the website</p>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="bannerEdit ? (bannerEdit = null) : editBanner()" x-text="bannerEdit ? 'Cancel edit' : 'Edit'"></button>
+      </div>
+      <!-- what customers see now -->
+      <div class="space-y-2">
+        <template x-for="v in [['US dollars', cprices?.banner?.usd], ['Shekels / incl. VAT', cprices?.banner?.ils]]" :key="v[0]"><div x-show="v[1]">
+          <p class="text-[12px] text-zinc-500" x-text="'Shown now to a visitor reading ' + v[0]"></p>
+          <div x-show="v[1]?.shown" class="text-center text-[11px] uppercase tracking-[0.18em] py-2 px-4" style="background:#AB0000; color:#FBF6EE;" x-text="v[1]?.shown?.text + (v[1]?.shown?.link ? '  →' : '')"></div>
+          <p x-show="!v[1]?.shown" class="text-[13px] text-zinc-600" x-text="'No banner: ' + (v[1]?.why || '')"></p>
+        </div></template>
+      </div>
+      <template x-if="!bannerEdit"><div class="grid gap-3 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+        <div><p class="text-[12px] text-zinc-500">Banner</p><p x-text="cprices?.banner?.settings?.enabled ? 'On' : 'Off'"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Offer text (with the saving)</p><p x-text="cprices?.banner?.settings?.text || '—'"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Text without a saving</p><p x-text="cprices?.banner?.settings?.plain_text || '— (no banner then)'"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Link · dates</p><p x-text="(cprices?.banner?.settings?.link || 'no link') + ' · ' + promoWhen({enabled: true, starts_at: cprices?.banner?.settings?.starts_at, ends_at: cprices?.banner?.settings?.ends_at})"></p></div>
+      </div></template>
+      <template x-if="bannerEdit"><div class="space-y-3 text-sm">
+        <label class="inline-flex items-center gap-2 font-semibold"><input type="checkbox" x-model="bannerEdit.enabled"> Banner on</label>
+        <label class="block"><span class="text-[12px] text-zinc-500">Offer text — shown while the regular prices are verified reference prices, to visitors reading US dollars</span>
+          <input class="inp w-full" maxlength="90" x-model="bannerEdit.text" placeholder="A little holiday magic · Save $20 on charms"></label>
+        <label class="block"><span class="text-[12px] text-zinc-500">Text without a saving — shown otherwise (not verified yet, or a visitor reading shekels or prices with VAT); empty = no banner then</span>
+          <input class="inp w-full" maxlength="90" x-model="bannerEdit.plain_text" placeholder="A little holiday magic · Christmas prices on charms"></label>
+        <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+          <label class="block"><span class="text-[12px] text-zinc-500">Link (a page of this site; empty = none)</span><input class="inp w-full" x-model="bannerEdit.link" placeholder="/design"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Starts (your time; empty = with the promotion)</span><input type="datetime-local" class="inp w-full" x-model="bannerEdit.starts_at"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Ends (your time; empty = with the promotion)</span><input type="datetime-local" class="inp w-full" x-model="bannerEdit.ends_at"></label>
+        </div>
+        <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="bannerEdit.names_scope"> The text names exactly which charms qualify (show it even when not every charm on offer is in the promotion)</label>
+        <div class="flex flex-wrap items-center gap-3">
+          <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="bannerNote">
+          <button class="btn" @click="saveBanner()" :disabled="bannerBusy">Save the banner</button>
+        </div>
+      </div></template>
+      <p class="text-[12px] text-zinc-500">The banner never says more than customers get: it shows only while the charm promotion is active, while every charm on offer is in it with the same saving (unless the text names its scope), and with its saving only when the regular prices are verified. It goes when the promotion ends or is switched off.</p>
+      <p x-show="bannerMsg" class="text-sm" :class="bannerErr ? 'text-red-600' : 'text-emerald-700'" x-text="bannerMsg"></p>
     </section>
 
     <!-- Israeli pricing (B6): ₪ including VAT for Israeli customers; OFF by default; every save a version -->

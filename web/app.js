@@ -68,6 +68,8 @@ const P3_PAGE = PAGE_VIEWS.includes(window.__p3?.view) ? window.__p3.view : 'hom
 const SERVER_PRODUCTS = Array.isArray(window.__p3?.products) ? window.__p3.products : null;
 // The charm sizes customers choose from (Admin → Charm sizes), as the page was served: the wording names one alone
 const SERVER_CHARM_SIZES = Array.isArray(window.__p3?.charm_sizes) ? window.__p3.charm_sizes : null;
+// The promotion banner as the server decided it for this visitor (p3/promobanner.py): {text, link, until} or none
+const SERVER_BANNER = window.__p3?.banner || null;
 // This page load's own history steps (a screen the visitor went to, a gallery design opened from its card) carry this
 // mark: Back may step through them in place. A step kept from before a reload belongs to the page load that is gone.
 const PAGE_LOAD = Math.random().toString(36).slice(2);
@@ -272,6 +274,8 @@ function p3App() {
     aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
     sizeAboutOpen: false,              // Customize's About Charm Size: collapsed each time a customization opens
+    banner: SERVER_BANNER,             // the promotion banner (P1): written by the server, taken down at its end
+    nowTick: Date.now(),               // the clock the banner's end is read against (every 30 s)
     _returnFocus: null,                // element to focus again when a modal closes
     _sizeGuideReturn: null,            // the same for the size guide
 
@@ -364,6 +368,11 @@ function p3App() {
       });
       // Back / Forward: the address names the screen (a page, a step of the journey) and the gallery design that is open
       window.addEventListener('popstate', () => this._onHistory());
+      if (SERVER_BANNER) {                                     // the banner's end, while the page stays open
+        setInterval(() => { this.nowTick = Date.now(); this._bannerRoom(); }, 30000);
+        this.$nextTick(() => this._bannerRoom());
+        window.addEventListener('resize', () => this._bannerRoom());
+      }
       if (P3_ACCOUNT) this._showAccount(P3_ACCOUNT, { history: 'replace' });   // My Account at once (signed out: it asks to sign in)
       if (authStatus === 'accept_terms') { await this._openPendingTerms(); this.measureScreen(); return; }   // a new Google / Apple customer
       if (authStatus && authStatus !== 'ok' && authStatus !== 'created') this._showAuthStatus(authStatus);
@@ -1653,7 +1662,11 @@ function p3App() {
       // alone) the charm's prices
       if (this.soleProduct === 'charm' || this.groupOfMaterial(id) !== 'fashion' || (this.wording.charm && this.charmMaterial(id)?.group === 'fashion')) {                                             // charms only: the fixed price per size
         const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
-        if (prices.length && this.oneCharmSize) return { before: '', figure: this.money(prices[0].price, prices[0].currency, true), words: this.oneCharmSize + ' charm' };
+        if (prices.length && this.oneCharmSize) {
+          const p = prices[0], promo = p.promotion;
+          return { before: '', figure: this.money(p.price, p.currency, true), words: this.oneCharmSize + ' charm',
+                   was: this.promoWas(promo, p.currency, true), save: this.promoLine(promo, p.currency, true) };
+        }
         return prices.length ? { before: 'from', figure: this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true), words: 'by charm size' }
                              : { before: '', figure: 'Price on request', words: '' };
       }
@@ -1678,6 +1691,7 @@ function p3App() {
       const prices = (this.charmMaterial(id)?.prices || []).filter(p => p.price != null);
       const text = !prices.length ? 'price on request'
                  : this.oneCharmSize ? this.money(prices[0].price, prices[0].currency, true) + ' per ' + this.oneCharmSize + ' charm'
+                   + (prices[0].promotion ? ' (' + this.promoLine(prices[0].promotion, prices[0].currency, true) + ')' : '')
                  : 'from ' + this.money(Math.min(...prices.map(p => p.price)), prices[0].currency, true) + ' per charm, by size';
       return prefix ? prefix + text : text[0].toUpperCase() + text.slice(1);
     },
@@ -1738,6 +1752,24 @@ function p3App() {
     // The charm sizes customers can choose (Admin → Charm sizes) and, while there is one alone, that size ("18 mm"):
     // Customize then shows it without a choice and the site names it — never a fixed size (12 Nov 2026)
     get charmSizesOn() { return this.catalog?.products?.charm?.sizes || SERVER_CHARM_SIZES || []; },
+    // ── the promotion (P1, 12 Nov 2026): the server prices it; the page only shows what an answer says ──
+    // The banner: shown while the server gave one and its end ("until": the banner's or the promotion's) has not passed
+    get bannerShown() { return !!this.banner && (!this.banner.until || this.nowTick < Date.parse(this.banner.until)); },
+    // A link to the Design screen opens it for a charm (sign-in first, as everywhere); any other page loads normally
+    bannerClick(ev) {
+      const path = (this.banner?.link || '').split('#')[0];
+      if (path === '/design' || path.startsWith('/design?')) { ev.preventDefault(); this.resetAIFlow('charm'); }
+    },
+    _bannerRoom() {        // its height, for the Design screen's own height on phones (index.html .promo-on .studio-h)
+      const el = document.getElementById('promo-banner');
+      document.documentElement.style.setProperty('--promo-h', (el && this.bannerShown ? el.offsetHeight : 0) + 'px');
+    },
+    // A price's promotion as the page shows it: the regular price crossed out and the saving only when the server sent them
+    // (verified reference prices: claims); otherwise the promotion's label alone
+    promoWas(p, cur, whole = false) { return p?.claims && p.regular_unit_price != null ? this.money(p.regular_unit_price, cur, whole) : ''; },
+    promoSave(p, cur, whole = false) { return p?.claims && p.savings ? 'Save ' + this.money(p.savings, cur, whole) : ''; },
+    promoLine(p, cur, whole = false) { return p ? [this.promoSave(p, cur, whole), p.label].filter(Boolean).join(' · ') : ''; },
+    get custPromo() { return this.priceAvailable && !this.quotePending ? (this.cust?.quote?.promotion || null) : null; },
     get oneCharmSize() { return this.charmSizesOn.length === 1 ? +this.charmSizesOn[0] + ' mm' : ''; },
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
     get nothingOnOffer() { return (!!this.catalog || !!SERVER_PRODUCTS) && this.productsList.length === 0; },

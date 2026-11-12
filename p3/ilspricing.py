@@ -504,13 +504,27 @@ def FetchBankOfIsrael(Timeout: float = 15.0) -> tuple[str, Decimal, str]:
 
 
 # ── answers in ₪: the USD figures a service computed, converted at the edge (M None: unchanged) ──
+def LocalizePromotion(P: dict | None, LocalPrice, M: Market | None) -> dict | None:
+    """A promotion (p3/charmprices.py) next to a price converted for this market: its regular price converted by the same
+    rule, and the saving as the customer reads it — the difference of the two converted prices (each rounded by the rule,
+    so it is not the USD saving converted). Without a regular price (not a verified reference price): unchanged."""
+    if not M or not P or P.get("regular_unit_price") is None or LocalPrice is None:
+        return P
+    Regular = M.Unit(P["regular_unit_price"])
+    return {**P, "regular_unit_price": Regular, "savings": round(Regular - float(LocalPrice), 2),
+            "usd_regular_unit_price": P["regular_unit_price"], "usd_savings": P.get("savings")}
+
+
 def LocalizeQuote(Q: dict, M: Market | None) -> dict:
     """A price quote ({unit_price, currency}) including VAT (₪, or $ for a visitor from Israel); the USD list price it
-    came from rides along."""
+    came from rides along — and a promotion's regular price and saving, converted."""
     if not M or not isinstance(Q, dict) or Q.get("currency") != Usd:
         return Q
-    return {**Q, "unit_price": M.Unit(Q.get("unit_price")), "currency": M.currency, "usd_unit_price": Q.get("unit_price"),
-            "incl_vat": True}
+    Unit = M.Unit(Q.get("unit_price"))
+    Out = {**Q, "unit_price": Unit, "currency": M.currency, "usd_unit_price": Q.get("unit_price"), "incl_vat": True}
+    if Q.get("promotion"):
+        Out["promotion"] = LocalizePromotion(Q["promotion"], Unit, M)
+    return Out
 
 
 def LocalizeCustomization(Out: dict, M: Market | None) -> dict:
@@ -522,7 +536,9 @@ def LocalizeCustomization(Out: dict, M: Market | None) -> dict:
     if Out.get("line_total") is not None and Q.get("unit_price") is not None:
         Out["line_total"] = round(Q["unit_price"] * Out["quantity"], 2)
     if Out.get("charm_sizes"):
-        Out["charm_sizes"] = [{**S, "unit_price": M.Unit(S.get("unit_price")), "currency": M.currency} for S in Out["charm_sizes"]]
+        Out["charm_sizes"] = [{**S, "unit_price": M.Unit(S.get("unit_price")), "currency": M.currency,
+                               **({"promotion": LocalizePromotion(S["promotion"], M.Unit(S.get("unit_price")), M)} if S.get("promotion") else {})}
+                              for S in Out["charm_sizes"]]
     return Out
 
 
@@ -534,8 +550,10 @@ def LocalizeBag(B: dict, M: Market | None) -> dict:
     for L in B["lines"]:
         if L.get("currency") == Usd:
             U = M.Unit(L["unit_price"])
+            Cur = M.Unit(L.get("current_unit_price"))
             L = {**L, "unit_price": U, "currency": M.currency, "line_total": round(U * L["quantity"], 2),
-                 "current_unit_price": M.Unit(L.get("current_unit_price"))}
+                 "current_unit_price": Cur,
+                 **({"promotion": LocalizePromotion(L["promotion"], Cur, M)} if L.get("promotion") else {})}
         if L.get("orderable"):
             Totals[L["currency"]] = round(Totals.get(L["currency"], 0) + L["line_total"], 2)
         Lines.append(L)
@@ -547,6 +565,7 @@ def LocalizeCatalog(Out: dict, M: Market | None) -> dict:
     Charm = ((Out.get("products") or {}).get("charm") or {})
     if M and Charm.get("materials"):
         for Mat in Charm["materials"]:
-            Mat["prices"] = [{**P, "price": M.Unit(P["price"]), "currency": M.currency} if P.get("currency") == Usd else P
-                             for P in Mat["prices"]]
+            Mat["prices"] = [{**P, "price": M.Unit(P["price"]), "currency": M.currency,
+                              **({"promotion": LocalizePromotion(P["promotion"], M.Unit(P["price"]), M)} if P.get("promotion") else {})}
+                             if P.get("currency") == Usd else P for P in Mat["prices"]]
     return Out

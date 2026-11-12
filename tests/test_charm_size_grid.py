@@ -93,7 +93,8 @@ async def test_the_prices_and_names_per_size_of_before_carry_over_by_level(tmp_p
         Doc = json.loads(Last["price_json"])
         # the per-size prices are stored beside the levels: the code before 5 Nov reads them after a rollback
         assert Doc["materials"]["silver"] == {"price_per_g": None, "cost_per_g": None, "level_prices": {"1": 69.0, "2": 109.0, "3": 159.0},
-                                              "fixed_prices": {"10": 69.0, "14": 109.0, "18": 159.0}}
+                                              "fixed_prices": {"10": 69.0, "14": 109.0, "18": 159.0},
+                                              "promo_prices": {}}                       # no promotional prices (P1, 12 Nov 2026)
         for Mid, Prices in LivePrices.items():
             assert {K: Book.QuoteFor(Mid, float(K)).unit_price for K in Prices} == Prices, Mid
         assert H.Ctx.Products.CharmLevelNames == {"1": "Delicate", "2": "Classic", "3": "Bold"}

@@ -59,6 +59,8 @@ from p3 import ilspricing as IlsPricingMod
 from p3.ilspricing import IlsPricing
 from p3 import charmprices as CharmPrices
 from p3 import materialstatus as MaterialStatus
+from p3 import promobanner as PromoBanner
+from p3.pricing.service import PublicPromotion
 from p3.materialprices import MaterialPriceBook
 from p3.production3d import Production3D
 from p3.geoqueue import GeometryQueue
@@ -153,7 +155,8 @@ def AdminBuild() -> str:
 
 
 def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots: str = "noindex", Description: str = "",
-                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None) -> str:
+                   Og: str = "", Mock: bool | None = None, Dev: bool | None = None, Legacy: bool | None = None,
+                   Banner: str = "") -> str:
     """Render a page: every "{{BASE}}" becomes the base path, local scripts/styles get ?v=<mtime> so a browser can
     never pair a new page with a cached older app.js, "{{P3CONFIG}}" becomes the page's server-side configuration
     (window.__p3), "{{ROBOTS}}" the robots meta content and "{{DESCRIPTION}}" the meta description, "{{SITE_FOOTER}}"
@@ -179,6 +182,7 @@ def _VersionedPage(Name: str, BasePath: str, Config: dict | None = None, Robots:
                   lambda M: M.group(0) + (f"?v={(WebDir / M.group(1) / M.group(2)).stat().st_mtime_ns}"
                                           if (WebDir / M.group(1) / M.group(2)).is_file() else ""), Html)
     Html = Html.replace("{{P3CONFIG}}", _ScriptJson(Config or {})).replace("{{ROBOTS}}", Robots)
+    Html = Html.replace("{{PROMO_BANNER}}", Banner)            # the promotion banner (p3/promobanner.py): none by default
     Html = Html.replace("{{DESCRIPTION}}", Description.replace("&", "&amp;").replace('"', "&quot;")).replace("{{OG}}", Og)
     if "{{ADMIN_BUILD}}" in Html:
         Html = Html.replace("{{ADMIN_BUILD}}", AdminBuild())
@@ -523,6 +527,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                   "products": list(Visible)}
         if Products.Charm in Visible:                  # the charm sizes customers choose from: the wording names one alone
             Config["charm_sizes"] = Ctx.Products.CharmSizesEnabled
+        # The promotion banner (P1): decided now for this visitor, written into the page (no shift when the app starts)
+        Banner = PromoBanner.Shown(Ctx, Market(request), Visible=Visible)
+        if Banner:
+            Config["banner"] = Banner
         if View == "inspiration":
             Config["gallery_count"] = len(Svc.Gallery.List(Visible))          # the cards /api/gallery gives this visitor
         Foot = SitePages.PageDesigns(GalleryLinks(request), View) if View in SitePages.PageDesignOffsets and not Flow else []
@@ -533,7 +541,7 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         if Flow:                                       # the app starts on no page and shows the step once it knows who asks
             Config.update({"view": "", "ssr": "", "route": Flow})
         Html = _VersionedPage("index.html", Base, Config, "noindex" if Flow else PageRobots(), Description, Og, Mock=Modes.Mode == "mock",
-                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy")
+                              Dev=S.DevTools, Legacy=S.AuthMode == "legacy", Banner=PromoBanner.Html(Banner, Base))
         Html = Html.replace("{{FAQ_ITEMS}}", SitePages.FaqHtml(Faq))
         Html = SitePages.StripMaterialSections(Html, Ctx, Visible)     # /materials' gold and preview only parts (WP3)
         Before = {}
@@ -1064,9 +1072,13 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
                     "materials": [{"id": M.Id, "label": CharmPrices.Label(Ctx.Catalog, M.Id), "group": MaterialStatus.GroupOf(Statuses[M.Id]),
                                    "purchasable": Statuses[M.Id] == MaterialStatus.Available,
                                    # the fixed price per size (the Materials page); None while no price is set
-                                   "prices": [{"size": O["size"], "label": O["label"], "price": Q.unit_price, "currency": Q.currency}
+                                   "prices": [{"size": O["size"], "label": O["label"], "price": Q.unit_price, "currency": Q.currency,
+                                               **({"promotion": PublicPromotion(Q.promotion)} if Q.promotion else {})}
                                               for O in Sizes for Q in (Ctx.CharmPrices.QuoteFor(M.Id, O["size"]),)]}
                                   for M in CharmPrices.Offered(Ctx.Catalog) if Statuses[M.Id] != MaterialStatus.Hidden]}
+            Banner = PromoBanner.Shown(Ctx, Market(request), Visible=Visible)     # the promotion banner (P1), as the page has it
+            if Banner:
+                Out["banner"] = Banner
         Checked = [P for P in Products.All if PromptCheck.Enabled(Ctx, P)]
         if Checked:                                      # the design screen says "Checking your description…" meanwhile
             Out["prompt_check"] = Checked
