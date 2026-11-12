@@ -183,8 +183,8 @@ def Faq(Ctx, Visible: tuple) -> list[tuple[str, str]]:
              "(about 2 business days) and contacts you to arrange payment. Production starts once your payment is confirmed."),
             ("How long does production take?", "Design happens the same day. After you order, our team reviews your design "
              "(about 2 business days) and then contacts you to arrange payment. Production starts once your payment is "
-             "confirmed and takes up to 14 business days. Shipping then takes up to 14 business days with free Standard "
-             "delivery, or about 5 business days with Express."),
+             "confirmed and takes up to 14 business days. Shipping then takes up to 14 business days with free standard "
+             "delivery."),
             ("Can I cancel my order?", "You can cancel an order free of charge until we confirm it to you: reply to your "
              "order confirmation email or contact us with your Order ID. Cancelling after that, returns and faulty pieces "
              "are covered on the Shipping & Returns page."),
@@ -246,8 +246,7 @@ def Meta(View: str, Ctx, Visible: tuple, HomeDescription: str) -> tuple[str, str
                       "established 2014, 80+ patents and applications, ISO 9001 and ISO 13485 certified."),
         "shipping-returns": ("Shipping & Returns · XJet Atelier",
                              "Production up to 14 business days after payment. Standard delivery is free (up to 14 "
-                             "business days), "
-                             "Express is $45 (about 5). Taxes and duties, cancelling, returns and the warranty."),
+                             "business days). Taxes and duties, cancelling, returns and the warranty."),
         "terms": ("Terms of Service · XJet Atelier",
                   "The terms for designing and ordering custom jewelry at XJet Atelier, a service of XJet Ltd.: your "
                   "account, credits, your content and designs, orders, materials, prices and liability."),

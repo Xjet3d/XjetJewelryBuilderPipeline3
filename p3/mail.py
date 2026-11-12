@@ -391,7 +391,7 @@ def QuoteOfferEmail(Request: dict, Offer: dict) -> tuple[str, str]:
         </table>
         {_Button(_Esc(Approve), "Approve the quote")}
         <p style="margin:12px 0 0;text-align:center;{_Font}font-size:13px;"><a href="{_Esc(Decline)}" target="_blank" style="color:#B4443A;">Decline the quote</a></p>
-        <p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">Delivery is chosen when you approve: Standard delivery is free, Express is $45.
+        <p style="margin:24px 0 0;font-size:12px;color:#6F6F6F;">Delivery: standard delivery is free.
            Prices in US dollars; import duties or VAT, where charged, are paid by the recipient. {ContactLine(Request['ref'])}</p>"""))
 
 

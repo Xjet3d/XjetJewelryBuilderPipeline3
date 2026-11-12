@@ -2953,6 +2953,7 @@ function p3App() {
         for (const k of CUSTOMER_FIELDS) if (!c[k] && p[k]) c[k] = p[k];
         this._initPhone();                                            // the phone field's code and number, from what is known
         if (!this.co.address.recipient) this.co.address.recipient = [c.first_name, c.last_name].filter(Boolean).join(' ');
+        if (!(info.shipping_options || []).some(s => s.id === this.co.shipping_method)) this.co.shipping_method = 'standard';   // Express retired
         if (this.co.shipping_method !== (info.quote?.shipping_method || 'standard')) this.coRequote();   // the draft's delivery
         if (!this.co.requestId) this.co.requestId = newRequestId();      // one order per checkout, however many clicks
         this.co.step = 'details'; this.co.problems = {}; this.co.addrCheck = null; this.co.useSuggested = false;
@@ -3016,6 +3017,7 @@ function p3App() {
         const q = await this.api('POST', '/api/checkout/quote', { promo_code: this.co.promo_code || null, shipping_method: this.co.shipping_method,
                                                                    ...(country ? { country } : {}) });
         if (q.shipping_options && this.checkout) this.checkout.shipping_options = q.shipping_options;
+        if (q.shipping_method && q.shipping_method !== this.co.shipping_method) { this.co.shipping_method = q.shipping_method; this._saveCoDraft(); }
         this.coQuote = q;
         if (before && q.currency + (q.incl_vat ? '+vat' : '') !== before)
           this.co.currencyNote = q.currency === 'ILS' ? 'Prices updated for delivery to Israel: in shekels, including VAT.'
@@ -3076,6 +3078,12 @@ function p3App() {
         }
         if (e.code === 'bag_empty' || e.code === 'bag_not_orderable') { await this.refreshBag(); this.navigateTo('checkout', { history: 'replace' }); }
         if (e.code === 'bag_changed') { await this.refreshBag(); await this.coRequote(); this.co.error = e.message; }
+        // a delivery method no longer offered (Express, retired 12 Nov 2026): Standard, its total shown before a new click
+        if ((e.problems || []).some(p => p.code === 'shipping_method_unavailable')) {
+          const msg = e.problems.find(p => p.code === 'shipping_method_unavailable').message;
+          this.co.shipping_method = 'standard'; this._saveCoDraft(); await this.coRequote();
+          this.co.problems = {}; this.co.step = 'review'; this.co.error = msg;
+        }
         // the code stopped working between the review and the click (expired, used up): show it on the field, with Remove
         if (String(e.code || '').startsWith('promo_')) { await this.coRequote(); this.co.error = e.message; }
         if (e.code === 'duplicate_order') {                       // the same pieces to the same address, ordered within the day

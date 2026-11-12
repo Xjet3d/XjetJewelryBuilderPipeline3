@@ -405,7 +405,7 @@ class QuoteDesk:
         Table = "".join(f"<tr><th>{_E(K)}</th><td>{_E(V)}</td></tr>" for K, V in Rows)
         Picture = f"<img src=\"{_E(Img)}\" alt=\"{_E(R['title'])}\">" if Img else ""
         return (f"<div class='quote'>{Picture}<table>{Table}</table></div>"
-                "<p class='small'>Delivery is chosen when you approve: Standard delivery is free, Express is $45. Prices in US dollars; "
+                "<p class='small'>Delivery: standard delivery is free. Prices in US dollars; "
                 "import duties or VAT, where charged, are paid by the recipient.</p>")
 
     def _Err(self, Problems: list | None, Field: str) -> str:
@@ -420,9 +420,14 @@ class QuoteDesk:
         Opts = "".join(f"<option value='{_E(Code)}'{' selected' if Code == Country else ''}>{_E(Name)}</option>"
                        for Code, Name in Addressing.Countries)
         Method = F.get("shipping_method") or "standard"
-        Ship = "".join(f"<label class='opt'><input type='radio' name='shipping_method' value='{_E(K)}'{' checked' if K == Method else ''}>"
-                       f"<span><strong>{_E(S['label'])}</strong> · {_E(S['detail'])} · {_E(S['eta'])}</span></label>"
-                       for K, S in ShippingOptions.items())
+        if len(ShippingOptions) == 1:                   # one method left (Standard only, 12 Nov 2026): said, not chosen
+            K, S = next(iter(ShippingOptions.items()))
+            Ship = (f"<input type='hidden' name='shipping_method' value='{_E(K)}'>"
+                    f"<p><strong>{_E(S['label'])}</strong> · {_E(S['detail'])} · {_E(S['eta'])}</p>")
+        else:
+            Ship = "".join(f"<label class='opt'><input type='radio' name='shipping_method' value='{_E(K)}'{' checked' if K == Method else ''}>"
+                           f"<span><strong>{_E(S['label'])}</strong> · {_E(S['detail'])} · {_E(S['eta'])}</span></label>"
+                           for K, S in ShippingOptions.items())
         General = "".join(f"<p class='err'>{_E(P['message'])}</p>" for P in (Problems or []) if not P.get("field"))
         Recipient = F.get("recipient", f"{C.get('first_name', '')} {C.get('last_name', '')}".strip())
         return f"""
@@ -501,7 +506,9 @@ class QuoteDesk:
         Addr = self.Orders.ValidateAddress(Address)
         Problems += Addr["problems"]
         if Method not in ShippingOptions:
-            Problems.append({"field": "shipping_method", "message": "Please choose a delivery option."})
+            Problems.append({"field": "shipping_method", "message": "Express delivery is no longer available; standard delivery is "
+                             "free. Please approve again." if Method == "express" else "Please choose a delivery option."})
+            F = {**F, "shipping_method": "standard"}
         if Problems:
             return self.Page(Token, "approve", Problems, F)
         try:

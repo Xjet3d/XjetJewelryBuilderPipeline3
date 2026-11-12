@@ -14,7 +14,11 @@ def _WithVat(Usd) -> float:
     return float((Decimal(str(Usd)) * Decimal("1.18")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-async def test_a_visitor_from_israel_who_chooses_dollars_reads_them_including_vat(tmp_path):
+async def test_a_visitor_from_israel_who_chooses_dollars_reads_them_including_vat(tmp_path, monkeypatch):
+    # a priced delivery method converts by the same rule (Express is retired for customers since 12 Nov 2026; offered here only to
+    # keep the conversion of a priced method under test)
+    from p3 import orders as OrdersModule
+    monkeypatch.setattr(OrdersModule, "ShippingOptions", dict(OrdersModule.ShippingMethods))
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         await _TurnOn(H)

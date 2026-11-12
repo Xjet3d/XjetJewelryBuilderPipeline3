@@ -1271,7 +1271,7 @@
                             <li><strong>Design review:</strong> about 2 business days after you order, our team checks that your design can be made and confirms the order to you.</li>
                             <li><strong>Payment:</strong> nothing is charged online when you order. After the design review, we contact you to arrange payment.</li>
                             <li><strong>Production:</strong> starts once your payment is confirmed and takes up to 14 business days. <span x-text="'Each ' + wording.noun + ' is printed to order in real metal.'"></span></li>
-                            <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery. Express delivery is $45 (in shekels for delivery to Israel where shekel prices are offered, shown at checkout) and takes about 5 business days, with priority handling.</li>
+                            <li><strong>Shipping:</strong> Standard delivery is free and takes up to 14 business days, tracked with signature on delivery.</li>
                         </ul>
                         <p>We ship from Israel to the countries listed at checkout. Business days are Sunday to Thursday, excluding public holidays in Israel, for our design review and production, and the carrier’s working days for delivery; delivery times are the carrier’s estimates. The piece is at our risk until it is delivered to you.</p>
                         <h2 class="text-lg font-semibold text-zinc-900">Prices, taxes and duties</h2>
@@ -2352,9 +2352,9 @@
                     <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
                         <div class="flex justify-between font-semibold text-base pt-3 border-t border-zinc-100 brand-font"><span>Subtotal</span><span x-text="money(total, cur)"></span></div>
                     </template>
-                    <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; express delivery and any promo code are added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
+                    <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; any promo code is added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
                     <!-- Israeli pricing (B6): shown only while it is on -->
-                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1"><span x-text="pricingChoice?.currency === 'USD' ? 'Prices in US dollars include 18% Israeli VAT for delivery in Israel.' : 'Prices in shekels include 18% VAT for delivery in Israel.'">Prices in shekels include 18% VAT for delivery in Israel.</span> Standard delivery is free; express delivery and any promo code are added at checkout. The delivery country you choose at checkout sets the final currency.</p>
+                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1"><span x-text="pricingChoice?.currency === 'USD' ? 'Prices in US dollars include 18% Israeli VAT for delivery in Israel.' : 'Prices in shekels include 18% VAT for delivery in Israel.'">Prices in shekels include 18% VAT for delivery in Israel.</span> Standard delivery is free; any promo code is added at checkout. The delivery country you choose at checkout sets the final currency.</p>
                     <p class="text-[14px] text-zinc-600 leading-snug pt-1">No payment is taken online: after our review (about 2 business days) we contact you to arrange payment. You can cancel an order free of charge until we confirm it to you.</p>
                     <div x-show="pricingChoice" x-cloak class="flex items-center justify-end gap-2 text-[13px] text-zinc-500 pt-1" role="group" aria-label="Currency">
                         <span>Prices in</span>
@@ -2479,7 +2479,12 @@
                         </div>
                         <div>
                             <p class="flbl">Delivery</p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Delivery option">
+                            <!-- one method left (Standard only, 12 Nov 2026): it is said, not chosen -->
+                            <div x-show="(checkout?.shipping_options || []).length === 1" class="border border-zinc-200 rounded-lg px-4 py-3 bg-white">
+                                <div class="flex items-baseline justify-between gap-3"><span class="text-sm font-semibold text-zinc-900" x-text="coShipping?.label || 'Standard delivery'"></span><span class="text-sm text-zinc-800" x-text="coShipping?.price ? money(coShipping.price, coShipping.currency || 'USD') : 'Free'"></span></div>
+                                <p class="text-[14px] text-zinc-600 mt-0.5" x-text="coShipping ? coShipping.eta + ' · ' + coShipping.detail.split(' · ').slice(1).join(' · ') : ''"></p>
+                            </div>
+                            <div x-show="(checkout?.shipping_options || []).length > 1" class="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Delivery option">
                                 <template x-for="s in (checkout?.shipping_options || [])" :key="s.id">
                                     <button type="button" @click="setShipping(s.id)" class="text-left border rounded-lg px-4 py-3 transition" :class="co.shipping_method === s.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'" role="radio" :aria-checked="co.shipping_method === s.id">
                                         <div class="flex items-baseline justify-between gap-3"><span class="text-sm font-semibold text-zinc-900" x-text="s.label"></span><span class="text-sm text-zinc-800" x-text="s.price ? money(s.price, s.currency || 'USD') : 'Free'"></span></div>
@@ -2533,7 +2538,7 @@
                             <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233 · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
                             <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="money((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + money(coQuote?.total || 0, coQuote?.currency)"></span></p>
                             <p><strong class="font-semibold text-zinc-900">Import charges:</strong> where your country charges import VAT, customs duty or a carrier’s handling fee on delivery, the recipient pays them.</p>
-                            <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 business days after your payment is confirmed; delivery <span x-text="co.shipping_method === 'express' ? 'about 5 business days (Express)' : 'up to 14 business days (Standard)'"></span>.</p>
+                            <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 business days after your payment is confirmed; delivery <span x-text="(coShipping?.eta || 'up to 14 business days') + ' (' + (coShipping?.label || 'Standard delivery') + ')'"></span>.</p>
                             <p x-show="!checkout?.payment?.available"><strong class="font-semibold text-zinc-900">Payment:</strong> nothing is charged now. Your order is a reservation until we confirm it; you can cancel free of charge until then. We arrange payment with you after our review, and production starts once your payment is confirmed.</p>
                             <p><strong class="font-semibold text-zinc-900">Cancelling and returns:</strong> each personalised piece is made to your specification, so it cannot be returned for a change of mind once confirmed. A gallery design you order unchanged can be cancelled within 14 days of delivery. Faulty pieces are always covered.</p>
                             <p><strong class="font-semibold text-zinc-900">Warranty:</strong> <a href="{{BASE}}/warranty" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">two-year limited warranty</a>, in addition to your legal rights.</p>

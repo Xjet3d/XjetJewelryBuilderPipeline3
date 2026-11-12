@@ -41,12 +41,20 @@ from p3.testrecords import IsTestCustomer, ReservedEmail
 # Orders placed before 2 Nov 2026 carry this fixed label; a newer order carries the archived version it accepted (M6,
 # Orders.AcceptedTerms). Kept as it is on those orders: nothing is back-filled (they are test orders, WP7)
 LegacyTermsLabel = "2026-10-02"
-ShippingOptions = {
+# Every delivery method an order may carry: an order placed with one keeps its label, price and total for good
+ShippingMethods = {
     "standard": {"id": "standard", "label": "Standard delivery", "price": 0.0, "eta": "up to 14 business days",
                  "detail": "Free · tracked, signature on delivery"},
     "express": {"id": "express", "label": "Express delivery", "price": 45.0, "eta": "about 5 business days",
                 "detail": "$45 · priority handling"},   # CON-07: the insurance claim is unverified (Counsel Book A-3), so it is not made (3 Nov 2026)
 }
+# The methods a new order or an approved quote can have: Standard only (owner's P1, 12 Nov 2026 — Express retired). Checkout
+# shows no choice while one method is left; a request for another is answered with Standard (the quote) or refused (an order)
+ShippingActive = ("standard",)
+ShippingOptions = {K: V for K, V in ShippingMethods.items() if K in ShippingActive}
+DefaultShipping = "standard"
+RetiredShippingText = ("Express delivery is no longer available. Your order uses free standard delivery — "
+                       "please check the total and place the order again.")
 # "confirmed": the design review passed (B7, owner's approval 11 Nov 2026) — set by the Admin, or on a site with Fulfillment
 # when every part of the order is approved for production; the order then waits for its payment
 StatusOrder = ["new", "confirmed", "payment_confirmed", "three_d_ready", "production", "qc", "shipped", "completed"]
@@ -273,7 +281,8 @@ class OrderService:
         for L in Lines:
             L["ring_id"] = Refs.get(L["candidate_id"])
         Ok = [L for L in Lines if not L["problem"]]
-        Ship = ShippingFor(Market).get(ShippingMethod or "standard")
+        Offered = ShippingFor(Market)
+        Ship = Offered.get(ShippingMethod or DefaultShipping) or Offered[DefaultShipping]   # Express retired: Standard
         Promo, PromoError_ = None, None
         if PromoCode and str(PromoCode).strip():
             if not Ok:
@@ -364,9 +373,10 @@ class OrderService:
         Customer, Problems = self.ValidateCustomer(Body.get("customer"))
         Addr = self.ValidateAddress(Body.get("address"))
         Problems += Addr["problems"]
-        Method = str(Body.get("shipping_method") or "standard")
+        Method = str(Body.get("shipping_method") or DefaultShipping)
         if Method not in ShippingOptions:
-            Problems.append({"field": "shipping_method", "message": "Please choose a delivery option."})
+            Problems.append({"field": "shipping_method", "code": "shipping_method_unavailable",
+                             "message": RetiredShippingText if Method in ShippingMethods else "Please choose a delivery option."})
         if Body.get("terms_accepted") is not True:
             Problems.append({"field": "terms_accepted", "message": "Please accept the Terms of Service to place the order."})
         if Problems:
@@ -554,7 +564,7 @@ class OrderService:
         return self.Ctx.Db.All("SELECT * FROM order_lines WHERE order_id = ? ORDER BY position", (OrderId,))
 
     def ToJson(self, O: dict, Lines: list[dict], ForCustomer: bool = True) -> dict:
-        Ship = ShippingOptions.get(O["shipping_method"], {})
+        Ship = ShippingMethods.get(O["shipping_method"], {})          # an order keeps the method it was placed with
         Shipping = json.loads(O["shipping_json"])
         Pay = json.loads(O["payment_json"] or "{}")
         Out = {
@@ -1503,7 +1513,8 @@ class OrderService:
         Addr = self.ValidateAddress(AddressRaw)
         Problems = list(Addr["problems"])
         if Method not in ShippingOptions:
-            Problems.append({"field": "shipping_method", "message": "Please choose a delivery option."})
+            Problems.append({"field": "shipping_method", "code": "shipping_method_unavailable",
+                             "message": RetiredShippingText if Method in ShippingMethods else "Please choose a delivery option."})
         if Problems:
             raise _Invalid(Problems)
         Product = Q.get("product_type") or Products.Ring

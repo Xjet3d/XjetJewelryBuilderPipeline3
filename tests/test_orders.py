@@ -56,15 +56,17 @@ async def test_checkout_info_quote_and_bag_flags(HO):
     Info = (await H.Client.get("/api/checkout")).json()
     assert Info["customer"]["email"] == "" and Info["terms_version"] and not Info["payment"]["available"]
     assert {C["code"] for C in Info["countries"]} >= {"US", "IL", "GB", "DE", "JP"} and "US" in Info["region_required"]
-    assert [S["id"] for S in Info["shipping_options"]] == ["standard", "express"] and Info["shipping_options"][1]["price"] == 45
+    # Standard only (12 Nov 2026): one method, free; Express is no longer offered
+    assert [S["id"] for S in Info["shipping_options"]] == ["standard"] and Info["shipping_options"][0]["price"] == 0
     assert Info["quote"]["lines"] == [] and not Info["quote"]["ok"]
     Did, Cand, Bag = await _InBag(H, Size=7, Qty=2)
     assert Bag["checkout_available"] and Bag["lines"][0]["orderable"] and Bag["lines"][0]["ring_id"] == "R-1001-A"
-    Q = (await H.Client.post("/api/checkout/quote", json={"shipping_method": "express"})).json()
+    Q = (await H.Client.post("/api/checkout/quote", json={"shipping_method": "express"})).json()   # a draft asking Express
+    assert Q["shipping_method"] == "standard"                          # is priced with Standard
     L = Q["lines"][0]
     Unit = H.Ctx.Pricing.QuoteFor("silver").unit_price
     assert Q["ok"] and L["unit_price"] == Unit and L["line_total"] == pytest.approx(2 * Unit) and not L["repriced"]
-    assert Q["subtotal"] == pytest.approx(2 * Unit) and Q["shipping"] == 45 and Q["total"] == pytest.approx(2 * Unit + 45)
+    assert Q["subtotal"] == pytest.approx(2 * Unit) and Q["shipping"] == 0 and Q["total"] == pytest.approx(2 * Unit)
     assert Q["discount"] == 0 and Q["promo"] is None and Q["promo_error"] is None
     # The price changes in Admin → the bag flags it and checkout charges today's price
     Doc = H.Ctx.MaterialPrices.Current()

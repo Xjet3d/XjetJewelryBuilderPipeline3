@@ -108,12 +108,13 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
         # Without the terms nothing is ordered
         R = await H.Client.post("/quote/approve", data={"token": Token, **Address, "shipping_method": "express"})
         assert R.status_code == 400 and "Please accept the Terms of Service" in R.text
+        assert "Express delivery is no longer available" in R.text and "name='shipping_method' value='standard'" in R.text
         assert (await H.Client.get("/api/orders")).json()["orders"] == []
-        R = await H.Client.post("/quote/approve", data={"token": Token, **Address, "shipping_method": "express", "terms": "1",
+        R = await H.Client.post("/quote/approve", data={"token": Token, **Address, "shipping_method": "standard", "terms": "1",
                                                         "note": "Please gift wrap"})
         assert R.status_code == 200 and "ORD-10001" in R.text and "your order is placed" in R.text
         O = (await H.Client.get("/api/orders")).json()["orders"]
-        assert len(O) == 1 and O[0]["total"] == 5245 and O[0]["shipping_method"] == "express"
+        assert len(O) == 1 and O[0]["total"] == 5200 and O[0]["shipping_method"] == "standard"
         L = O[0]["lines"][0]
         assert (L["unit_price"], L["quantity"], L["material_id"], L["ring_size"]) == (2600, 2, "gold_18k_yellow", 7)
         Ad = (await H.Client.get("/api/admin/orders/ORD-10001", headers=Admin)).json()

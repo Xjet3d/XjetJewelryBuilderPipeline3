@@ -117,7 +117,11 @@ async def test_off_by_default_nothing_changes_even_for_an_israeli_connection(tmp
         await H.Close()
 
 
-async def test_on_an_israeli_visitor_sees_shekels_and_the_delivery_country_decides(tmp_path):
+async def test_on_an_israeli_visitor_sees_shekels_and_the_delivery_country_decides(tmp_path, monkeypatch):
+    # a priced delivery method converts by the same rule (Express is retired for customers since 12 Nov 2026; offered here only to
+    # keep the conversion of a priced method under test)
+    from p3 import orders as OrdersModule
+    monkeypatch.setattr(OrdersModule, "ShippingOptions", dict(OrdersModule.ShippingMethods))
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         Card = await _TurnOn(H)
