@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from p3 import creditrequests as CreditRequests
+from p3.accounts import creditrequests as CreditRequests
 from p3.context import HttpError
 from tests.conftest import Harness
 

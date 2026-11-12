@@ -52,7 +52,7 @@ from p3.materialprices import MaterialPriceError
 from p3.db import Now
 from p3.usage import AccountActivity
 from p3 import credits as Credits
-from p3 import creditrequests as CreditRequests
+from p3.accounts import creditrequests as CreditRequests
 from p3 import adminkey as AdminKeys
 from p3 import falkey as FalKeys
 from p3.registration import PublicOrigin
@@ -654,7 +654,7 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 "cost_basis": "Live sessions only, estimated at list prices; mock requests are $0."}
 
     # ── Credit requests (Admin → Users): approve with the suggested or another number, or reject; each grant is added to
-    # the balance once (p3/creditrequests.py) and written to the account's history ──
+    # the balance once (p3/accounts/creditrequests.py) and written to the account's history ──
     @App_.get("/api/admin/credit-requests")
     async def ListCreditRequests(authorization: str | None = Header(None)):
         Admin(authorization)

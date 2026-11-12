@@ -32,7 +32,7 @@ from p3 import products as Products
 from p3 import showcase as Showcase
 from p3.gallerysync import LastRun as GallerySyncLastRun
 from p3 import credits as Credits
-from p3 import creditrequests as CreditRequests
+from p3.accounts import creditrequests as CreditRequests
 from p3.ratelimit import ClientIp, RateLimiter
 from p3.quotes import QuoteDesk
 
