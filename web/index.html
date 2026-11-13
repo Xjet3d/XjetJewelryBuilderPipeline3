@@ -2291,7 +2291,7 @@
                             <span x-text="cust?.quantity || 1" aria-live="polite"></span>
                             <button type="button" @click="setQuantity(1)" :disabled="(cust?.quantity || 1) >= 10" aria-label="Increase quantity">+</button>
                         </div>
-                        <button x-show="!isLuxury && !isPreview" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)"
+                        <button x-show="!isLuxury && !isPreview" @click="canAddToBag ? addToBag() : (custNeedsSize && scrollToSize())" :disabled="quotePending || (!canAddToBag && !custNeedsSize)"
                                 class="btn-black flex-1 min-w-0 min-h-[48px] px-4" data-testid="add-to-bag" x-text="addBagLabel">Add to Bag</button>
                         <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold flex-1 min-h-[48px] px-4">Request a quote</button>
                         <p x-show="isPreview" x-cloak class="flex-1 text-[13px] text-zinc-700 text-center leading-snug" x-text="materialPreviewText"></p>

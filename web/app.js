@@ -2821,7 +2821,13 @@ function p3App() {
         const q = this.cust.quote, n = this.cust.quantity || 1;
         return 'Add to Bag · ' + this.price(this.cust.line_total ?? q.unit_price * n, q.currency);
       }
-      return this.sizeConfirmed || this.quotePending ? this.bagButtonText : 'Choose your size';
+      return this.custNeedsSize && !this.quotePending ? 'Choose your size' : this.bagButtonText;
+    },
+    // What stops the bag is the size alone: a ring's suggested size to confirm, or no size yet. Anything else — the design
+    // unavailable (its product OFF), the metal, the price — says so on the button, which can't be pressed
+    get custNeedsSize() {
+      if (this.sizeConfirmed) return false;
+      return !!this.cust?.can_add_to_bag || ['ring_size_required', 'charm_size_required'].includes(this.cust?.add_to_bag_blocked_reason);
     },
     sizeGuideRows(kind) {
       const mm = { 4: '14.9', 4.5: '15.3', 5: '15.7', 5.5: '16.1', 6: '16.5', 6.5: '16.9', 7: '17.3', 7.5: '17.7', 8: '18.1',

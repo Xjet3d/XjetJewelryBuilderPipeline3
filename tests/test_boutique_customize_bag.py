@@ -39,6 +39,12 @@ def test_customize_has_one_add_to_bag_beside_the_quantity_and_quiet_links():
     assert "Your Selected Design" not in Html and "In Your Bag" not in Html                  # the heading and the mini bag went
     Get = App[App.index("get addBagLabel()"):App.index("\n    },", App.index("get addBagLabel()"))]
     assert "'Add to Bag · ' + this.price(this.cust.line_total ?? q.unit_price * n, q.currency)" in Get
+    # "Choose your size" only when the size is what is missing; a design whose product is OFF (and any other block) says
+    # so on a button that can't be pressed — found on proto before the Atelier release (a paused ring design)
+    assert '@click="canAddToBag ? addToBag() : (custNeedsSize && scrollToSize())" :disabled="quotePending || (!canAddToBag && !custNeedsSize)"' in Bar
+    Needs = App[App.index("get custNeedsSize()"):App.index("\n    },", App.index("get custNeedsSize()"))]
+    assert "['ring_size_required', 'charm_size_required'].includes(this.cust?.add_to_bag_blocked_reason)" in Needs
+    assert "if (this.sizeConfirmed) return false;" in Needs
 
 
 def test_customize_details_collapse_and_the_ai_note_stays_in_view():
