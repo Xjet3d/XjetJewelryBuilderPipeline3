@@ -227,7 +227,8 @@ async def test_the_banner_never_claims_more_than_the_promotion_gives(HC):
     assert len(Log) >= 3 and Log[0]["value"]["names_scope"] is True
 
 
-async def test_a_promo_code_never_discounts_a_promotional_price_and_rings_keep_theirs(HC):
+async def test_a_promo_code_applies_on_top_of_a_promotional_price_and_on_rings(HC):
+    """Owner, 13 Nov 2026: promo codes combine with the promotion — the discount is taken from the promotional price."""
     H = HC
     await Promotion(H, **Verified)
     assert (await H.Client.post("/api/admin/promo-codes", headers=Admin, json={"code": "XMAS10", "kind": "percent", "value": 10,
@@ -235,15 +236,27 @@ async def test_a_promo_code_never_discounts_a_promotional_price_and_rings_keep_t
     _B, C = await CharmCustomize(H, Material="stainless_steel")
     await H.Client.post("/api/bag", json={"customization_id": C["id"]})
     Q = (await H.Client.post("/api/checkout/quote", json={"promo_code": "XMAS10"})).json()
-    assert Q["promo"] is None and Q["promo_error"]["code"] == "promo_not_with_promotion" and Q["subtotal"] == 39.0
-    # with a ring in the bag the code discounts the ring only
+    assert Q["promo_error"] is None and Q["promo"]["eligible_subtotal"] == 39.0
+    assert Q["subtotal"] == 39.0 and Q["discount"] == 3.9 and Q["total"] == 35.1
+    assert Q["lines"][0]["promotion"]["regular_unit_price"] == 59.0                    # the promotion still shows
+    # with a ring in the bag the code discounts both
     B = await H.NewDesign(product="ring")
     R = await H.Proceed(B["design_id"], B["candidates"][0]["id"])
     await H.Idle()
     await H.Client.patch(f"/api/customizations/{R['id']}", json={"ring_size": 7, "material_id": "silver"})
     await H.Client.post("/api/bag", json={"customization_id": R["id"]})
     Q = (await H.Client.post("/api/checkout/quote", json={"promo_code": "XMAS10"})).json()
-    assert Q["subtotal"] == 239.0 and Q["promo"]["eligible_subtotal"] == 200.0 and Q["discount"] == 20.0
+    assert Q["subtotal"] == 239.0 and Q["promo"]["eligible_subtotal"] == 239.0 and Q["discount"] == 23.9 and Q["total"] == 215.1
+    # the order charges exactly what the quote showed, keeps the promotion on the charm line and counts one use
+    O = await H.Client.post("/api/orders", json={"customer": Customer, "address": Address, "shipping_method": "standard",
+                                                 "terms_accepted": True, "client_request_id": "stack-1", "promo_code": "XMAS10"})
+    assert O.status_code == 200, O.text
+    O = O.json()
+    assert (O["subtotal"], O["discount"], O["total"]) == (239.0, 23.9, 215.1)
+    Charm = [L for L in O["lines"] if L["unit_price"] == 39.0]
+    assert Charm and Charm[0]["promotion"]["regular_unit_price"] == 59.0
+    Codes = (await H.Client.get("/api/admin/promo-codes", headers=Admin)).json()
+    assert [X["usage_count"] for X in (Codes.get("promo_codes") or Codes.get("codes")) if X["code"] == "XMAS10"] == [1]
 
 
 def test_a_promotion_in_shekels_converts_both_prices_by_the_rule_and_the_saving_is_their_difference():

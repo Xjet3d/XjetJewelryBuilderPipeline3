@@ -281,8 +281,8 @@ class OrderService:
         """The bag's totals. Market (B6): ₪ including VAT — each line's unit price converted from its USD list price and
         rounded by the rule, the delivery converted the same way, a promo checked on the USD lines (its rules and minimum
         are in USD) and its discount taken from the ₪ lines. None: USD, as before. A line at a promotional price carries
-        its promotion (its regular price and saving converted too); a promo code never discounts such a line (no double
-        discount, P1 12 Nov 2026). Internal: the whole promotion record stays on the lines (an order keeps it)."""
+        its promotion (its regular price and saving converted too); a promo code discounts such a line too, from its
+        promotional price (owner, 13 Nov 2026). Internal: the whole promotion record stays on the lines (an order keeps it)."""
         Lines = self._BagLines(Who, Visible)
         Refs = RingIds.CandidateRefs(self.Ctx.Db, list({L["design_id"] for L in Lines}))
         for L in Lines:

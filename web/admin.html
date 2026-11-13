@@ -3091,7 +3091,7 @@
         <template x-for="x in (cprices?.coverage?.not_eligible || [])" :key="'pn' + x.label"><p class="text-amber-700" x-text="x.label + ': $' + num(x.regular) + ' — not in the promotion'"></p></template>
         <p x-show="!(cprices?.coverage?.eligible || []).length" class="text-zinc-500">No charm on offer has a promotional price (Pricing · charms above).</p>
       </div>
-      <p class="text-[12px] text-zinc-500">While it is active, each size with a promotional price costs that price everywhere — Customize, the Materials page, the bag, checkout and the order. It starts and ends by the clock; a bag priced before is repriced at checkout. A promo code never discounts a charm already at its promotional price. Ring prices are not affected.</p>
+      <p class="text-[12px] text-zinc-500">While it is active, each size with a promotional price costs that price everywhere — Customize, the Materials page, the bag, checkout and the order. It starts and ends by the clock; a bag priced before is repriced at checkout. A promo code applies on top: its discount is taken from the promotional price. Ring prices are not affected.</p>
       <p x-show="promoMsg" class="text-sm" :class="promoErr ? 'text-red-600' : 'text-emerald-700'" x-text="promoMsg"></p>
     </section>
 
