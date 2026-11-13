@@ -3803,7 +3803,7 @@
                     </template>
                 </div>
                 <div class="shrink-0 flex flex-col sm:flex-row items-center gap-3">
-                    <p x-show="previewMedia === 'image'" class="text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Double-click, scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Pinch or double-tap to zoom · swipe to switch</span></p>
+                    <p x-show="previewMedia === 'image'" class="text-center text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Double-click, scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Pinch to zoom · swipe to switch</span></p>
                     <template x-if="previewCandidate">
                         <div>
                             <button x-show="previewCandidate?.id !== selectedId" @click="selectFromPreview()" class="btn-black px-6 py-2.5">Select this design</button>
