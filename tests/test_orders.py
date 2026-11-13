@@ -175,8 +175,8 @@ async def test_address_validation_seam_and_country_rules(HO):
     assert US["problems"] == [] and US["address"]["country"] == "US"
     Bad = (await H.Client.post("/api/checkout/address", json={"address": {**Address, "country": "US", "region": "", "postal_code": "1"}})).json()
     assert {P["field"] for P in Bad["problems"]} == {"region", "postal_code"}
-    AE = (await H.Client.post("/api/checkout/address", json={"address": {**Address, "country": "AE", "postal_code": ""}})).json()
-    assert AE["problems"] == []                                             # no postal codes there
+    HK = (await H.Client.post("/api/checkout/address", json={"address": {**Address, "country": "HK", "postal_code": ""}})).json()
+    assert HK["problems"] == []                                             # no postal codes there
     assert {P["field"] for P in (await H.Client.post("/api/checkout/address", json={"address": {}})).json()["problems"]} \
         == {"recipient", "line1", "city", "country"}
     # A provider that corrects the address: the suggestion is offered, and only a confirmed one is used

@@ -11,33 +11,38 @@ import os
 import re
 from typing import Protocol
 
-# ISO 3166-1 alpha-2 code → name. Shipping is worldwide (duties and VAT paid by the recipient).
+# ISO 3166-1 alpha-2 code → name: the countries Checkout ships to (duties and VAT paid by the recipient). 55 since
+# 13 Nov 2026 (owner): the 12 the UPS check marked "Delete from atelier" are no longer offered — see RetiredCountries.
 Countries = [
     ("US", "United States"), ("CA", "Canada"), ("GB", "United Kingdom"), ("IE", "Ireland"), ("IL", "Israel"),
     ("DE", "Germany"), ("FR", "France"), ("IT", "Italy"), ("ES", "Spain"), ("PT", "Portugal"), ("NL", "Netherlands"),
-    ("BE", "Belgium"), ("LU", "Luxembourg"), ("CH", "Switzerland"), ("AT", "Austria"), ("DK", "Denmark"), ("SE", "Sweden"),
-    ("NO", "Norway"), ("FI", "Finland"), ("IS", "Iceland"), ("PL", "Poland"), ("CZ", "Czechia"), ("SK", "Slovakia"),
-    ("HU", "Hungary"), ("RO", "Romania"), ("BG", "Bulgaria"), ("GR", "Greece"), ("CY", "Cyprus"), ("MT", "Malta"),
-    ("HR", "Croatia"), ("SI", "Slovenia"), ("EE", "Estonia"), ("LV", "Latvia"), ("LT", "Lithuania"), ("TR", "Türkiye"),
-    ("AE", "United Arab Emirates"), ("SA", "Saudi Arabia"), ("QA", "Qatar"), ("KW", "Kuwait"), ("BH", "Bahrain"),
-    ("OM", "Oman"), ("JO", "Jordan"), ("EG", "Egypt"), ("ZA", "South Africa"), ("MA", "Morocco"), ("KE", "Kenya"),
-    ("NG", "Nigeria"), ("IN", "India"), ("SG", "Singapore"), ("MY", "Malaysia"), ("TH", "Thailand"), ("VN", "Vietnam"),
-    ("ID", "Indonesia"), ("PH", "Philippines"), ("JP", "Japan"), ("KR", "South Korea"), ("TW", "Taiwan"),
-    ("HK", "Hong Kong"), ("CN", "China"), ("AU", "Australia"), ("NZ", "New Zealand"), ("MX", "Mexico"),
-    ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"), ("CO", "Colombia"), ("PE", "Peru"),
+    ("BE", "Belgium"), ("LU", "Luxembourg"), ("CH", "Switzerland"), ("AT", "Austria"), ("DK", "Denmark"),
+    ("SE", "Sweden"), ("NO", "Norway"), ("FI", "Finland"), ("IS", "Iceland"), ("PL", "Poland"), ("CZ", "Czechia"),
+    ("SK", "Slovakia"), ("HU", "Hungary"), ("RO", "Romania"), ("BG", "Bulgaria"), ("GR", "Greece"), ("CY", "Cyprus"),
+    ("MT", "Malta"), ("HR", "Croatia"), ("SI", "Slovenia"), ("EE", "Estonia"), ("LV", "Latvia"), ("LT", "Lithuania"),
+    ("ZA", "South Africa"), ("KE", "Kenya"), ("NG", "Nigeria"), ("IN", "India"), ("SG", "Singapore"),
+    ("TH", "Thailand"), ("VN", "Vietnam"), ("PH", "Philippines"), ("JP", "Japan"), ("KR", "South Korea"),
+    ("TW", "Taiwan"), ("HK", "Hong Kong"), ("CN", "China"), ("AU", "Australia"), ("NZ", "New Zealand"),
+    ("MX", "Mexico"), ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"), ("CO", "Colombia"), ("PE", "Peru"),
 ]
 CountryNames = dict(Countries)
+# No longer offered for new orders (13 Nov 2026): UPS has no service from Israel, or the rules for goods from Israel or
+# for jewelry there are unconfirmed. An order already addressed to one keeps its country and shows its name.
+RetiredCountries = {
+    "TR": "Türkiye", "AE": "United Arab Emirates", "SA": "Saudi Arabia", "QA": "Qatar", "KW": "Kuwait",
+    "BH": "Bahrain", "OM": "Oman", "JO": "Jordan", "EG": "Egypt", "MA": "Morocco", "MY": "Malaysia",
+    "ID": "Indonesia",
+}
 # Each shipping country's international dialling code: Checkout's phone field picks it beside the number (with the
 # country's flag, web/vendor/flags/<code>.svg), and the number is sent as "+972 54 123 4567"
 DialCodes = {
-    "US": "+1", "CA": "+1", "GB": "+44", "IE": "+353", "IL": "+972", "DE": "+49", "FR": "+33", "IT": "+39", "ES": "+34",
-    "PT": "+351", "NL": "+31", "BE": "+32", "LU": "+352", "CH": "+41", "AT": "+43", "DK": "+45", "SE": "+46", "NO": "+47",
-    "FI": "+358", "IS": "+354", "PL": "+48", "CZ": "+420", "SK": "+421", "HU": "+36", "RO": "+40", "BG": "+359", "GR": "+30",
-    "CY": "+357", "MT": "+356", "HR": "+385", "SI": "+386", "EE": "+372", "LV": "+371", "LT": "+370", "TR": "+90",
-    "AE": "+971", "SA": "+966", "QA": "+974", "KW": "+965", "BH": "+973", "OM": "+968", "JO": "+962", "EG": "+20",
-    "ZA": "+27", "MA": "+212", "KE": "+254", "NG": "+234", "IN": "+91", "SG": "+65", "MY": "+60", "TH": "+66", "VN": "+84",
-    "ID": "+62", "PH": "+63", "JP": "+81", "KR": "+82", "TW": "+886", "HK": "+852", "CN": "+86", "AU": "+61", "NZ": "+64",
-    "MX": "+52", "BR": "+55", "AR": "+54", "CL": "+56", "CO": "+57", "PE": "+51",
+    "US": "+1", "CA": "+1", "GB": "+44", "IE": "+353", "IL": "+972", "DE": "+49", "FR": "+33", "IT": "+39",
+    "ES": "+34", "PT": "+351", "NL": "+31", "BE": "+32", "LU": "+352", "CH": "+41", "AT": "+43", "DK": "+45",
+    "SE": "+46", "NO": "+47", "FI": "+358", "IS": "+354", "PL": "+48", "CZ": "+420", "SK": "+421", "HU": "+36",
+    "RO": "+40", "BG": "+359", "GR": "+30", "CY": "+357", "MT": "+356", "HR": "+385", "SI": "+386", "EE": "+372",
+    "LV": "+371", "LT": "+370", "ZA": "+27", "KE": "+254", "NG": "+234", "IN": "+91", "SG": "+65", "TH": "+66",
+    "VN": "+84", "PH": "+63", "JP": "+81", "KR": "+82", "TW": "+886", "HK": "+852", "CN": "+86", "AU": "+61",
+    "NZ": "+64", "MX": "+52", "BR": "+55", "AR": "+54", "CL": "+56", "CO": "+57", "PE": "+51",
 }
 # Where a number's leading 0 stays after the dialling code (Italy: +39 06 …); elsewhere it is the national prefix that
 # the international form drops (054 … in Israel is +972 54 …)
@@ -49,7 +54,7 @@ def CountryList() -> list[dict]:
     return [{"code": C, "name": N, "dial": DialCodes[C], **({"keep_zero": True} if C in KeepsLeadingZero else {})}
             for C, N in Countries]
 RegionRequired = {"US", "CA", "AU", "BR", "MX", "IN", "CN"}          # state / province / prefecture
-NoPostalCode = {"AE", "HK", "QA", "BH"}                              # countries that do not use postal codes
+NoPostalCode = {"HK"}                                                # countries that do not use postal codes
 PostalPatterns = {
     "US": r"^\d{5}(-\d{4})?$", "CA": r"^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$",
     "GB": r"^[A-Za-z]{1,2}\d[A-Za-z\d]?\s?\d[A-Za-z]{2}$", "IE": r"^[A-Za-z]\d{2}\s?[A-Za-z\d]{4}$",
@@ -78,7 +83,8 @@ def Problems(Address: dict) -> list[dict]:
     if not A["city"]:
         Out.append({"field": "city", "message": "Please enter the city."})
     if A["country"] not in CountryNames:
-        Out.append({"field": "country", "message": "Please choose a country."})
+        Out.append({"field": "country", "message": f"We don't ship to {RetiredCountries[A['country']]} at the moment. Please choose "
+                    "another country." if A["country"] in RetiredCountries else "Please choose a country."})
         return Out
     if A["country"] in RegionRequired and not A["region"]:
         Out.append({"field": "region", "message": "Please enter the state, province or region."})
@@ -94,7 +100,7 @@ def Lines(Address: dict) -> list[str]:
     """Display lines (also used in the confirmation email)."""
     A = Normalize(Address)
     CityLine = " ".join(P for P in (A["city"], A["region"], A["postal_code"]) if P)
-    return [L for L in (A["recipient"], A["line1"], A["line2"], CityLine, CountryNames.get(A["country"], A["country"])) if L]
+    return [L for L in (A["recipient"], A["line1"], A["line2"], CityLine, CountryNames.get(A["country"]) or RetiredCountries.get(A["country"], A["country"])) if L]
 
 
 class AddressValidator(Protocol):
