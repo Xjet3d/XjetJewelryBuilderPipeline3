@@ -3101,6 +3101,7 @@
         <div><p class="text-[12px] text-zinc-500">Offer text (with the saving)</p><p x-text="cprices?.banner?.settings?.text || '—'"></p></div>
         <div><p class="text-[12px] text-zinc-500">Text without a saving</p><p x-text="cprices?.banner?.settings?.plain_text || '— (no banner then)'"></p></div>
         <div><p class="text-[12px] text-zinc-500">Link · dates</p><p x-text="(cprices?.banner?.settings?.link || 'no link') + ' · ' + promoWhen({enabled: true, starts_at: cprices?.banner?.settings?.starts_at, ends_at: cprices?.banner?.settings?.ends_at})"></p></div>
+        <div><p class="text-[12px] text-zinc-500">Falling snow</p><p x-text="cprices?.banner?.settings?.snow === false ? 'Off' : 'On, both sides'"></p></div>
       </div></template>
       <template x-if="bannerEdit"><div class="space-y-3 text-sm">
         <label class="inline-flex items-center gap-2 font-semibold"><input type="checkbox" x-model="bannerEdit.enabled"> Banner on</label>
@@ -3114,6 +3115,7 @@
           <label class="block"><span class="text-[12px] text-zinc-500">Ends (your time; empty = with the promotion)</span><input type="datetime-local" class="inp w-full" x-model="bannerEdit.ends_at"></label>
         </div>
         <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="bannerEdit.names_scope"> The text names exactly which charms qualify (show it even when not every charm on offer is in the promotion)</label>
+        <label class="flex items-center gap-2"><input type="checkbox" x-model="bannerEdit.snow"> Falling snow on both sides of the banner (subtle; still for visitors who ask for less motion)</label>
         <div class="flex flex-wrap items-center gap-3">
           <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="bannerNote">
           <button class="btn" @click="saveBanner()" :disabled="bannerBusy">Save the banner</button>

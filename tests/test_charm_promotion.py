@@ -187,12 +187,18 @@ async def test_the_banner_never_claims_more_than_the_promotion_gives(HC):
     assert State["banner"]["usd"]["why"] == "The charm promotion is off."
     assert "banner" not in (await H.Client.get("/api/catalog")).json() and 'id="promo-banner"' not in (await H.Client.get("/")).text
     await Promotion(H)                                                      # active, not verified: the text without a saving
-    assert (await H.Client.get("/api/catalog")).json()["banner"] == {"text": Banner["plain_text"], "link": "/design", "until": None}
+    assert (await H.Client.get("/api/catalog")).json()["banner"] == {"text": Banner["plain_text"], "link": "/design", "until": None, "snow": True}
     await Promotion(H, **Verified)
     Cat = (await H.Client.get("/api/catalog")).json()
     assert Cat["banner"]["text"] == Banner["text"]
     Page = (await H.Client.get("/")).text
     assert 'id="promo-banner"' in Page and "A little holiday magic · Save $20 on charms" in Page and 'href="/design"' in Page
+    # the falling snow on both sides (13 Nov 2026): decoration only, on by default, off with its switch
+    assert Page.count('class="promo-snow promo-snow-') == 2 and '<span class="promo-snow promo-snow-l" aria-hidden="true"><i></i>' in Page
+    assert "@media (prefers-reduced-motion: reduce) { .promo-snow { display: none; } }" in Page
+    await SetBanner(H, snow=False)
+    assert "promo-snow promo-snow-" not in (await H.Client.get("/")).text
+    await SetBanner(H)
     # A visitor reading shekels or dollars including VAT: never the dollar saving
     Ils = H.Ctx.IlsPricing
     M = Market(rate=D("3.25"), vat_pct=D("18"), stage="after_vat", ending="9", info={})

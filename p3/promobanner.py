@@ -2,7 +2,8 @@
 (Admin → Pricing & Materials → Charm, under the promotion).
 
 Its settings (product_settings "promo_banner", logged like every setting): on/off, the offer text, a text without a saving
-(optional), a link on the site (optional), an optional start and end, and "the text names its scope". It never says more
+(optional), a link on the site (optional), an optional start and end, "the text names its scope", and the falling snow on
+both sides of the bar (owner, 13 Nov 2026: subtle, on by default; CSS only, still for visitors who ask for less motion). It never says more
 than the customer can get — it is shown only while all of this holds:
   * the banner is on and inside its own dates, and charms are on offer to customers;
   * the charm promotion is active (p3/charmprices.py: on, inside its dates), so a disabled or ended promotion takes the
@@ -22,7 +23,9 @@ from p3 import products as Products
 from p3.context import HttpError
 
 Key = "promo_banner"
-Default = {"enabled": False, "text": "", "plain_text": "", "link": "", "starts_at": None, "ends_at": None, "names_scope": False}
+Default = {"enabled": False, "text": "", "plain_text": "", "link": "", "starts_at": None, "ends_at": None, "names_scope": False,
+           "snow": True}
+SnowFlakes = 7                      # per side: few, small and slow — festive, never busy
 TextMax, LinkMax = 90, 200
 LinkPattern = re.compile(r"^/[A-Za-z0-9/_\-.?=&#%]*$")
 
@@ -54,7 +57,8 @@ def Validate(Raw) -> dict:
         raise HttpError(400, "invalid_banner", "The banner must end after it starts.")
     Out = {"enabled": Raw.get("enabled") is True, "text": Text("offer text", Raw.get("text")),
            "plain_text": Text("text without a saving", Raw.get("plain_text")), "link": Link,
-           "starts_at": Starts, "ends_at": Ends, "names_scope": Raw.get("names_scope") is True}
+           "starts_at": Starts, "ends_at": Ends, "names_scope": Raw.get("names_scope") is True,
+           "snow": Raw.get("snow") is not False}
     if Out["enabled"] and not Out["text"]:
         raise HttpError(400, "invalid_banner", "Write the banner's text before switching it on.")
     return Out
@@ -93,7 +97,7 @@ def Decide(Ctx, Market=None, At: datetime | None = None, Visible: tuple | None =
                                        else "This visitor reads prices including VAT")
                                       + ", and there is no text without a saving."}
     Ends = [E for E in (B["ends_at"], P.get("ends_at")) if E]
-    return {"shown": {"text": Text, "link": B["link"] or None, "until": min(Ends) if Ends else None}, "why": None}
+    return {"shown": {"text": Text, "link": B["link"] or None, "until": min(Ends) if Ends else None, "snow": B["snow"]}, "why": None}
 
 
 def Shown(Ctx, Market=None, At: datetime | None = None, Visible: tuple | None = None) -> dict | None:
@@ -109,5 +113,8 @@ def Html(Banner: dict | None, Base: str) -> str:
     T = html.escape(Banner["text"], quote=False)
     Inner = (f'<a href="{html.escape(Base + Banner["link"], quote=True)}" class="promo-banner-link" @click="bannerClick($event)">{T}'
              '<span class="promo-banner-arrow" aria-hidden="true">→</span></a>') if Banner.get("link") else f'<span>{T}</span>'
+    # the snow: a few flakes in each side zone, faded out before the text (index.html .promo-snow); decoration only
+    Snow = "".join(f'<span class="promo-snow promo-snow-{S}" aria-hidden="true">{"<i></i>" * SnowFlakes}</span>' for S in ("l", "r")) \
+        if Banner.get("snow") else ""
     return (f'<div id="promo-banner" class="promo-banner" x-show="bannerShown" role="region" aria-label="Offer">'
-            f'{Inner}</div>')
+            f'{Snow}{Inner}</div>')

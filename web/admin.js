@@ -2562,7 +2562,8 @@ function adminApp() {
       const b = this.cprices?.banner?.settings || {};
       this.bannerMsg = ''; this.bannerNote = '';
       this.bannerEdit = { enabled: !!b.enabled, text: b.text || '', plain_text: b.plain_text || '', link: b.link || '',
-                          starts_at: this.toLocalInput(b.starts_at), ends_at: this.toLocalInput(b.ends_at), names_scope: !!b.names_scope };
+                          starts_at: this.toLocalInput(b.starts_at), ends_at: this.toLocalInput(b.ends_at), names_scope: !!b.names_scope,
+                          snow: b.snow !== false };
     },
     async saveBanner() {
       this.bannerBusy = true; this.bannerMsg = ''; this.bannerErr = false;
