@@ -271,7 +271,7 @@ function p3App() {
     zoom: null,                                                                // hover preview of a My Designs thumbnail {src, label, x, y, size}
     openedFromList: false,                                                     // a saved design opened from My Designs: images only, no prompt echo
     candIndex: 0,                                                              // phone: which of the four options is in view
-    previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null,
+    previewZoom: 1, previewPanX: 0, previewPanY: 0, _panning: false, _panStart: null, _swipeX: null, _down: null, _tap: null, _ptrs: {}, _pinch: null,
     menuOpen: false,                   // mobile navigation
     aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
@@ -2422,7 +2422,7 @@ function p3App() {
     // 'leave' (the app moves on: the next screen it opens takes the step, _route)
     closePreview(how = 'leave') {
       if (!this.previewOpen) return;
-      this.previewOpen = false; this.previewCandidate = null;
+      this.previewOpen = false; this.previewCandidate = null; this.previewResetZoom();
       if (how === 'user' && history.state && history.state.p3Preview === PAGE_LOAD) { this._previewBack = true; history.back(); }
     },
     get previewSiblings() {
@@ -2449,27 +2449,94 @@ function p3App() {
       const dx = ev.clientX - this._swipeX; this._swipeX = null;
       if (Math.abs(dx) > 50) this.previewStep(dx < 0 ? 1 : -1);
     },
+    // ── The enlarged view's gestures (owner, 13 Nov 2026), as in a photo app ─────────────────────────────────────────────
+    // One finger: at 1× a swipe steps between the options; zoomed, it drags the image (never past its edges). Two fingers:
+    // a pinch zooms around their midpoint (1×–6×). A double-tap zooms 2.5× on the point tapped, and back to the whole
+    // image. A second finger always ends a swipe, a drag or a tap, so the gestures never mix; a finger left after a pinch
+    // drags on. Mouse and keyboard as before: double-click, the wheel, + / −, drag, ← →. Switching or closing resets.
     previewZoomBy(f) {
       this.previewZoom = Math.min(6, Math.max(1, this.previewZoom * f));
-      if (this.previewZoom === 1) { this.previewPanX = 0; this.previewPanY = 0; }
+      if (this.previewZoom === 1) { this.previewPanX = 0; this.previewPanY = 0; } else this._clampPan();
     },
-    previewResetZoom() { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; },
+    previewResetZoom() {
+      this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0;
+      this._ptrs = {}; this._pinch = null; this._panning = false; this._swipeX = null; this._down = null;
+    },
+    _previewImg() { return document.querySelector('img[alt="Enlarged design"]'); },
+    _clampPan() {                                    // the image never leaves the frame: at most its extra half-size each way
+      const el = this._previewImg(); if (!el) return;
+      const Z = this.previewZoom, mx = (Z - 1) * el.offsetWidth / 2, my = (Z - 1) * el.offsetHeight / 2;
+      this.previewPanX = Math.max(-mx, Math.min(mx, this.previewPanX));
+      this.previewPanY = Math.max(-my, Math.min(my, this.previewPanY));
+    },
     previewPanDown(ev) {
-      if (this.previewZoom <= 1) { this.previewSwipeStart(ev); return; }   // 1×: a swipe steps, a tap on the image zooms (see previewTap)
+      if (this.previewMedia !== 'image') return;
+      try { ev.currentTarget?.setPointerCapture?.(ev.pointerId); } catch {}   // (a pointer already gone cannot be captured)
+      this._ptrs = { ...this._ptrs, [ev.pointerId]: { x: ev.clientX, y: ev.clientY } };
+      const P = Object.values(this._ptrs);
+      if (P.length === 2) {                          // a second finger: a pinch — no swipe, drag or tap from here on
+        const el = this._previewImg(); if (!el) return;
+        this._swipeX = null; this._panning = false; this._down = null; this._tap = null;
+        const r = el.getBoundingClientRect();
+        const cx = r.left + r.width / 2 - this.previewPanX, cy = r.top + r.height / 2 - this.previewPanY;   // its unzoomed centre
+        const mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2, Z = this.previewZoom;
+        // the image point under the fingers' midpoint stays under it while they move
+        this._pinch = { d: Math.max(10, Math.hypot(P[0].x - P[1].x, P[0].y - P[1].y)), z: Z, cx, cy,
+                        px: (mx - cx - this.previewPanX) / Z, py: (my - cy - this.previewPanY) / Z };
+        return;
+      }
+      if (P.length > 2 || this._pinch) return;
+      this._down = { x: ev.clientX, y: ev.clientY };                       // a press that hardly moves is a tap (see _previewTap)
+      if (this.previewZoom <= 1) { this.previewSwipeStart(ev); return; }   // 1×: a swipe steps
       this._panning = true; this._panStart = { x: ev.clientX - this.previewPanX, y: ev.clientY - this.previewPanY };
-      ev.target.setPointerCapture?.(ev.pointerId);
     },
     previewPanMove(ev) {
+      if (!this._ptrs[ev.pointerId]) return;
+      this._ptrs = { ...this._ptrs, [ev.pointerId]: { x: ev.clientX, y: ev.clientY } };
+      const Pn = this._pinch;
+      if (Pn) {
+        const P = Object.values(this._ptrs); if (P.length < 2) return;
+        const d = Math.hypot(P[0].x - P[1].x, P[0].y - P[1].y), mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2;
+        const Z = Math.min(6, Math.max(1, Pn.z * d / Pn.d));
+        this.previewZoom = Z; this.previewPanX = mx - Pn.cx - Z * Pn.px; this.previewPanY = my - Pn.cy - Z * Pn.py;
+        return;
+      }
       if (!this._panning) return;
       this.previewPanX = ev.clientX - this._panStart.x; this.previewPanY = ev.clientY - this._panStart.y;
+      this._clampPan();
     },
-    previewPanEnd(ev) {
-      if (this._panning) { this._panning = false; return; }
-      if (this._swipeX !== null && ev) {
-        const dx = ev.clientX - this._swipeX; this._swipeX = null;
-        if (Math.abs(dx) > 50) { this.previewStep(dx < 0 ? 1 : -1); return; }
-        this.previewZoomBy(2);                                            // a tap: zoom in
+    previewPanEnd(ev, cancelled = false) {
+      if (ev) { const { [ev.pointerId]: _gone, ...Rest } = this._ptrs; this._ptrs = Rest; } else this._ptrs = {};
+      if (this._pinch) {
+        if (Object.keys(this._ptrs).length >= 2) return;
+        this._pinch = null; this._down = null; this._swipeX = null; this._tap = null;
+        if (this.previewZoom < 1.05) { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; } else this._clampPan();
+        const Left = Object.values(this._ptrs)[0];  // one finger still down: it drags on (zoomed), never swipes or taps
+        if (Left && this.previewZoom > 1) { this._panning = true; this._panStart = { x: Left.x - this.previewPanX, y: Left.y - this.previewPanY }; }
+        return;
       }
+      const d = this._down; this._down = null;
+      const tap = !cancelled && !!(d && ev) && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 10;
+      if (this._panning) { this._panning = false; if (tap) this._previewTap(ev); return; }
+      if (this._swipeX !== null && ev && !cancelled) {
+        const dx = ev.clientX - this._swipeX; this._swipeX = null;
+        if (Math.abs(dx) > 50) { this._tap = null; this.previewStep(dx < 0 ? 1 : -1); return; }
+        if (tap) this._previewTap(ev);
+      }
+      this._swipeX = null;
+    },
+    // Double-tap (or double-click): zoom in 2.5× on the point tapped; double-tap again: back to the whole image. A single
+    // tap does nothing, so a swipe or a drag never zooms by accident.
+    _previewTap(ev) {
+      const now = Date.now(), T = this._tap;
+      if (!T || now - T.t > 350 || Math.hypot(ev.clientX - T.x, ev.clientY - T.y) > 40) { this._tap = { t: now, x: ev.clientX, y: ev.clientY }; return; }
+      this._tap = null;
+      if (this.previewZoom > 1) { this.previewResetZoom(); return; }
+      const el = this._previewImg(); if (!el) return;
+      const r = el.getBoundingClientRect(), Z = 2.5;                     // at 1× with no pan: the image's own box
+      const dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+      this.previewZoom = Z; this.previewPanX = (1 - Z) * dx; this.previewPanY = (1 - Z) * dy;   // the tapped point stays put
+      this._clampPan();
     },
     async selectFromPreview() { if (this.previewCandidate) await this.select(this.previewCandidate); },
 

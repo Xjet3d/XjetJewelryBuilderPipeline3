@@ -3763,13 +3763,17 @@
                 <button @click="previewResetZoom()" class="min-w-[52px] h-8 flex items-center justify-center text-[12px] font-medium tracking-wider transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" title="Reset zoom" x-text="Math.round(previewZoom * 100) + '%'"></button>
                 <button @click="previewZoomBy(1.25)" class="w-8 h-8 flex items-center justify-center text-lg transition rounded text-[#6F6F6F] hover:text-[#1A1A1A]" aria-label="Zoom in">+</button>
             </div>
-            <div class="flex flex-col items-center gap-3" style="width:94vw; height:88vh;" @click.self="closePreview('user')">
-                <div class="flex-1 w-full flex items-center justify-center overflow-hidden" @click.self="closePreview('user')"
+            <!-- dvh: the height a phone actually shows (vh counts the part behind the browser's bottom bar, which covered the
+                 Select button), plus the phone's own safe area -->
+            <div class="flex flex-col items-center gap-3" style="width:94vw; height:88vh; height:88dvh; padding-bottom:env(safe-area-inset-bottom);" @click.self="closePreview('user')">
+                <!-- The gestures are read on the whole frame, so a pinch also works with a finger just beside the image -->
+                <div class="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden" @click.self="closePreview('user')"
+                     :style="previewMedia === 'image' ? 'touch-action:none;' : ''"
+                     @pointerdown="previewPanDown($event)" @pointermove="previewPanMove($event)" @pointerup="previewPanEnd($event)" @pointercancel="previewPanEnd($event, true)"
                      @wheel.prevent="previewMedia === 'image' && previewZoomBy($event.deltaY < 0 ? 1.2 : 1/1.2)">
                     <template x-if="previewMedia === 'image'">
-                        <img :src="previewSrc" alt="Enlarged design" class="object-contain select-none max-w-[92vw] max-h-[78vh]" draggable="false"
-                             :style="'touch-action:none; filter:' + (view === 'review' ? tint : '') + '; transform: translate(' + previewPanX + 'px,' + previewPanY + 'px) scale(' + previewZoom + '); transition:' + (_panning ? 'none' : 'transform 0.15s ease') + '; cursor:' + (previewZoom > 1 ? (_panning ? 'grabbing' : 'grab') : 'zoom-in') + ';'"
-                             @pointerdown="previewPanDown($event)" @pointermove="previewPanMove($event)" @pointerup="previewPanEnd($event)" @pointercancel="previewPanEnd()">
+                        <img :src="previewSrc" alt="Enlarged design" class="object-contain select-none max-w-[92vw] max-h-full sm:max-h-[78vh]" draggable="false"
+                             :style="'touch-action:none; filter:' + (view === 'review' ? tint : '') + '; transform: translate(' + previewPanX + 'px,' + previewPanY + 'px) scale(' + previewZoom + '); transition:' + (_panning || _pinch ? 'none' : 'transform 0.15s ease') + '; cursor:' + (previewZoom > 1 ? (_panning ? 'grabbing' : 'grab') : 'zoom-in') + ';'">
                     </template>
                     <template x-if="previewMedia === 'video'">
                         <video :src="previewSrc" :poster="poster(previewSrc)" preload="auto" autoplay loop muted playsinline controls class="max-w-[92vw] max-h-[78vh] object-contain" :style="{ filter: tint }"></video>
@@ -3782,12 +3786,13 @@
                                 class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-white border-2 transition"
                                 :class="c.id === previewCandidate?.id ? 'border-zinc-900' : 'border-zinc-200 hover:border-zinc-400'">
                             <img width="320" height="320" :src="thumb(c.image_url, 320)" alt="" class="w-full h-full object-contain">
-                            <span x-show="c.id === selectedId" class="absolute bottom-0 inset-x-0 text-[12px] uppercase tracking-widest text-white text-center py-0.5" style="background:#1A1A1A;">Selected</span>
+                            <!-- The selected option: a check in the corner ("Selected" did not fit a 56–64 px thumbnail: it read "SELECT") -->
+                            <span x-show="c.id === selectedId" class="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-[12px] leading-none" style="background:#1A1A1A;" aria-hidden="true">✓</span>
                         </button>
                     </template>
                 </div>
                 <div class="shrink-0 flex flex-col sm:flex-row items-center gap-3">
-                    <p x-show="previewMedia === 'image'" class="text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Tap to zoom · swipe to switch</span></p>
+                    <p x-show="previewMedia === 'image'" class="text-[12px] lg:text-[12px] uppercase tracking-widest text-zinc-600"><span class="hidden sm:inline">Double-click, scroll or + / − to zoom · drag to pan · ← → to switch</span><span class="sm:hidden">Pinch or double-tap to zoom · swipe to switch</span></p>
                     <template x-if="previewCandidate">
                         <div>
                             <button x-show="previewCandidate?.id !== selectedId" @click="selectFromPreview()" class="btn-black px-6 py-2.5">Select this design</button>
