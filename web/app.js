@@ -242,6 +242,8 @@ function p3App() {
     accountPanelPos: { top: 64, right: 24 },   // the account menu opens right under the header's account button
 
     // ── studio: compose ──────────────────────────────────────────────
+    // A phone-width screen (below Tailwind's sm, 640 px): the Design screen's lighter phone layout (Option 3, 13 Nov 2026)
+    narrow: (() => { try { return window.matchMedia('(max-width: 639px)').matches; } catch { return false; } })(),
     userInput: '', uploadedFile: null, uploadedPreview: null, rightsConfirmed: false,
     composeError: '', submitting: false,
     composeRefusal: '',                // the prompt check stopped the request: what can't be made and how to change it (P5)
@@ -319,6 +321,7 @@ function p3App() {
 
     // ── lifecycle ─────────────────────────────────────────────────────
     async init() {
+      try { window.matchMedia('(max-width: 639px)').addEventListener('change', E => { this.narrow = E.matches; }); } catch {}
       // The landing page view at once, for the screen this address shows: an old #faq link is the FAQ page at its own
       // address, #account My Account (shown below: the same screen again, not counted twice). A sign-in's return
       // (#auth=… from Google, Apple or an email link; #token=… a sign-in link) is no screen of its own: its page view is
@@ -1975,6 +1978,7 @@ function p3App() {
     },
     get composerPlaceholder() {
       if (!this.design) return this.uploadedFile ? 'Describe what to make from this image… (optional)' : 'Describe your ' + this.newNoun + (this.touchOnly ? '…' : '… or paste an image (Ctrl+V)');
+      if (this.narrow) return this.canActOnSelection ? 'Refine option ' + this.optionNumber(this.selectedCandidate) + '…' : 'Select a design above to refine it…';
       return this.canActOnSelection ? 'Describe how to refine the selected design…' : 'Select one of the designs above to refine it…';
     },
     get canSend() {
@@ -2119,6 +2123,11 @@ function p3App() {
       const b = this.viewBatch, n = b?.desired_count || 4, ready = this.readyCount(b), refine = b?.kind === 'refine';
       if (ready < n) return `${ready} of ${n} ${refine ? 'refinements' : 'designs'} ready — select your favorite`;
       return refine ? 'Here are four refinements — select your favorite' : 'Here are your four designs — select your favorite';
+    },
+    // Phones: one short line (Option 3, 13 Nov 2026)
+    get resultsHeadingShort() {
+      const b = this.viewBatch, n = b?.desired_count || 4, ready = this.readyCount(b);
+      return ready < n ? `${ready} of ${n} ready — pick your favorite` : 'Pick your favorite';
     },
     partialText(b) {
       const f = this.finishingCount(b), x = b ? b.candidates.filter(c => c.status === 'failed').length : 0;
