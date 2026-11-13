@@ -2960,6 +2960,8 @@ function p3App() {
       if (!d) return;
       for (const k of CUSTOMER_FIELDS) if (typeof d.customer?.[k] === 'string') c.customer[k] = d.customer[k];
       for (const k of ADDRESS_FIELDS) if (typeof d.address?.[k] === 'string' && d.address[k]) c.address[k] = d.address[k];
+      // a draft addressed to a country no longer offered (55 countries since 13 Nov 2026): the customer chooses again
+      if (this.coCountries.length && !this.coCountries.some(x => x.code === c.address.country)) c.address.country = '';
       c.note = typeof d.note === 'string' ? d.note : ''; c.recipientEdited = !!d.recipientEdited;
       if ((this.checkout?.shipping_options || []).some(s => s.id === d.shipping_method)) c.shipping_method = d.shipping_method;
     },
