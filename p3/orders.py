@@ -620,6 +620,7 @@ class OrderService:
             Out["client_request_id"] = O["client_request_id"]
             # who marked it Test and why (Admin only; the customer sees nothing of it — 2026-10-16)
             Out["test_marked"] = {"at": O["test_marked_at"], "by": O.get("test_marked_by"), "reason": O.get("test_reason")} if O.get("test_marked_at") else None
+            Out["deleted"] = _DeletedMark(O)               # archived by an Admin (AJW-51): who, when, why; None while live
             for J, L in zip(Out["lines"], Lines):          # the 3D result and version the line is pinned to (Admin only)
                 J["pinned_three_d_id"], J["pinned_mesh_id"] = L.get("three_d_id"), L.get("mesh_id")
         return Out
@@ -629,7 +630,7 @@ class OrderService:
         page and of the email's View Your Order button, B7). Another account's order and an unknown one give the same
         answer, so an Order ID reveals nothing."""
         M = _OrderRefPattern.fullmatch((OrderId or "").strip().upper())
-        O = self.Ctx.Db.One("SELECT * FROM orders WHERE (id = ? OR order_no = ?) AND owner_account_id = ?",
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE (id = ? OR order_no = ?) AND owner_account_id = ? AND deleted_at IS NULL",
                             (OrderId, int(M.group(1)) if M else -1, Who.AccountId))
         if O is None:
             raise HttpError(404, "order_not_found", "Order not found.")
@@ -637,7 +638,7 @@ class OrderService:
 
     def List(self, Who: Principal) -> list[dict]:
         return [self._ForCustomer(O) for O in
-                self.Ctx.Db.All("SELECT * FROM orders WHERE owner_account_id = ? ORDER BY created_at DESC LIMIT 50", (Who.AccountId,))]
+                self.Ctx.Db.All("SELECT * FROM orders WHERE owner_account_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 50", (Who.AccountId,))]
 
     def _ForCustomer(self, O: dict) -> dict:
         """An order as its customer sees it in My Account: the order, its statuses with their dates (never the Admin's
@@ -671,7 +672,7 @@ class OrderService:
         (amount, validity), their decision and the order it became, the status changes. Internal notes, staff emails,
         the quote link and the weight behind the price stay in the Admin."""
         Out = []
-        for R in self.Ctx.Db.All("SELECT * FROM quote_requests WHERE owner_account_id = ? ORDER BY created_at DESC LIMIT 50", (Who.AccountId,)):
+        for R in self.Ctx.Db.All("SELECT * FROM quote_requests WHERE owner_account_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 50", (Who.AccountId,)):
             J = self.QuoteRequestJson(R)
             History = []
             for E in self.Ctx.Db.All("SELECT kind, data_json, created_at FROM quote_events WHERE request_id = ? "
@@ -801,6 +802,7 @@ class OrderService:
                 if Offer else None,
                 "decided_at": R.get("decided_at"), "decision_note": R.get("decision_note"), "order_id": R.get("order_id"),
                 "order_ref": OrderRef(Order["order_no"]) if Order else None,
+                **({"deleted": _DeletedMark(R)} if R.get("deleted_at") else {}),
                 # an open request whose quote can no longer be approved (valid_until is a UTC date)
                 "offer_expired": bool(Offer and Offer.get("valid_until") and R["status"] in QuoteOpen
                                       and Offer["valid_until"] < datetime.now(timezone.utc).date().isoformat())}
@@ -1054,6 +1056,7 @@ class OrderService:
         """Link one finished result to a line as its print file — the Admin's explicit choice when several different
         results exist (I-35). Never replaces a line's existing link: a different file for a linked line is a revised
         version (Use another version / Upload revised STL), and a line in Production changes only through a revision."""
+        self._RequireLiveOrder(OrderId)
         O = self.AdminGet(OrderId)
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
@@ -1085,6 +1088,7 @@ class OrderService:
         (arithmetic, no Hi3D call) when the matching result does not exist yet; never start a paid
         Hi3D request from here — a design without a model is generated on its session page. The line is pinned to the
         result (and its 3D version) from here on."""
+        self._RequireLiveOrder(OrderId)
         O = self.AdminGet(OrderId)
         L = next((X for X in O["lines"] if X["id"] == LineId), None)
         if L is None:
@@ -1210,11 +1214,12 @@ class OrderService:
 
     @staticmethod
     def _AdminWhere(Status: str | None, Payment: str | None, Query: str | None, Product: str | None,
-                    OpenOnly: bool = False, Ids: list[str] | None = None) -> tuple[str, list]:
+                    OpenOnly: bool = False, Ids: list[str] | None = None, Deleted: bool = False) -> tuple[str, list]:
         """The Admin's order filters in SQL: status, payment, product, still open, a set of ids (the Fulfillment
         filter), and the search box — Order ID, customer name or email, promo code, a line's design name, Ring /
         Charm ID or design id."""
         Where, Params = [], []
+        Where.append("o.deleted_at IS NOT NULL" if Deleted else "o.deleted_at IS NULL")    # deleted ones only on request (AJW-51)
         if Ids is not None:
             Where.append("o.id IN (" + ",".join("?" * len(Ids)) + ")" if Ids else "0")
             Params += list(Ids)
@@ -1239,9 +1244,10 @@ class OrderService:
         return (" WHERE " + " AND ".join(Where)) if Where else "", Params
 
     def AdminList(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None, Limit: int | None = 50,
-                  Product: str | None = None, Offset: int = 0, OpenOnly: bool = False, Ids: list[str] | None = None) -> list[dict]:
-        """One page of orders, newest first (Limit None: every match)."""
-        Where, Params = self._AdminWhere(Status, Payment, Query, Product, OpenOnly, Ids)
+                  Product: str | None = None, Offset: int = 0, OpenOnly: bool = False, Ids: list[str] | None = None,
+                  Deleted: bool = False) -> list[dict]:
+        """One page of orders, newest first (Limit None: every match). Deleted ones only with Deleted=True."""
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product, OpenOnly, Ids, Deleted)
         Page = " LIMIT ? OFFSET ?" if Limit is not None else ""
         Rows = self.Ctx.Db.All("SELECT o.* FROM orders o" + Where + " ORDER BY o.created_at DESC" + Page,
                                (*Params, *((Limit, max(0, Offset)) if Limit is not None else ())))
@@ -1258,8 +1264,8 @@ class OrderService:
         return Out
 
     def AdminCount(self, Status: str | None = None, Payment: str | None = None, Query: str | None = None,
-                   Product: str | None = None, Ids: list[str] | None = None) -> int:
-        Where, Params = self._AdminWhere(Status, Payment, Query, Product, Ids=Ids)
+                   Product: str | None = None, Ids: list[str] | None = None, Deleted: bool = False) -> int:
+        Where, Params = self._AdminWhere(Status, Payment, Query, Product, Ids=Ids, Deleted=Deleted)
         return self.Ctx.Db.One("SELECT COUNT(*) AS n FROM orders o" + Where, tuple(Params))["n"]
 
     def AdminGet(self, OrderId: str) -> dict:
@@ -1312,7 +1318,7 @@ class OrderService:
         The customer is the account or the e-mail address. A warning for the Admin, never a block by itself and never a
         cancellation: a second piece can be intended. The same saved design (customization) is said as such."""
         Email = (json.loads(O.get("customer_json") or "{}").get("email") or "").strip().lower()
-        Others = self.Ctx.Db.All("SELECT id, order_no, status, created_at FROM orders WHERE id <> ? AND status <> 'cancelled' AND "
+        Others = self.Ctx.Db.All("SELECT id, order_no, status, created_at FROM orders WHERE id <> ? AND status <> 'cancelled' AND deleted_at IS NULL AND "
                                  "((owner_account_id IS NOT NULL AND owner_account_id = ?) OR (? <> '' AND lower(trim(json_extract(customer_json, '$.email'))) = ?)) "
                                  "ORDER BY order_no", (O["id"], O.get("owner_account_id"), Email, Email))
         if not Others:
@@ -1361,6 +1367,7 @@ class OrderService:
         (Fulfillment classifies it once, at the hand-over); only an unpaid order. Since R-47 (2026-10-26) that includes a
         QA order placed from a customer account, not only one of an internal customer (P3_TEST_ORDER_DOMAINS). A Test
         order is kept out of the figures and Fulfillment's milestones never e-mail its customer."""
+        self._RequireLiveOrder(OrderId)
         Reason = " ".join(str(Reason or "").split())[:300]
         if len(Reason) < 5:
             raise HttpError(400, "reason_required", "Say why the order is " + ("marked Test" if Test else "no longer Test") + " (kept in its history).")
@@ -1387,6 +1394,7 @@ class OrderService:
         """Production and every later status need each line's 3D result for the ordered size and material to be
         complete (measured and not flagged, or a flagged one accepted by the Admin). Force with a note records an
         exception (a piece made outside the pipeline) instead of letting a flagged or missing result slip through."""
+        self._RequireLiveOrder(OrderId)
         O = self.AdminGet(OrderId)
         if Status not in StatusOrder + ["cancelled"]:
             raise HttpError(400, "invalid_status", "Unknown order status.")
@@ -1420,6 +1428,7 @@ class OrderService:
     def SetPayment(self, OrderId: str, Status: str, By: str, Note: str = "", Ref: str | None = None) -> dict:
         """Record a payment outcome by hand (bank transfer, phone payment …). It is logged as a manual
         entry with who did it and why; a connected provider will write the same fields itself."""
+        self._RequireLiveOrder(OrderId)
         O = self.AdminGet(OrderId)
         if Status not in Payments.Statuses:
             raise HttpError(400, "invalid_payment_status", "Unknown payment status.")
@@ -1437,6 +1446,7 @@ class OrderService:
     def AddNote(self, OrderId: str, Note: str, By: str) -> dict:
         """A note joins the order's history and never replaces an earlier one: the note the order was created with
         ("From quote Q-5001 …") stays in orders.notes, every Admin note is its own event with its author and time."""
+        self._RequireLiveOrder(OrderId)
         O = self.AdminGet(OrderId)
         Note = (Note or "").strip()[:1000]
         if not Note:
@@ -1462,10 +1472,10 @@ class OrderService:
         return sorted(Out, key=lambda N: (N["at"] or "", N["kind"] != "created"))
 
     @staticmethod
-    def _QuoteWhere(Status: str | None, Query: str | None) -> tuple[str, list]:
+    def _QuoteWhere(Status: str | None, Query: str | None, Deleted: bool = False) -> tuple[str, list]:
         """The quote inbox's filters in SQL: status ("open": new, quoted or answered) and the search box — Quote ID,
         customer name or email, design name, Ring / Charm ID, the Order ID it became."""
-        Where, Params = [], []
+        Where, Params = ["q.deleted_at IS NOT NULL" if Deleted else "q.deleted_at IS NULL"], []    # AJW-51
         if Status == "open":
             Where.append("q.status IN (" + ",".join("?" * len(QuoteOpen)) + ")")
             Params += list(QuoteOpen)
@@ -1481,22 +1491,136 @@ class OrderService:
         return (" WHERE " + " AND ".join(Where)) if Where else "", Params
 
     def AdminQuoteRequests(self, Status: str | None = None, Query: str | None = None, Limit: int | None = 50,
-                           Offset: int = 0) -> list[dict]:
-        """One page of quote requests, newest first (Limit None: every match)."""
-        Where, Params = self._QuoteWhere(Status, Query)
+                           Offset: int = 0, Deleted: bool = False) -> list[dict]:
+        """One page of quote requests, newest first (Limit None: every match). Deleted ones only with Deleted=True."""
+        Where, Params = self._QuoteWhere(Status, Query, Deleted)
         Page = " LIMIT ? OFFSET ?" if Limit is not None else ""
         Rows = self.Ctx.Db.All("SELECT q.* FROM quote_requests q" + Where + " ORDER BY q.created_at DESC" + Page,
                                (*Params, *((Limit, max(0, Offset)) if Limit is not None else ())))
         return [self.QuoteRequestJson(R) for R in Rows]
 
-    def AdminQuoteCount(self, Status: str | None = None, Query: str | None = None) -> int:
-        Where, Params = self._QuoteWhere(Status, Query)
+    def AdminQuoteCount(self, Status: str | None = None, Query: str | None = None, Deleted: bool = False) -> int:
+        Where, Params = self._QuoteWhere(Status, Query, Deleted)
         return self.Ctx.Db.One("SELECT COUNT(*) AS n FROM quote_requests q" + Where, tuple(Params))["n"]
 
     def QuoteCounts(self) -> dict[str, int]:
         """Quote requests per status, every status present (the inbox filter and its badge: "new" awaits a reply)."""
-        Counts = {R["status"]: R["n"] for R in self.Ctx.Db.All("SELECT status, COUNT(*) AS n FROM quote_requests GROUP BY status")}
+        Counts = {R["status"]: R["n"] for R in self.Ctx.Db.All("SELECT status, COUNT(*) AS n FROM quote_requests WHERE deleted_at IS NULL GROUP BY status")}
         return {S: Counts.get(S, 0) for S in QuoteStatuses}
+
+    # ── delete / restore (AJW-51): an archive, never an erase ────────────────────────────────────────────────
+    def _FulfillmentHold(self, Conn, Kind: str, Id: str) -> str | None:
+        """Why Fulfillment forbids the deletion (None: nothing of it is there). The records Fulfillment holds for an enrolled
+        order or request are not ours to hide: it is released or cancelled there first."""
+        Have = {R[0] for R in Conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "fulfillment_enrollments" not in Have:
+            return None
+        if Conn.execute("SELECT 1 FROM fulfillment_enrollments WHERE entity_type = ? AND entity_id = ? AND state = 'enrolled'", (Kind, Id)).fetchone():
+            return "it is enrolled in Fulfillment: release it there first"
+        if Kind == "order" and "fulfillment_line_production" in Have \
+                and Conn.execute("SELECT 1 FROM fulfillment_line_production WHERE order_id = ?", (Id,)).fetchone():
+            return "a line of it was sent to Production"
+        return None
+
+    def _RequireLiveOrder(self, OrderId: str) -> None:
+        """An archived order is read-only until it is restored (AJW-51)."""
+        O = self.Ctx.Db.One("SELECT order_no, deleted_at FROM orders WHERE id = ? OR order_no = ?", (OrderId, _OrderNo(OrderId)))
+        if O and O["deleted_at"]:
+            raise HttpError(409, "order_deleted", f"{OrderRef(O['order_no'])} is deleted: restore it to change it.")
+
+    @staticmethod
+    def _DeleteReason(Reason) -> str:
+        Reason = " ".join(str(Reason or "").split())[:300]
+        if len(Reason) < 5:
+            raise HttpError(400, "reason_required", "Say why it is deleted (kept in the Admin audit).")
+        return Reason
+
+    def DeleteOrder(self, OrderId: str, By: str, ConfirmRef: str, Reason: str) -> dict:
+        """Archive an order: it leaves the lists, the figures, the customer's My Account and Fulfillment's view; its rows, lines,
+        events and the quote it came from stay as they were, so Restore is exact. Done in one transaction with its history
+        entry and the audit entry; ConfirmRef must be the order's own Order ID (what the Admin's dialog showed)."""
+        Reason = self._DeleteReason(Reason)
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? OR order_no = ?", (OrderId, _OrderNo(OrderId)))
+        if O is None:
+            raise HttpError(404, "order_not_found", "Order not found.")
+        Ref = OrderRef(O["order_no"])
+        if (ConfirmRef or "").strip().upper() != Ref:
+            raise HttpError(400, "confirmation_mismatch", f"The confirmation does not name this order ({Ref}): nothing was deleted.")
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT payment_status, deleted_at FROM orders WHERE id = ?", (O["id"],)).fetchone()
+            if Cur is None or Cur["deleted_at"]:
+                raise HttpError(409, "already_deleted", f"{Ref} is already deleted (or was just deleted): reload the page.")
+            if Cur["payment_status"] == "paid":
+                raise HttpError(409, "order_paid", f"{Ref} is paid and cannot be deleted: record the refund or the cancellation instead.")
+            Hold = self._FulfillmentHold(Conn, "order", O["id"])
+            if Hold:
+                raise HttpError(409, "fulfillment_hold", f"{Ref} cannot be deleted: {Hold}.")
+            if Conn.execute("UPDATE orders SET deleted_at = ?, deleted_by = ?, delete_reason = ? WHERE id = ? AND deleted_at IS NULL",
+                            (T, By, Reason, O["id"])).rowcount != 1:
+                raise HttpError(409, "already_deleted", f"{Ref} was just deleted: reload the page.")
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (O["id"], "deleted", Dumps({"reason": Reason}), By, T))
+            Conn.execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)",
+                         (By, f"delete order {Ref} ({O['id']}): {Reason}"[:300], T))
+        return self.AdminGet(O["id"])
+
+    def RestoreOrder(self, OrderId: str, By: str) -> dict:
+        O = self.Ctx.Db.One("SELECT * FROM orders WHERE id = ? OR order_no = ?", (OrderId, _OrderNo(OrderId)))
+        if O is None:
+            raise HttpError(404, "order_not_found", "Order not found.")
+        Ref, T = OrderRef(O["order_no"]), Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            if Conn.execute("UPDATE orders SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                            (O["id"],)).rowcount != 1:
+                raise HttpError(409, "not_deleted", f"{Ref} is not deleted.")
+            Conn.execute("INSERT INTO order_events (order_id, kind, data_json, by, created_at) VALUES (?,?,?,?,?)",
+                         (O["id"], "restored", Dumps({"was_deleted_at": O["deleted_at"], "was_deleted_by": O["deleted_by"]}), By, T))
+            Conn.execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)", (By, f"restore order {Ref} ({O['id']})"[:300], T))
+        return self.AdminGet(O["id"])
+
+    def DeleteQuote(self, RequestId: str, By: str, ConfirmRef: str, Reason: str) -> dict:
+        """Archive a quote request (see DeleteOrder). Its emailed link stops working. A quote whose order is still live is kept:
+        the order is deleted (or the quote left) first."""
+        Reason = self._DeleteReason(Reason)
+        R = self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ? OR request_no = ?", (RequestId, _QuoteNoOf(RequestId)))
+        if R is None:
+            raise HttpError(404, "request_not_found", "Quote request not found.")
+        Ref = QuoteRef(R["request_no"])
+        if (ConfirmRef or "").strip().upper() != Ref:
+            raise HttpError(400, "confirmation_mismatch", f"The confirmation does not name this quote request ({Ref}): nothing was deleted.")
+        T = Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            Cur = Conn.execute("SELECT deleted_at, order_id FROM quote_requests WHERE id = ?", (R["id"],)).fetchone()
+            if Cur is None or Cur["deleted_at"]:
+                raise HttpError(409, "already_deleted", f"{Ref} is already deleted (or was just deleted): reload the page.")
+            if Cur["order_id"]:
+                Live = Conn.execute("SELECT order_no FROM orders WHERE id = ? AND deleted_at IS NULL", (Cur["order_id"],)).fetchone()
+                if Live:
+                    raise HttpError(409, "quote_has_order", f"{Ref} became order {OrderRef(Live['order_no'])}: delete that order first, or keep both.")
+            Hold = self._FulfillmentHold(Conn, "quote_request", R["id"])
+            if Hold:
+                raise HttpError(409, "fulfillment_hold", f"{Ref} cannot be deleted: {Hold}.")
+            if Conn.execute("UPDATE quote_requests SET deleted_at = ?, deleted_by = ?, delete_reason = ? WHERE id = ? AND deleted_at IS NULL",
+                            (T, By, Reason, R["id"])).rowcount != 1:
+                raise HttpError(409, "already_deleted", f"{Ref} was just deleted: reload the page.")
+            QuoteEvent(Conn, R["id"], "deleted", {"reason": Reason}, By)
+            Conn.execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)",
+                         (By, f"delete quote request {Ref} ({R['id']}): {Reason}"[:300], T))
+        return self.QuoteRequestJson(self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (R["id"],)))
+
+    def RestoreQuote(self, RequestId: str, By: str) -> dict:
+        R = self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ? OR request_no = ?", (RequestId, _QuoteNoOf(RequestId)))
+        if R is None:
+            raise HttpError(404, "request_not_found", "Quote request not found.")
+        Ref, T = QuoteRef(R["request_no"]), Now()
+        with self.Ctx.Db.Transaction() as Conn:
+            if Conn.execute("UPDATE quote_requests SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                            (R["id"],)).rowcount != 1:
+                raise HttpError(409, "not_deleted", f"{Ref} is not deleted.")
+            QuoteEvent(Conn, R["id"], "restored", {"was_deleted_at": R["deleted_at"], "was_deleted_by": R["deleted_by"]}, By)
+            Conn.execute("INSERT INTO admin_audit (admin, action, created_at) VALUES (?,?,?)", (By, f"restore quote request {Ref} ({R['id']})"[:300], T))
+        return self.QuoteRequestJson(self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (R["id"],)))
 
     def SetQuoteStatus(self, RequestId: str, Status: str, By: str = "admin") -> dict:
         """The Admin's own status for a request (recorded in its history). An approved quote became an order: it is
@@ -1506,6 +1630,8 @@ class OrderService:
         R = self.Ctx.Db.One("SELECT * FROM quote_requests WHERE id = ?", (RequestId,))
         if R is None:
             raise HttpError(404, "request_not_found", "Quote request not found.")
+        if R.get("deleted_at"):
+            raise HttpError(409, "quote_deleted", f"{QuoteRef(R['request_no'])} is deleted: restore it to change it.")
         if R["status"] == "approved":
             raise HttpError(409, "quote_approved", "This quote was approved and became an order: change the order instead.")
         if R["status"] != Status:
@@ -1606,7 +1732,7 @@ class OrderService:
         Since (ISO) limits the orders to a time range; None = all time."""
         Mock = Sessions.MockDesignIds(self.Ctx) if ExcludeMock else set()
         Orders, Tests = [], 0
-        for O in self.Ctx.Db.All("SELECT * FROM orders" + (" WHERE created_at >= ?" if Since else "") + " ORDER BY created_at DESC",
+        for O in self.Ctx.Db.All("SELECT * FROM orders WHERE deleted_at IS NULL" + (" AND created_at >= ?" if Since else "") + " ORDER BY created_at DESC",
                                  (Since,) if Since else ()):
             Lines = self._Lines(O["id"])
             if ExcludeMock and Lines and all(L["design_id"] in Mock for L in Lines):
@@ -1621,7 +1747,7 @@ class OrderService:
                 "revenue": round(sum(O["total"] for O in Live if O["payment_status"] == "paid"), 2),
                 "reserved_value": round(sum(O["total"] for O in Live if O["payment_status"] != "paid"), 2),
                 "by_status": {S: sum(1 for O in Orders if O["status"] == S) for S in StatusOrder + ["cancelled"]},
-                "quote_requests_open": self.Ctx.Db.One("SELECT COUNT(*) AS n FROM quote_requests WHERE status = 'new'")["n"],
+                "quote_requests_open": self.Ctx.Db.One("SELECT COUNT(*) AS n FROM quote_requests WHERE status = 'new' AND deleted_at IS NULL")["n"],
                 "by_product": {P: sum(1 for O in Orders if P in {L.get("product_type") or Products.Ring for L in self._Lines(O["id"])})
                                for P in Products.All},
                 "latest": [self.ToJson(O, self._Lines(O["id"]), ForCustomer=False) for O in Orders[:5]]}
@@ -1771,6 +1897,16 @@ def CustomerView(J: dict, History: list[dict], PaidAt: str | None) -> dict:
             "progress": Progress,
             "payment_view": {"tone": PayView[0], "label": PayView[1], "text": PayView[2], "at": PayView[3]},
             "cancel_free": S == "new"}
+
+
+def _QuoteNoOf(Ref: str):
+    M = re.fullmatch(r"(?:Q-)?(\d+)", (Ref or "").strip().upper())
+    return int(M.group(1)) if M else -1
+
+
+def _DeletedMark(R: dict) -> dict | None:
+    """What the Admin sees of an archived order or quote request: who, when, why (None: it is live)."""
+    return {"at": R["deleted_at"], "by": R.get("deleted_by"), "reason": R.get("delete_reason")} if R.get("deleted_at") else None
 
 
 def _OrderNo(Ref: str):

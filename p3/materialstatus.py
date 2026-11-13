@@ -177,7 +177,7 @@ def Affected(Ctx, Product: str, MaterialId: str) -> dict:
     Bag = Db.One("SELECT COUNT(*) AS n, COUNT(DISTINCT owner_account_id) AS bags FROM bag_lines "
                  "WHERE material_id = ? AND COALESCE(product_type, 'ring') = ?", (MaterialId, Product))
     Open = Db.All("SELECT request_no, status, offer_json FROM quote_requests WHERE material_id = ? AND COALESCE(product_type, 'ring') = ? "
-                  "AND status IN ('new', 'quoted', 'answered') ORDER BY request_no", (MaterialId, Product))
+                  "AND status IN ('new', 'quoted', 'answered') AND deleted_at IS NULL ORDER BY request_no", (MaterialId, Product))
     return {"customizations": Saved, "bag_lines": Bag["n"], "bags": Bag["bags"],
             "open_quotes": [{"ref": f"Q-{R['request_no']}" if R["request_no"] else None, "status": R["status"],
                              "offer": bool(R["offer_json"])} for R in Open]}

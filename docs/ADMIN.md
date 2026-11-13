@@ -299,6 +299,32 @@ An order whose customer is at a domain reserved for tests (`example.com`, `*.tes
 
 **Marked Test by an Admin** (2026-10-16). An internal order — its customer at an internal domain, `P3_TEST_ORDER_DOMAINS` (default `xjet3d.com`) — is a real order until an Admin marks it: *Mark as test order…* on the order page, with a reason kept in the order history (`POST /api/admin/orders/{id}/test`). An internal address alone never makes an order Test. Possible only before the order is sent to Production and while it is unpaid; never for a customer's order. A marked order carries *Test order (marked)* on the Admin pages, is left out of the dashboard's figures, reaches Fulfillment as Test (so it may be shipped and delivered there), and Fulfillment's milestones never e-mail its customer. The confirmation e-mail at placement is sent before any marking, as for any internal order. The customer's own view shows nothing of the marking. *Unmark test order…* (with a reason) undoes it until the hand-over.
 
+### Deleting an order or a quote request (AJW-51)
+
+An Admin (any enabled Admin identity, or the Admin key) can **Delete order…** on an order page and **Delete quote request…** on a
+quote request page. It is an **archive, never an erase**: the row, its lines, history, STL links and Fulfillment records stay
+exactly as they were, three columns (`deleted_at`, `deleted_by`, `delete_reason`, on `orders` and `quote_requests`) mark it.
+
+- The dialog names the exact record (ORD-10017 / Q-5003) and asks for a reason (5+ characters). The server checks the Order /
+  Quote ID sent back as the confirmation (`confirm_ref`) against the row, so a stale or wrong page deletes nothing.
+- One transaction writes the flag, the record's history entry (`deleted`) and an `admin_audit` entry
+  (`delete order ORD-10017 (<id>): <reason>`, with the Admin and the time). The usual request audit line (`POST …/delete → 200`) is
+  written as well. A second click gets *409 already_deleted* and changes nothing; any refusal leaves the data untouched and shows
+  the reason.
+- **Refused** (409): a paid order (record the refund or cancellation instead); an order or request enrolled in Fulfillment, or an
+  order with a line sent to Production (release it there first); a quote request whose order is still live (delete the order first).
+- A deleted record leaves the Orders and Quote requests lists and their counts, the dashboard figures, the attention list, the
+  customer's My Account, the duplicate-order warning and (for a quote) the emailed link, which then says "not valid" and cannot be
+  approved or declined. Order and quote numbers are never reused. A deleted record is read-only (notes, status, payment, offers,
+  mails) until restored.
+- **Show deleted** (a checkbox beside each search) lists them; open one to see who deleted it, when and why, and **Restore**. Restore
+  clears the three columns and writes `restored` to the history and the audit; the record is back as it was.
+- API: `POST /api/admin/orders/{id}/delete|restore`, `POST /api/admin/quote-requests/{id}/delete|restore` (body of delete:
+  `{"confirm_ref": "ORD-10017", "reason": "…"}`); the lists take `?deleted=true`.
+- **Rollback of the release**: the new columns are additive and old code ignores them, but old code would show deleted records
+  again. Restore what should stay (or leave them): `UPDATE orders SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL
+  WHERE id = '…'` (same for `quote_requests`), after a backup of `var/pipeline3.db`.
+
 ### Production (Orders → Production) — with the Fulfillment integration on
 
 Behind `P3_FULFILLMENT_INTEGRATION` (`docs/FULFILLMENT.md`); without it nothing of this exists and orders keep the lifecycle above.

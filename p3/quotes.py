@@ -98,6 +98,13 @@ class QuoteDesk:
             raise HttpError(404, "request_not_found", "Quote request not found.")
         return R
 
+    def _Live(self, RequestId: str) -> dict:
+        """The request for a change: a deleted one is read-only until it is restored (AJW-51)."""
+        R = self._Row(RequestId)
+        if R.get("deleted_at"):
+            raise HttpError(409, "quote_deleted", f"{QuoteRef(R['request_no'])} is deleted: restore it to change it.")
+        return R
+
     def History(self, RequestId: str) -> list[dict]:
         return [{**E, "data": json.loads(E.pop("data_json") or "{}")}
                 for E in self.Ctx.Db.All("SELECT id, kind, data_json, by, created_at FROM quote_events WHERE request_id = ? "
@@ -230,7 +237,7 @@ class QuoteDesk:
 
     # ── the Admin's actions ──────────────────────────────────────────────
     def AddNote(self, RequestId: str, Note: str, By: str) -> dict:
-        R = self._Row(RequestId)
+        R = self._Live(RequestId)
         Note = (Note or "").strip()[:2000]
         if not Note:
             raise HttpError(400, "note_required", "Write the note first.")
@@ -242,7 +249,7 @@ class QuoteDesk:
         """An update for the customer while their quote takes longer than promised, or anything else they should know
         (R-48: proactive updates for exceptions): the Admin's own words, emailed and kept in the history. Never a price —
         the quote itself carries that."""
-        R = self._Row(RequestId)
+        R = self._Live(RequestId)
         if R["status"] not in QuoteOpen:
             raise HttpError(409, "quote_decided", "This quote request is already decided or closed.")
         Message = str(Message or "").strip()[:3000]
@@ -274,7 +281,7 @@ class QuoteDesk:
     def SendOffer(self, RequestId: str, Body: dict, By: str, Origin: str, SendMail=None) -> dict:
         """The Admin's quote: validated, kept as the request's current offer (a revised quote replaces the link of the
         one before), emailed to the customer with Approve and Decline, and written to the history."""
-        Db, R = self.Ctx.Db, self._Row(RequestId)
+        Db, R = self.Ctx.Db, self._Live(RequestId)
         if R["status"] not in QuoteOpen:
             raise HttpError(409, "quote_decided", "This quote request is already decided or closed.")
         Problem = QuoteOfferProblem(self.Ctx, R)
@@ -352,10 +359,13 @@ class QuoteDesk:
         H = _Hash(Token)
         R = self.Ctx.Db.One("SELECT * FROM quote_requests WHERE link_hash = ?", (H,))
         if R:
-            return R, "current"
+            return (None, "invalid") if R.get("deleted_at") else (R, "current")      # a deleted quote's link no longer works (AJW-51)
         E = self.Ctx.Db.One("SELECT request_id FROM quote_events WHERE kind = 'offer_sent' AND json_extract(data_json, '$.link_hash') = ?",
                             (H,))
-        return (self._Row(E["request_id"]), "superseded") if E else (None, "invalid")
+        if not E:
+            return None, "invalid"
+        Old = self._Row(E["request_id"])
+        return (None, "invalid") if Old.get("deleted_at") else (Old, "superseded")
 
     def Page(self, Token: str, Action: str = "", Problems: list | None = None, Form: dict | None = None) -> tuple[str, int]:
         R, State = self._ByToken(Token)

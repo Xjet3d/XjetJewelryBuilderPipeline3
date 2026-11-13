@@ -695,6 +695,17 @@ def _InstallTestOrders(Conn) -> None:
             Conn.execute(f"ALTER TABLE orders ADD COLUMN {Col}")
 
 
+def _InstallSoftDelete(Conn) -> None:
+    """An order or a quote request an Admin deleted (AJW-51): archived, never erased. The row and everything that refers
+    to it stay (so a restore is exact and nothing is orphaned); these columns hide it from lists, figures, the customer's
+    My Account and the quote link. Additive columns, old code ignores them (and would show the record again)."""
+    for Table in ("orders", "quote_requests"):
+        Have = _Columns(Conn, Table)
+        for Col in ("deleted_at TEXT", "deleted_by TEXT", "delete_reason TEXT"):
+            if Col.split()[0] not in Have:
+                Conn.execute(f"ALTER TABLE {Table} ADD COLUMN {Col}")
+
+
 def _InstallOrderTerms(Conn) -> None:
     """An order records the archived Terms version its customer accepted, with its hash (WP5 M6, 2026-11-02): an additive
     column, old code ignores it; older orders keep their label and no hash."""
@@ -947,6 +958,7 @@ class Database:
                     _InstallVersions(Conn)                # 3D versions, explicit sessions, pinned order lines
                     _InstallTestOrders(Conn)              # an order an Admin marked Test (2026-10-16)
                     _InstallSizeConfirmed(Conn)           # a confirmed ring size is remembered (2026-10-26)
+                    _InstallSoftDelete(Conn)              # an order or quote an Admin deleted: archived, restorable (AJW-51)
                     _InstallOrderTerms(Conn)              # an order's accepted Terms version and its hash (2026-11-02)
                     _InstallIlsPricing(Conn)              # an order in ₪: its VAT and how it was priced (B6, 2026-11-03)
                     _InstallPromoCustomer(Conn)           # a promo code for one customer's verified email (2026-11-08)

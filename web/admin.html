@@ -1688,6 +1688,7 @@
             <option value="">Fulfillment: any</option>
             <template x-for="f in (ordersMeta.fulfillment_filters || [])" :key="f.id"><option :value="f.id" x-text="f.label"></option></template>
           </select>
+          <label class="inline-flex items-center gap-1.5 text-zinc-600"><input type="checkbox" x-model="oDeleted" @change="loadOrders()"> Show deleted</label>
           <button type="submit" class="btn2 !py-1.5">Search</button>
           <button type="button" x-show="oq || oStatus || oPayment || oProduct || oFulfillment" class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="oq = ''; oStatus = ''; oPayment = ''; oProduct = ''; oFulfillment = ''; loadOrders()">Clear</button>
         </form>
@@ -1821,6 +1822,7 @@
             <option value="open" x-text="'Open — new, quoted, answered (' + quoteOpenCount + ')'"></option>
             <template x-for="s in quoteStatusList" :key="s"><option :value="s" x-text="quoteStatusLabel(s) + ' (' + (quoteCounts[s] || 0) + ')'"></option></template>
           </select>
+          <label class="inline-flex items-center gap-1.5 text-zinc-600"><input type="checkbox" x-model="qiDeleted" @change="loadQuoteInbox()"> Show deleted</label>
           <button type="submit" class="btn2 !py-1.5">Search</button>
           <button type="button" x-show="qiq || qiStatus" class="text-zinc-500 hover:text-black uppercase tracking-widest" @click="qiq = ''; qiStatus = ''; loadQuoteInbox()">Clear</button>
         </form>
@@ -1898,6 +1900,11 @@
               <span class="badge" :class="quoteStatusClass(qd.status)" x-text="quoteStatusLabel(qd.status)"></span>
             </div>
             <p class="text-sm text-zinc-600" x-text="'Received ' + dateTime(qd.created_at)"></p>
+            <p x-show="qd.deleted" class="text-[13px] text-red-700" role="status" x-text="'Deleted by ' + (qd.deleted?.by || 'an Admin') + ', ' + dateTime(qd.deleted?.at) + ' — ' + (qd.deleted?.reason || '') + '. Hidden from the inbox, its quote link is off; read-only until restored.'"></p>
+            <p class="text-[12px]">
+              <button x-show="qd && !qd.deleted" class="underline text-red-700 hover:text-black" :disabled="qdBusy" @click="deleteQuote()">Delete quote request…</button>
+              <button x-show="qd && qd.deleted" class="underline text-zinc-700 hover:text-black" :disabled="qdBusy" @click="restoreQuote()">Restore quote request</button>
+            </p>
             <p x-show="qd.due && qd.can_send" class="text-[12px] text-zinc-600 flex flex-wrap items-center gap-2" title="The promise to the customer: reviewed by a person within one business day, the quote within three (business days Sunday to Thursday)">
               <span x-text="'Review by ' + qd.due?.review_by + (qd.due?.reviewed ? ' · reviewed' : '')"></span>
               <span x-show="qd.due?.review_overdue" class="badge bg-amber-100 text-amber-800">review overdue</span>
@@ -2164,6 +2171,11 @@
             </div>
             <p class="text-sm text-zinc-600"><span x-text="dateTime(od.created_at)"></span> · <a class="font-medium hover:underline" :href="'#/users/' + encodeURIComponent(od.owner_account_id)" x-text="(od.customer.first_name + ' ' + od.customer.last_name).trim()"></a> · <span x-text="od.customer.email"></span> · <span x-text="od.customer.phone"></span></p>
             <p x-show="od.quote" class="text-[13px] text-zinc-600">From quote request <a class="underline font-mono" :href="'#/orders/quote/' + encodeURIComponent(od.quote?.id || '')" x-text="od.quote?.ref"></a></p>
+            <p x-show="od.deleted" class="text-[13px] text-red-700" role="status" x-text="'Deleted by ' + (od.deleted?.by || 'an Admin') + ', ' + dateTime(od.deleted?.at) + ' — ' + (od.deleted?.reason || '') + '. Hidden from the lists, the figures and the customer; read-only until restored.'"></p>
+            <p class="text-[12px]">
+              <button x-show="od && !od.deleted" class="underline text-red-700 hover:text-black" :disabled="odBusy" @click="deleteOrder()">Delete order…</button>
+              <button x-show="od && od.deleted" class="underline text-zinc-700 hover:text-black" :disabled="odBusy" @click="restoreOrder()">Restore order</button>
+            </p>
           </div>
           <p class="text-2xl font-semibold tabular-nums" x-text="money(od.total)"></p>
         </div>

@@ -797,7 +797,8 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
     # ── orders (operational), promo codes, quote requests ─────────────────
     @App_.get("/api/admin/orders")
     async def AdminOrders(status: str | None = None, payment: str | None = None, q: str | None = None, product: str | None = None,
-                          fulfillment: str | None = None, offset: int = 0, limit: int = 50, authorization: str | None = Header(None)):
+                          fulfillment: str | None = None, offset: int = 0, limit: int = 50, deleted: bool = False,
+                          authorization: str | None = Header(None)):
         """One page of orders (search and filters in SQL, `total` = every match), and the quote requests per status. With the
         Fulfillment integration on, each row carries its Fulfillment state and `fulfillment=` filters by it (docs/FULFILLMENT.md)."""
         Admin(authorization)
@@ -805,10 +806,10 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         Bridge = getattr(App_.state, "Bridge", None)
         Live = Bridge is not None and Bridge.Enabled
         Ids = Bridge.FilterIds(fulfillment) if Live and fulfillment else None
-        Rows = Orders.AdminList(status or None, payment or None, q or None, Limit, Product=product or None, Offset=Offset, Ids=Ids)
+        Rows = Orders.AdminList(status or None, payment or None, q or None, Limit, Product=product or None, Offset=Offset, Ids=Ids, Deleted=deleted)
         if Live:
             Bridge.Decorate(Rows, "order")
-        return {"orders": Rows, "total": Orders.AdminCount(status or None, payment or None, q or None, Product=product or None, Ids=Ids),
+        return {"orders": Rows, "total": Orders.AdminCount(status or None, payment or None, q or None, Product=product or None, Ids=Ids, Deleted=deleted),
                 "offset": Offset, "limit": Limit,
                 "statuses": [{"id": S, "label": OrdersModule.StatusLabels[S]} for S in OrdersModule.StatusOrder + ["cancelled"]],
                 "payment_statuses": [{"id": S, "label": PaymentsModule.Labels[S]} for S in PaymentsModule.Statuses],
@@ -816,16 +817,16 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
                 "quote_counts": Orders.QuoteCounts()}
 
     @App_.get("/api/admin/quote-requests")
-    async def AdminQuoteInbox(status: str | None = None, q: str | None = None, offset: int = 0, limit: int = 50,
+    async def AdminQuoteInbox(status: str | None = None, q: str | None = None, offset: int = 0, limit: int = 50, deleted: bool = False,
                               authorization: str | None = Header(None)):
         """The quote request inbox: one page (search and status in SQL, `total` = every match) and the count per status."""
         Admin(authorization)
         Limit, Offset = max(1, min(int(limit), 200)), max(0, int(offset))
-        Rows = Orders.AdminQuoteRequests(status or None, q or None, Limit, Offset)
+        Rows = Orders.AdminQuoteRequests(status or None, q or None, Limit, Offset, Deleted=deleted)
         Bridge = getattr(App_.state, "Bridge", None)
         if Bridge is not None and Bridge.Enabled:
             Bridge.Decorate(Rows, "quote_request")
-        return {"quote_requests": Rows, "total": Orders.AdminQuoteCount(status or None, q or None), "offset": Offset, "limit": Limit,
+        return {"quote_requests": Rows, "total": Orders.AdminQuoteCount(status or None, q or None, Deleted=deleted), "offset": Offset, "limit": Limit,
                 "counts": Orders.QuoteCounts()}
 
     @App_.get("/api/admin/orders/{OrderId}")
@@ -839,6 +840,27 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
         the hand-over to Production, unpaid only."""
         Who = Admin(authorization)
         return Orders.MarkTest(OrderId, bool(Body_.get("test")), Who.Id, str(Body_.get("reason") or ""))
+
+    # Delete = archive (AJW-51): the exact Order ID is sent back as the confirmation, with a reason; Restore undoes it
+    @App_.post("/api/admin/orders/{OrderId}/delete")
+    async def AdminOrderDelete(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.DeleteOrder(OrderId, Who.Id, str(Body_.get("confirm_ref") or ""), str(Body_.get("reason") or ""))
+
+    @App_.post("/api/admin/orders/{OrderId}/restore")
+    async def AdminOrderRestore(OrderId: str, authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.RestoreOrder(OrderId, Who.Id)
+
+    @App_.post("/api/admin/quote-requests/{RequestId}/delete")
+    async def AdminQuoteDelete(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.DeleteQuote(RequestId, Who.Id, str(Body_.get("confirm_ref") or ""), str(Body_.get("reason") or ""))
+
+    @App_.post("/api/admin/quote-requests/{RequestId}/restore")
+    async def AdminQuoteRestore(RequestId: str, authorization: str | None = Header(None)):
+        Who = Admin(authorization)
+        return Orders.RestoreQuote(RequestId, Who.Id)
 
     @App_.post("/api/admin/orders/{OrderId}/status")
     async def AdminOrderStatus(OrderId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):

@@ -234,7 +234,7 @@ function adminApp() {
     galleryItems: [], galleryMsg: '', gallerySort: 'position', galleryOpen: null, galleryUsage: {}, galleryLinkCopied: '',
     // Orders (operational) · quote requests (gold) · promo codes · settings sub-tabs
     orders: [], ordersMeta: { statuses: [], payment_statuses: [], fulfillment_filters: [] }, quoteRequests: [], ordersMsg: '', ordersLoading: false,
-    oq: '', oStatus: '', oPayment: '', oFulfillment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
+    oDeleted: false, qiDeleted: false, oq: '', oStatus: '', oPayment: '', oFulfillment: '', orderId: '', od: null, odError: '', odBusy: false, of: null,   // of: the order's Fulfillment state
     prodSel: {}, prodNote: '',                   // Send selected lines to Production: the lines ticked (eligible ones are ticked by default)
     // The Production page (#/orders/production): the lines sent, Fulfillment's side of each; one line's detail (#/orders/production/<line id>)
     pr: { rows: [], orders: [], total: 0, offset: 0, limit: 50, loading: false, msg: '', enabled: true, stages: [], materials: [], products: [], fulfillment_url: null, last_pull_at: null },
@@ -449,6 +449,7 @@ function adminApp() {
         if (this.oq.trim()) q.set('q', this.oq.trim());
         if (this.oProduct) q.set('product', this.oProduct);
         if (this.oFulfillment) q.set('fulfillment', this.oFulfillment);
+        if (this.oDeleted) q.set('deleted', 'true');
         const r = await this.api('GET', '/api/admin/orders?' + q);
         this.orders = r.orders; this.oTotal = r.total; this.oOffset = r.offset; this.quoteCounts = r.quote_counts || {};
         this.ordersMeta = { statuses: r.statuses, payment_statuses: r.payment_statuses, fulfillment_filters: r.fulfillment_filters || [] };
@@ -577,6 +578,7 @@ function adminApp() {
         const q = new URLSearchParams({ offset: String(typeof offset === 'number' ? offset : 0), limit: String(this.qiLimit) });
         if (this.qiStatus) q.set('status', this.qiStatus);
         if (this.qiq.trim()) q.set('q', this.qiq.trim());
+        if (this.qiDeleted) q.set('deleted', 'true');
         const r = await this.api('GET', '/api/admin/quote-requests?' + q);
         this.quoteRequests = r.quote_requests; this.qiTotal = r.total; this.qiOffset = r.offset; this.quoteCounts = r.counts || {};
       } catch (e) { this.qiMsg = e.message; }
@@ -759,6 +761,42 @@ function adminApp() {
       this.odBusy = true; this.odError = '';
       try { await this.api('POST', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/test', { test: Test, reason: (yes.value || '').trim() }); await this.refreshOrderVerdicts(); this.notify(this.od.ref + (Test ? ' is a test order.' : ' is a normal order again.')); }
       catch (e) { this.odError = e.message; } finally { this.odBusy = false; }
+    },
+    // Delete = archive (AJW-51): the dialog names the exact record, a reason is required, the button is busy while the request runs
+    // (the server refuses a second one anyway), and the result or the server's reason is shown
+    async deleteOrder() {
+      if (!this.od || this.odBusy) return;
+      const ref = this.od.ref;
+      const yes = await this.ask({ title: 'Delete order ' + ref + '?', danger: true, confirmLabel: 'Delete ' + ref,
+        text: ref + ' (' + (this.od.customer.first_name + ' ' + this.od.customer.last_name).trim() + ', ' + this.money(this.od.total) + ') is archived: it leaves the Orders list, the figures and the customer’s My Account. Nothing is erased and it can be restored from “Show deleted”. Not possible for a paid order or one in Fulfillment.',
+        input: { label: 'Reason (kept in the Admin audit)', required: true } });
+      if (!yes) return;
+      this.odBusy = true; this.odError = '';
+      try { this.od = await this.api('POST', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/delete', { confirm_ref: ref, reason: (yes.value || '').trim() }); this.notify(ref + ' deleted.'); }
+      catch (e) { this.odError = 'Not deleted: ' + e.message; } finally { this.odBusy = false; }
+    },
+    async restoreOrder() {
+      if (!this.od || this.odBusy) return;
+      this.odBusy = true; this.odError = '';
+      try { this.od = await this.api('POST', '/api/admin/orders/' + encodeURIComponent(this.od.id) + '/restore'); this.notify(this.od.ref + ' restored.'); }
+      catch (e) { this.odError = 'Not restored: ' + e.message; } finally { this.odBusy = false; }
+    },
+    async deleteQuote() {
+      if (!this.qd || this.qdBusy) return;
+      const ref = this.qd.ref;
+      const yes = await this.ask({ title: 'Delete quote request ' + ref + '?', danger: true, confirmLabel: 'Delete ' + ref,
+        text: ref + ' (' + this.qd.title + ', ' + (this.qd.customer.email || '') + ') is archived: it leaves the inbox and the quote link emailed to the customer stops working. Nothing is erased and it can be restored from “Show deleted”. Not possible while its order exists.',
+        input: { label: 'Reason (kept in the Admin audit)', required: true } });
+      if (!yes) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/delete`, { confirm_ref: ref, reason: (yes.value || '').trim() }); await this.loadQuote(true); this.notify(ref + ' deleted.'); }
+      catch (e) { this.qdError = 'Not deleted: ' + e.message; } finally { this.qdBusy = false; }
+    },
+    async restoreQuote() {
+      if (!this.qd || this.qdBusy) return;
+      this.qdBusy = true; this.qdError = '';
+      try { this.qd = await this.api('POST', `/api/admin/quote-requests/${encodeURIComponent(this.qd.id)}/restore`); await this.loadQuote(true); this.notify(this.qd.ref + ' restored.'); }
+      catch (e) { this.qdError = 'Not restored: ' + e.message; } finally { this.qdBusy = false; }
     },
     // The order and each line's Send-to-Production verdict, reloaded together (the owner's request of 2026-10-16)
     async refreshOrderVerdicts() {
