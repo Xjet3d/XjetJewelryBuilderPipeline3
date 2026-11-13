@@ -5,12 +5,14 @@ and the final amount (p3/orders.py). The minimum and a fixed amount are in US do
 a customer paying in shekels reads them converted, VAT included."""
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 
 from p3.context import Context, HttpError
 from p3.db import Dumps, NewId, Now
 
+Logger = logging.getLogger("p3.promos")
 CodePattern = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,19}$")
 Kinds = ("percent", "fixed")
 
@@ -120,6 +122,18 @@ class PromoService:
                             (Id, V["code"], V["active"], V["kind"], V["value"], V["starts_at"], V["ends_at"], V["usage_limit"],
                              V["materials_json"], V["min_subtotal"], V["note"], V["customer_email"], By, T, T))
         return self.Get(Id)
+
+    def Delete(self, PromoId: str, By: str) -> dict:
+        """Delete a code for good (owner, 13 Nov 2026) — only one no order has used: a used code stays, so every order's
+        record of it stays whole (switch it off instead). Logged with who deleted it."""
+        P = self.Get(PromoId)
+        Used = self.Ctx.Db.One("SELECT COUNT(*) AS n FROM orders WHERE promo_code = ?", (P["code"],))["n"]
+        if P["usage_count"] or Used:
+            raise HttpError(409, "promo_in_use", f"The code {P['code']} has been used in an order, so it stays on record — "
+                                                 "deactivate it instead.")
+        self.Ctx.Db.Execute("DELETE FROM promo_codes WHERE id = ?", (PromoId,))
+        Logger.warning("Promo code %s (%s) deleted by %s", P["code"], PromoId, By)
+        return {"deleted": P["code"]}
 
     def SetActive(self, PromoId: str, Active: bool) -> dict:
         self.Get(PromoId)

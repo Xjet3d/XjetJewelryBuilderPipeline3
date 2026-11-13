@@ -906,6 +906,12 @@ def RegisterAdmin(App_: FastAPI, Ctx: Context, Page, Production, Prices, Gallery
             return Promos.SetActive(PromoId, bool(Body_["active"]))
         return Promos.Save(Body_, Who.Id, PromoId)
 
+    @App_.delete("/api/admin/promo-codes/{PromoId}")
+    async def AdminPromoDelete(PromoId: str, authorization: str | None = Header(None)):
+        """Delete a promo code no order has used (409 promo_in_use otherwise: deactivate it instead)."""
+        Who = Admin(authorization)
+        return Promos.Delete(PromoId, Who.Id)
+
     @App_.post("/api/admin/quote-requests/{RequestId}/status")
     async def AdminQuoteStatus(RequestId: str, Body_: dict = Body(...), authorization: str | None = Header(None)):
         Who = Admin(authorization)

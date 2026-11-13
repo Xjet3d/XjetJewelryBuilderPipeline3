@@ -2451,7 +2451,7 @@
         <p class="lbl">Promo codes (<span x-text="promos.length"></span>)</p>
         <button class="btn2 !py-1.5" @click="newPromo()">New promo code</button>
       </div>
-      <p class="text-[12px] text-zinc-500">Codes are validated on the server at checkout. Every order keeps a snapshot of the code, the original amount, the discount and the final amount, so later edits never change past orders.</p>
+      <p class="text-[12px] text-zinc-500">Codes are validated on the server at checkout. Every order keeps a snapshot of the code, the original amount, the discount and the final amount, so later edits never change past orders. A code no order has used can be deleted for good; a used one stays on record — deactivate it.</p>
       <template x-if="promoEdit">
         <div class="border border-zinc-200 bg-zinc-50 p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <div><label class="lbl block mb-1" for="pr-code">Code</label><input id="pr-code" class="inp font-mono uppercase" x-model="promoEdit.code" placeholder="LAUNCH10" :disabled="!!promoEdit.id"></div>
@@ -2493,6 +2493,7 @@
               <td class="text-right whitespace-nowrap space-x-3 text-xs">
                 <button class="underline" @click="editPromo(p)">Edit</button>
                 <button class="underline text-zinc-500" @click="setPromoActive(p, !p.active)" x-text="p.active ? 'Deactivate' : 'Activate'"></button>
+                <button x-show="!p.usage_count" class="underline text-red-700" @click="deletePromo(p)" :aria-label="'Delete promo code ' + p.code">Delete</button>
               </td>
             </tr>
           </template>
@@ -3061,28 +3062,28 @@
         <p class="lbl flex items-center gap-2">Promotion · charms
           <span class="badge" :class="{active: 'bg-emerald-100 text-emerald-800', scheduled: 'bg-amber-100 text-amber-800', ended: 'bg-zinc-100 text-zinc-600', off: 'bg-zinc-100 text-zinc-600'}[cprices?.promotion_state]"
                 x-text="{active: 'Active now', scheduled: 'Scheduled', ended: 'Ended', off: 'Off'}[cprices?.promotion_state]"></span></p>
-        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="promoEdit ? (promoEdit = null) : editPromotion()" x-text="promoEdit ? 'Cancel edit' : 'Edit'"></button>
+        <button class="underline text-xs uppercase tracking-widest text-zinc-500" @click="cpromoEdit ? (cpromoEdit = null) : editPromotion()" x-text="cpromoEdit ? 'Cancel edit' : 'Edit'"></button>
       </div>
-      <template x-if="!promoEdit"><div class="grid gap-3 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+      <template x-if="!cpromoEdit"><div class="grid gap-3 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
         <div><p class="text-[12px] text-zinc-500">Label customers read</p><p x-text="cprices?.promotion?.label"></p></div>
         <div><p class="text-[12px] text-zinc-500">Runs</p><p x-text="promoWhen(cprices?.promotion)"></p></div>
         <div><p class="text-[12px] text-zinc-500">Regular prices as reference prices</p>
           <p :class="cprices?.promotion?.reference_verified ? 'text-emerald-700' : 'text-amber-700'" x-text="cprices?.promotion?.reference_verified ? 'Verified — crossed-out prices and savings are shown' : 'Not verified — no crossed-out price or saving is shown'"></p>
           <p x-show="cprices?.promotion?.reference_note" class="text-[12px] text-zinc-500" x-text="cprices?.promotion?.reference_note"></p></div>
       </div></template>
-      <template x-if="promoEdit"><div class="space-y-3 text-sm">
-        <label class="inline-flex items-center gap-2 font-semibold"><input type="checkbox" x-model="promoEdit.enabled"> Promotion on</label>
+      <template x-if="cpromoEdit"><div class="space-y-3 text-sm">
+        <label class="inline-flex items-center gap-2 font-semibold"><input type="checkbox" x-model="cpromoEdit.enabled"> Promotion on</label>
         <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
-          <label class="block"><span class="text-[12px] text-zinc-500">Label customers read (beside the price)</span><input class="inp w-full" maxlength="40" x-model="promoEdit.label" placeholder="Holiday price"></label>
-          <label class="block"><span class="text-[12px] text-zinc-500">Starts (your time; empty = at once)</span><input type="datetime-local" class="inp w-full" x-model="promoEdit.starts_at"></label>
-          <label class="block"><span class="text-[12px] text-zinc-500">Ends (your time; empty = until switched off)</span><input type="datetime-local" class="inp w-full" x-model="promoEdit.ends_at"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Label customers read (beside the price)</span><input class="inp w-full" maxlength="40" x-model="cpromoEdit.label" placeholder="Holiday price"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Starts (your time; empty = at once)</span><input type="datetime-local" class="inp w-full" x-model="cpromoEdit.starts_at"></label>
+          <label class="block"><span class="text-[12px] text-zinc-500">Ends (your time; empty = until switched off)</span><input type="datetime-local" class="inp w-full" x-model="cpromoEdit.ends_at"></label>
         </div>
-        <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="promoEdit.reference_verified"> The regular prices are verified reference prices — show them crossed out, and the saving</label>
-        <label class="block" x-show="promoEdit.reference_verified"><span class="text-[12px] text-zinc-500">How they were verified (who, when, on what basis) — required</span>
-          <textarea class="inp w-full" rows="2" maxlength="500" x-model="promoEdit.reference_note"></textarea></label>
+        <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="cpromoEdit.reference_verified"> The regular prices are verified reference prices — show them crossed out, and the saving</label>
+        <label class="block" x-show="cpromoEdit.reference_verified"><span class="text-[12px] text-zinc-500">How they were verified (who, when, on what basis) — required</span>
+          <textarea class="inp w-full" rows="2" maxlength="500" x-model="cpromoEdit.reference_note"></textarea></label>
         <div class="flex flex-wrap items-center gap-3">
-          <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="promoNote">
-          <button class="btn" @click="savePromotion()" :disabled="promoBusy">Save the promotion</button>
+          <input class="inp flex-1 min-w-[220px]" placeholder="What changed (optional)" x-model="cpromoNote">
+          <button class="btn" @click="savePromotion()" :disabled="cpromoBusy">Save the promotion</button>
         </div>
       </div></template>
       <div class="text-[13px] space-y-1">
@@ -3092,7 +3093,7 @@
         <p x-show="!(cprices?.coverage?.eligible || []).length" class="text-zinc-500">No charm on offer has a promotional price (Pricing · charms above).</p>
       </div>
       <p class="text-[12px] text-zinc-500">While it is active, each size with a promotional price costs that price everywhere — Customize, the Materials page, the bag, checkout and the order. It starts and ends by the clock; a bag priced before is repriced at checkout. A promo code applies on top: its discount is taken from the promotional price. Ring prices are not affected.</p>
-      <p x-show="promoMsg" class="text-sm" :class="promoErr ? 'text-red-600' : 'text-emerald-700'" x-text="promoMsg"></p>
+      <p x-show="cpromoMsg" class="text-sm" :class="cpromoErr ? 'text-red-600' : 'text-emerald-700'" x-text="cpromoMsg"></p>
     </section>
 
     <section class="card p-5 space-y-3" style="border-color:#E8B4B4" x-show="sub === 'pricing' && pProduct === 'charm' && cprices?.banner" aria-label="Promotion banner">

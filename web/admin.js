@@ -224,7 +224,7 @@ function adminApp() {
     mprices: null, mpEdit: null, mpNote: '', mpBusy: false, mpMsg: '', mpErr: false,
     // Pricing & Materials: which product's prices are shown (Ring | Charm); the charm table is its own
     pProduct: 'ring', cprices: null, cpEdit: null, cpNote: '', cpBusy: false, cpMsg: '', cpErr: false,
-    promoEdit: null, promoNote: '', promoBusy: false, promoMsg: '', promoErr: false,          // the charm promotion (P1)
+    cpromoEdit: null, cpromoNote: '', cpromoBusy: false, cpromoMsg: '', cpromoErr: false,     // the charm promotion (P1)
     bannerEdit: null, bannerNote: '', bannerBusy: false, bannerMsg: '', bannerErr: false,     // its banner
     ils: null, ilsEdit: null, ilsNote: '', ilsBusy: false, ilsMsg: '', ilsErr: false, ilsUsd: '',   // Israeli pricing (B6)
     // Customer status per metal and product (WP3): the pending changes ('ring:vermeil' → 'preview'), saved together
@@ -1147,6 +1147,14 @@ function adminApp() {
         else await this.api('POST', '/api/admin/promo-codes', body);
         this.promoEdit = null; await this.loadPromos(); this.promoMsg = 'Saved.';
       } catch (e) { this.promoErr = true; this.promoMsg = e.message; }
+    },
+    // Delete a code for good — only one no order has used (the server refuses a used one: deactivate it instead)
+    async deletePromo(p) {
+      if (!await this.confirmChanges(['Promo code ' + p.code + ' (' + this.promoRule(p) + ')'], 'Delete this promo code permanently?',
+                                     'It is removed from the list and can no longer be used. This cannot be undone.', 'Delete the code')) return;
+      this.promoMsg = ''; this.promoErr = false;
+      try { await this.api('DELETE', '/api/admin/promo-codes/' + encodeURIComponent(p.id)); await this.loadPromos(); this.promoMsg = 'Deleted ' + p.code + '.'; }
+      catch (e) { this.promoErr = true; this.promoMsg = e.message; }
     },
     async setPromoActive(p, active) {
       try { await this.api('PATCH', '/api/admin/promo-codes/' + encodeURIComponent(p.id), { active }); await this.loadPromos(); }
@@ -2578,23 +2586,23 @@ function adminApp() {
     },
     editPromotion() {
       const p = this.cprices?.promotion || {};
-      this.promoMsg = ''; this.promoNote = '';
-      this.promoEdit = { enabled: !!p.enabled, label: p.label || '', starts_at: this.toLocalInput(p.starts_at), ends_at: this.toLocalInput(p.ends_at),
+      this.cpromoMsg = ''; this.cpromoNote = '';
+      this.cpromoEdit = { enabled: !!p.enabled, label: p.label || '', starts_at: this.toLocalInput(p.starts_at), ends_at: this.toLocalInput(p.ends_at),
                          reference_verified: !!p.reference_verified, reference_note: p.reference_note || '' };
     },
     async savePromotion() {
-      const e = this.promoEdit, was = this.cprices?.promotion || {};
+      const e = this.cpromoEdit, was = this.cprices?.promotion || {};
       const lines = [['On', was.enabled ? 'yes' : 'no', e.enabled ? 'yes' : 'no'], ['Label', was.label, e.label],
                      ['Starts', this.toLocalInput(was.starts_at) || '—', e.starts_at || '—'], ['Ends', this.toLocalInput(was.ends_at) || '—', e.ends_at || '—'],
                      ['Reference prices verified', was.reference_verified ? 'yes' : 'no', e.reference_verified ? 'yes' : 'no']]
         .filter(([, a, b]) => String(a ?? '') !== String(b ?? '')).map(([k, a, b]) => k + ': ' + a + ' → ' + b);
       if (!await this.confirmChanges(lines, 'Change the charm promotion now?', 'Charm prices on the website follow it at once (and by its dates). Orders already placed keep their prices.', 'Save the promotion')) return;
-      this.promoBusy = true; this.promoMsg = ''; this.promoErr = false;
+      this.cpromoBusy = true; this.cpromoMsg = ''; this.cpromoErr = false;
       try {
-        this.cprices = await this.api('PUT', '/api/admin/charm-prices/promotion', { note: this.promoNote || 'Promotion edited in Admin',
+        this.cprices = await this.api('PUT', '/api/admin/charm-prices/promotion', { note: this.cpromoNote || 'Promotion edited in Admin',
           promotion: { ...e, starts_at: this.fromLocalInput(e.starts_at), ends_at: this.fromLocalInput(e.ends_at) } });
-        this.promoEdit = null; this.promoMsg = 'Saved as ' + this.cprices.version + ' — the promotion is ' + this.cprices.promotion_state + '.';
-      } catch (err) { this.promoErr = true; this.promoMsg = err.message; } finally { this.promoBusy = false; }
+        this.cpromoEdit = null; this.cpromoMsg = 'Saved as ' + this.cprices.version + ' — the promotion is ' + this.cprices.promotion_state + '.';
+      } catch (err) { this.cpromoErr = true; this.cpromoMsg = err.message; } finally { this.cpromoBusy = false; }
     },
     editBanner() {
       const b = this.cprices?.banner?.settings || {};
