@@ -258,7 +258,13 @@ class CustomizeService:
                               for M in CharmPrices.Offered(Cat) if Statuses[M.Id] != MaterialStatus.Hidden]}
 
     # ── bag ──────────────────────────────────────────────────────────────
-    def AddToBag(self, Who: Principal, CustomizationId: str, Visible: tuple | None = None) -> dict:
+    def AddToBag(self, Who: Principal, CustomizationId: str, Visible: tuple | None = None, RequestId: str | None = None) -> dict:
+        """Add what Customize shows, as a shop's cart does (owner, 13 Nov 2026): every click adds its quantity; the same
+        piece (design option, product, metal, size) at the same price is ONE line whose quantity grows (1 + 1 + 1 = 3;
+        2 + 2 = 4); a different metal, size or price is a line of its own. A line holds at most MaxQuantity: a click
+        that would go past it adds what still fits and says so; one with no room left is refused with the reason.
+        RequestId: the click's own id — the same request sent again (a retry) adds nothing more. The answer is the bag,
+        plus "added": {line_id, quantity, line_quantity, limited} for the confirmation."""
         Row = self._Owned(Who, CustomizationId)
         Shown = self._View(Row)                     # a charm's size no longer shown: the single size Customize shows
         Fix = {"charm_size": Shown["charm_size"]} if Shown.get("charm_size") != Row.get("charm_size") else {}
@@ -278,30 +284,56 @@ class CustomizeService:
                         "charm_size_required": "Please choose a charm size.",
                         "charm_size_not_offered": "This charm size is no longer offered — please choose another size."}
             raise HttpError(409, Reason, Messages[Reason])
-        # The very same configuration again (a double click) adds no second line; a changed size, material or
-        # quantity is a new line, as before
-        Already = self.Ctx.Db.One("SELECT id FROM bag_lines WHERE owner_account_id = ? AND customization_id = ? AND material_id = ? "
-                                  "AND COALESCE(ring_size, -1) = COALESCE(?, -1) AND COALESCE(charm_size, -1) = COALESCE(?, -1) "
-                                  "AND quantity = ?",
-                                  (Who.AccountId, CustomizationId, Row["material_id"],
-                                   Row["ring_size"] if Product == Products.Ring else None,
-                                   Row.get("charm_size") if Product == Products.Charm else None, Row["quantity"]))
-        if Already:
-            return self.Bag(Who, Visible)
-        LineId = NewId("bag")
-        self.Ctx.Db.Execute(
-            "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, product_type, material_id, "
-            "ring_size, charm_size, quantity, unit_price, currency, pricing_version, quote_json, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Product, Row["material_id"],
-             Row["ring_size"] if Product == Products.Ring else None, Row.get("charm_size") if Product == Products.Charm else None,
-             Row["quantity"], Quote.unit_price, Quote.currency, Quote.pricing_version, Dumps(Quote.ToJson()), Now()))
-        Size = {"product_type": Products.Charm, "charm_size": Row.get("charm_size")} if Product == Products.Charm \
-            else {"ring_size": Row["ring_size"]}
+        RingSize = Row["ring_size"] if Product == Products.Ring else None
+        CharmSize = Row.get("charm_size") if Product == Products.Charm else None
+        Want = max(1, min(MaxQuantity, int(Row["quantity"] or 1)))
+        ReqId = str(RequestId or "").strip()[:80] or None
+        # One transaction: the click's id, the matching line and its new quantity — two clicks at once both count, a
+        # request sent twice counts once
+        Repeated = False
+        with self.Ctx.Db.Transaction() as Conn:
+            if ReqId and Conn.execute("INSERT OR IGNORE INTO bag_add_requests (owner_account_id, request_id, created_at) VALUES (?,?,?)",
+                                      (Who.AccountId, ReqId, Now())).rowcount == 0:
+                Repeated = True
+            else:
+                Add, LineId, LineQty = self._AddLine(Conn, Who, Row, Product, Quote, RingSize, CharmSize, Want)
+        if Repeated:
+            return {**self.Bag(Who, Visible), "added": None, "repeated_request": True}
+        Size = {"product_type": Products.Charm, "charm_size": CharmSize} if Product == Products.Charm else {"ring_size": RingSize}
         Sessions.Record(self.Ctx, Who.AccountId, "bag_added", Row["design_id"], line_id=LineId,
-                        material_id=Row["material_id"], **Size, quantity=Row["quantity"],
+                        material_id=Row["material_id"], **Size, quantity=Add, line_quantity=LineQty,
                         unit_price=Quote.unit_price, currency=Quote.currency, pricing_version=Quote.pricing_version)
-        return self.Bag(Who, Visible)
+        return {**self.Bag(Who, Visible), "added": {"line_id": LineId, "quantity": Add, "line_quantity": LineQty,
+                                                     "limited": Add < Want, "max_quantity": MaxQuantity}}
+
+    def _AddLine(self, Conn, Who: Principal, Row: dict, Product: str, Quote, RingSize, CharmSize, Want: int) -> tuple:
+        """Inside the add's transaction: grow the matching line (same option, product, metal, size and price) by Want, up to
+        MaxQuantity, or start a new line. Returns (added, line id, the line's quantity)."""
+        Line = Conn.execute(
+            "SELECT id, quantity FROM bag_lines WHERE owner_account_id = ? AND design_id = ? AND candidate_id = ? "
+            "AND product_type = ? AND material_id = ? AND COALESCE(ring_size, -1) = COALESCE(?, -1) "
+            "AND COALESCE(charm_size, -1) = COALESCE(?, -1) AND unit_price = ? AND currency = ? ORDER BY created_at LIMIT 1",
+            (Who.AccountId, Row["design_id"], Row["candidate_id"], Product, Row["material_id"], RingSize, CharmSize,
+             Quote.unit_price, Quote.currency)).fetchone()
+        if Line:
+            Room = MaxQuantity - Line["quantity"]
+            if Room <= 0:
+                raise HttpError(409, "bag_quantity_limit",
+                                f"Your bag already has {MaxQuantity} of this piece — the most for one piece. "
+                                "For more, contact us.")
+            Add, LineId = min(Want, Room), Line["id"]
+            Conn.execute("UPDATE bag_lines SET quantity = quantity + ?, customization_id = ?, pricing_version = ?, quote_json = ? "
+                         "WHERE id = ?", (Add, Row["id"], Quote.pricing_version, Dumps(Quote.ToJson()), LineId))
+            LineQty = Line["quantity"] + Add
+        else:
+            Add, LineId, LineQty = Want, NewId("bag"), Want
+            Conn.execute(
+                "INSERT INTO bag_lines (id, owner_account_id, design_id, candidate_id, customization_id, product_type, material_id, "
+                "ring_size, charm_size, quantity, unit_price, currency, pricing_version, quote_json, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (LineId, Who.AccountId, Row["design_id"], Row["candidate_id"], Row["id"], Product, Row["material_id"],
+                 RingSize, CharmSize, Want, Quote.unit_price, Quote.currency, Quote.pricing_version, Dumps(Quote.ToJson()), Now()))
+        return Add, LineId, LineQty
 
     def SetBagQuantity(self, Who: Principal, LineId: str, Quantity, Visible: tuple | None = None) -> dict:
         """A bag line's quantity, changed in the bag (R-20): 1 to MaxQuantity at the line's own price; its total and the

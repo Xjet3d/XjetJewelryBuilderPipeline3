@@ -514,9 +514,20 @@
         .cz-bagbtn.is-pop .cz-bagcount { animation: czPop .5s ease; }
         @keyframes czPop { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
         @media (prefers-reduced-motion: reduce) { .cz-bagbtn.is-pop .cz-bagcount { animation: none; } }
-        .cz-new { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
-                  border: 1px solid #E7E5E4; border-radius: 10px; background: #fff; text-align: left; transition: border-color .15s; }
-        .cz-new:hover { border-color: #A8A29E; }
+        /* After Add to Bag (13 Nov 2026): a small confirmation above the bag button — it never takes a tap, and goes by itself */
+        .cz-pop { position: absolute; right: 12px; bottom: calc(100% + 10px); width: max-content; max-width: min(300px, calc(100vw - 24px));
+                  padding: 10px 14px; border-radius: 10px; background: #18181B; color: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.18);
+                  pointer-events: none; z-index: 2; }
+        .cz-pop::after { content: ""; position: absolute; right: 22px; bottom: -6px; width: 12px; height: 12px; background: #18181B;
+                         transform: rotate(45deg); border-radius: 2px; }
+        .cz-pop .t { font-size: 13px; font-weight: 600; letter-spacing: .01em; display: flex; align-items: center; gap: 6px; }
+        .cz-pop .s { margin-top: 2px; font-size: 12px; color: #D4D4D8; }
+        /* The other ways on: back to these designs, or a new one — two quiet rows of one card */
+        .cz-next { border: 1px solid #E7E5E4; border-radius: 10px; background: #fff; overflow: hidden; }
+        .cz-next-row { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                       padding: 11px 16px; text-align: left; transition: background-color .15s; }
+        .cz-next-row + .cz-next-row { border-top: 1px solid #F0EEEC; }
+        .cz-next-row:hover { background: #FAFAF9; }
         .cz-qty { display: inline-flex; align-items: center; height: 48px; border: 1px solid #D6D3D1; border-radius: 999px; background: #fff; flex: none; }
         .cz-qty button { width: 40px; height: 100%; border: 0; background: none; border-radius: 999px; font-size: 18px; line-height: 1; color: #3F3F46;
                          display: flex; align-items: center; justify-content: center; }
@@ -2284,19 +2295,25 @@
                         </section>
                     </div>
 
-                    <p class="sr-only" role="status" x-text="bagMessage"></p>
-                    <!-- The other ways on (Option B, 13 Nov 2026): back to the designs is the header's "‹ Design"; the bag is the bag
-                         button beside Add to Bag once something is in it; a new design is this quiet card, never a button in the bar -->
-                    <button type="button" @click="startNew(); navigateTo('ai-studio')" class="cz-new mt-6">
-                        <span class="text-[13px] text-zinc-600">Want something different?</span>
-                        <span class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-zinc-900 whitespace-nowrap">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Start another design</span>
-                    </button>
+                    <!-- The other ways on (Option B, 13 Nov 2026): the header keeps "‹ Design"; the bag is the bag button beside Add to
+                         Bag; here, two quiet rows — back to these designs (nothing starts over), or a new design -->
+                    <div class="cz-next mt-6" role="group" aria-label="More choices">
+                        <button type="button" @click="navigateTo('ai-studio')" class="cz-next-row" data-testid="continue-designing">
+                            <span class="inline-flex items-center gap-2 text-[13px] font-semibold text-zinc-900">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 12H5m6-6-6 6 6 6"/></svg>Continue designing</span>
+                            <span class="text-[12px] text-zinc-500 text-right">Back to your designs</span>
+                        </button>
+                        <button type="button" @click="startNew(); navigateTo('ai-studio')" class="cz-next-row" data-testid="start-another-design">
+                            <span class="inline-flex items-center gap-2 text-[13px] font-semibold text-zinc-900">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Start another design</span>
+                            <span class="text-[12px] text-zinc-500 text-right">A new idea</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- The one Add to Bag (Boutique), the quantity beside it: fixed at the bottom of the screen on phones and tablets,
                      under the choices on desktop. Gold: Request a quote. Preview only: what to order instead. -->
-                <div x-show="!showSizeGuide && !quoteReq.open && !previewOpen" class="cz-bar lg-static fixed bottom-0 inset-x-0 z-40 lg:static lg:z-auto bg-white/95 backdrop-blur border-t border-zinc-200 lg:border-zinc-100 px-4 sm:px-8 md:px-10 2xl:px-14 py-3 lg:py-4 lg:shrink-0">
+                <div x-show="!showSizeGuide && !quoteReq.open && !previewOpen" class="cz-bar lg-static fixed bottom-0 inset-x-0 z-40 lg:relative lg:z-auto bg-white/95 backdrop-blur border-t border-zinc-200 lg:border-zinc-100 px-4 sm:px-8 md:px-10 2xl:px-14 py-3 lg:py-4 lg:shrink-0">
                     <p x-show="custError" class="err-line justify-center text-center mb-2" role="alert" x-text="custError"></p>
                     <p x-show="!custError && !isLuxury && !isPreview && !cust?.can_add_to_bag && bagBlockedText" class="text-[13px] text-zinc-600 text-center leading-snug mb-2" x-text="bagBlockedText"></p>
                     <div class="flex items-center gap-2.5">
@@ -2309,6 +2326,12 @@
                                 class="btn-black flex-1 min-w-0 min-h-[48px] px-4" data-testid="add-to-bag" x-text="addBagLabel">Add to Bag</button>
                         <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold flex-1 min-h-[48px] px-4">Request a quote</button>
                         <p x-show="isPreview" x-cloak class="flex-1 text-[13px] text-zinc-700 text-center leading-snug" x-text="materialPreviewText"></p>
+                        <!-- After each Add to Bag: what was added and the bag now, above the bag button; it goes by itself -->
+                        <div x-show="bagNoteOpen" x-cloak x-transition.opacity.duration.200ms class="cz-pop" :class="{ 'is-limit': bagNote?.limit }"
+                             role="status" aria-live="polite" data-testid="bag-note">
+                            <p class="t"><svg x-show="!bagNote?.limit" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24" aria-hidden="true" style="color:#C9A96E;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><svg x-show="bagNote?.limit" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true" style="color:#F5C26B;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5m0-8h.01"/></svg><span x-text="bagNote?.title"></span></p>
+                            <p class="s" x-text="bagNote?.text"></p>
+                        </div>
                         <!-- The bag (Option B): once something is in it — its count pops when a piece is added -->
                         <button type="button" x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-bagbtn" :class="{ 'is-pop': bagPop }"
                                 :aria-label="'View bag (' + bagCount + ')'" data-testid="view-bag">

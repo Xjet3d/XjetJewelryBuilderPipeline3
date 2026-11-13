@@ -33,12 +33,19 @@ def test_customize_has_one_add_to_bag_beside_the_quantity_and_quiet_links():
     Bar = Cust[Cust.index('class="cz-bar'):]
     assert Bar.index('aria-label="Quantity"') < Bar.index('data-testid="add-to-bag"')       # the quantity beside it
     assert 'x-text="addBagLabel"' in Bar and "openQuoteRequest()" in Bar and 'x-text="materialPreviewText"' in Bar
-    assert "fixed bottom-0" in Bar[:300] and "lg:static" in Bar[:300]                        # phones: at the bottom
+    assert "fixed bottom-0" in Bar[:300] and "lg:relative" in Bar[:300]                      # phones: at the bottom
     # Option B (13 Nov 2026): the bag beside Add to Bag once something is in it; back = the header's "‹ Design"; a new
     # design = a quiet card in the page, never a button in the bar
     assert 'x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-bagbtn"' in Bar and 'data-testid="view-bag"' in Bar
     assert Bar.index('data-testid="add-to-bag"') < Bar.index('data-testid="view-bag"')
-    assert '@click="startNew(); navigateTo(\'ai-studio\')" class="cz-new mt-6"' in Cust and "startNew()" not in Bar
+    # 13 Nov 2026: two quiet rows — "Continue designing" (back to these designs, nothing starts over) and "Start another
+    # design"; the header keeps "‹ Design"; after each add a confirmation above the bag button (role=status), no toast
+    assert '@click="navigateTo(\'ai-studio\')" class="cz-next-row" data-testid="continue-designing"' in Cust
+    assert '@click="startNew(); navigateTo(\'ai-studio\')" class="cz-next-row" data-testid="start-another-design"' in Cust
+    assert "startNew()" not in Bar and 'data-testid="bag-note"' in Bar and 'role="status" aria-live="polite"' in Bar
+    Add = App[App.index("    async addToBag() {"):App.index("    _showBagNote(note) {")]
+    assert "client_request_id: click" in Add and "this._bagQueue = prev.then(() => this._addToBagOnce(click))" in Add
+    assert "showToast" not in Add and "e.code === 'bag_quantity_limit'" in Add
     assert "@click=\"view === 'review' ? backToDesign() : (design && navigateTo('ai-studio'))\"" in Html
     assert 'class="cz-link"' not in Cust                                                    # the row of three links went
     assert "Your Selected Design" not in Html and "In Your Bag" not in Html                  # the heading and the mini bag went

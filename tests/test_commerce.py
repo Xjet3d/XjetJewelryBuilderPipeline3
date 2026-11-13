@@ -1,6 +1,6 @@
 """Commerce truths: an order or a quote request says whether its confirmation email really went out; the emails
 never say "reply to this email" at a no-reply address; staff are told about new orders when recipients are
-configured; a double click adds one bag line; production statuses need complete 3D results; the STL is prepared
+configured; adding again grows the one bag line; production statuses need complete 3D results; the STL is prepared
 from the ordered option only; the support address is configured, never invented."""
 
 import pytest
@@ -112,12 +112,14 @@ def test_the_emails_name_the_support_inbox_and_replies_reach_it(monkeypatch):
     assert "Reply to this email" not in Mail.OrderConfirmationEmail(Order)[1]
 
 
-async def test_a_double_click_adds_one_bag_line_and_the_support_address_is_never_invented(tmp_path):
+async def test_adding_again_grows_the_one_bag_line_and_the_support_address_is_never_invented(tmp_path):
     H = Harness(tmp_path, AdminKey=AdminKey)
     try:
         _Batch, _Cand, Cus = await _InBag(H)
+        # Add to Bag again: the same piece is one line whose quantity grows, as in a shop's cart (13 Nov 2026); a request
+        # sent twice is told apart by its click id (tests/test_bag_repeat_add.py)
         Again = (await H.Client.post("/api/bag", json={"customization_id": Cus["id"]})).json()
-        assert len(Again["lines"]) == 1
+        assert len(Again["lines"]) == 1 and Again["lines"][0]["quantity"] == 2
         Page = (await H.Client.get("/")).text
         assert '"support_email": "atelier@xjet3d.com"' in Page                 # nothing configured: the shared inbox
     finally:

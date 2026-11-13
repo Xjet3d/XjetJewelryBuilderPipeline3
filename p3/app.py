@@ -1262,7 +1262,8 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
     async def AddToBag(request: Request, Body_: dict = Body(...), x_access_token: str | None = Header(None)):
         Who = Tok(x_access_token)
         _CustomizationOnOffer(Who, str(Body_.get("customization_id") or ""), request)
-        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.OfferedTo(Ctx, request, Who)),
+        return RingOnly(IlsPricingMod.LocalizeBag(Svc.Customize.AddToBag(Who, Body_.get("customization_id"), Products.OfferedTo(Ctx, request, Who),
+                                                                          RequestId=Body_.get("client_request_id")),
                                                   Market(request)), request)
 
     @App_.patch("/api/bag/{LineId}")

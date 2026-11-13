@@ -286,7 +286,7 @@ function p3App() {
     galleryProduct: '',                // Inspiration Gallery filter: '' all · 'charm' · 'ring'
 
     // ── customize ────────────────────────────────────────────────────
-    cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '', bagPop: false,
+    cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '', bagPop: false, bagNote: null, bagNoteOpen: false, _bagNoteTimer: null, _bagQueue: null,
     lastMaterialByGroup: { fashion: 'stainless_steel', luxury: null, preview: null },
     groupOpen: { fashion: true, luxury: false, preview: false },
     showSizeGuide: false,
@@ -2861,15 +2861,41 @@ function p3App() {
         return;
       }
       this.bagMessage = ''; this.custError = '';
+      // Every click adds its quantity, as in a shop's cart (13 Nov 2026): each click has its own id (a retry of it adds
+      // once), and quick clicks go one after another, so each answer shows the bag as it now is
+      const click = (crypto.randomUUID?.() || String(Date.now()) + Math.random()).replace(/[^\w-]/g, '');
+      const prev = this._bagQueue || Promise.resolve();
+      this._bagQueue = prev.then(() => this._addToBagOnce(click)).catch(() => {});
+      return this._bagQueue;
+    },
+    async _addToBagOnce(click) {
+      const c = this.cust; if (!c) return;
       try {
-        this.bag = await this.api('POST', '/api/bag', { customization_id: this.cust.id });
-        const c = this.cust, product = c.product_type || 'ring', qty = c.quantity || 1;
-        const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / qty : undefined);
-        this.measure('add_to_cart', { currency: c.quote?.currency || 'USD', value: c.line_total ?? undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
-        // Option B (13 Nov 2026): the bag button beside Add to Bag shows it — its count pops; screen readers hear the status
+        const r = await this.api('POST', '/api/bag', { customization_id: c.id, client_request_id: click });
+        this.bag = r;
+        if (!r.added) return;                                 // the same click answered twice: nothing more was added
+        const product = c.product_type || 'ring', qty = r.added.quantity;
+        const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / (c.quantity || 1) : undefined);
+        this.measure('add_to_cart', { currency: c.quote?.currency || 'USD', value: unit != null ? unit * qty : undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
         this.bagMessage = 'Added to your bag.';
+        const pieces = this.bagCount === 1 ? '1 piece' : this.bagCount + ' pieces', total = this.bagTotalText;
+        this._showBagNote({
+          title: qty > 1 ? qty + ' added to your bag' : 'Added to your bag',
+          text: r.added.limited
+            ? `Only ${qty} more fit — ${r.added.max_quantity} is the most of one piece.`
+            : `${r.added.line_quantity} of this piece · bag: ${pieces}${total ? ' · ' + total : ''}`,
+          limit: r.added.limited });
         this.bagPop = false; this.$nextTick(() => { this.bagPop = true; setTimeout(() => { this.bagPop = false; }, 600); });
-      } catch (e) { this.custError = e.message; }
+      } catch (e) {
+        if (e.code === 'bag_quantity_limit') { this._showBagNote({ title: 'Bag limit reached', text: e.message, limit: true }); return; }
+        this.custError = e.message;
+      }
+    },
+    // The confirmation above the bag button: one at a time — a new add replaces it and starts its time again
+    _showBagNote(note) {
+      clearTimeout(this._bagNoteTimer);
+      this.bagNote = note; this.bagNoteOpen = true;            // the text stays while it fades out
+      this._bagNoteTimer = setTimeout(() => { this.bagNoteOpen = false; }, note.limit ? 4500 : 2800);
     },
 
     backToDesign() { this._goBackOr('ai-studio'); },

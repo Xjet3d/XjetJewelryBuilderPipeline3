@@ -671,6 +671,15 @@ CREATE TABLE IF NOT EXISTS uploads (
     updated_at  TEXT NOT NULL
 );
 
+-- Add to Bag clicks already applied (13 Nov 2026): each click's own id, so a request sent twice (a retry, a resent form)
+-- adds once; every new click adds its quantity again
+CREATE TABLE IF NOT EXISTS bag_add_requests (
+    owner_account_id  TEXT NOT NULL,
+    request_id        TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    PRIMARY KEY (owner_account_id, request_id)
+);
+
 -- One-time data steps already done on this database (name → when)
 CREATE TABLE IF NOT EXISTS schema_marks (
     name  TEXT PRIMARY KEY,
