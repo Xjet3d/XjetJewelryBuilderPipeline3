@@ -34,8 +34,13 @@ def test_customize_has_one_add_to_bag_beside_the_quantity_and_quiet_links():
     assert Bar.index('aria-label="Quantity"') < Bar.index('data-testid="add-to-bag"')       # the quantity beside it
     assert 'x-text="addBagLabel"' in Bar and "openQuoteRequest()" in Bar and 'x-text="materialPreviewText"' in Bar
     assert "fixed bottom-0" in Bar[:300] and "lg:static" in Bar[:300]                        # phones: at the bottom
-    for Link in ("backToDesign()", "startNew(); navigateTo('ai-studio')", "goToCheckout()"):
-        assert f'@click="{Link}" class="cz-link"' in Cust, Link                              # quiet links, not buttons
+    # Option B (13 Nov 2026): the bag beside Add to Bag once something is in it; back = the header's "‹ Design"; a new
+    # design = a quiet card in the page, never a button in the bar
+    assert 'x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-bagbtn"' in Bar and 'data-testid="view-bag"' in Bar
+    assert Bar.index('data-testid="add-to-bag"') < Bar.index('data-testid="view-bag"')
+    assert '@click="startNew(); navigateTo(\'ai-studio\')" class="cz-new mt-6"' in Cust and "startNew()" not in Bar
+    assert "@click=\"view === 'review' ? backToDesign() : (design && navigateTo('ai-studio'))\"" in Html
+    assert 'class="cz-link"' not in Cust                                                    # the row of three links went
     assert "Your Selected Design" not in Html and "In Your Bag" not in Html                  # the heading and the mini bag went
     Get = App[App.index("get addBagLabel()"):App.index("\n    },", App.index("get addBagLabel()"))]
     assert "'Add to Bag · ' + this.price(this.cust.line_total ?? q.unit_price * n, q.currency)" in Get

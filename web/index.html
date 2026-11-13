@@ -505,6 +505,18 @@
         .cz-link { min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; font-size: 13px; color: #52525B;
                    text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #D6D3D1; }
         .cz-link:hover { color: #18181B; text-decoration-color: #18181B; }
+        /* Customize actions, Option B (owner, 13 Nov 2026): the bag beside Add to Bag once something is in it; a new design as a quiet card */
+        .cz-bagbtn { position: relative; flex: none; width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center;
+                     border: 1px solid #18181B; border-radius: 6px; background: #fff; color: #18181B; }
+        .cz-bagbtn:hover { background: #FAFAF9; }
+        .cz-bagcount { position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+                       background: #B08040; color: #fff; font-size: 11px; font-weight: 600; line-height: 20px; text-align: center; }
+        .cz-bagbtn.is-pop .cz-bagcount { animation: czPop .5s ease; }
+        @keyframes czPop { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .cz-bagbtn.is-pop .cz-bagcount { animation: none; } }
+        .cz-new { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
+                  border: 1px solid #E7E5E4; border-radius: 10px; background: #fff; text-align: left; transition: border-color .15s; }
+        .cz-new:hover { border-color: #A8A29E; }
         .cz-qty { display: inline-flex; align-items: center; height: 48px; border: 1px solid #D6D3D1; border-radius: 999px; background: #fff; flex: none; }
         .cz-qty button { width: 40px; height: 100%; border: 0; background: none; border-radius: 999px; font-size: 18px; line-height: 1; color: #3F3F46;
                          display: flex; align-items: center; justify-content: center; }
@@ -682,7 +694,8 @@
             <div x-show="inStudio" x-cloak class="flex items-center gap-1 md:gap-3 leading-none">
                 <button class="h-step-early text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'ai-studio' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
-                        @click="design && navigateTo('ai-studio')">Design</button>
+                        @click="view === 'review' ? backToDesign() : (design && navigateTo('ai-studio'))"
+                        :aria-label="view === 'review' ? 'Back to designs' : null"><span x-show="view === 'review'" aria-hidden="true">‹&nbsp;</span>Design</button>
                 <span class="h-step-early text-zinc-400 text-xs leading-none">—</span>
                 <button class="h-step-early text-[12px] md:text-[15px] uppercase tracking-normal md:tracking-widest transition-all border-b border-transparent pb-0.5 leading-none"
                         :class="view === 'review' ? 'font-bold text-zinc-900 !border-zinc-900' : 'text-zinc-500 hover:text-zinc-800'"
@@ -2271,13 +2284,14 @@
                         </section>
                     </div>
 
-                    <p x-show="bagMessage" x-cloak class="mt-5 text-[14px] text-center" style="color:#146C43;" role="status" x-text="bagMessage"></p>
-                    <!-- The other ways on: quiet links, never buttons beside Add to Bag -->
-                    <nav class="mt-4 flex flex-wrap justify-center gap-x-6" aria-label="More choices">
-                        <button type="button" @click="backToDesign()" class="cz-link">Back to designs</button>
-                        <button type="button" @click="startNew(); navigateTo('ai-studio')" class="cz-link">Start another design</button>
-                        <button type="button" x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-link" x-text="'View bag (' + bagCount + ')'">View bag</button>
-                    </nav>
+                    <p class="sr-only" role="status" x-text="bagMessage"></p>
+                    <!-- The other ways on (Option B, 13 Nov 2026): back to the designs is the header's "‹ Design"; the bag is the bag
+                         button beside Add to Bag once something is in it; a new design is this quiet card, never a button in the bar -->
+                    <button type="button" @click="startNew(); navigateTo('ai-studio')" class="cz-new mt-6">
+                        <span class="text-[13px] text-zinc-600">Want something different?</span>
+                        <span class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-zinc-900 whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Start another design</span>
+                    </button>
                 </div>
 
                 <!-- The one Add to Bag (Boutique), the quantity beside it: fixed at the bottom of the screen on phones and tablets,
@@ -2295,6 +2309,12 @@
                                 class="btn-black flex-1 min-w-0 min-h-[48px] px-4" data-testid="add-to-bag" x-text="addBagLabel">Add to Bag</button>
                         <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold flex-1 min-h-[48px] px-4">Request a quote</button>
                         <p x-show="isPreview" x-cloak class="flex-1 text-[13px] text-zinc-700 text-center leading-snug" x-text="materialPreviewText"></p>
+                        <!-- The bag (Option B): once something is in it — its count pops when a piece is added -->
+                        <button type="button" x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-bagbtn" :class="{ 'is-pop': bagPop }"
+                                :aria-label="'View bag (' + bagCount + ')'" data-testid="view-bag">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12l1 13H5L6 7z"/><path stroke-linecap="round" d="M9 7V6a3 3 0 0 1 6 0v1"/></svg>
+                            <span class="cz-bagcount" x-text="bagCount"></span>
+                        </button>
                     </div>
                 </div>
             </div>

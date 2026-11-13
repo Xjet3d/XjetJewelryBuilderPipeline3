@@ -286,7 +286,7 @@ function p3App() {
     galleryProduct: '',                // Inspiration Gallery filter: '' all · 'charm' · 'ring'
 
     // ── customize ────────────────────────────────────────────────────
-    cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '',
+    cust: null, custError: '', mediaTab: 'movie', moviePaused: false, quotePending: false, bagMessage: '', bagPop: false,
     lastMaterialByGroup: { fashion: 'stainless_steel', luxury: null, preview: null },
     groupOpen: { fashion: true, luxury: false, preview: false },
     showSizeGuide: false,
@@ -2866,8 +2866,9 @@ function p3App() {
         const c = this.cust, product = c.product_type || 'ring', qty = c.quantity || 1;
         const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / qty : undefined);
         this.measure('add_to_cart', { currency: c.quote?.currency || 'USD', value: c.line_total ?? undefined, items: [this.measureItem(product, c.material_id, unit, qty)] });
+        // Option B (13 Nov 2026): the bag button beside Add to Bag shows it — its count pops; screen readers hear the status
         this.bagMessage = 'Added to your bag.';
-        this.showToast('Added to your bag', { label: 'View bag', action: () => this.goToCheckout() });
+        this.bagPop = false; this.$nextTick(() => { this.bagPop = true; setTimeout(() => { this.bagPop = false; }, 600); });
       } catch (e) { this.custError = e.message; }
     },
 
