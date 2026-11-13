@@ -275,7 +275,7 @@ function p3App() {
     menuOpen: false,                   // mobile navigation
     aboutOpen: false,                  // the header's About menu (About XJet, Technology, FAQ, Support)
     sizeConfirmed: false,              // Customize opens on a suggested size; the customer confirms or changes it
-    sizeAboutOpen: false,              // Customize's About Charm Size: collapsed each time a customization opens
+    custPanel: '',                     // Customize's open section (Size, Payment, Shipping): all closed each time a customization opens
     banner: SERVER_BANNER,             // the promotion banner (P1): written by the server, taken down at its end
     nowTick: Date.now(),               // the clock the banner's end is read against (every 30 s)
     _returnFocus: null,                // element to focus again when a modal closes
@@ -1772,6 +1772,12 @@ function p3App() {
     promoWas(p, cur, whole = false) { return p?.claims && p.regular_unit_price != null ? this.money(p.regular_unit_price, cur, whole) : ''; },
     promoSave(p, cur, whole = false) { return p?.claims && p.savings ? 'Save ' + this.money(p.savings, cur, whole) : ''; },
     promoLine(p, cur, whole = false) { return p ? [this.promoSave(p, cur, whole), p.label].filter(Boolean).join(' · ') : ''; },
+    // The promotion's tag beside a price in Customize, the bag and checkout (Boutique, 13 Nov 2026): "Christmas price", and
+    // "Christmas price · Save ₪70" (₪80 each for two or more) only with verified reference prices
+    promoPill(p, cur, qty = 1) { return p ? [p.label, this.promoSave(p, cur, true) + (p.claims && p.savings && qty > 1 ? ' each' : '')].filter(Boolean).join(' · ') : ''; },
+    // A customer price as Customize, the bag and checkout show it: whole amounts without cents ("₪159", "$39"), any
+    // other amount with them ("₪106.32")
+    price(v, cur = 'USD') { return this.money(v, cur, true); },
     get custPromo() { return this.priceAvailable && !this.quotePending ? (this.cust?.quote?.promotion || null) : null; },
     get oneCharmSize() { return this.charmSizesOn.length === 1 ? +this.charmSizesOn[0] + ' mm' : ''; },
     get soleProduct() { return this.productsList.length === 1 ? this.productsList[0] : null; },
@@ -1869,16 +1875,31 @@ function p3App() {
       return [...order.map(id => mats.find(m => m.id === id)).filter(Boolean), ...mats.filter(m => !order.includes(m.id))];
     },
     get footerLine() { return 'Custom ' + this.productsText + ' designed with AI, made in real metal with NanoParticle Jetting™.'; },
-    // The bag's price note names what is in the bag: ring sizes are US sizes, charm sizes millimeters
-    get bagPriceNote() {
-      const kinds = new Set((this.bagLines || []).map(l => l.product_type || 'ring'));
-      const ring = kinds.has('ring'), charm = kinds.has('charm');
-      const per = ring && charm ? 'piece' : charm ? 'charm' : 'ring';
-      const sizes = ring && charm ? 'Charm sizes are in millimeters; ring sizes are US sizes.' : charm ? 'Charm sizes are in millimeters.' : 'Ring sizes are US sizes.';
-      // ₪ only while Israeli pricing is on (B6); $ including VAT for a visitor from Israel who chose $
-      const ils = Object.keys(this.bag?.totals || {})[0] === 'ILS' || (this.bagLines || []).some(l => l.currency === 'ILS');
-      const cur = this.bag?.incl_vat ? (ils ? 'in shekels, including VAT' : 'in US dollars, including Israeli VAT') : 'in US dollars';
-      return 'Fixed prices per ' + per + ' and material, ' + cur + '. ' + sizes + ' Delivery and any promo code are added at checkout.';
+    // "Price updated" on a bag line: only when today's amount differs from the one it was added at — a new price-book
+    // version with the same amount (the promotion saved again in Admin) changes nothing the customer pays
+    linePriceChanged(l) { return !!l.price_is_stale && l.current_unit_price != null && Math.abs(l.current_unit_price - l.unit_price) > 0.005; },
+    // The bag's summary (Boutique, 13 Nov 2026). Its total in one currency, for the sticky Checkout button
+    get bagTotalText() { const T = Object.entries(this.bag?.totals || {}); return T.length === 1 ? this.price(T[0][1], T[0][0]) : ''; },
+    // What the promotion saves on the pieces the total counts — only with verified reference prices (P1: the server sends a
+    // saving only then); a line added at another price than today's is left out of it
+    get bagSavingsText() {
+      const By = {};
+      for (const l of this.bagLines) {
+        if (l.orderable === false || !l.promotion?.claims || !l.promotion.savings) continue;
+        if (l.current_unit_price != null && Math.abs(l.current_unit_price - l.unit_price) > 0.005) continue;
+        By[l.currency] = (By[l.currency] || 0) + l.promotion.savings * l.quantity;
+      }
+      const E = Object.entries(By);
+      if (E.length !== 1) return '';
+      const Label = this.bagLines.find(l => l.promotion?.claims)?.promotion?.label;
+      return 'You save ' + this.price(Math.round(E[0][1] * 100) / 100, E[0][0]) + (Label ? ' · ' + Label : '');
+    },
+    // The currency and tax, in checkout's own words (its order summary): ₪ with VAT only while Israeli pricing is on (B6); $
+    // with Israeli VAT for a visitor from Israel who chose $
+    get bagTaxNote() {
+      if (!this.bag?.incl_vat) return 'US dollars · no sales tax added · duties, where charged, paid by the recipient.';
+      return this.pricingChoice?.currency === 'USD' ? 'US dollars · including 18% Israeli VAT · a delivery to Israel is charged in shekels.'
+                                                    : 'Shekels · including 18% VAT for delivery in Israel.';
     },
     get composerNote() {
       if (this.nothingOnOffer) return 'Nothing is available to design right now. Please check back soon.';
@@ -2570,7 +2591,7 @@ function p3App() {
       // A ring opens on a suggested size until the customer confirms it — once confirmed, the server remembers it for
       // the design (R-21); a charm has no suggestion — its size was chosen
       if (!same) this.sizeConfirmed = this.isCharm(c) ? c.charm_size != null : !!c.size_confirmed;
-      if (!same) this.sizeAboutOpen = false;
+      if (!same) this.custPanel = '';
       this.mediaTab = 'movie';          // the movie is the default Customize view
       const g = this.custGroupOf(c.material_id) || 'fashion';
       this.lastMaterialByGroup[g] = c.material_id;
@@ -2675,23 +2696,32 @@ function p3App() {
     async setQuantity(delta) {
       if (!this.cust?.id) return;
       const q = Math.min(10, Math.max(1, (this.cust.quantity || 1) + delta));
-      if (q !== this.cust.quantity) await this.patchCustomization(this.cust.id, { quantity: q });
+      if (q === this.cust.quantity) return;
+      this.cust.quantity = q; this.cust.line_total = null;       // shown at once (a second + counts from it); the server's answer follows
+      await this.patchCustomization(this.cust.id, { quantity: q });
     },
 
-    async patchCustomization(custId, patch, opts = {}) {
+    // Changes go to the server one after another, and only the answer to the newest is shown (13 Nov 2026): a quick + then
+    // another metal sent two changes at once — the server could apply them in either order, and an earlier answer arriving
+    // last showed the earlier metal or quantity. In order, the newest answer has every change in it.
+    patchCustomization(custId, patch, opts = {}) {
       this.custError = '';
-      try {
-        const fresh = await this.api('PATCH', `/api/customizations/${custId}`, patch);
-        if (this.cust?.id !== custId) return;
-        // Ignore responses for a material the user has already moved away from.
-        if (patch.material_id && this.cust.material_id !== patch.material_id) return;
-        const movie = this.cust.movie;
-        this.cust = { ...fresh, movie: fresh.movie_available === false ? null : (fresh.movie || movie) };
-      } catch (e) {
-        this.custError = e.message;
-      } finally {
-        this.quotePending = false;
-      }
+      const seq = this._custSeq = (this._custSeq || 0) + 1;
+      const send = async () => {
+        try {
+          const fresh = await this.api('PATCH', `/api/customizations/${custId}`, patch);
+          if (this.cust?.id !== custId || seq !== this._custSeq) return;
+          // Ignore responses for a material the user has already moved away from.
+          if (patch.material_id && this.cust.material_id !== patch.material_id) return;
+          const movie = this.cust.movie;
+          this.cust = { ...fresh, movie: fresh.movie_available === false ? null : (fresh.movie || movie) };
+        } catch (e) {
+          if (seq === this._custSeq) this.custError = e.message;
+        } finally {
+          if (seq === this._custSeq) this.quotePending = false;
+        }
+      };
+      return (this._custQueue = (this._custQueue || Promise.resolve()).then(send, send));
     },
 
     get isLuxury() { return this.currentGroup === 'luxury'; },
@@ -2704,15 +2734,25 @@ function p3App() {
       return 'Preview only — not available to order.' + (list ? ' Order it in ' + list + '.' : '');
     },
     get priceAvailable() { return !this.isLuxury && !this.isPreview && this.cust?.quote?.pricing_status === 'available'; },
-    get priceText() {
+    // Customize's price (Boutique, 13 Nov 2026): the figure alone ("₪159"); "VAT included" and the promotion's tag sit beside it
+    get custPriceFigure() {
       if (this.isLuxury) return 'Price on request';                                   // gold: quoted individually (R-22)
       if (this.isPreview) return 'Preview only';                                       // never priced (WP3)
       if (this.custIsCharm && this.cust?.charm_size == null) return 'Choose a size';     // a charm's price depends on its size
       const q = this.cust?.quote;
       if (!q) return '—';
       if (q.pricing_status !== 'available') return 'Price unavailable';
-      return this.money(q.unit_price, q.currency) + (q.incl_vat ? ' incl. VAT' : '');
+      return this.price(q.unit_price, q.currency);
     },
+    // Above the name: "Charm · 18 mm", "Ring · US 7" (the size once it is chosen)
+    get custEyebrow() {
+      if (this.custIsCharm) return 'Charm' + (this.cust?.charm_size != null && this.cust?.size_label ? ' · ' + this.cust.size_label : '');
+      return 'Ring' + (this.sizeConfirmed && this.cust?.ring_size != null ? ' · US ' + this.cust.ring_size : '');
+    },
+    // A metal's round swatch (vermeil: gold over silver)
+    swatchCss(m) { return m?.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + (m?.swatch || '#ccc'); },
+    // Customize's collapsible sections, one open at a time ('size', 'pay', 'ship'); all closed whenever a customization opens
+    toggleCustPanel(name) { this.custPanel = this.custPanel === name ? '' : name; },
     // Israeli pricing (B6), only while it is on: the ₪/$ choice is kept in an essential cookie and every price reloads
     get pricingChoice() { return this.catalog?.pricing || null; },
     setCurrency(cur) {
@@ -2774,25 +2814,14 @@ function p3App() {
       const s = this.suggestedCharmSize(), o = (this.cust?.charm_sizes || []).find(x => x.size == s);
       return o ? o.label.replace(' · Recommended', '') : (s != null ? s + ' mm' : '');
     },
-    // The price the purchase summary shows: the total for the quantity chosen ("×2 · $218.00"), never the unit price alone
-    get purchaseTotalText() {
-      const q = this.cust?.quote;
-      if (this.isLuxury || this.isPreview || !q || q.pricing_status !== 'available' || (this.custIsCharm && this.cust?.charm_size == null)) return this.priceText;
-      const n = this.cust?.quantity || 1;
-      return (n > 1 ? '×' + n + ' · ' : '') + this.money(this.cust?.line_total ?? q.unit_price * n, q.currency);
-    },
-    // Sticky purchase summary (Customize): a ring "$200.00 · US 10 · Sterling Silver"; a charm "14 mm Charm · $109.00"
-    get purchaseSummary() {
-      if (this.custIsCharm) return (this.cust?.size_label ? this.cust.size_label + ' Charm' : 'Charm') + ' · ' + this.purchaseTotalText;
-      const size = this.cust?.ring_size != null ? 'US ' + this.cust.ring_size : 'Choose a size';
-      return [this.purchaseTotalText, size, this.currentMaterialLabel || ''].filter(Boolean).join(' · ');
-    },
-    // The summary's second line: what the price means — never the price again
-    get purchaseSubline() {
-      if (this.isLuxury) return 'Quoted individually';
-      if (this.isPreview) return 'Not available to order';
-      if (!this.sizeConfirmed) return 'Confirm your size to continue';
-      return this.custIsCharm ? (this.currentMaterialLabel || '') : 'Fixed price, any size';
+    // The one Add to Bag (Boutique, 13 Nov 2026), in the bar with the quantity: "Add to Bag · ₪318" — the total for the
+    // quantity chosen (R-01, R-19); until it can be added, what is missing ("Choose your size", "Updating price…")
+    get addBagLabel() {
+      if (this.canAddToBag) {
+        const q = this.cust.quote, n = this.cust.quantity || 1;
+        return 'Add to Bag · ' + this.price(this.cust.line_total ?? q.unit_price * n, q.currency);
+      }
+      return this.sizeConfirmed || this.quotePending ? this.bagButtonText : 'Choose your size';
     },
     sizeGuideRows(kind) {
       const mm = { 4: '14.9', 4.5: '15.3', 5: '15.7', 5.5: '16.1', 6: '16.5', 6.5: '16.9', 7: '17.3', 7.5: '17.7', 8: '18.1',

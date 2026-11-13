@@ -179,12 +179,15 @@ def test_customize_hides_the_size_choice_with_one_size_and_explains_the_size_col
     Html, App, Adm = ((Web / F).read_text(encoding="utf-8") for F in ("index.html", "app.js", "admin.html"))
     assert '<div id="charm-size-heading" x-show="custSizeChoice" x-cloak>' in Html
     assert "get custSizeChoice() { return this.custIsCharm && (this.cust?.charm_sizes || []).length > 1; }" in App
-    # About Charm Size: under the details that name the size, collapsed whenever a customization opens
-    Summary = Html.index("custIsCharm ? 'Charm Size' : 'Ring Size'")
+    # About Charm Size (Boutique, 13 Nov 2026): the Size section — "Size · 18 mm total height" with one size, "About Charm
+    # Size" with several — after the size choice, collapsed whenever a customization opens
+    Choice = Html.index('<div id="charm-size-heading" x-show="custSizeChoice" x-cloak>')
     About = Html.index('data-testid="charm-size-about"')
-    assert Summary < About < Html.index("<!-- Price -->")
-    assert "About Charm Size" in Html[About:About + 2500] and 'x-show="sizeAboutOpen"' in Html[About:About + 2500]
-    assert "sizeAboutOpen: false," in App and "if (!same) this.sizeAboutOpen = false;" in App
+    assert Choice < About < Html.index('data-testid="add-to-bag"')
+    Section = Html[About:About + 2500]
+    assert "custSizeChoice ? 'About Charm Size' : 'Size'" in Section and "(cust?.size_label || '') + ' total height'" in Section
+    assert 'x-show="custPanel === \'size\'"' in Section and 'x-text="charmSizeAbout"' in Section
+    assert "custPanel: ''," in App and "if (!same) this.custPanel = '';" in App
     Start = App.index("get charmSizeAbout()")
     Text = App[Start:App.index("\n    },", Start)]
     assert "attachment eyelet" in Text and "total height" in Text

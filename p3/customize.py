@@ -223,6 +223,8 @@ class CustomizeService:
         MovieOn = Products.MovieAvailable(self.Ctx, Product)       # OFF: the still image only, whatever movies exist
         Out = {
             "id": Row["id"], "design_id": Row["design_id"], "candidate_id": Row["candidate_id"],
+            # its item ID (C-1062-C / R-1042-B), under the name in Customize as in the bag (Boutique, 13 Nov 2026)
+            "ring_id": RingIds.CandidateRefs(self.Ctx.Db, [Row["design_id"]]).get(Row["candidate_id"]),
             "image_url": self.Ctx.AssetUrl(Cand["asset_path"]),
             "material_id": Row["material_id"], "ring_size": Row["ring_size"], "quantity": Row["quantity"],
             "size_confirmed": Row.get("charm_size") is not None if Product == Products.Charm else Row.get("size_confirmed_at") is not None,

@@ -1147,8 +1147,12 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
 
     @App_.get("/api/designs/{DesignId}")
     async def GetDesign(DesignId: str, request: Request, x_access_token: str | None = Header(None)):
-        return RingOnly(Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request),
-                                        Products.PausedProducts(Ctx, request)), request)
+        Out = Svc.Designs.Get(Tok(x_access_token), DesignId, Products.VisibleProducts(Ctx, request), Products.PausedProducts(Ctx, request))
+        if Out.get("customization"):
+            # Customize opened again from here (a reload): in the visitor's currency, as every other Customize answer (B6) —
+            # an Israeli visitor saw dollars without VAT until the next change (found 13 Nov 2026)
+            Out["customization"] = IlsPricingMod.LocalizeCustomization(Out["customization"], Market(request))
+        return RingOnly(Out, request)
 
     @App_.delete("/api/designs/{DesignId}")
     async def RemoveDesign(DesignId: str, x_access_token: str | None = Header(None)):

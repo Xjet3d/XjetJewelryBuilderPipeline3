@@ -465,8 +465,57 @@
         @media (min-width: 768px) { .promo-banner { font-size: 12px; letter-spacing: .22em; padding: 9px 24px; } }
         .promo-on .studio-h { height: calc(100dvh - 61px - var(--promo-h, 0px)); }
         @media (min-width: 1024px) { .promo-on .studio-h { height: 100%; } }
-        .promo-was { color: #A1A1AA; text-decoration: line-through; text-decoration-thickness: 1px; }
+        .promo-was { color: #71717A; text-decoration: line-through; text-decoration-thickness: 1px; }
         .promo-note { font-size: 12px; color: #8A6420; margin-top: 2px; }
+        /* Customize · Bag · Checkout (Boutique, owner's Option B, 13 Nov 2026) */
+        .promo-pill { display: inline-flex; align-items: center; font-size: 12px; line-height: 1.3; color: #8A6420; background: #FBF7EF;
+                      border: 1px solid #E8DCC4; border-radius: 999px; padding: 3px 10px; font-weight: 500; white-space: nowrap; }
+        .promo-pill.is-sm { font-size: 11px; padding: 2px 8px; }
+        .cz-eyebrow { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #8A6420; font-weight: 600; }
+        .cz-media { mix-blend-mode: multiply; }
+        .cz-panel { background: #F6F5F2; }
+        .cz-swi { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; padding: 0; border: 0; background: none; cursor: pointer; }
+        .cz-sw { width: 44px; height: 44px; border-radius: 999px; border: 1px solid #E4E4E7; display: flex; align-items: center; justify-content: center;
+                 transition: border-color .15s; }
+        .cz-swi:hover .cz-sw { border-color: #A1A1AA; }
+        .cz-sw.is-on { border: 2px solid #18181B; }
+        .cz-sw-dot { width: 34px; height: 34px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+        .cz-sw-name { font-size: 11px; line-height: 1.25; color: #52525B; text-align: center; }
+        .cz-swi.is-on .cz-sw-name { color: #18181B; font-weight: 600; }
+        .cz-swi:focus-visible { outline: none; }
+        .cz-swi:focus-visible .cz-sw { outline: 2px solid #8A6420; outline-offset: 2px; }
+        .cz-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid #E4E4E7; border-radius: 999px;
+                   background: #fff; font-size: 13px; color: #3F3F46; transition: border-color .15s; }
+        .cz-chip:hover { border-color: #A1A1AA; }
+        .cz-chip.is-on { border-color: #18181B; box-shadow: inset 0 0 0 1px #18181B; color: #18181B; font-weight: 600; }
+        .cz-chip-dot { width: 16px; height: 16px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .1); flex: none; }
+        .cz-trust { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid #EEECE8;
+                    border-bottom: 1px solid #EEECE8; font-size: 12px; line-height: 1.3; color: #3F3F46; }
+        .cz-trust li { display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+        .cz-trust svg { width: 16px; height: 16px; color: #8A6420; flex: none; }
+        @media (min-width: 640px) { .cz-trust li { flex-direction: row; justify-content: center; gap: 7px; } }
+        .cz-acc > section { border-bottom: 1px solid #EEECE8; }
+        .cz-acc-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 0; border: 0; background: none; text-align: left;
+                      font-size: 14px; font-weight: 500; color: #18181B; cursor: pointer; }
+        .cz-acc-btn > span:first-child { flex: 1; }
+        .cz-acc-btn .val { font-weight: 400; color: #52525B; font-size: 13px; }
+        .cz-acc-btn .chev { width: 16px; height: 16px; color: #71717A; flex: none; transition: transform .2s; }
+        .cz-acc-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+        .cz-acc-panel { padding: 0 0 16px; font-size: 13px; line-height: 1.6; color: #52525B; }
+        .cz-link { min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; font-size: 13px; color: #52525B;
+                   text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #D6D3D1; }
+        .cz-link:hover { color: #18181B; text-decoration-color: #18181B; }
+        .cz-qty { display: inline-flex; align-items: center; height: 48px; border: 1px solid #D6D3D1; border-radius: 999px; background: #fff; flex: none; }
+        .cz-qty button { width: 40px; height: 100%; border: 0; background: none; border-radius: 999px; font-size: 18px; line-height: 1; color: #3F3F46;
+                         display: flex; align-items: center; justify-content: center; }
+        .cz-qty button:disabled { opacity: .35; cursor: default; }
+        .cz-qty span { min-width: 20px; text-align: center; font-size: 15px; font-weight: 500; color: #18181B; }
+        .cz-qty.is-sm { height: 44px; }
+        .cz-qty.is-sm button { width: 38px; font-size: 17px; }
+        .cz-qty.is-sm span { font-size: 14px; }
+        .cz-bar { box-shadow: 0 -6px 18px rgba(0, 0, 0, .06); }
+        @media (min-width: 1024px) { .cz-bar.lg-static { box-shadow: none; } }
+        .cz-sum-h { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #52525B; font-weight: 600; }
         .acct-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 14px; font-size: 13px; letter-spacing: .12em;
                     text-transform: uppercase; color: #52525B; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
         .acct-tab:hover { color: #1A1A1A; }
@@ -2002,32 +2051,28 @@
         <main class="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden fade-in">
             <h1 class="vh" x-text="'Customize ' + (design?.title || 'your design')">Customize your design</h1>
 
-            <!-- Left — preview -->
-            <div class="w-full lg:w-1/2 flex flex-col shrink-0 relative" style="background:#F5F5F7;">
-                <div class="flex items-center justify-center gap-3 py-3 shrink-0">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    <span class="text-[12px] lg:text-[13px] uppercase tracking-widest text-zinc-600">Your Selected Design</span>
-                </div>
-                <div class="flex items-center justify-center gap-2 pb-2 shrink-0" x-show="!movieOff && !movieNone" role="group" aria-label="Show the image or the movie">
-                    <button @click="mediaTab = 'image'" :aria-pressed="mediaTab === 'image'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition"
-                            :class="mediaTab === 'image' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">Image</button>
-                    <button @click="mediaTab = 'movie'" :aria-pressed="mediaTab === 'movie'" class="min-h-[38px] px-4 rounded-full text-[13px] uppercase tracking-[0.12em] border transition inline-flex items-center gap-1.5"
-                            :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'">
-                        Movie
-                        <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
-                    </button>
-                </div>
-
+            <!-- Left — the picture (Boutique, owner's Option B, 13 Nov 2026): edge to edge on a soft panel, no heading above it;
+                 Image / Movie as a small switch on the picture -->
+            <div class="w-full lg:w-1/2 flex flex-col shrink-0 relative cz-panel">
                 <!-- Tablets get a larger stage (R-36: the movie was 288 px wide below 1024 px) -->
-                <div class="flex-1 relative overflow-hidden min-h-[320px] sm:min-h-[480px] md:min-h-[560px] lg:min-h-[320px]">
+                <div class="flex-1 relative overflow-hidden min-h-[300px] sm:min-h-[480px] md:min-h-[560px] lg:min-h-[320px]">
                     <div class="absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-                        <img x-show="movieOff || movieNone || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain" :style="{ filter: tint }">
+                        <img x-show="movieOff || movieNone || mediaTab === 'image' || movieStatus !== 'ready'" :src="cust?.image_url" alt="Selected design" class="max-w-full max-h-full object-contain cz-media" :style="{ filter: tint }">
                         <template x-if="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'">
                             <!-- Plays and loops as before; a tap (or the button) pauses it, and with reduced motion it waits for Play -->
                             <video x-ref="custMovie" :src="cust?.movie.movie_url" :poster="cust?.image_url" preload="auto" :autoplay="!reducedMotion" loop muted playsinline
                                    x-init="moviePaused = reducedMotion" @play="moviePaused = false" @pause="moviePaused = true" @click="toggleMovie()"
-                                   class="max-w-full max-h-full object-contain cursor-pointer" :style="{ filter: tint }"></video>
+                                   class="max-w-full max-h-full object-contain cursor-pointer cz-media" :style="{ filter: tint }"></video>
                         </template>
+                    </div>
+                    <div x-show="!movieOff && !movieNone" class="absolute top-3 left-3 z-10 inline-flex p-0.5 rounded-full bg-white/90 backdrop-blur border border-zinc-200" role="group" aria-label="Show the image or the movie">
+                        <button @click="mediaTab = 'image'" :aria-pressed="mediaTab === 'image'" class="min-h-[40px] px-3.5 rounded-full text-[12px] uppercase tracking-[0.12em] transition"
+                                :class="mediaTab === 'image' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-900'">Image</button>
+                        <button @click="mediaTab = 'movie'" :aria-pressed="mediaTab === 'movie'" class="min-h-[40px] px-3.5 rounded-full text-[12px] uppercase tracking-[0.12em] transition inline-flex items-center gap-1.5"
+                                :class="mediaTab === 'movie' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-900'">
+                            Movie
+                            <span class="w-1.5 h-1.5 rounded-full" :class="movieStatus === 'ready' ? 'bg-emerald-400' : (movieFailed ? 'bg-red-400' : 'bg-amber-400 animate-pulse')"></span>
+                        </button>
                     </div>
                     <button x-show="!movieOff && mediaTab === 'movie' && movieStatus === 'ready'" @click="toggleMovie()"
                             class="tap absolute bottom-3 left-3 z-10 min-h-[40px] px-3 rounded-lg bg-white/85 backdrop-blur border transition hover:bg-white text-[13px] text-[#3F3F46] inline-flex items-center gap-1.5"
@@ -2062,251 +2107,196 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                     </button>
                 </div>
-
-                <div class="flex flex-col items-center gap-1 py-3 shrink-0">
-                    <p class="text-[12px] lg:text-[13px] text-zinc-600 uppercase tracking-widest" x-text="design?.title"></p>
-                    <p class="text-[12px] lg:text-[13px] text-zinc-600 uppercase tracking-[0.15em]" x-text="currentMaterialLabel"></p>
-                    <!-- AI-01: the images and the 360° movie are renderings; the piece is made from a 3D model -->
-                    <p class="text-[13px] leading-snug text-zinc-600 text-center px-4" style="max-width:440px" data-testid="ai-preview-note">AI-generated preview: the images and the movie are renderings of your design, not photographs, and the metal color is a visual preview. Your piece is made from a 3D model, so color, surface detail and small proportions may differ. <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms</a></p>
-                </div>
+                <!-- AI-01: the images and the movie are renderings; the piece is made from a 3D model (always shown, unchanged) -->
+                <p class="px-5 py-3 text-[12px] lg:text-[13px] leading-snug text-zinc-600 lg:text-center lg:mx-auto shrink-0" style="max-width:520px" data-testid="ai-preview-note">AI-generated preview: the images and the movie are renderings of your design, not photographs, and the metal color is a visual preview. Your piece is made from a 3D model, so color, surface detail and small proportions may differ. <a href="{{BASE}}/terms" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Terms</a></p>
             </div>
 
-            <!-- Right — configuration -->
-            <div class="w-full lg:w-1/2 bg-white flex flex-col lg:overflow-hidden border-t lg:border-t-0 lg:border-l border-zinc-100">
-                <div class="flex-1 lg:overflow-y-auto no-scrollbar px-6 md:px-10 2xl:px-14 pt-5 pb-8 space-y-6">
+            <!-- Right — the piece and its choices; the one Add to Bag stays in reach at the bottom -->
+            <div class="w-full lg:w-1/2 bg-white flex flex-col lg:overflow-hidden lg:border-l border-zinc-100">
+                <div class="flex-1 lg:overflow-y-auto no-scrollbar px-5 sm:px-8 md:px-10 2xl:px-14 pt-6 lg:pt-8 pb-36 lg:pb-8">
 
-                    <!-- Metal Type: the metals by their status for this product (WP3) — Fashion jewelry (sold at a fixed price),
-                         Luxury (quoted) and Preview only (seen, never priced, bagged or quoted) -->
-                    <div>
-                        <label class="text-[12px] uppercase tracking-widest font-semibold text-zinc-600 block mb-3">Metal Type</label>
-                        <div class="flex flex-col gap-2">
-                            <template x-for="g in custGroups" :key="g.id">
-                                <div>
-                                    <button type="button" @click="toggleGroup(g.id)" :aria-expanded="String(!!groupOpen[g.id])"
-                                            :class="currentGroup === g.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
-                                            class="border rounded-sm px-4 py-3 flex items-center gap-3 transition w-full text-left">
-                                        <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0"
-                                             :style="currentGroup === g.id ? 'background-color:' + (currentMaterial?.swatch || '#ccc') : (g.id !== 'fashion' ? 'background:linear-gradient(135deg,#FFD700 0%,#B8860B 100%)' : 'background:linear-gradient(135deg,#C8C8C5 0%,#6E7377 100%)')"></div>
-                                        <div class="flex-1">
-                                            <div class="text-sm font-semibold text-zinc-800" x-text="g.id === 'fashion' ? 'Fashion Jewelry' : (g.id === 'luxury' ? 'Luxury' : 'Preview only')"></div>
-                                            <div class="text-[13px] text-zinc-500" x-text="currentGroup === g.id ? currentMaterialLabel : (g.id === 'fashion' ? g.materials.map(m => matName(m)).join(' · ') : (g.id === 'luxury' ? 'Gold options — price on request' : 'Gold options — not available to order'))"></div>
-                                        </div>
-                                        <span x-show="!g.purchasable" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B; border:1px solid #E8DCC4;" x-text="g.id === 'preview' ? 'Preview only' : 'By request'">By request</span>
-                                        <svg :class="groupOpen[g.id] ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                                    </button>
-                                    <!-- Fashion: full-width rows (P2 metal rows) -->
-                                    <div x-show="groupOpen[g.id] && g.id === 'fashion'" x-transition class="mt-1 flex flex-col gap-1 pl-2">
-                                        <template x-for="m in g.materials" :key="m.id">
-                                            <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)"
-                                                    :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
-                                                    class="border rounded-sm px-4 py-2.5 flex items-center gap-3 transition w-full text-left">
-                                                <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
-                                                <div>
-                                                    <div class="text-sm font-semibold text-zinc-800" x-text="matName(m)"></div>
-                                                    <div class="text-[13px] text-zinc-500" x-text="copy(m.id).sub"></div>
-                                                </div>
-                                            </button>
-                                        </template>
-                                    </div>
-                                    <!-- Luxury and Preview only: gold grid (P2 gold sub-options) -->
-                                    <div x-show="groupOpen[g.id] && g.id !== 'fashion'" x-transition class="mt-1 grid grid-cols-3 gap-1 pl-2">
-                                        <template x-for="m in g.materials" :key="m.id">
-                                            <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)"
-                                                    :class="cust?.material_id === m.id ? 'border-black ring-1 ring-black bg-zinc-50' : 'border-zinc-200 hover:border-zinc-400'"
-                                                    class="border rounded-sm p-2 flex flex-col items-center gap-1.5 transition text-center">
-                                                <div class="w-5 h-5 rounded-full shadow border border-zinc-200 shrink-0" :style="m.id === 'vermeil' ? 'background:linear-gradient(135deg,#D4A840 0%,#C0C0C0 100%)' : 'background-color:' + m.swatch"></div>
-                                                <div class="text-[13px] font-medium text-zinc-700 leading-tight" x-text="matName(m)"></div>
-                                            </button>
-                                        </template>
-                                    </div>
-                                </div>
-                            </template>
+                    <!-- The piece: what it is, its name and ID, its price -->
+                    <section aria-labelledby="cust-name">
+                        <p class="cz-eyebrow" x-text="custEyebrow"></p>
+                        <h2 id="cust-name" class="mt-1.5 text-[28px] lg:text-[32px] leading-tight tracking-[0.02em] text-zinc-900" x-text="design?.title || (custIsCharm ? 'Your charm' : 'Your ring')"></h2>
+                        <p x-show="cust?.ring_id" x-cloak class="mt-1 text-[12px] text-zinc-500"><span x-text="custIsCharm ? 'Charm ID' : 'Ring ID'"></span> <span class="font-mono text-zinc-600" x-text="cust?.ring_id"></span></p>
+                        <!-- Price. A promotion (P1): its tag ("Christmas price"); the regular price crossed out and the saving only when the
+                             server sent them (verified reference prices: claims) -->
+                        <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="cust-price">
+                            <span class="brand-font leading-none transition-colors duration-500" :class="priceAvailable ? 'text-[30px] text-zinc-900' : 'text-2xl text-zinc-500'" x-text="custPriceFigure"></span>
+                            <s x-show="promoWas(custPromo, cust?.quote?.currency)" x-cloak class="promo-was text-[17px]" data-testid="price-was"
+                               x-text="promoWas(custPromo, cust?.quote?.currency, true)" :aria-label="'Regular price ' + promoWas(custPromo, cust?.quote?.currency, true)"></s>
+                            <span x-show="custPromo" x-cloak class="promo-pill" data-testid="price-save" x-text="promoPill(custPromo, cust?.quote?.currency)"></span>
+                            <span x-show="priceAvailable && cust?.quote?.incl_vat" x-cloak class="text-[12px] text-zinc-500">VAT included</span>
                         </div>
-                    </div>
+                        <p x-show="priceAvailable && !custIsCharm" class="text-[13px] text-zinc-500 mt-2">Fixed price for <span x-text="currentMaterial?.label"></span>, any size.</p>
+                        <p x-show="isLuxury" x-cloak class="text-[14px] text-zinc-600 mt-2 leading-snug" x-text="(custIsCharm ? 'Gold charms' : 'Gold rings') + ' are quoted individually. Send us your request: we confirm it right away, review it within one business day and aim to send your price within three business days.'"></p>
+                        <p x-show="!isLuxury && !isPreview && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[14px] text-zinc-600 mt-2"
+                           x-text="custIsCharm ? 'The price for this size and material is not available right now.' : 'The price for this material is not available right now.'"></p>
+                        <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
+                    </section>
 
-                    <!-- Charm size: the total height, the eyelet included; each size has its own price. The choices read
-                         "14 mm — Classic · Recommended": the recommended size is suggested (like a ring's US 10) until the
-                         customer confirms it or picks another. Shown only while customers have two or more charm sizes
-                         (Admin → Charm sizes); with one, that size is selected and named in the details below. -->
-                    <div id="charm-size-heading" x-show="custSizeChoice" x-cloak>
-                        <h2 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h2>
-                        <p class="text-[13px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
-                        <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
-                        <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
-                            <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
-                                <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : '')"
-                                        :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : (sizeIsSuggested(s.size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500')"
-                                        :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
-                                        class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
-                                    <span x-text="s.label"></span>
-                                    <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'">
-                                        <s x-show="!isLuxury && !isPreview && promoWas(s.promotion, s.currency)" class="promo-was mr-1" x-text="promoWas(s.promotion, s.currency, true)"></s><span
-                                           x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : 'Unavailable')"></span>
-                                    </span>
+                    <!-- Metal: the metals sold at a fixed price as round swatches; gold — quoted (Luxury) or Preview only — as one swatch
+                         per group, its metals by name below once chosen (the WP3 statuses decide every group, unchanged) -->
+                    <section class="mt-7" aria-labelledby="cust-metal">
+                        <p id="cust-metal" class="text-[13px] text-zinc-600">Metal: <b class="font-semibold text-zinc-900" x-text="currentMaterialLabel"></b>
+                            <span x-show="isLuxury || isPreview" x-cloak class="promo-pill is-sm ml-1.5" x-text="isPreview ? 'Preview only' : 'Price on request'"></span></p>
+                        <div class="mt-3 flex flex-wrap items-start gap-x-3 gap-y-3" role="group" aria-label="Metal">
+                            <template x-for="m in custMaterialsOf('fashion')" :key="m.id">
+                                <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)" class="cz-swi" :class="cust?.material_id === m.id ? 'is-on' : ''">
+                                    <span class="cz-sw" :class="cust?.material_id === m.id ? 'is-on' : ''"><span class="cz-sw-dot" :style="swatchCss(m)"></span></span>
+                                    <span class="cz-sw-name" x-text="matName(m)"></span>
+                                </button>
+                            </template>
+                            <span x-show="custMaterialsOf('fashion').length && custGroups.some(g => g.id !== 'fashion')" class="self-center w-px h-11 bg-zinc-200 mx-1" aria-hidden="true"></span>
+                            <template x-for="g in custGroups.filter(g => g.id !== 'fashion')" :key="'grp-' + g.id">
+                                <button type="button" @click="toggleGroup(g.id)" :aria-expanded="String(!!groupOpen[g.id])" class="cz-swi" :class="currentGroup === g.id ? 'is-on' : ''"
+                                        :aria-label="g.id === 'luxury' ? 'Gold, price on request' : 'Preview only metals'">
+                                    <span class="cz-sw" :class="currentGroup === g.id ? 'is-on' : ''"><span class="cz-sw-dot" :style="currentGroup === g.id ? swatchCss(currentMaterial) : 'background:linear-gradient(135deg,#F3D57C 0%,#B8892B 100%)'"></span></span>
+                                    <span class="cz-sw-name" x-text="g.id === 'luxury' ? 'Gold · on request' : 'Preview only'"></span>
                                 </button>
                             </template>
                         </div>
-                        <p class="text-[14px] text-zinc-600 mt-2">
-                            <span x-show="sizeConfirmed && cust?.charm_size != null">Your size: <strong class="text-zinc-700" x-text="cust?.size_label"></strong> · the price depends on the size</span>
-                            <span x-show="!sizeConfirmed">Confirm a size to add this charm to your bag.</span>
-                        </p>
-                    </div>
-
-                    <!-- Ring Size: an explicit choice. The opening size is a suggestion until the customer taps a size. -->
-                    <div id="ring-size-heading" x-show="!custIsCharm">
-                        <div class="flex items-center justify-between mb-1">
-                            <h2 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h2>
-                            <button @click="openSizeGuide()" aria-haspopup="dialog" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
-                        </div>
-                        <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && cust?.ring_size != null">Suggested: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> — tap it to confirm, or choose another size.</p>
-                        <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Ring size (US)">
-                            <template x-for="size in (catalog?.ring_sizes.values || [])" :key="size">
-                                <button @click="setSize(size)" role="radio" :aria-checked="sizeConfirmed && cust?.ring_size == size" :aria-label="'US ' + size + (sizeIsSuggested(size) ? ' (suggested)' : '')"
-                                        :class="sizeConfirmed && cust?.ring_size == size ? 'bg-black text-white border-black' : (sizeIsSuggested(size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-600 hover:border-zinc-500')"
-                                        :style="sizeIsSuggested(size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
-                                        class="w-11 h-11 border text-[13px] font-medium transition rounded-sm" x-text="size"></button>
-                            </template>
-                        </div>
-                        <p class="text-[14px] text-zinc-600 mt-2">
-                            <span x-show="sizeConfirmed && cust?.ring_size != null">Your size: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> · the size does not change the price</span>
-                            <span x-show="!sizeConfirmed && cust?.ring_size != null">Not sure? Open the size guide — tap any row to pick that size — or <a :href="mailto('Sizing help' + (design?.title ? ' — ' + design.title : ''))" class="underline underline-offset-2 hover:text-black">ask us</a>.</span>
-                            <span x-show="cust?.ring_size == null">Choose your size to add this ring to your bag.</span>
-                        </p>
-                    </div>
-
-                    <!-- Configuration summary -->
-                    <div class="border border-zinc-100 rounded-sm p-5 space-y-3 bg-zinc-50/50">
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Metal</span><span class="font-medium text-zinc-800" x-text="currentMaterialLabel"></span></div>
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500">Collection</span><span class="font-medium text-zinc-800" x-text="currentGroup === 'fashion' ? 'Fashion Jewelry' : (currentGroup === 'preview' ? 'Preview only' : 'Luxury')"></span></div>
-                        <div class="flex justify-between text-sm"><span class="text-zinc-500" x-text="custIsCharm ? 'Charm Size' : 'Ring Size'"></span><span class="font-medium text-zinc-800" x-text="custIsCharm ? (cust?.size_label || '—') : (cust?.ring_size != null ? 'US ' + cust?.ring_size : '—')"></span></div>
-                    </div>
-
-                    <!-- About Charm Size (12 Nov 2026): collapsed by default, under the details that name the size. What a charm
-                         size measures — the total height, the attachment eyelet included — and this charm's own height; never
-                         a claim about chains or bracelets. -->
-                    <div x-show="custIsCharm" x-cloak class="-mt-3 border-b border-zinc-100" data-testid="charm-size-about">
-                        <button type="button" @click="sizeAboutOpen = !sizeAboutOpen" :aria-expanded="String(sizeAboutOpen)" aria-controls="charm-size-about-text"
-                                class="w-full min-h-[44px] flex items-center justify-between gap-3 py-2 text-left text-[13px] font-medium text-zinc-700 hover:text-black transition">
-                            <span class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-[#8A6420] shrink-0" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5"/><circle cx="12" cy="7.75" r=".6" fill="currentColor" stroke="none"/></svg>
-                                About Charm Size
-                            </span>
-                            <svg :class="sizeAboutOpen ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-400 transition-transform flex-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                        </button>
-                        <div id="charm-size-about-text" x-show="sizeAboutOpen" x-transition.opacity class="pb-4 flex items-start gap-4">
-                            <!-- the measure: from the lowest point to the top of the eyelet -->
-                            <svg class="shrink-0 mt-0.5" width="40" height="54" viewBox="0 0 48 64" fill="none" aria-hidden="true">
-                                <circle cx="20" cy="8" r="5" stroke="#8A6420" stroke-width="1.5"/>
-                                <path d="M20 13C32 13 37 25 37 36C37 49 29 58 20 58C11 58 3 49 3 36C3 25 8 13 20 13Z" fill="#FBF7EF" stroke="#8A6420" stroke-width="1.5"/>
-                                <path d="M44 3V58M40.5 3H47.5M40.5 58H47.5" stroke="#71717A" stroke-width="1.2" stroke-linecap="round"/>
-                            </svg>
-                            <p class="text-[13px] leading-relaxed text-zinc-600" x-text="charmSizeAbout"></p>
-                        </div>
-                    </div>
-
-                    <!-- Price -->
-                    <div>
-                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <!-- a promotion (P1): the regular price crossed out, only when the server sent it (verified) -->
-                            <s x-show="promoWas(custPromo, cust?.quote?.currency)" x-cloak class="promo-was brand-font font-light text-xl" data-testid="price-was"
-                               x-text="promoWas(custPromo, cust?.quote?.currency)" :aria-label="'Regular price ' + promoWas(custPromo, cust?.quote?.currency)"></s>
-                            <span class="font-light brand-font transition-colors duration-500"
-                                  :class="priceAvailable ? 'text-3xl text-zinc-900' : 'text-2xl text-zinc-500'" x-text="priceText"></span>
-                            <span x-show="priceAvailable" class="text-[12px] text-zinc-500 uppercase tracking-widest">Per piece</span>
-                        </div>
-                        <p x-show="custPromo" x-cloak class="text-[13px] mt-1 tracking-wide" style="color:#8A6420" data-testid="price-save" x-text="promoLine(custPromo, cust?.quote?.currency, true)"></p>
-                        <p x-show="priceAvailable && !custIsCharm" class="text-[14px] text-zinc-600 mt-1.5 leading-snug">
-                            Fixed price for <span x-text="currentMaterial?.label"></span>, any size.
-                        </p>
-                        <p x-show="priceAvailable && custIsCharm" x-cloak class="text-[14px] text-zinc-600 mt-1.5 leading-snug">
-                            Fixed price for <span x-text="currentMaterialLabel"></span> at <span x-text="cust?.size_label"></span>.
-                        </p>
-                        <p x-show="isLuxury" class="text-[14px] text-zinc-600 mt-1.5" x-text="custIsCharm ? 'Gold charms are quoted individually — request a quote below.' : 'Gold rings are quoted individually — request a quote below.'"></p>
-                        <p x-show="isPreview" x-cloak class="text-[14px] text-zinc-600 mt-1.5" x-text="materialPreviewText"></p>
-                        <p x-show="!isLuxury && !isPreview && cust?.quote && cust?.quote.pricing_status !== 'available' && !(custIsCharm && cust?.charm_size == null)" class="text-[14px] text-zinc-600 mt-1.5"
-                           x-text="custIsCharm ? 'The price for this size and material is not available right now.' : 'The price for this material is not available right now.'"></p>
-                        <span x-show="priceAvailable && !cust?.quote?.profile_approved" class="inline-block mt-2 text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing — not a real price</span>
-                    </div>
-
-                    <!-- How ordering works, before the bag (B4/B6, 11 Nov 2026): payment, timing in business days, the policy page -->
-                    <div x-show="!isLuxury && !isPreview" class="rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">
-                        <p><strong class="font-semibold">No payment online.</strong> After you order, we review your design (about 2 business days) and contact you to arrange payment.</p>
-                        <p class="mt-1">Production: up to 14 business days after your payment is confirmed. Standard shipping: up to 14 business days.</p>
-                        <p class="mt-1"><a href="{{BASE}}/shipping-returns" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Shipping, payment and returns</a></p>
-                    </div>
-
-                    <!-- Quantity -->
-                    <div class="flex items-center justify-between">
-                        <span class="text-[14px] uppercase tracking-widest text-zinc-500">Quantity</span>
-                        <div class="flex items-center gap-3">
-                            <button @click="setQuantity(-1)" class="tap w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none" aria-label="Decrease quantity">−</button>
-                            <span class="text-sm font-medium text-zinc-800 w-4 text-center" x-text="cust?.quantity || 1" aria-live="polite"></span>
-                            <button @click="setQuantity(1)" class="tap w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none" aria-label="Increase quantity">+</button>
-                        </div>
-                    </div>
-                    <p x-show="cust?.line_total != null && cust?.quantity > 1" class="text-[14px] text-zinc-600 -mt-3 text-right" x-text="'Total ' + money(cust?.line_total || 0, cust?.quote?.currency)"></p>
-
-                    <!-- Bag actions · Gold is quoted individually: "Request a quote" instead of the fixed-price path -->
-                    <div class="space-y-3 lg:sticky lg:bottom-0 lg:bg-white lg:pt-3 lg:-mx-2 lg:px-2">
-                        <!-- Compact summary so the decision is always in view: price · size · metal -->
-                        <p x-show="!isLuxury && !isPreview" class="text-[13px] text-zinc-700 text-center"><span class="font-semibold text-zinc-900" x-text="purchaseSummary"></span><span x-show="custIsCharm" x-text="' · ' + currentMaterialLabel"></span></p>
-                        <button x-show="!isLuxury && !isPreview" @click="addToBag()" :disabled="!cust?.can_add_to_bag || quotePending" class="btn-black w-full py-4 shadow-lg disabled:hover:bg-black" :class="!sizeConfirmed && cust?.can_add_to_bag ? '!bg-zinc-700' : ''">
-                            <span x-text="bagButtonText"></span>
-                            <svg x-show="canAddToBag" class="w-[18px] h-[18px] ml-2.5 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h19M14 5l7 7-7 7"/></svg>
-                        </button>
-                        <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold w-full py-4 shadow-lg">Request a quote</button>
-                        <p x-show="isLuxury" x-cloak class="text-[14px] text-zinc-600 text-center leading-snug" x-text="(custIsCharm ? 'Gold charms' : 'Gold rings') + ' are quoted individually. Send us your request: we confirm it right away, review it within one business day and aim to send your price within three business days.'"></p>
-                        <!-- Preview only: no price, no bag, no quote — what to order instead -->
-                        <p x-show="isPreview" x-cloak class="text-[14px] text-zinc-700 text-center leading-snug" x-text="materialPreviewText"></p>
-                        <p x-show="!isLuxury && !isPreview && !cust?.can_add_to_bag && bagBlockedText" class="text-[14px] text-zinc-600 text-center" x-text="bagBlockedText"></p>
-                        <p x-show="bagMessage" class="text-[14px] text-center" style="color:#146C43;" x-text="bagMessage"></p>
-                        <p x-show="custError" class="err-line justify-center text-center" role="alert" x-text="custError"></p>
-                    </div>
-                    <!-- Below the sticky summary: the bag so far and the other ways on -->
-                    <div class="space-y-3">
-
-                        <div x-show="bagLines.length > 0" class="border border-zinc-200 rounded-sm divide-y divide-zinc-100">
-                            <div class="px-3 py-2 flex items-center justify-between">
-                                <span class="text-[12px] uppercase tracking-widest text-zinc-700">In Your Bag</span>
-                                <span class="text-[12px] uppercase tracking-widest text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
+                        <!-- the group chosen: its metals by name -->
+                        <template x-for="g in custGroups.filter(g => g.id !== 'fashion')" :key="'grp-list-' + g.id">
+                            <div x-show="groupOpen[g.id]" x-transition.opacity class="mt-3 flex flex-wrap gap-2" role="group" :aria-label="g.id === 'luxury' ? 'Gold, price on request' : 'Preview only metals'">
+                                <template x-for="m in g.materials" :key="m.id">
+                                    <button type="button" @click="chooseMaterial(m.id)" :aria-pressed="String(cust?.material_id === m.id)" class="cz-chip" :class="cust?.material_id === m.id ? 'is-on' : ''">
+                                        <span class="cz-chip-dot" :style="swatchCss(m)"></span><span x-text="matName(m)"></span>
+                                    </button>
+                                </template>
                             </div>
-                            <template x-for="l in bagLines" :key="l.id">
-                                <div class="flex items-center gap-2 px-3 py-2.5 text-[13px]">
-                                    <div class="flex-1 min-w-0 leading-tight">
-                                        <span class="text-zinc-700 font-medium" x-text="l.material_label"></span>
-                                        <span class="text-zinc-500"> · <span x-text="lineSize(l)"></span> · ×<span x-text="l.quantity"></span></span>
-                                    </div>
-                                    <span class="shrink-0 text-zinc-600" x-text="money(l.line_total, l.currency)"></span>
-                                    <button @click="removeLine(l)" class="shrink-0 w-11 h-11 -my-3 -mr-2 flex items-center justify-center text-zinc-400 hover:text-red-500 transition text-lg leading-none" title="Remove" :aria-label="'Remove ' + (l.title || 'item') + ' from the bag'">×</button>
-                                </div>
-                            </template>
+                        </template>
+                    </section>
+
+                    <!-- Sizes to choose (a ring; a charm while customers have two or more sizes) -->
+                    <div x-show="custSizeChoice || !custIsCharm" class="mt-7 space-y-7">
+                        <!-- Charm size: the total height, the eyelet included; each size has its own price. The choices read
+                             "14 mm — Classic · Recommended": the recommended size is suggested (like a ring's US 10) until the
+                             customer confirms it or picks another. Shown only while customers have two or more charm sizes
+                             (Admin → Charm sizes); with one, that size is selected and named in the details below. -->
+                        <div id="charm-size-heading" x-show="custSizeChoice" x-cloak>
+                            <h2 class="text-[15px] font-semibold text-zinc-900 mb-1">Choose your charm size <span class="text-[12px] font-normal text-zinc-500">(total height)</span></h2>
+                            <p class="text-[13px] text-zinc-500 mb-3" x-text="cust?.size_definition?.text"></p>
+                            <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && suggestedCharmSize() != null">Recommended: <strong class="text-zinc-700" x-text="suggestedCharmLabel()"></strong> — tap it to confirm, or choose another size.</p>
+                            <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Charm size (total height)">
+                                <template x-for="s in (cust?.charm_sizes || [])" :key="'cs' + s.size">
+                                    <button @click="setSize(s.size)" role="radio" :aria-checked="sizeConfirmed && cust?.charm_size == s.size" :aria-label="s.label + (sizeIsSuggested(s.size) ? ' (suggested)' : '') + (s.unit_price != null && !isLuxury ? ', ' + money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : '')"
+                                            :class="sizeConfirmed && cust?.charm_size == s.size ? 'bg-black text-white border-black' : (sizeIsSuggested(s.size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-700 hover:border-zinc-500')"
+                                            :style="sizeIsSuggested(s.size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
+                                            class="min-w-[72px] px-3 py-2 border text-[13px] font-medium transition rounded-sm flex flex-col items-center leading-tight">
+                                        <span x-text="s.label"></span>
+                                        <span class="text-[13px] font-normal mt-0.5" :class="sizeConfirmed && cust?.charm_size == s.size ? 'text-zinc-300' : 'text-zinc-500'">
+                                            <s x-show="!isLuxury && !isPreview && promoWas(s.promotion, s.currency)" class="promo-was mr-1" x-text="promoWas(s.promotion, s.currency, true)"></s><span
+                                               x-text="isLuxury ? 'Quote' : isPreview ? 'Preview' : (s.unit_price != null ? money(s.unit_price, s.currency || cust?.quote?.currency || 'USD') : 'Unavailable')"></span>
+                                        </span>
+                                    </button>
+                                </template>
+                            </div>
+                            <p class="text-[14px] text-zinc-600 mt-2">
+                                <span x-show="sizeConfirmed && cust?.charm_size != null">Your size: <strong class="text-zinc-700" x-text="cust?.size_label"></strong> · the price depends on the size</span>
+                                <span x-show="!sizeConfirmed">Confirm a size to add this charm to your bag.</span>
+                            </p>
                         </div>
-                        <button x-show="bagLines.length > 0" @click="goToCheckout()" class="w-full btn-gold py-4 text-[14px] uppercase tracking-widest transition shadow-lg flex items-center justify-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6" stroke-linecap="round"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 10a4 4 0 01-8 0"/></svg>
-                            View Bag
-                            <span class="ml-1 px-1.5 py-0.5 bg-white text-black text-[12px] font-bold rounded-sm" x-text="bagCount"></span>
-                        </button>
-                        <button @click="startNew(); navigateTo('ai-studio')" class="w-full min-h-[44px] border border-zinc-300 py-3 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition text-zinc-600">+ Start Another Design</button>
+
+                        <!-- Ring Size: an explicit choice. The opening size is a suggestion until the customer taps a size. -->
+                        <div id="ring-size-heading" x-show="!custIsCharm">
+                            <div class="flex items-center justify-between mb-1">
+                                <h2 class="text-[15px] font-semibold text-zinc-900">Choose your ring size <span class="text-[12px] font-normal text-zinc-500">(US)</span></h2>
+                                <button @click="openSizeGuide()" aria-haspopup="dialog" class="tap-lg text-[12px] uppercase tracking-widest text-zinc-700 border-b border-zinc-400 hover:text-black hover:border-black transition">Size guide</button>
+                            </div>
+                            <p class="text-[13px] text-zinc-500 mb-3" x-show="!sizeConfirmed && cust?.ring_size != null">Suggested: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> — tap it to confirm, or choose another size.</p>
+                            <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Ring size (US)">
+                                <template x-for="size in (catalog?.ring_sizes.values || [])" :key="size">
+                                    <button @click="setSize(size)" role="radio" :aria-checked="sizeConfirmed && cust?.ring_size == size" :aria-label="'US ' + size + (sizeIsSuggested(size) ? ' (suggested)' : '')"
+                                            :class="sizeConfirmed && cust?.ring_size == size ? 'bg-black text-white border-black' : (sizeIsSuggested(size) ? 'border-dashed text-zinc-900' : 'border-zinc-200 text-zinc-600 hover:border-zinc-500')"
+                                            :style="sizeIsSuggested(size) ? 'border-color:#8A6420; background:#FBF7EF;' : ''"
+                                            class="w-11 h-11 border text-[13px] font-medium transition rounded-sm" x-text="size"></button>
+                                </template>
+                            </div>
+                            <p class="text-[14px] text-zinc-600 mt-2">
+                                <span x-show="sizeConfirmed && cust?.ring_size != null">Your size: US <strong class="text-zinc-700" x-text="cust?.ring_size"></strong> · the size does not change the price</span>
+                                <span x-show="!sizeConfirmed && cust?.ring_size != null">Not sure? Open the size guide — tap any row to pick that size — or <a :href="mailto('Sizing help' + (design?.title ? ' — ' + design.title : ''))" class="underline underline-offset-2 hover:text-black">ask us</a>.</span>
+                                <span x-show="cust?.ring_size == null">Choose your size to add this ring to your bag.</span>
+                            </p>
+                        </div>
                     </div>
 
-                    <div class="space-y-2 text-[12px] text-zinc-500 uppercase tracking-widest pb-4">
-                        <div class="flex items-center gap-2"><span>✓</span><span>2-year warranty</span></div>
+                    <!-- How ordering works, at a glance (B4/B6, 11 Nov 2026); the details in the sections below -->
+                    <ul class="cz-trust mt-7" aria-label="Ordering at a glance">
+                        <li x-show="!isLuxury && !isPreview"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>No payment online</li>
+                        <li x-show="!isLuxury && !isPreview"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linejoin="round" d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>Free delivery</li>
+                        <li><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linejoin="round" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>2-year warranty</li>
+                    </ul>
+
+                    <!-- Collapsible sections, one open at a time, all closed whenever a customization opens -->
+                    <div class="cz-acc">
+                        <!-- About Charm Size (12 Nov 2026), now the Size section: what a charm size measures — the total height, the
+                             attachment eyelet included — and this charm's own height; never a claim about chains or bracelets. -->
+                        <section x-show="custIsCharm" x-cloak data-testid="charm-size-about">
+                            <button type="button" class="cz-acc-btn" @click="toggleCustPanel('size')" :aria-expanded="String(custPanel === 'size')" aria-controls="charm-size-about-text">
+                                <span x-text="custSizeChoice ? 'About Charm Size' : 'Size'">Size</span>
+                                <span x-show="!custSizeChoice && cust?.size_label" class="val" x-text="(cust?.size_label || '') + ' total height'"></span>
+                                <svg class="chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="charm-size-about-text" x-show="custPanel === 'size'" x-transition.opacity class="cz-acc-panel flex items-start gap-4">
+                                <!-- the measure: from the lowest point to the top of the eyelet -->
+                                <svg class="shrink-0 mt-0.5" width="40" height="54" viewBox="0 0 48 64" fill="none" aria-hidden="true">
+                                    <circle cx="20" cy="8" r="5" stroke="#8A6420" stroke-width="1.5"/>
+                                    <path d="M20 13C32 13 37 25 37 36C37 49 29 58 20 58C11 58 3 49 3 36C3 25 8 13 20 13Z" fill="#FBF7EF" stroke="#8A6420" stroke-width="1.5"/>
+                                    <path d="M44 3V58M40.5 3H47.5M40.5 58H47.5" stroke="#71717A" stroke-width="1.2" stroke-linecap="round"/>
+                                </svg>
+                                <p x-text="charmSizeAbout"></p>
+                            </div>
+                        </section>
+                        <section x-show="!isLuxury && !isPreview">
+                            <button type="button" class="cz-acc-btn" @click="toggleCustPanel('pay')" :aria-expanded="String(custPanel === 'pay')" aria-controls="cust-pay-text">
+                                <span>Payment &amp; production</span>
+                                <svg class="chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="cust-pay-text" x-show="custPanel === 'pay'" x-transition.opacity class="cz-acc-panel space-y-1">
+                                <p><strong class="font-semibold text-zinc-800">No payment online.</strong> After you order, we review your design (about 2 business days) and contact you to arrange payment.</p>
+                                <p>Production: up to 14 business days after your payment is confirmed.</p>
+                            </div>
+                        </section>
+                        <section x-show="!isLuxury && !isPreview">
+                            <button type="button" class="cz-acc-btn" @click="toggleCustPanel('ship')" :aria-expanded="String(custPanel === 'ship')" aria-controls="cust-ship-text">
+                                <span>Shipping &amp; returns</span>
+                                <svg class="chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="cust-ship-text" x-show="custPanel === 'ship'" x-transition.opacity class="cz-acc-panel space-y-1">
+                                <p>Standard shipping: up to 14 business days. Standard delivery is free.</p>
+                                <p><a href="{{BASE}}/shipping-returns" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-black">Shipping, payment and returns</a></p>
+                            </div>
+                        </section>
+                    </div>
+
+                    <p x-show="bagMessage" x-cloak class="mt-5 text-[14px] text-center" style="color:#146C43;" role="status" x-text="bagMessage"></p>
+                    <!-- The other ways on: quiet links, never buttons beside Add to Bag -->
+                    <nav class="mt-4 flex flex-wrap justify-center gap-x-6" aria-label="More choices">
+                        <button type="button" @click="backToDesign()" class="cz-link">Back to designs</button>
+                        <button type="button" @click="startNew(); navigateTo('ai-studio')" class="cz-link">Start another design</button>
+                        <button type="button" x-show="bagLines.length > 0" x-cloak @click="goToCheckout()" class="cz-link" x-text="'View bag (' + bagCount + ')'">View bag</button>
+                    </nav>
+                </div>
+
+                <!-- The one Add to Bag (Boutique), the quantity beside it: fixed at the bottom of the screen on phones and tablets,
+                     under the choices on desktop. Gold: Request a quote. Preview only: what to order instead. -->
+                <div x-show="!showSizeGuide && !quoteReq.open && !previewOpen" class="cz-bar lg-static fixed bottom-0 inset-x-0 z-40 lg:static lg:z-auto bg-white/95 backdrop-blur border-t border-zinc-200 lg:border-zinc-100 px-4 sm:px-8 md:px-10 2xl:px-14 py-3 lg:py-4 lg:shrink-0">
+                    <p x-show="custError" class="err-line justify-center text-center mb-2" role="alert" x-text="custError"></p>
+                    <p x-show="!custError && !isLuxury && !isPreview && !cust?.can_add_to_bag && bagBlockedText" class="text-[13px] text-zinc-600 text-center leading-snug mb-2" x-text="bagBlockedText"></p>
+                    <div class="flex items-center gap-2.5">
+                        <div x-show="!isLuxury && !isPreview" class="cz-qty" role="group" aria-label="Quantity">
+                            <button type="button" @click="setQuantity(-1)" :disabled="(cust?.quantity || 1) <= 1" aria-label="Decrease quantity">−</button>
+                            <span x-text="cust?.quantity || 1" aria-live="polite"></span>
+                            <button type="button" @click="setQuantity(1)" :disabled="(cust?.quantity || 1) >= 10" aria-label="Increase quantity">+</button>
+                        </div>
+                        <button x-show="!isLuxury && !isPreview" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)"
+                                class="btn-black flex-1 min-w-0 min-h-[48px] px-4" data-testid="add-to-bag" x-text="addBagLabel">Add to Bag</button>
+                        <button x-show="isLuxury" x-cloak @click="openQuoteRequest()" class="btn-gold flex-1 min-h-[48px] px-4">Request a quote</button>
+                        <p x-show="isPreview" x-cloak class="flex-1 text-[13px] text-zinc-700 text-center leading-snug" x-text="materialPreviewText"></p>
                     </div>
                 </div>
-                <div class="border-t border-zinc-100 px-6 md:px-10 py-5 flex gap-3 bg-white lg:shrink-0 pb-24 lg:pb-5">
-                    <button @click="backToDesign()" class="flex-1 border border-zinc-300 py-3 text-[14px] uppercase tracking-widest hover:bg-zinc-50 transition">← Back to Designs</button>
-                </div>
-            </div>
-
-            <!-- Phone: the purchase summary stays in reach at the bottom — a ring "$200.00 · US 10 · Sterling Silver", a charm
-                 "14 mm Charm · ×2 · $218.00": the size and the total for the chosen quantity (R-01, R-19) -->
-            <div class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200 px-4 py-3 flex items-center justify-between gap-3" x-show="!showSizeGuide && !quoteReq.open && !previewOpen">
-                <div class="min-w-0 leading-tight">
-                    <p class="text-[14px] font-semibold text-zinc-900 truncate" x-text="purchaseSummary"></p>
-                    <p class="text-[13px] text-zinc-500" x-text="purchaseSubline"></p>
-                </div>
-                <button x-show="!isLuxury && !isPreview" @click="canAddToBag ? addToBag() : scrollToSize()" :disabled="quotePending || (!cust?.can_add_to_bag && sizeConfirmed)" class="btn-black shrink-0 min-h-[44px] px-4 py-3 !text-[12px]" x-text="canAddToBag ? 'Add to Bag' : (sizeConfirmed ? bagButtonText : 'Choose size')"></button>
-                <button x-show="isLuxury" @click="openQuoteRequest()" class="btn-gold shrink-0 min-h-[44px] px-4 py-3 !text-[12px]">Request a quote</button>
             </div>
 
             <!-- Size Guide Modal (P2) -->
@@ -2370,11 +2360,15 @@
     ══════════════════════════════════════════════════════════════════════════ -->
     <template x-if="view === 'checkout'">
         <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white">
-            <div class="max-w-2xl mx-auto px-6 pt-10 pb-28">
-                <h1 class="text-2xl brand-font mb-2">My Bag</h1>
-                <p x-show="token && bagLines.length" class="text-[13px] text-zinc-500 mb-8" x-text="bagPriceNote">Fixed prices per ring and material, in US dollars. Ring sizes are US sizes. Delivery and any promo code are added at checkout.</p>
-                <p x-show="!token" class="text-sm text-zinc-500">Sign in to see your bag.</p>
-                <div x-show="token && bagLines.length === 0" class="text-center py-14 border border-dashed border-zinc-200 rounded-xl">
+            <!-- Boutique (owner's Option B, 13 Nov 2026): compact lines — the line total, the price each for two or more, a quiet
+                 Remove — then the order summary; Checkout with the total stays at the bottom of the screen -->
+            <div class="max-w-2xl mx-auto px-5 sm:px-6 pt-8 sm:pt-10 pb-36">
+                <div class="flex items-baseline gap-3">
+                    <h1 class="text-[26px] sm:text-3xl brand-font">Your Bag</h1>
+                    <span x-show="token && bagCount > 0" x-cloak class="text-[13px] text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
+                </div>
+                <p x-show="!token" class="mt-2 text-sm text-zinc-500">Sign in to see your bag.</p>
+                <div x-show="token && bagLines.length === 0" class="mt-8 text-center py-14 border border-dashed border-zinc-200 rounded-xl">
                     <p class="brand-font text-xl text-zinc-800 mb-2">Your bag is empty</p>
                     <p class="text-[13px] text-zinc-500 mb-6">Choose a design, pick your metal and size, and add it here.</p>
                     <div class="flex flex-col sm:flex-row gap-3 justify-center px-6">
@@ -2382,59 +2376,75 @@
                         <button @click="galleryGridOpen = true" class="btn-outline px-8 py-3">Inspiration Gallery</button>
                     </div>
                 </div>
-                <div class="space-y-4 mb-8">
+                <ul x-show="bagLines.length > 0" class="mt-5 border-t border-zinc-100" aria-label="Pieces in your bag">
                     <template x-for="l in bagLines" :key="l.id">
-                        <div class="border border-zinc-100 rounded-sm p-4 sm:p-6 flex gap-4 sm:gap-5">
-                            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-zinc-50 rounded overflow-hidden shrink-0 flex items-center justify-center border border-zinc-100">
-                                <img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }">
+                        <li class="py-4 border-b border-zinc-100 grid grid-cols-[76px_minmax(0,1fr)_auto] sm:grid-cols-[112px_minmax(0,1fr)_auto] gap-x-3.5 sm:gap-x-5">
+                            <div class="w-[76px] h-[76px] sm:w-28 sm:h-28 rounded-md overflow-hidden flex items-center justify-center cz-panel">
+                                <img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain cz-media" :style="{ filter: metalFilter(l.material_id) }">
                             </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-base font-medium text-zinc-900 truncate" x-text="l.title"></p>
-                                <p class="text-[13px] text-zinc-500 mt-0.5 whitespace-nowrap truncate"><span x-text="lineIdLabel(l)"></span> <span class="font-mono text-zinc-700" x-text="l.ring_id || '—'"></span></p>
-                                <p class="text-[13px] text-zinc-600 mt-1"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
-                                <div class="flex flex-wrap gap-1.5 mt-2">
+                            <div class="min-w-0">
+                                <p class="brand-font text-[16px] sm:text-[18px] text-zinc-900 truncate" x-text="l.title"></p>
+                                <p class="text-[12px] sm:text-[13px] text-zinc-600 mt-0.5"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
+                                <p class="text-[12px] text-zinc-500 whitespace-nowrap truncate"><span x-text="lineIdLabel(l)"></span> <span class="font-mono" x-text="l.ring_id || '—'"></span></p>
+                                <div class="flex flex-wrap gap-1.5 mt-1.5 empty:hidden">
+                                    <span x-show="l.promotion && l.orderable !== false" x-cloak class="promo-pill is-sm" x-text="promoPill(l.promotion, l.currency, l.quantity)"></span>
                                     <span x-show="!l.quote.profile_approved" class="text-[12px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded-sm" style="background:#FFF4DB; color:#7A4D00; border:1px solid #F0D9A8;">Unapproved development pricing</span>
-                                    <span x-show="l.price_is_stale && l.current_unit_price != null" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + money(l.current_unit_price, l.currency) + ' each at checkout'"></span>
+                                    <span x-show="linePriceChanged(l)" class="text-[12px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-700" x-text="'Price updated: ' + price(l.current_unit_price, l.currency) + ' each at checkout'"></span>
                                     <span x-show="!l.orderable" class="text-[12px] px-1.5 py-0.5 rounded-sm" style="background:#FBF7EF; color:#8A561B;" x-text="l.unavailable ? 'Currently unavailable for customization or ordering' : (l.material_status === 'preview' ? 'Preview only — not available to order' : (l.size_not_offered ? 'This size is no longer offered' : 'Cannot be ordered yet'))">Cannot be ordered yet</span>
                                 </div>
-                                <div class="mt-3 flex items-center justify-between gap-3">
-                                    <div class="flex items-center gap-2" role="group" :aria-label="'Quantity of ' + l.title">
-                                        <button type="button" @click="setLineQuantity(l, -1)" :disabled="l.quantity <= 1 || !!bagBusy || !!l.unavailable" class="w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none disabled:opacity-40" aria-label="Decrease quantity">−</button>
-                                        <span class="text-sm font-medium text-zinc-800 w-5 text-center" x-text="l.quantity" aria-live="polite"></span>
-                                        <button type="button" @click="setLineQuantity(l, 1)" :disabled="l.quantity >= 10 || !!bagBusy || !!l.unavailable" class="w-11 h-11 border border-zinc-200 flex items-center justify-center text-zinc-600 hover:border-zinc-400 transition text-base leading-none disabled:opacity-40" aria-label="Increase quantity">+</button>
+                                <div class="mt-2 flex items-center gap-4">
+                                    <div class="cz-qty is-sm" role="group" :aria-label="'Quantity of ' + l.title">
+                                        <button type="button" @click="setLineQuantity(l, -1)" :disabled="l.quantity <= 1 || !!bagBusy || !!l.unavailable" aria-label="Decrease quantity">−</button>
+                                        <span x-text="l.quantity" aria-live="polite"></span>
+                                        <button type="button" @click="setLineQuantity(l, 1)" :disabled="l.quantity >= 10 || !!bagBusy || !!l.unavailable" aria-label="Increase quantity">+</button>
                                     </div>
-                                    <div class="text-right whitespace-nowrap">
-                                        <p class="text-base font-medium text-zinc-900" x-text="money(l.line_total, l.currency)"></p>
-                                        <p class="text-[13px] text-zinc-500" x-text="money(l.unit_price, l.currency) + ' each'"></p>
-                                        <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
-                                    </div>
+                                    <button type="button" @click="removeLine(l)" class="min-h-[44px] text-[12px] text-zinc-500 underline-offset-4 hover:underline hover:text-red-700 transition" :aria-label="'Remove ' + (l.title || 'item') + ' from the bag'">Remove</button>
                                 </div>
-                                <button @click="removeLine(l)" class="mt-1 min-h-[44px] text-[13px] uppercase tracking-widest text-zinc-500 hover:text-red-600 transition">Remove</button>
                             </div>
-                        </div>
+                            <div class="text-right whitespace-nowrap">
+                                <p class="text-[15px] sm:text-base font-semibold text-zinc-900" x-text="price(l.line_total, l.currency)"></p>
+                                <p x-show="l.quantity > 1 || promoWas(l.promotion, l.currency)" class="text-[12px] text-zinc-500 mt-0.5"><s x-show="promoWas(l.promotion, l.currency)" class="promo-was" x-text="promoWas(l.promotion, l.currency, true)"></s><span x-show="l.quantity > 1" x-text="(promoWas(l.promotion, l.currency) ? ' ' : '') + price(l.unit_price, l.currency) + ' each'"></span></p>
+                            </div>
+                        </li>
                     </template>
-                </div>
-                <div x-show="bagLines.length > 0" class="border-t border-zinc-100 pt-6 space-y-3 mb-8">
-                    <div class="flex justify-between text-sm"><span class="text-zinc-500">Items</span><span class="text-zinc-800" x-text="bagOrderableCount"></span></div>
-                    <template x-for="(total, cur) in (bag?.totals || {})" :key="cur">
-                        <div class="flex justify-between font-semibold text-base pt-3 border-t border-zinc-100 brand-font"><span>Subtotal</span><span x-text="money(total, cur)"></span></div>
+                </ul>
+
+                <!-- Order summary: what the total counts, delivery, the currency and tax in checkout's own words -->
+                <section x-show="bagLines.length > 0" class="mt-6 rounded-xl p-4 sm:p-5 space-y-2.5 text-[14px] cz-panel" aria-labelledby="bag-sum">
+                    <p id="bag-sum" class="cz-sum-h">Order summary</p>
+                    <div class="flex justify-between"><span class="text-zinc-600">Items</span><span class="text-zinc-800" x-text="bagOrderableCount"></span></div>
+                    <template x-for="(total, cur) in (bag?.totals || {})" :key="'sub' + cur">
+                        <div class="flex justify-between"><span class="text-zinc-600">Subtotal</span><span class="text-zinc-800" x-text="price(total, cur)"></span></div>
                     </template>
-                    <p x-show="!bag?.incl_vat" class="text-[14px] text-zinc-600 leading-snug pt-1">Standard delivery is free; any promo code is added at checkout. No sales tax is added; import duties or VAT, where charged, are paid by the recipient.</p>
-                    <!-- Israeli pricing (B6): shown only while it is on -->
-                    <p x-show="bag?.incl_vat" x-cloak class="text-[14px] text-zinc-600 leading-snug pt-1"><span x-text="pricingChoice?.currency === 'USD' ? 'Prices in US dollars include 18% Israeli VAT for delivery in Israel.' : 'Prices in shekels include 18% VAT for delivery in Israel.'">Prices in shekels include 18% VAT for delivery in Israel.</span> Standard delivery is free; any promo code is added at checkout. The delivery country you choose at checkout sets the final currency.</p>
-                    <p class="text-[14px] text-zinc-600 leading-snug pt-1">No payment is taken online: after our review (about 2 business days) we contact you to arrange payment. You can cancel an order free of charge until we confirm it to you.</p>
+                    <div class="flex justify-between"><span class="text-zinc-600">Delivery</span><span class="text-zinc-800">Free · Standard</span></div>
+                    <template x-for="(total, cur) in (bag?.totals || {})" :key="'tot' + cur">
+                        <div class="flex justify-between items-baseline pt-3 border-t border-zinc-200 brand-font"><span class="text-[17px] font-semibold">Total</span><span class="text-[22px]" x-text="price(total, cur)"></span></div>
+                    </template>
+                    <p x-show="bagSavingsText" x-cloak class="text-[13px] font-medium" style="color:#8A6420;" x-text="bagSavingsText"></p>
+                    <p class="text-[13px] text-zinc-600 leading-snug" x-text="bagTaxNote"></p>
+                    <p class="text-[13px] text-zinc-600">Any promo code is added at checkout.</p>
                     <div x-show="pricingChoice" x-cloak class="flex items-center justify-end gap-2 text-[13px] text-zinc-500 pt-1" role="group" aria-label="Currency">
                         <span>Prices in</span>
-                        <button type="button" @click="setCurrency('ILS')" :aria-pressed="pricingChoice?.currency === 'ILS'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'ILS' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">₪ ILS</button>
-                        <button type="button" @click="setCurrency('USD')" :aria-pressed="pricingChoice?.currency === 'USD'" class="min-h-[44px] px-3 border border-zinc-200" :class="pricingChoice?.currency === 'USD' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">$ USD</button>
+                        <button type="button" @click="setCurrency('ILS')" :aria-pressed="pricingChoice?.currency === 'ILS'" class="min-h-[44px] px-3 border border-zinc-200 bg-white" :class="pricingChoice?.currency === 'ILS' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">₪ ILS</button>
+                        <button type="button" @click="setCurrency('USD')" :aria-pressed="pricingChoice?.currency === 'USD'" class="min-h-[44px] px-3 border border-zinc-200 bg-white" :class="pricingChoice?.currency === 'USD' ? 'text-zinc-900 font-semibold border-zinc-400' : ''">$ USD</button>
                     </div>
+                </section>
+                <p x-show="bagLines.length > 0" class="mt-4 text-[13px] text-zinc-600 leading-snug flex gap-2.5"><svg class="w-4 h-4 shrink-0 mt-0.5" style="color:#8A6420;" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg><span>No payment is taken online: after our review (about 2 business days) we contact you to arrange payment. You can cancel an order free of charge until we confirm it to you.</span></p>
+                <div x-show="bagLines.length > 0" class="mt-3 text-center">
+                    <button type="button" @click="continueFromBag()" class="cz-link">← Continue designing</button>
                 </div>
-                <div x-show="bagLines.length > 0" class="flex flex-col sm:flex-row gap-3">
-                    <button @click="continueFromBag()" class="flex-1 min-h-[44px] border border-zinc-300 py-3.5 text-[12px] uppercase tracking-widest hover:bg-zinc-50 transition">← Continue designing</button>
-                    <button @click="startCheckout()" :disabled="!bag?.checkout_available || co.busy" class="flex-1 btn-gold py-3.5 stream-glow" x-text="co.busy ? 'Opening checkout…' : 'Checkout'"></button>
+            </div>
+
+            <!-- Checkout with the total (Option C's button), always in reach -->
+            <div x-show="bagLines.length > 0" class="cz-bar fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200">
+                <div class="max-w-2xl mx-auto px-4 sm:px-6 py-3">
+                    <p x-show="bag?.checkout_note" class="text-[13px] text-center leading-snug mb-2" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
+                    <p x-show="co.error && view === 'checkout'" class="err-line justify-center text-center mb-2" role="alert" x-text="co.error"></p>
+                    <button @click="startCheckout()" :disabled="!bag?.checkout_available || co.busy" class="w-full btn-gold min-h-[50px] px-5 stream-glow !justify-between gap-3" data-testid="bag-checkout">
+                        <span x-text="co.busy ? 'Opening checkout…' : 'Checkout'">Checkout</span>
+                        <span x-show="bagTotalText && !co.busy" class="brand-font text-[17px] tracking-normal normal-case" x-text="bagTotalText"></span>
+                    </button>
                 </div>
-                <p x-show="bag?.checkout_note && bagLines.length" class="mt-3 text-[13px] text-center" style="color:#8A561B;" x-text="bag?.checkout_note"></p>
-                <p x-show="co.error && view === 'checkout'" class="err-line justify-center text-center mt-3" role="alert" x-text="co.error"></p>
             </div>
         </main>
     </template>
@@ -2603,7 +2613,7 @@
                         <div class="rounded-xl p-5 text-[13px] text-zinc-700 leading-relaxed space-y-1" style="border:1px solid #E4E4E7;" data-testid="pre-order-summary">
                             <p class="flbl">Before you order</p>
                             <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233 · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
-                            <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="money((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + money(coQuote?.total || 0, coQuote?.currency)"></span></p>
+                            <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="price((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? price(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + price(coQuote?.total || 0, coQuote?.currency)"></span></p>
                             <p><strong class="font-semibold text-zinc-900">Import charges:</strong> where your country charges import VAT, customs duty or a carrier’s handling fee on delivery, the recipient pays them.</p>
                             <p><strong class="font-semibold text-zinc-900">Timing:</strong> design review about 2 business days; production up to 14 business days after your payment is confirmed; delivery <span x-text="(coShipping?.eta || 'up to 14 business days') + ' (' + (coShipping?.label || 'Standard delivery') + ')'"></span>.</p>
                             <p x-show="!checkout?.payment?.available"><strong class="font-semibold text-zinc-900">Payment:</strong> nothing is charged now. Your order is a reservation until we confirm it; you can cancel free of charge until then. We arrange payment with you after our review, and production starts once your payment is confirmed.</p>
@@ -2632,29 +2642,30 @@
                     </div></template>
                 </div>
 
-                <aside class="mt-10 lg:mt-0 lg:sticky lg:top-6 border border-zinc-100 rounded-xl p-5 bg-zinc-50/50" aria-label="Order summary">
-                    <p class="flbl">Order summary</p>
-                    <ul class="divide-y divide-zinc-100 mb-3">
+                <!-- Order summary, as the bag shows it (Boutique, 13 Nov 2026): the same panel, prices, tag and words -->
+                <aside class="mt-10 lg:mt-0 lg:sticky lg:top-6 rounded-xl p-5 cz-panel" aria-labelledby="co-sum">
+                    <p id="co-sum" class="cz-sum-h mb-1">Order summary</p>
+                    <ul class="divide-y divide-zinc-200/70 mb-3">
                         <template x-for="l in (coQuote?.lines || [])" :key="l.bag_line_id">
                             <li class="py-3 flex gap-3">
-                                <div class="w-14 h-14 bg-white rounded overflow-hidden shrink-0 border border-zinc-100 flex items-center justify-center"><img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }"></div>
+                                <div class="w-14 h-14 bg-white rounded-md overflow-hidden shrink-0 flex items-center justify-center"><img width="320" height="320" :src="thumb(l.image_url, 320)" :alt="l.title" class="w-full h-full object-contain" :style="{ filter: metalFilter(l.material_id) }"></div>
                                 <div class="flex-1 min-w-0 text-[13px]">
-                                    <p class="text-[13px] font-medium text-zinc-900 truncate" x-text="l.title"></p>
-                                    <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
-                                    <p class="text-zinc-500"><span x-text="l.quantity"></span> × <span x-text="money(l.unit_price, l.currency)"></span></p>
-                                    <p x-show="l.promotion" x-cloak class="promo-note"><span x-text="l.promotion?.label"></span><template x-if="l.promotion?.claims"><span> · <s class="promo-was" x-text="money(l.promotion.regular_unit_price, l.currency)"></s> · <span x-text="'Save ' + money(l.promotion.savings, l.currency) + (l.quantity > 1 ? ' each' : '')"></span></span></template></p>
+                                    <p class="brand-font text-[14px] text-zinc-900 truncate" x-text="l.title"></p>
+                                    <p class="text-zinc-600"><span x-text="l.material_label"></span> · <span x-text="lineSize(l)"></span></p>
+                                    <p class="text-zinc-500"><span class="font-mono" x-text="l.ring_id || ''"></span> · <span x-text="l.quantity"></span> × <s x-show="promoWas(l.promotion, l.currency)" class="promo-was" x-text="promoWas(l.promotion, l.currency, true)"></s> <span x-text="price(l.unit_price, l.currency)"></span></p>
+                                    <span x-show="l.promotion && !l.problem" x-cloak class="promo-pill is-sm mt-1" x-text="promoPill(l.promotion, l.currency, l.quantity)"></span>
                                     <p x-show="l.problem" class="text-red-700" x-text="'Not in this order — it stays in your bag: ' + l.problem"></p>
                                 </div>
-                                <p class="text-[13px] shrink-0" :class="l.problem ? 'text-zinc-400' : 'text-zinc-900'" :style="l.problem ? 'text-decoration: line-through' : ''" x-text="money(l.line_total, l.currency)"></p>
+                                <p class="text-[13px] font-semibold shrink-0" :class="l.problem ? 'text-zinc-400' : 'text-zinc-900'" :style="l.problem ? 'text-decoration: line-through' : ''" x-text="price(l.line_total, l.currency)"></p>
                             </li>
                         </template>
                     </ul>
                     <div class="space-y-1.5 text-[13px] border-t border-zinc-200 pt-3">
-                        <div class="flex justify-between"><span class="text-zinc-500">Subtotal</span><span x-text="money(coQuote?.subtotal || 0, coQuote?.currency)"></span></div>
-                        <div x-show="coQuote?.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (coQuote?.promo?.code || '')"></span><span x-text="'−' + money(coQuote?.discount || 0, coQuote?.currency)"></span></div>
-                        <div class="flex justify-between"><span class="text-zinc-500" x-text="coShipping?.label || 'Delivery'"></span><span x-text="coQuote?.shipping ? money(coQuote.shipping, coQuote.currency) : 'Free'"></span></div>
-                        <div class="flex justify-between text-base font-semibold pt-2 border-t border-zinc-200 brand-font"><span>Total</span><span x-text="money(coQuote?.total || 0, coQuote?.currency)"></span></div>
-                        <div x-show="coQuote?.incl_vat" x-cloak class="flex justify-between text-zinc-500"><span>Including VAT</span><span x-text="money(coQuote?.vat_amount || 0, coQuote?.currency)"></span></div>
+                        <div class="flex justify-between"><span class="text-zinc-600">Subtotal</span><span x-text="price(coQuote?.subtotal || 0, coQuote?.currency)"></span></div>
+                        <div x-show="coQuote?.discount" class="flex justify-between" style="color:#146C43;"><span x-text="'Promo ' + (coQuote?.promo?.code || '')"></span><span x-text="'−' + price(coQuote?.discount || 0, coQuote?.currency)"></span></div>
+                        <div class="flex justify-between"><span class="text-zinc-600" x-text="coShipping?.label || 'Delivery'"></span><span x-text="coQuote?.shipping ? price(coQuote.shipping, coQuote.currency) : 'Free'"></span></div>
+                        <div class="flex justify-between items-baseline pt-2 border-t border-zinc-200 brand-font"><span class="text-base font-semibold">Total</span><span class="text-[20px]" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></div>
+                        <div x-show="coQuote?.incl_vat" x-cloak class="flex justify-between text-zinc-500"><span>Including VAT</span><span x-text="price(coQuote?.vat_amount || 0, coQuote?.currency)"></span></div>
                         <p x-show="co.currencyNote" x-cloak role="status" class="text-[13px] pt-1" style="color:#8A561B;" x-text="co.currencyNote"></p>
                         <p x-show="coQuote?.currency !== 'ILS' && !coQuote?.incl_vat" class="text-[14px] text-zinc-600 pt-1">US dollars · no sales tax added · duties, where charged, paid by the recipient.</p>
                         <p x-show="coQuote?.currency === 'USD' && coQuote?.incl_vat" x-cloak class="text-[14px] text-zinc-600 pt-1">US dollars · including 18% Israeli VAT · a delivery to Israel is charged in shekels.</p>
@@ -2670,7 +2681,7 @@
                     <div class="flex items-center justify-between gap-3">
                         <button @click="coBack()" class="btn-outline px-4 py-3 shrink-0" :aria-label="co.step === 'details' ? 'Back to bag' : 'Back'"><span class="sm:hidden" aria-hidden="true">←</span><span class="hidden sm:inline" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></span></button>
                         <div class="flex items-center gap-3 sm:gap-4 min-w-0">
-                            <span class="text-sm text-zinc-700 whitespace-nowrap"><span class="text-zinc-500">Total</span> <strong x-text="money(coQuote?.total || 0, coQuote?.currency)"></strong></span>
+                            <span class="text-sm text-zinc-700 whitespace-nowrap"><span class="text-zinc-500">Total</span> <strong x-text="price(coQuote?.total || 0, coQuote?.currency)"></strong></span>
                             <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-5 py-3 stream-glow"
                                     :aria-describedby="coPlaceBlockedText ? 'co-place-why' : null"><span x-text="co.busy ? 'One moment…' : co.step === 'review' ? (checkout?.payment?.available ? 'Place order and pay' : 'Place order') : 'Continue'"></span><span x-show="!co.busy && co.step === 'review' && !checkout?.payment?.available" class="hidden sm:inline"> — payment after our review</span></button>
                         </div>
