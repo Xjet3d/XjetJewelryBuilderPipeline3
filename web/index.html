@@ -438,26 +438,27 @@
         .promo-banner a, .promo-banner span { color: inherit; text-decoration: none; }
         .promo-banner-link, .promo-banner > span:not(.promo-snow) { position: relative; z-index: 1; }
         .promo-banner-link { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; }
-        /* Falling snow on both sides (owner, 13 Nov 2026): tiny ivory flakes drifting down slowly inside the bar, each side
-           fading out toward the text — transform and opacity only (no layout work), and still for reduced motion. */
-        .promo-snow { position: absolute; top: 0; bottom: 0; width: min(24%, 260px); pointer-events: none; }
-        .promo-snow-l { left: 0; -webkit-mask-image: linear-gradient(to right, #000 55%, transparent); mask-image: linear-gradient(to right, #000 55%, transparent); }
-        .promo-snow-r { right: 0; -webkit-mask-image: linear-gradient(to left, #000 55%, transparent); mask-image: linear-gradient(to left, #000 55%, transparent); }
-        .promo-snow i { position: absolute; top: -6px; width: 3px; height: 3px; border-radius: 50%; background: #FFFDF8;
-            box-shadow: 0 0 3px rgba(255, 253, 248, .55); opacity: .8; will-change: transform;
-            animation: promo-snow-fall var(--t, 8s) linear var(--d, 0s) infinite; }
-        .promo-snow i:nth-child(1) { left: 8%;  --t: 7.5s; --d: -1.2s; --x: 5px; }
-        .promo-snow i:nth-child(2) { left: 22%; --t: 9.5s; --d: -6.0s; --x: -4px; width: 2px; height: 2px; opacity: .6; }
-        .promo-snow i:nth-child(3) { left: 35%; --t: 8.2s; --d: -3.4s; --x: 6px; width: 3.5px; height: 3.5px; }
-        .promo-snow i:nth-child(4) { left: 49%; --t: 10.5s; --d: -8.1s; --x: -5px; width: 2px; height: 2px; opacity: .55; }
-        .promo-snow i:nth-child(5) { left: 62%; --t: 7.8s; --d: -4.7s; --x: 4px; opacity: .7; }
-        .promo-snow i:nth-child(6) { left: 74%; --t: 9.0s; --d: -2.2s; --x: -6px; width: 2.5px; height: 2.5px; opacity: .65; }
-        .promo-snow i:nth-child(7) { left: 86%; --t: 11s;  --d: -7.3s; --x: 3px; width: 2px; height: 2px; opacity: .5; }
-        .promo-snow-r i { animation-delay: calc(var(--d, 0s) - 2.6s); }       /* the two sides never fall in step */
-        @keyframes promo-snow-fall { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(var(--x, 4px), 50px, 0); } }
-        @media (max-width: 419px) { .promo-snow { width: 14%; } .promo-snow i:nth-child(n+5) { display: none; } }
-        @media (min-width: 768px) { .promo-snow i { scale: 1.3; } }            /* a touch larger on a wide bar */
-        @media (prefers-reduced-motion: reduce) { .promo-snow { display: none; } }
+        /* Falling snow on both sides (owner, 13 Nov 2026: "much more noticeable and festive"): round glowing flakes and
+           six-armed crystals falling with a gentle sway in a zone at each side that fades out before the text, so the text
+           stays clear. Each flake's place, size, speed and sway come from the page (p3/promobanner.py). Transform and
+           opacity only (no layout work); fewer flakes on phones; for visitors who ask for less motion, still flakes. */
+        .promo-snow { position: absolute; top: 0; bottom: 0; width: min(31%, 400px); pointer-events: none; }
+        .promo-snow-l { left: 0; -webkit-mask-image: linear-gradient(to right, #000 70%, transparent); mask-image: linear-gradient(to right, #000 70%, transparent); }
+        .promo-snow-r { right: 0; -webkit-mask-image: linear-gradient(to left, #000 70%, transparent); mask-image: linear-gradient(to left, #000 70%, transparent); }
+        .promo-snow i { position: absolute; top: -13px; left: var(--l, 50%); width: var(--s, 4px); height: var(--s, 4px); border-radius: 50%;
+            background: #FFFFFF; box-shadow: 0 0 6px 1px rgba(255, 255, 255, .6); opacity: var(--o, .9); will-change: transform;
+            animation: promo-snow-fall var(--t, 5s) linear var(--d, 0s) infinite; }
+        .promo-snow i.c { border-radius: 0; box-shadow: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7'/%3E%3Cpath d='M9.6 3.6 12 6l2.4-2.4M9.6 20.4 12 18l2.4 2.4M3.4 10.6l3.3-.9-.9-3.3M20.6 13.4l-3.3.9.9 3.3M3.4 13.4l3.3.9-.9 3.3M20.6 10.6l-3.3-.9.9-3.3'/%3E%3C/svg%3E") center / contain no-repeat;
+            filter: drop-shadow(0 0 2px rgba(255, 255, 255, .85)); animation-name: promo-snow-spin; }
+        @keyframes promo-snow-fall { 0% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(var(--x, 6px), 31px, 0); }
+            100% { transform: translate3d(0, 64px, 0); } }
+        @keyframes promo-snow-spin { 0% { transform: translate3d(0, 0, 0) rotate(0deg); } 50% { transform: translate3d(var(--x, 6px), 31px, 0) rotate(110deg); }
+            100% { transform: translate3d(0, 64px, 0) rotate(220deg); } }
+        /* the text sits on a soft halo of the banner's own red: flakes pass behind the words, never across them */
+        .promo-banner-link, .promo-banner > span:not(.promo-snow) { text-shadow: 0 1px 2px rgba(80, 0, 0, .35);
+            background: #AB0000; box-shadow: 0 0 10px 9px #AB0000; border-radius: 3px; }
+        @media (max-width: 419px) { .promo-snow { width: 27%; } .promo-snow i.d { display: none; } }
+        @media (prefers-reduced-motion: reduce) { .promo-snow i { animation: none; transform: translate3d(0, var(--y, 16px), 0); } }
         .promo-banner-link:hover, .promo-banner-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
         .promo-banner-link:focus-visible { outline: 2px solid #FBF6EE; outline-offset: 2px; }
         .promo-banner-arrow { font-size: 13px; letter-spacing: 0; }

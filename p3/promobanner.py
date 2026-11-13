@@ -25,7 +25,26 @@ from p3.context import HttpError
 Key = "promo_banner"
 Default = {"enabled": False, "text": "", "plain_text": "", "link": "", "starts_at": None, "ends_at": None, "names_scope": False,
            "snow": True}
-SnowFlakes = 7                      # per side: few, small and slow — festive, never busy
+# The snow (owner, 13 Nov 2026: "much more noticeable and festive"): per side 18 flakes — round glowing ones and every
+# fourth a six-armed crystal — the first 11 on phones too (the others carry "d": wide screens only)
+SnowFlakes, SnowOnPhones = 18, 11
+
+
+def _Flakes(Side: int) -> str:
+    """One side's flakes: their place (--l), size (--s), fall time (--t), start (--d, negative: already falling), sway (--x),
+    opacity (--o) and, for visitors who ask for less motion, where each one rests (--y). Spread by the golden ratio, so
+    they never line up; the two sides differ."""
+    Out = []
+    for K in range(SnowFlakes):
+        G, H = ((K + Side * 7) * 0.6180339) % 1, ((K + Side * 3) * 0.3819660) % 1
+        Crystal = K % 4 == 3
+        Size = 9.0 + H * 4.0 if Crystal else 3.0 + H * 3.5
+        Time = 3.6 + ((K * 0.7548777 + Side * 0.31) % 1) * 2.8
+        Style = (f"--l:{2 + G * 92:.1f}%;--s:{Size:.1f}px;--t:{Time:.2f}s;--d:-{(K * 0.83 + Side * 1.7) % Time:.2f}s;"
+                 f"--x:{(1 if K % 2 else -1) * (4 + H * 6):.1f}px;--o:{0.95 if Crystal else 0.78 + G * 0.22:.2f};--y:{4 + H * 26:.0f}px")
+        Cls = " ".join(C for C in ("c" if Crystal else "", "d" if K >= SnowOnPhones else "") if C)
+        Out.append(f'<i{f" class={chr(34)}{Cls}{chr(34)}" if Cls else ""} style="{Style}"></i>')
+    return "".join(Out)
 TextMax, LinkMax = 90, 200
 LinkPattern = re.compile(r"^/[A-Za-z0-9/_\-.?=&#%]*$")
 
@@ -113,8 +132,8 @@ def Html(Banner: dict | None, Base: str) -> str:
     T = html.escape(Banner["text"], quote=False)
     Inner = (f'<a href="{html.escape(Base + Banner["link"], quote=True)}" class="promo-banner-link" @click="bannerClick($event)">{T}'
              '<span class="promo-banner-arrow" aria-hidden="true">→</span></a>') if Banner.get("link") else f'<span>{T}</span>'
-    # the snow: a few flakes in each side zone, faded out before the text (index.html .promo-snow); decoration only
-    Snow = "".join(f'<span class="promo-snow promo-snow-{S}" aria-hidden="true">{"<i></i>" * SnowFlakes}</span>' for S in ("l", "r")) \
+    # the snow: flakes in each side zone, faded out before the text (index.html .promo-snow); decoration only
+    Snow = "".join(f'<span class="promo-snow promo-snow-{S}" aria-hidden="true">{_Flakes(N)}</span>' for N, S in enumerate(("l", "r"))) \
         if Banner.get("snow") else ""
     return (f'<div id="promo-banner" class="promo-banner" x-show="bannerShown" role="region" aria-label="Offer">'
             f'{Snow}{Inner}</div>')

@@ -194,8 +194,10 @@ async def test_the_banner_never_claims_more_than_the_promotion_gives(HC):
     Page = (await H.Client.get("/")).text
     assert 'id="promo-banner"' in Page and "A little holiday magic · Save $20 on charms" in Page and 'href="/design"' in Page
     # the falling snow on both sides (13 Nov 2026): decoration only, on by default, off with its switch
-    assert Page.count('class="promo-snow promo-snow-') == 2 and '<span class="promo-snow promo-snow-l" aria-hidden="true"><i></i>' in Page
-    assert "@media (prefers-reduced-motion: reduce) { .promo-snow { display: none; } }" in Page
+    assert Page.count('class="promo-snow promo-snow-') == 2 and Page.count('<i style="--l:') + Page.count('<i class=') >= 36
+    Left = Page[Page.index('class="promo-snow promo-snow-l"'):Page.index('class="promo-snow promo-snow-r"')]
+    assert Left.count("<i") == 18 and Left.count('class="c') == 4 and Left.count('class="d"') + Left.count('class="c d"') == 7
+    assert "@media (prefers-reduced-motion: reduce) { .promo-snow i { animation: none;" in Page        # still, not gone
     await SetBanner(H, snow=False)
     assert "promo-snow promo-snow-" not in (await H.Client.get("/")).text
     await SetBanner(H)
