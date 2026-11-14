@@ -487,6 +487,8 @@
         .co-chip { display: inline-flex; flex-direction: column; gap: 1px; border: 1px solid #E8DCC4; background: #FFFDF8; border-radius: 10px;
                    padding: 7px 10px; font-size: 12px; color: #52525B; line-height: 1.35; }
         .co-chip b { color: #18181B; font-weight: 600; }
+        .co-pay > summary::-webkit-details-marker { display: none; }
+        .co-pay.co-card { padding-top: 14px; padding-bottom: 14px; }
         .cz-swi { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; padding: 0; border: 0; background: none; cursor: pointer; }
         .cz-sw { width: 44px; height: 44px; border-radius: 999px; border: 1px solid #E4E4E7; display: flex; align-items: center; justify-content: center;
                  transition: border-color .15s; }
@@ -2673,6 +2675,17 @@
 
                     <section x-show="co.step === 'review'" class="space-y-4" aria-label="Before you order">
                         <template x-if="checkout?.payment?.available"><p class="co-card text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
+                        <!-- Payment (owner, 14 Nov 2026): a closed row that opens to the full explanation, word for word as before -->
+                        <details x-show="!checkout?.payment?.available" class="co-card co-pay group" data-testid="co-payment">
+                            <summary class="flex items-center justify-between gap-3 cursor-pointer list-none">
+                                <span class="text-[13px] leading-snug"><span class="flbl !inline !mb-0 mr-2">Payment</span><span class="font-semibold text-zinc-900">Payment is arranged after our review</span></span>
+                                <svg class="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                            </summary>
+                            <div class="text-[13px] text-zinc-700 leading-relaxed mt-3">
+                                <p x-text="'No payment is taken online. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + '; after our review (about 2 business days) we contact you to arrange payment. Production starts once your payment is confirmed.'"></p>
+                                <p class="text-[14px] text-zinc-600 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
+                            </div>
+                        </details>
                         <!-- Before you order: the seller and pre-order summary, the Terms box, the privacy notice and the age statement -->
                         <div class="co-card text-[13px] text-zinc-700 leading-relaxed space-y-1" data-testid="pre-order-summary">
                             <p class="flbl">Before you order</p>
@@ -2746,11 +2759,10 @@
                                 <button type="button" x-show="co.step === 'review'" @click="coFocusTerms()" class="underline underline-offset-2 hover:text-black">Accept the Terms</button><span x-show="co.step !== 'review'">Accept the Terms</span></p>
                         </div>
                         <p x-show="coPlaceBlockedText" x-cloak id="co-place-why-desk" class="text-[13px] leading-snug" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
-                        <button type="button" @click="placeOrder()" :disabled="co.step !== 'review' || !coCanPlace" class="w-full btn-gold min-h-[52px] px-5 stream-glow !justify-between gap-3"
-                                :aria-describedby="coPlaceBlockedText ? 'co-place-why-desk' : null" data-testid="co-place-desk">
-                            <span x-text="co.busy && co.step === 'review' ? 'One moment…' : checkout?.payment?.available ? 'Place order and pay' : 'Place order'">Place order</span>
-                            <span class="brand-font text-[17px] tracking-normal normal-case" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></button>
-                        <p x-show="!checkout?.payment?.available" class="text-center text-[13px]" style="color:#146C43;">Nothing is charged today</p>
+                        <button type="button" @click="placeOrder()" :disabled="co.step !== 'review' || !coCanPlace" class="w-full btn-gold min-h-[52px] px-5 stream-glow"
+                                :aria-describedby="coPlaceBlockedText ? 'co-place-why-desk' : 'co-place-note-desk'" data-testid="co-place-desk"
+                                x-text="co.busy && co.step === 'review' ? 'One moment…' : coPlaceText">Place order</button>
+                        <p x-show="!checkout?.payment?.available" id="co-place-note-desk" class="text-center text-[13px] leading-snug"><span style="color:#146C43;">Nothing is charged today</span><br><span class="text-zinc-600">Payment arranged after design review</span></p>
                     </div>
                 </aside>
             </div>
@@ -2760,12 +2772,14 @@
                     <!-- Why Place order can't be pressed yet (B4/B6): the Terms box, a declined promo code, nothing orderable -->
                     <p x-show="coPlaceBlockedText" x-cloak id="co-place-why" class="text-[13px] leading-snug text-center mb-2" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
                     <div class="flex items-center gap-3">
-                        <p class="text-[12px] text-zinc-600 leading-tight shrink-0">Total<br><span class="brand-font text-[18px] text-zinc-900" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></p>
+                        <!-- the total beside Continue; at the last step it is on Place order itself, as on desktop -->
+                        <p x-show="co.step !== 'review'" class="text-[12px] text-zinc-600 leading-tight shrink-0">Total<br><span class="brand-font text-[18px] text-zinc-900" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></p>
                         <div class="flex-1 min-w-0">
                             <button type="button" @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="w-full min-h-[52px] px-4"
                                     :class="co.step === 'review' ? 'btn-gold stream-glow' : 'btn-black'" data-testid="co-next"
-                                    :aria-describedby="coPlaceBlockedText ? 'co-place-why' : null"><span x-text="coNextLabel + (co.step !== 'review' && !co.busy ? ' →' : '')">Continue to delivery →</span></button>
-                            <p x-show="co.step === 'review' && !checkout?.payment?.available" class="text-center text-[12px] mt-1" style="color:#146C43;">Nothing is charged today</p>
+                                    :aria-describedby="coPlaceBlockedText ? 'co-place-why' : co.step === 'review' ? 'co-place-note' : null"
+                                    x-text="co.busy ? 'One moment…' : co.step === 'review' ? coPlaceText : coNextLabel + ' →'">Continue to delivery →</button>
+                            <p x-show="co.step === 'review' && !checkout?.payment?.available" id="co-place-note" class="text-center text-[12px] leading-snug mt-1"><span style="color:#146C43;">Nothing is charged today</span><br><span class="text-zinc-600">Payment arranged after design review</span></p>
                         </div>
                     </div>
                 </div>

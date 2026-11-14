@@ -137,8 +137,10 @@ def test_checkout_and_quote_notices_are_text_only():
                  "keeps order records as long as the law requires for tax and warranty purposes",
                  "A gallery design you order unchanged can be cancelled within 14 days of delivery.",
                  "'I understand that each personalised ' + bagKind + ' is made to order to my specification",
-                 "Nothing is charged today", "'Place order'"):
+                 "Nothing is charged today", "Payment arranged after design review", "coPlaceText",
+                 "Your order is a reservation until our team has reviewed the design for production feasibility"):
         assert Text in Order, Text
+    assert "return this.checkout?.payment?.available ? 'Place order and pay' : 'Place order';" in App   # Place order · total
     assert 'x-model="co.terms"' in Order and Order.count('id="co-terms"') == 1          # the same box, the same model
     assert "XJet Ltd. uses these details to prepare and send your quote and to contact you about it." in Index
 

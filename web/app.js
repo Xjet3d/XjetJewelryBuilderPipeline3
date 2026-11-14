@@ -2951,6 +2951,8 @@ function p3App() {
       if (this.co.step === 'shipping') return 'Continue to review';
       return this.checkout?.payment?.available ? 'Place order and pay' : 'Place order';
     },
+    // Place order with the total on it (owner, 14 Nov 2026), the same words on phones and desktops
+    get coPlaceText() { return this.coNextLabel + ' · ' + this.price(this.coQuote?.total || 0, this.coQuote?.currency); },
     // The section that opened: brought into view, its heading focused so a screen reader says where the customer is
     _coShowSection(step) {
       // after the section's x-show has applied (a hidden heading cannot take the focus)
