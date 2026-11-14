@@ -82,7 +82,7 @@ def test_the_app_walks_the_journey_with_the_browser():
     assert set(re.findall(r":\s*'([a-z-]+)'", Table)) == set(SitePages.FlowPaths)              # the server serves the same
     assert "view: P3_FLOW ? '' : P3_PAGE," in Js and "const P3_FLOW = flowOf(location.pathname);" in Js
     assert "window.addEventListener('popstate', () => this._onHistory());" in Js
-    assert "if (P3_FLOW) await this._openFlow(P3_FLOW, { history: 'replace', restore: true });" in Js
+    assert "if (P3_FLOW) await Promise.all([this._openFlow(P3_FLOW, { history: 'replace', restore: true }), quota]);" in Js   # FE-01: beside the credits
     assert "STUDIO_VIEWS.includes(st.view) && P3_PAGE === 'home'" not in Js            # the Design screen is not at '/' any more
     assert "if (P3_FLOW) this._signInFor(P3_FLOW); else if (P3_ACCOUNT && !authStatus) this._signInForAccount(P3_ACCOUNT);" in Js     # signed out: sign in first
     assert "sessionStorage.setItem('p3_pending_route', flow);" in Js                      # kept across Google / Apple

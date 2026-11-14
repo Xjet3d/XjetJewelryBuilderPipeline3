@@ -60,7 +60,10 @@ async def test_page_images_are_versioned_and_cached_for_a_year(H):
     assert [S for _, S in Scripts] == ["consent.js", "metal.js", "products.js", "app.js", "vendor/alpine.min.js"]   # the story's showcase.js left with WP6
     assert all(A.strip() == "defer" for A, _ in Scripts)
     App = (await H.Client.get("/static/app.js")).text
-    assert "await Promise.all([this.api('GET', '/api/health'" in App and "const gallery = this.loadGallery();" in App
+    assert "await Promise.all([this.api('GET', '/api/health'" in App and "this.loadGallery()" in App
+    # FE-01 (14 Nov 2026): the sign-in settings and the session are asked for before the catalog's answer is awaited
+    Boot = App[App.index("const authCfgP = "):App.index("await Promise.all([this.api('GET', '/api/health'")]
+    assert "/api/auth/config" in Boot and "/api/auth/session" in Boot
     assert "${this.thumb(url, 1024)} 1024w" in App                                   # never the full-size original
     Show = (await H.Client.get("/static/showcase.js")).text
     assert "stage.clientWidth < 480 ? 800 : 1024" in Show and "? 480 : 960" not in Show

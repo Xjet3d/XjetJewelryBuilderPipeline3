@@ -185,6 +185,9 @@ function newRequestId() {
   return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2);
 }
 
+// No purchase limit per piece (owner, 14 Nov 2026): the server's technical guard against nonsense values (p3/products.py)
+const MAX_QUANTITY = 9999;
+
 class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
@@ -293,6 +296,16 @@ function p3App() {
 
     // ── bag ──────────────────────────────────────────────────────────
     bag: null,
+    // FE-05: where the bag, My Orders and My Quotes stand — '' not asked yet · 'loading' · 'ok' · 'error'. "Empty" is
+    // said only after an answer ('ok'); a failed read says so and keeps what was shown (never an empty bag by mistake)
+    bagState: '', ordersState: '', myQuotesState: '',
+    // FE-04: the catalog (products, metals, prices) could not be read at start-up: a notice with Retry
+    bootError: '',
+    // FE-06: a design was made (and its credit taken) but could not be shown: where to find it — never "failed"
+    composeNotice: null, _openSeq: 0,
+    // A11Y (14 Nov 2026): what a screen reader hears from the page's one polite live region (results ready, price and
+    // quantity changes) — set through announce()
+    srMsg: '',
 
     // ── checkout & orders ─────────────────────────────────────────────
     checkout: null, coQuote: null, order: null, orders: [], ordersLoading: false,
@@ -340,25 +353,52 @@ function p3App() {
       // A request for more credits waiting for our team: its answer and the new balance show without signing out
       setInterval(() => { if (this.creditReqPending && !document.hidden) this._refreshQuota(); }, 60000);
       document.addEventListener('visibilitychange', () => { if (!document.hidden && this.creditReqPending) this._refreshQuota(); });
-      // The health answer, the catalog and the gallery are independent: asked at once, not one after another
-      const gallery = this.loadGallery();
-      const [health, catalog] = await Promise.all([this.api('GET', '/api/health', null, { noAuth: true }).catch(() => null),
-                                                   this.api('GET', '/api/catalog', null, { noAuth: true })]);
-      this.health = health; this.catalog = catalog;
+      // FE-01 (14 Nov 2026): what the first screen needs is asked for at once — the health answer, the catalog, the
+      // sign-in settings and the session — not one after another; a step of the journey (Design, Customize, the bag,
+      // checkout) asks for the gallery only after its own content, which it does not show first
+      const authCfgP = this.api('GET', '/api/auth/config', null, { noAuth: true }).catch(() => null);
+      const sessionP = this.api('GET', '/api/auth/session', null, { noAuth: true }).catch(() => null);
+      let gallery = P3_FLOW ? null : this.loadGallery();
+      const startGallery = () => { if (!gallery) gallery = this.loadGallery(); gallery.then(() => { this._openSharedGallery(); this.startHeroRotation(); }); };
+      if (gallery) startGallery();
+      const [health] = await Promise.all([this.api('GET', '/api/health', null, { noAuth: true }).catch(() => null), this._loadCatalog()]);
+      this.health = health;
       // The product a new design will be: the one chosen before sign-in while it is still on offer, else the default on offer
-      this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : this.defaultProduct;
-      gallery.then(() => { this._openSharedGallery(); this.startHeroRotation(); });
+      this._afterCatalog(st);
       // Developer tools exist only where the server says so (never in production, p3/app.py); the hash is internal, not linked
       if ((location.hash || '') === '#developer') { if (window.__p3?.dev_tools) this.devPromptOpen = true; history.replaceState(null, '', location.pathname); }
-      for (const g of ['luxury', 'preview']) { const ms = this.materialsOf(g); this.lastMaterialByGroup[g] = ms.length ? ms[0].id : null; }
       try {
         const P = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
         if (P) this.userProfile = { name: P.name || '', email: P.email || '' };
       } catch (_) {}
+      try { await this._bootSignedIn(authCfgP, sessionP, authReturn); } finally { if (!gallery) startGallery(); }
+    },
+
+    // FE-04: the catalog (products, metals, prices). A failure no longer stops the page: sign-in, the journey's screens,
+    // Back and Forward still work, and a notice offers Retry (bootError)
+    async _loadCatalog() {
+      try { this.catalog = await this.api('GET', '/api/catalog', null, { noAuth: true }); this.bootError = ''; return true; }
+      catch (_) { this.bootError = 'catalog'; return false; }
+    },
+    _afterCatalog(st = loadStore()) {
+      this.newProduct = this.productsList.includes(st.newProduct) ? st.newProduct : this.defaultProduct;
+      for (const g of ['luxury', 'preview']) { const ms = this.materialsOf(g); this.lastMaterialByGroup[g] = ms.length ? ms[0].id : null; }
+    },
+    async retryCatalog() {
+      if (!await this._loadCatalog()) return;
+      this._afterCatalog();
+      if (this.userSession) { this._refreshQuota(); this.refreshBag(); }
+    },
+
+    // The rest of the start-up, once the catalog has answered (or not): who is signed in, then the screen
+    async _bootSignedIn(authCfgP, sessionP, authReturn) {
       // Who is signed in: the server's cookie session, else (while the server still allows it) a saved six-letter token.
-      const fromLink = await this._bootAuth();
+      const fromLink = await this._bootAuth({ cfg: authCfgP, session: sessionP });
       const authStatus = this._authFragment();
-      if (this.userSession) { await this._refreshQuota(); this.loadFavorites(); }
+      // FE-01: the credits are asked for beside the journey's design (below), not before it
+      const quota = this.userSession ? this._refreshQuota() : Promise.resolve();
+      if (this.userSession) this.loadFavorites();
+      if (!P3_FLOW) await quota;
       try { this.devKey = sessionStorage.getItem('p3_dev_key') || ''; } catch { this.devKey = ''; }
       if (this.devKey) this.loadDevMode();
       const hashView = (location.hash || '').replace('#', '');
@@ -394,18 +434,20 @@ function p3App() {
       if (authStatus === 'ok' || authStatus === 'created') {
         try { this._pendingPanel = sessionStorage.getItem('p3_pending_panel') || ''; sessionStorage.removeItem('p3_pending_panel'); } catch (_) {}
         this._measureSignIn(authStatus === 'created');
+        await quota;
         await this._afterSignIn(false); this.measureScreen(); return;              // the screen it opened (sent once)
       }
       if (fromLink) {
         // Record the sign-in (verify page / token email link); the session is already set.
         this.api('POST', '/api/register-token', { Token: this.token, Via: 'link' }, { noAuth: true }).catch(() => {});
         this.measure('login', { method: 'link' });
+        await quota;
         await this._afterSignIn(true); this.measureScreen();
         return;
       }
       // A step of the journey opened at its address (F5, a link, a new tab) comes back as the customer left it. The home
-      // page is the home page: the Design screen has its own address.
-      if (P3_FLOW) await this._openFlow(P3_FLOW, { history: 'replace', restore: true });
+      // page is the home page: the Design screen has its own address. FE-01: its design and the credits together.
+      if (P3_FLOW) await Promise.all([this._openFlow(P3_FLOW, { history: 'replace', restore: true }), quota]);
     },
 
     persist(patch) { saveStore({ ...loadStore(), ...patch }); },
@@ -423,13 +465,20 @@ function p3App() {
       let payload;
       if (body instanceof FormData) payload = body;
       else if (body !== null && body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
-      let resp;
+      let resp, data;
+      // FE-05: a read that stalls ends after 20 s and says so (never an empty screen); a request that creates or charges
+      // something is never cut short by the page — its answer is awaited
+      const ctrl = method === 'GET' && typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeoutMs || 20000) : null;
       try {
-        resp = await fetch(url(path), { method, headers, body: payload, credentials: 'same-origin' });
+        resp = await fetch(url(path), { method, headers, body: payload, credentials: 'same-origin', signal: ctrl ? ctrl.signal : undefined });
+        data = await resp.json().catch(() => ({}));
       } catch (e) {
+        if (ctrl && ctrl.signal.aborted) throw new ApiError(0, 'timeout', 'The connection is too slow right now. Please try again.');
         throw new ApiError(0, 'network', 'Network error — please check your connection.');
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         const err = data.error || {};
         if (resp.status === 402) { this._refreshQuota(); if (err.code === 'quota_exhausted' && !opts.noCreditPopup) this.openCreditRequest('blocked_action'); }
@@ -440,7 +489,10 @@ function p3App() {
         if (resp.status === 401 && err.code === 'login_required' && this.userSession && !opts.noAuth) this._sessionEnded();
         // An account that has not accepted the Terms yet gets nothing else: ask for them (the server refuses until then)
         if (resp.status === 403 && err.code === 'terms_required' && this.userSession) { this.termsRequired = true; this._openTermsGate('account'); }
-        const ex = new ApiError(resp.status, err.code || 'error', err.message || `Request failed (${resp.status})`);
+        // FE-05: no bare "Request failed (502)" — a server or proxy fault is said in the customer's words
+        const ex = new ApiError(resp.status, err.code || (resp.status >= 500 ? 'unavailable' : 'error'),
+          err.message || (resp.status >= 500 ? 'The service is briefly unavailable. Please try again in a moment.'
+                                             : `Something went wrong (${resp.status}). Please try again.`));
         if (err.problems) ex.problems = err.problems;          // field-level problems (checkout forms)
         if (err.category) ex.category = err.category;          // why the prompt check stopped a request (P5)
         if (err.legal) ex.legal = err.legal;                   // terms_changed: the versions to show and accept now
@@ -455,9 +507,26 @@ function p3App() {
     showToast(text, opts = {}) {
       clearTimeout(this._toastTimer);
       this.toast = { text, label: opts.label || '', action: opts.action || null, kind: opts.kind || 'ok' };
-      this._toastTimer = setTimeout(() => { this.toast = null; }, opts.ms || 5000);
+      this._toastTimer = setTimeout(() => { this.toast = null; }, opts.ms || (opts.action ? 9000 : 5000));   // A11Y-07: time to reach its action
     },
     toastAction() { const a = this.toast?.action; this.toast = null; if (a) a(); },
+    // A11Y-01 / A11Y-06: one polite announcement (the same words twice are still read: cleared first)
+    announce(text) { this.srMsg = ''; if (text) this.$nextTick(() => { this.srMsg = text; }); },
+    // A11Y-03: a screen opened by the visitor takes the focus to its heading — a screen reader hears where it is and Tab
+    // starts there; a dialog or a field that has the focus keeps it
+    _focusScreen() {
+      this.$nextTick(() => setTimeout(() => {
+        const a = document.activeElement;
+        if (a && a !== document.body && a.isConnected && a.closest('[role="dialog"], input, textarea, select')) return;
+        const M = [...document.querySelectorAll('main')].find(E => E.getClientRects().length);
+        const H = M && [...M.querySelectorAll('h1')].find(E => E.getClientRects().length || E.classList.contains('vh'));
+        const T = H || M;
+        if (!T) return;
+        if (!T.hasAttribute('tabindex')) T.setAttribute('tabindex', '-1');
+        T.classList.add('focus-quiet');
+        try { T.focus({ preventScroll: true }); } catch (_) {}
+      }, 60));
+    },
 
     // ── mode (mock vs live) ───────────────────────────────────────────
     get isMock() { return this.health?.mode === 'mock'; },
@@ -509,6 +578,7 @@ function p3App() {
       this.view = v; this.panelRoute = '';
       this._route(history);                                                              // the screen's own address
       this._screenShown();
+      if (history === 'push') this._focusScreen();                                       // A11Y-03
       if (STUDIO_VIEWS.includes(v)) this.persist({ view: v });
       window.scrollTo({ top: 0 });
       document.querySelector('main')?.scrollTo?.({ top: 0 });
@@ -906,7 +976,10 @@ function p3App() {
       if (restore) {                                                         // one screen, no other in between
         const at = { customize: 'review', bag: 'checkout', checkout: 'order' }[flow] || 'ai-studio';
         const id = loadStore().designId;
-        if (id) { try { await this.openDesign(id, { restoreView: at, history: 'replace' }); } catch (_) { this.persist({ designId: null }); } }
+        if (id && (at === 'checkout' || at === 'order')) {
+          // FE-01: the bag and checkout do not show the design — they open at once and it comes back beside them
+          this.openDesign(id, { restoreView: 'order', history: 'replace' }).catch(() => this.persist({ designId: null }));
+        } else if (id) { try { await this.openDesign(id, { restoreView: at, history: 'replace' }); } catch (_) { this.persist({ designId: null }); } }
         if (!this.design && at !== 'checkout' && at !== 'order') { this.navigateTo('ai-studio', { history: 'replace' }); this._refreshQuota(); }   // a fresh Design screen
       }
       if (flow === 'design') {
@@ -1144,13 +1217,14 @@ function p3App() {
       else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
     },
     // ── Sign-in with a session cookie (AJW-39): Google · Apple · email and password · a legacy six-letter code ──
-    async _bootAuth() {
+    // pre: the start-up's own requests for the sign-in settings and the session, already on their way (FE-01)
+    async _bootAuth(pre = {}) {
       let fromLink = false;
-      try { this.authCfg = await this.api('GET', '/api/auth/config', null, { noAuth: true }); } catch (_) {}
+      const cfg = await (pre.cfg || this.api('GET', '/api/auth/config', null, { noAuth: true }).catch(() => null));
+      if (cfg) this.authCfg = cfg;
       if (this.legacyAuth) fromLink = this._loginFromUrlToken();
       else this._dropUrlToken();
-      let S = null;
-      try { S = await this.api('GET', '/api/auth/session', null, { noAuth: true }); } catch (_) {}
+      const S = await (pre.session || this.api('GET', '/api/auth/session', null, { noAuth: true }).catch(() => null));
       if (S && S.authenticated) {
         this.authCsrf = S.csrf; this._authMethod = S.method || ''; this.termsRequired = !!S.terms_required;
         this._setSession({ token: 'session', session: true, name: S.account.name, email: S.account.email, quotaUsed: 0, quotaMax: 10 });
@@ -1524,6 +1598,7 @@ function p3App() {
       this.signInNotice = null;
       this.design = null; this.cust = null; this.bag = null; this.designs = []; this.designsError = '';
       this.order = null; this.orders = []; this.checkout = null; this.coQuote = null;
+      this.bagState = ''; this.ordersState = ''; this.myQuotesState = ''; this.composeNotice = null;
       this.co = { ...this.co, step: 'details', customer: { first_name: '', last_name: '', email: '', phone: '' },
                   address: { recipient: '', line1: '', line2: '', city: '', region: '', postal_code: '', country: 'US' },
                   promo_code: '', promo_input: '', terms: false, error: '', problems: {}, addrCheck: null, requestId: '',
@@ -1744,7 +1819,8 @@ function p3App() {
       this.$nextTick(() => this.$refs.composer?.focus());
     },
     clearUpload() { this.uploadedFile = null; this.uploadedPreview = null; this.rightsConfirmed = false; },
-    handleEnterKey(ev) { if (!ev.shiftKey) { ev.preventDefault(); this.sendComposer(); } },
+    // Enter sends exactly what the Send button would (FE-03): never while a request is on its way or a refinement is made
+    handleEnterKey(ev) { if (!ev.shiftKey) { ev.preventDefault(); if (!ev.repeat) this.sendComposer(); } },
 
     // ── the products on offer (Admin → Settings → Products). The catalog's products block is absent while rings are
     //    the only product on offer (the ring-only site); otherwise it lists what this browser may design. ──
@@ -2016,11 +2092,13 @@ function p3App() {
     },
 
     async sendComposer() {
+      if (this.submitting) return;               // the first request is still on its way: a second press is not a new one
       if (this.composerMode === 'refine') return this.refine();
       return this.generate();
     },
 
     async generate() {
+      if (this.submitting) return;               // FE-03: one paid request per press, whatever sent it (Enter, click)
       this.composeError = ''; this.composeRefusal = '';
       const text = this.userInput.trim() || (this.uploadedFile ? 'Process this image' : '');
       if (text.length < 3) { this.composeError = 'Please describe your ' + this.newNoun + ' in a few words.'; return; }
@@ -2033,22 +2111,42 @@ function p3App() {
       if (this.catalog?.products) fd.append('product', this.newProduct);   // named whenever the catalog lists products (not the ring-only site)
       const product = this.catalog?.products ? this.newProduct : 'ring';
       this.measure('prompt_submitted', { product_type: product, kind: 'new', has_reference_image: !!this.uploadedFile, prompt_length: this.promptBand(text) });
-      this.submitting = true;
+      this.submitting = true; this.composeNotice = null;
       try {
-        const batch = await this.api('POST', '/api/designs', fd);
+        let batch;
+        try { batch = await this.api('POST', '/api/designs', fd); }
+        catch (e) {
+          this.measure('design_generation_failed', { product_type: product, kind: 'new', reason: this.failReason(e) });
+          if (e.code === 'prompt_rejected') this.composeRefusal = e.message;   // a policy refusal, never shown as a fault
+          else this.composeError = e.message;     // prompt and reference are kept for retry
+          return;
+        }
+        // FE-06: from here the design exists and its credit is taken — showing it may still fail, but that is never a
+        // failed design: it is kept (a reload brings it back) and the notice says where it is, without a second request
         this.measure('design_session_started', { product_type: product, entry: 'home' });
         this.measure('design_generation_started', { product_type: product, kind: 'new' });
+        this.persist({ designId: batch.design_id });
         this.openedFromList = false; this.candIndex = 0;
         this.userInput = ''; this.clearUpload();
-        await this.openDesign(batch.design_id);
+        await this._showMadeDesign(batch.design_id);
         this.loadDesigns(); this._refreshQuota();
-      } catch (e) {
-        this.measure('design_generation_failed', { product_type: product, kind: 'new', reason: this.failReason(e) });
-        if (e.code === 'prompt_rejected') this.composeRefusal = e.message;   // a policy refusal, never shown as a fault
-        else this.composeError = e.message;     // prompt and reference are kept for retry
       } finally {
         this.submitting = false;
       }
+    },
+    // FE-06: open a design that was just made; if it cannot be read now, say it is saved and how to open it
+    async _showMadeDesign(designId) {
+      try { await this.openDesign(designId); }
+      catch (_) {
+        this.composeNotice = { designId,
+          text: 'Your design was created and saved in My Designs, but it could not be shown just now. No new request is needed.' };
+      }
+    },
+    async openNoticeDesign() {
+      const id = this.composeNotice?.designId;
+      if (!id) return;
+      this.composeNotice = null;
+      await this._showMadeDesign(id);
     },
 
     startNew({ history = 'push' } = {}) {
@@ -2056,7 +2154,7 @@ function p3App() {
       this.track('new_design_clicked');
       this.stopPolling();
       this.design = null; this.cust = null; this.viewBatchId = null; this.pendingRefineBatchId = null;
-      this.actionError = ''; this.composeError = ''; this.composeRefusal = ''; this.closePreview();
+      this.actionError = ''; this.composeError = ''; this.composeRefusal = ''; this.composeNotice = null; this.closePreview();
       this.userInput = ''; this.clearUpload();
       this.persist({ designId: null, view: 'ai-studio' });
       // The Design screen at its address; the caller shows it (navigateTo: its one page view, as before)
@@ -2066,7 +2164,10 @@ function p3App() {
     // ── design state ──────────────────────────────────────────────────
     async openDesign(designId, { restoreView, history = 'push' } = {}) {
       this.stopPolling();
+      const seq = ++this._openSeq;
       const d = await this.api('GET', `/api/designs/${designId}`);
+      if (seq !== this._openSeq) return;          // FE-06: a later choice is being opened — this older answer is not shown
+      this.composeNotice = null;
       this.design = d; this.cust = null; this.pendingRefineBatchId = null;
       this.openedFromList = true; this.candIndex = 0;
       this.actionError = ''; this.composeError = ''; this.composeRefusal = '';
@@ -2272,6 +2373,19 @@ function p3App() {
     },
     stopPolling() { if (this._poll) { clearInterval(this._poll); this._poll = null; } },
 
+    // A11Y-01: "Your four designs are ready" is said once the batch shown is finished; a focus lost on Send goes to the
+    // results heading (a visitor typing in the composer keeps their place)
+    _announceResults(b) {
+      const n = b.desired_count || 4, ready = this.readyCount(b), what = b.kind === 'refine' ? 'refinements' : 'designs';
+      this.announce(ready >= n ? `Your four ${what} are ready. Option 1 of ${n} is shown — select your favorite.`
+                    : ready ? `${ready} of ${n} ${what} are ready.` : `None of the ${what} could be created.`);
+      this.$nextTick(() => setTimeout(() => {
+        const a = document.activeElement;
+        if (a && a !== document.body && a.isConnected) return;
+        const h = [...document.querySelectorAll('[data-results-heading]')].find(e => e.getClientRects().length);
+        if (h) { try { h.focus({ preventScroll: true }); } catch (_) {} }
+      }, 80));
+    },
     measureBatch(b) {
       const product = this.design?.product_type || 'ring', kind = b.kind === 'refine' ? 'refine' : 'new';
       const ready = this.readyCount(b), failed = b.candidates.filter(c => c.status === 'failed').length;
@@ -2280,6 +2394,7 @@ function p3App() {
       else this.measure('design_generation_failed', { product_type: product, kind, reason: this.policyRefused(b) ? 'content_policy' : 'provider' });
     },
     onBatchUpdated(b) {
+      if (!this.anyActive(b) && (b.id === this.viewBatchId || b.id === this.pendingRefineBatchId)) this._announceResults(b);
       if (!this.anyActive(b)) this._refreshQuota();
       // Refresh My Designs thumbnails once a batch has images to show.
       if (this.sidebarOpen && !this.anyActive(b)) this.loadDesigns();
@@ -2344,7 +2459,10 @@ function p3App() {
       this.$refs.composer?.focus();
     },
     async refine() {
-      this.composeError = ''; this.composeRefusal = '';
+      if (this.submitting) return;               // FE-03: the request is on its way — Enter or a click again is not a new one
+      this.composeError = ''; this.composeRefusal = ''; this.composeNotice = null;
+      // FE-03: one refinement at a time — the running one is shown; the server refuses a second one too (409)
+      if (this.pendingBatch) { this.composeError = 'Your refinement is still being made. Wait for it to finish before asking for another.'; return; }
       if (!this.canActOnSelection) { this.composeError = 'Select one of the designs to refine it.'; return; }
       if (this.isOff(this.design)) { this.composeError = 'This design is currently unavailable for customization or ordering.'; return; }
       const text = this.userInput.trim();
@@ -2361,7 +2479,9 @@ function p3App() {
         if (b.design_id !== designId) {           // a shared gallery design, or one that already has a movie / 3D / order: a design of your own
           const was = this.design?.title, own = !this.design?.shared;
           this.userInput = '';
-          await this.openDesign(b.design_id);
+          this.persist({ designId: b.design_id });
+          await this._showMadeDesign(b.design_id);            // FE-06: made and charged — never reported as failed
+          if (this.design?.id !== b.design_id) { this.loadDesigns(); this._refreshQuota(); return; }
           this.openedFromList = false;           // just typed: the refinement's prompt echo shows
           this.loadDesigns(); this._refreshQuota();
           if (own && this.design?.title) this.showToast(`Saved as a new design “${this.design.title}” — “${was}” stays as it is`, { ms: 7000 });
@@ -2695,7 +2815,7 @@ function p3App() {
     get canAddToBag() { return !!this.cust?.can_add_to_bag && this.sizeConfirmed && !this.quotePending; },
     async setQuantity(delta) {
       if (!this.cust?.id) return;
-      const q = Math.min(10, Math.max(1, (this.cust.quantity || 1) + delta));
+      const q = Math.min(MAX_QUANTITY, Math.max(1, (this.cust.quantity || 1) + delta));
       if (q === this.cust.quantity) return;
       this.cust.quantity = q; this.cust.line_total = null;       // shown at once (a second + counts from it); the server's answer follows
       await this.patchCustomization(this.cust.id, { quantity: q });
@@ -2715,6 +2835,7 @@ function p3App() {
           if (patch.material_id && this.cust.material_id !== patch.material_id) return;
           const movie = this.cust.movie;
           this.cust = { ...fresh, movie: fresh.movie_available === false ? null : (fresh.movie || movie) };
+          if ('material_id' in patch || 'quantity' in patch) this.announce(this.custSpoken);   // A11Y-06
         } catch (e) {
           if (seq === this._custSeq) this.custError = e.message;
         } finally {
@@ -2732,6 +2853,17 @@ function p3App() {
       const names = [...order.map(id => own.find(m => m.id === id)).filter(Boolean), ...own.filter(m => !order.includes(m.id))].map(m => this.matName(m));
       const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1] : names[0];
       return 'Preview only — not available to order.' + (list ? ' Order it in ' + list + '.' : '');
+    },
+    // A11Y-06 / A11Y-09: what Customize now shows, in one sentence: "Sterling Silver, $69, quantity 2, total $138" — or that a
+    // preview-only metal is not for sale (the metal changed with the Preview only group)
+    get custSpoken() {
+      const c = this.cust;
+      if (!c) return '';
+      const name = this.currentMaterialLabel || '';
+      if (this.isPreview) return name + '. ' + this.materialPreviewText;
+      if (this.isLuxury) return name + ', price on request.';
+      const q = c.quantity || 1, total = c.line_total != null && c.quote?.currency ? this.price(c.line_total, c.quote.currency) : '';
+      return [name, this.custPriceFigure, q > 1 ? 'quantity ' + q : '', q > 1 && total ? 'total ' + total : ''].filter(Boolean).join(', ');
     },
     get priceAvailable() { return !this.isLuxury && !this.isPreview && this.cust?.quote?.pricing_status === 'available'; },
     // Customize's price (Boutique, 13 Nov 2026): the figure alone ("₪159"); "VAT included" and the promotion's tag sit beside it
@@ -2872,7 +3004,7 @@ function p3App() {
       const c = this.cust; if (!c) return;
       try {
         const r = await this.api('POST', '/api/bag', { customization_id: c.id, client_request_id: click });
-        this.bag = r;
+        this.bag = r; this.bagState = 'ok';
         if (!r.added) return;                                 // the same click answered twice: nothing more was added
         const product = c.product_type || 'ring', qty = r.added.quantity;
         const unit = c.quote?.unit_price ?? (c.line_total != null ? c.line_total / (c.quantity || 1) : undefined);
@@ -2882,7 +3014,7 @@ function p3App() {
         this._showBagNote({
           title: qty > 1 ? qty + ' added to your bag' : 'Added to your bag',
           text: r.added.limited
-            ? `Only ${qty} more fit — ${r.added.max_quantity} is the most of one piece.`
+            ? `Only ${qty} more could be added — for more than ${Number(r.added.max_quantity).toLocaleString("en-US")} of one piece, please contact us.`
             : `${r.added.line_quantity} of this piece · bag: ${pieces}${total ? ' · ' + total : ''}`,
           limit: r.added.limited });
         this.bagPop = false; this.$nextTick(() => { this.bagPop = true; setTimeout(() => { this.bagPop = false; }, 600); });
@@ -2903,22 +3035,29 @@ function p3App() {
     continueFromBag() { if (this.cust) this._goBackOr('review'); else if (this.design) this._goBackOr('ai-studio'); else this.resetAIFlow(); },
 
     // ── bag ───────────────────────────────────────────────────────────
+    get maxQuantity() { return MAX_QUANTITY; },      // a technical guard only (owner, 14 Nov 2026): no limit of 10
     get bagLines() { return this.bag?.lines || []; },
     get bagCount() { return this.bagLines.reduce((n, l) => n + l.quantity, 0); },
     // the pieces the subtotal counts: a line that can't be ordered stays in the bag, left out (WP2)
     get bagOrderableCount() { return this.bagLines.filter(l => l.orderable !== false).reduce((n, l) => n + l.quantity, 0); },
-    async refreshBag() { if (!this.token) return; try { this.bag = await this.api('GET', '/api/bag'); } catch { /* ignore */ } },
+    // FE-05: a failed read keeps what was shown and says so (bagState 'error'): never an empty bag by mistake
+    async refreshBag() {
+      if (!this.token) return;
+      if (!this.bag) this.bagState = 'loading';
+      try { this.bag = await this.api('GET', '/api/bag'); this.bagState = 'ok'; }
+      catch (e) { if (e.status !== 401) this.bagState = 'error'; }
+    },
     async removeLine(l) {
-      try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); this.showToast('Removed from your bag'); }
+      try { this.bag = await this.api('DELETE', `/api/bag/${l.id}`); this.bagState = 'ok'; this.showToast('Removed from your bag'); }
       catch (e) { this.custError = e.message; }
     },
-    // The Bag's quantity steppers (R-20): 1 to 10 per line; the server answers with the bag, totals recalculated
+    // The Bag's quantity steppers (R-20): 1 or more per line (no limit of 10 since 14 Nov 2026); the server answers with the bag, totals recalculated
     bagBusy: '',
     async setLineQuantity(l, delta) {
-      const q = Math.min(10, Math.max(1, (l.quantity || 1) + delta));
+      const q = Math.min(MAX_QUANTITY, Math.max(1, (l.quantity || 1) + delta));
       if (q === l.quantity || this.bagBusy) return;
       this.bagBusy = l.id; this.co.error = '';
-      try { this.bag = await this.api('PATCH', `/api/bag/${l.id}`, { quantity: q }); }
+      try { this.bag = await this.api('PATCH', `/api/bag/${l.id}`, { quantity: q }); this.bagState = 'ok'; }
       catch (e) { this.co.error = e.message; }
       finally { this.bagBusy = ''; }
     },
@@ -3294,7 +3433,8 @@ function p3App() {
     async loadOrders() {
       if (!this.token) return;
       this.ordersLoading = true;
-      try { this.orders = (await this.api('GET', '/api/orders')).orders; } catch (_) { /* keep what we have */ }
+      try { this.orders = (await this.api('GET', '/api/orders')).orders; this.ordersState = 'ok'; }
+      catch (_) { this.ordersState = 'error'; }           // FE-05: keep what we have, and say the list may be incomplete
       finally { this.ordersLoading = false; }
     },
     // An order from My Orders, the account menu or an earlier-order notice: its own page (B7), shown at once from the list
@@ -3302,7 +3442,8 @@ function p3App() {
     async loadMyQuotes() {
       if (!this.token) return;
       this.myQuotesLoading = true;
-      try { this.myQuotes = (await this.api('GET', '/api/quote-requests')).quote_requests; } catch (_) { /* keep what we have */ }
+      try { this.myQuotes = (await this.api('GET', '/api/quote-requests')).quote_requests; this.myQuotesState = 'ok'; }
+      catch (_) { this.myQuotesState = 'error'; }        // FE-05: as My Orders
       finally { this.myQuotesLoading = false; }
     },
     // ── My Account (B7): tabs and an order's page at their own addresses ──

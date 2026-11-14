@@ -525,7 +525,7 @@
                      border: 1px solid #18181B; border-radius: 6px; background: #fff; color: #18181B; }
         .cz-bagbtn:hover { background: #FAFAF9; }
         .cz-bagcount { position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
-                       background: #B08040; color: #fff; font-size: 11px; font-weight: 600; line-height: 20px; text-align: center; }
+                       background: #8A6420; color: #fff; font-size: 11px; font-weight: 600; line-height: 20px; text-align: center; }   /* A11Y: 5.4:1 (#B08040 was 3.5:1) */
         .cz-bagbtn.is-pop .cz-bagcount { animation: czPop .5s ease; }
         @keyframes czPop { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
         @media (prefers-reduced-motion: reduce) { .cz-bagbtn.is-pop .cz-bagcount { animation: none; } }
@@ -614,6 +614,26 @@
         .acct-steps .is-upcoming .acct-step { color: #52525B; font-weight: 500; }
         .acct-when { font-size: 12px; color: #6F6F6F; }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        /* ── Accessibility (owner's approved plan, 14 Nov 2026) ─────────────────────────────────────────────────────────
+           A11Y-02: every keyboard focus ring in Atelier's dark gold #8A6420 (5.4:1 on white; the light gold was 1.6–2.2:1) */
+        .metal-swatch:focus-visible { outline: 2px solid #8A6420; outline-offset: -4px; }
+        .g-card .g-link:focus-visible::after { outline-color: #8A6420; }
+        .skip-link:focus { outline-color: #8A6420; }
+        .nav-icon:focus-visible { outline: 2px solid #8A6420; outline-offset: 2px; }
+        .focus-visible\:ring-\[\#C9A96E\]:focus-visible { --tw-ring-color: #8A6420; }
+        .focus-visible\:outline-\[\#C9A96E\]:focus-visible { outline-color: #8A6420; }
+        /* a heading or region that takes the focus for a screen reader (not a control): no ring */
+        .focus-quiet:focus { outline: none; }
+        /* A11Y-05: grey text on the cream summary panels at 4.5:1 or more (zinc-500 was 4.43:1) */
+        .cz-panel .text-zinc-500, .cz-panel .promo-was { color: #52525B; }
+        /* A11Y-04: targets of at least 24 × 24 px, the look unchanged */
+        .dot-target { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; }
+        .dot-target:focus-visible { outline: 2px solid #8A6420; outline-offset: 0; }
+        .min-target { min-height: 24px; min-width: 24px; display: inline-flex; align-items: center; justify-content: center; }
+        /* A11Y-07: the toast above the bars at the bottom of Customize, the bag and checkout */
+        .toast-up { bottom: 6.5rem; }
+        /* A11Y-08: no blinking or shimmering for visitors who ask for reduced motion */
+        @media (prefers-reduced-motion: reduce) { .typing-dot, .shimmer, .sc-caret { animation: none !important; } }
         .acct-sec { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
         .acct-sec .acct-wide { grid-column: 1 / -1; }
         @media (max-width: 767.98px) {
@@ -644,6 +664,8 @@
 </head>
 <!-- Alpine calls init() itself: an x-init="init()" ran it twice (every startup request twice, timers doubled) -->
 <body x-data="p3App()" @paste.window="handlePaste($event)" class="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-white" :class="bannerShown ? 'promo-on' : ''">
+    <!-- A11Y-01 / A11Y-06 (14 Nov 2026): the page's one polite announcement — results ready, a new metal, price or quantity -->
+    <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" x-text="srMsg"></div>
     <!-- The first stop of the keyboard: straight to the screen's own content, past the header (ACC-06) -->
     <a href="#content" class="skip-link" @click.prevent="skipToContent()">Skip to content</a>
     <!-- Metal recolour filters (one per material), built from the catalog swatches by app.js. -->
@@ -802,7 +824,7 @@
              have it) · Exit on the Design screen (back to the homepage; you stay signed in) -->
         <div class="h-cta flex items-center justify-end">
             <button x-show="!inStudio" @click="resetAIFlow()" class="btn-gold hidden md:inline-flex px-6 py-3 whitespace-nowrap stream-glow transition">Start Designing</button>
-            <button x-show="inStudio" @click="navigateTo('home')" x-cloak class="tap-lg text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
+            <button x-show="inStudio" @click="navigateTo('home')" x-cloak class="tap-lg min-target text-[14px] uppercase tracking-widest transition" style="color:#6F6F6F;" onmouseover="this.style.color='#1A1A1A'" onmouseout="this.style.color='#6F6F6F'" title="Leave the studio and return to the homepage — you stay signed in">Exit</button>
         </div>
         <!-- Menu panel (below 1024 px): every page, Start Designing, My Designs and Favorites, the bag, Sign in / Sign out -->
         <div id="mobile-menu" x-show="menuOpen" x-cloak class="lg:hidden pt-4 mt-3 border-t border-zinc-100" @keydown.escape.window="menuOpen = false">
@@ -1719,12 +1741,12 @@
                                     <div x-show="!waitVariant" class="flex flex-col gap-4">
                                     <!-- Phones (Option 3, 13 Nov 2026): a short one-line heading, with "New design" beside it instead of the mode switch -->
                                     <div x-show="design" class="sm:hidden flex items-center gap-3 min-h-[32px]">
-                                        <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" class="text-[16px] font-semibold tracking-[0.01em] truncate" style="color:#8A6420;" x-text="resultsHeadingShort"></p>
+                                        <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" data-results-heading tabindex="-1" class="focus-quiet text-[16px] font-semibold tracking-[0.01em] truncate" style="color:#8A6420;" x-text="resultsHeadingShort"></p>
                                         <button type="button" @click="startNew()" class="tap-lg ml-auto shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 text-[13px] font-medium" style="color:#5C5C5C;">
                                             <svg class="w-3.5 h-3.5 stroke-[2.6]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New design
                                         </button>
                                     </div>
-                                    <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" class="hidden sm:block text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
+                                    <p x-show="!viewBatchGenerating && viewBatch?.status !== 'failed'" data-results-heading tabindex="-1" class="focus-quiet hidden sm:block text-[19px] font-semibold tracking-[0.01em] text-center" style="color:#8A6420;"
                                        x-text="resultsHeading"></p>
 
                                     <!-- Options still finishing (attached in the background) or missing: "Retry missing" is free — it fetches a
@@ -1785,9 +1807,9 @@
 
                                     <!-- Phone: which option is in view, and a dot per option (tap a dot to jump) -->
                                     <div class="sm:hidden flex items-center justify-center gap-3 -mt-1" x-show="(viewBatch?.candidates || []).length > 1">
-                                        <div class="flex items-center gap-2" role="group" aria-label="Options">
+                                        <div class="flex items-center" role="group" aria-label="Options">
                                             <template x-for="(c, i) in orderedCandidates(viewBatch)" :key="'dot' + c.id">
-                                                <button type="button" @click="scrollCand(i)" class="tap w-2.5 h-2.5 rounded-full transition" :class="i === candIndex ? 'scale-125' : 'opacity-40'" :style="'background:' + (c.id === selectedId ? '#8A6420' : '#1A1A1A')" :aria-label="'Show option ' + (i + 1)"></button>
+                                                <button type="button" @click="scrollCand(i)" class="dot-target" :aria-label="'Show option ' + (i + 1)" :aria-current="i === candIndex ? 'true' : null"><span class="w-2.5 h-2.5 rounded-full transition" :class="i === candIndex ? 'scale-125' : 'opacity-40'" :style="'background:' + (c.id === selectedId ? '#8A6420' : '#1A1A1A')" aria-hidden="true"></span></button>
                                             </template>
                                         </div>
                                         <span class="text-[13px] text-zinc-600" x-text="'Option ' + (candIndex + 1) + ' of ' + (viewBatch?.candidates || []).length + ' · swipe to compare'"></span>
@@ -1906,6 +1928,14 @@
                                     </button>
                                 </div>
                                 <p x-show="composeError" class="err-line px-1" role="alert" x-text="composeError"></p>
+                                <!-- FE-06: the design was made (and charged) but could not be shown: where it is — never "failed" -->
+                                <div x-show="composeNotice" x-cloak class="px-4 py-2.5 rounded-xl text-[14px] leading-relaxed" role="status" style="background:#F4F8F2; border:1px solid #D3E3CB; color:#24401A;">
+                                    <p x-text="composeNotice?.text"></p>
+                                    <p class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+                                        <button type="button" @click="openNoticeDesign()" class="font-semibold underline underline-offset-2">Show my design</button>
+                                        <button type="button" @click="openPanel('designs')" class="font-semibold underline underline-offset-2">Open My Designs</button>
+                                    </p>
+                                </div>
                                 <!-- The prompt check stopped the request (P5): a design rule, not a fault — what can't be made and how to change it -->
                                 <div x-show="composeRefusal" x-cloak class="px-4 py-2.5 rounded-xl text-[14px] leading-relaxed" role="alert" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#3A2E12;">
                                     <p class="font-semibold" x-text="composerMode === 'refine' ? 'We can’t make this change' : 'We can’t make this design'"></p>
@@ -2190,7 +2220,7 @@
                             <span x-show="custMaterialsOf('fashion').length && custGroups.some(g => g.id !== 'fashion')" class="self-center w-px h-11 bg-zinc-200 mx-1" aria-hidden="true"></span>
                             <template x-for="g in custGroups.filter(g => g.id !== 'fashion')" :key="'grp-' + g.id">
                                 <button type="button" @click="toggleGroup(g.id)" :aria-expanded="String(!!groupOpen[g.id])" class="cz-swi" :class="currentGroup === g.id ? 'is-on' : ''"
-                                        :aria-label="g.id === 'luxury' ? 'Gold, price on request' : 'Preview only metals'">
+                                        :aria-label="g.id === 'luxury' ? 'Gold, price on request — shows the gold metals and previews one' : 'Preview only metals — shows them and previews one; not for sale'">
                                     <span class="cz-sw" :class="currentGroup === g.id ? 'is-on' : ''"><span class="cz-sw-dot" :style="currentGroup === g.id ? swatchCss(currentMaterial) : 'background:linear-gradient(135deg,#F3D57C 0%,#B8892B 100%)'"></span></span>
                                     <span class="cz-sw-name" x-text="g.id === 'luxury' ? 'Gold · on request' : 'Preview only'"></span>
                                 </button>
@@ -2335,7 +2365,7 @@
                         <div x-show="!isLuxury && !isPreview" class="cz-qty" role="group" aria-label="Quantity">
                             <button type="button" @click="setQuantity(-1)" :disabled="(cust?.quantity || 1) <= 1" aria-label="Decrease quantity">−</button>
                             <span x-text="cust?.quantity || 1" aria-live="polite"></span>
-                            <button type="button" @click="setQuantity(1)" :disabled="(cust?.quantity || 1) >= 10" aria-label="Increase quantity">+</button>
+                            <button type="button" @click="setQuantity(1)" :disabled="(cust?.quantity || 1) >= maxQuantity" aria-label="Increase quantity">+</button>
                         </div>
                         <button x-show="!isLuxury && !isPreview" @click="canAddToBag ? addToBag() : (custNeedsSize && scrollToSize())" :disabled="quotePending || (!canAddToBag && !custNeedsSize)"
                                 class="btn-black flex-1 min-w-0 min-h-[48px] px-4" data-testid="add-to-bag" x-text="addBagLabel">Add to Bag</button>
@@ -2426,7 +2456,13 @@
                     <span x-show="token && bagCount > 0" x-cloak class="text-[13px] text-zinc-500" x-text="bagCount + (bagCount === 1 ? ' item' : ' items')"></span>
                 </div>
                 <p x-show="!token" class="mt-2 text-sm text-zinc-500">Sign in to see your bag.</p>
-                <div x-show="token && bagLines.length === 0" class="mt-8 text-center py-14 border border-dashed border-zinc-200 rounded-xl">
+                <!-- FE-05: "empty" only after the server said so; a failed read says so and keeps what was shown -->
+                <p x-show="token && !bag && bagState !== 'error'" x-cloak class="mt-6 text-[14px] text-zinc-500" role="status">Loading your bag…</p>
+                <div x-show="token && bagState === 'error'" x-cloak class="mt-6 px-4 py-3 rounded-xl text-[14px] leading-relaxed" role="alert" style="background:#FFF4F2; border:1px solid #F2C9C4; color:#7A1D16;">
+                    <p x-text="bag ? 'We couldn’t refresh your bag just now — what you see may not be up to date.' : 'We couldn’t load your bag just now. The pieces in it are safe.'"></p>
+                    <button type="button" @click="refreshBag()" class="mt-1 font-semibold underline underline-offset-2">Try again</button>
+                </div>
+                <div x-show="token && bag && bagLines.length === 0" class="mt-8 text-center py-14 border border-dashed border-zinc-200 rounded-xl">
                     <p class="brand-font text-xl text-zinc-800 mb-2">Your bag is empty</p>
                     <p class="text-[13px] text-zinc-500 mb-6">Choose a design, pick your metal and size, and add it here.</p>
                     <div class="flex flex-col sm:flex-row gap-3 justify-center px-6">
@@ -2454,7 +2490,7 @@
                                     <div class="cz-qty is-sm" role="group" :aria-label="'Quantity of ' + l.title">
                                         <button type="button" @click="setLineQuantity(l, -1)" :disabled="l.quantity <= 1 || !!bagBusy || !!l.unavailable" aria-label="Decrease quantity">−</button>
                                         <span x-text="l.quantity" aria-live="polite"></span>
-                                        <button type="button" @click="setLineQuantity(l, 1)" :disabled="l.quantity >= 10 || !!bagBusy || !!l.unavailable" aria-label="Increase quantity">+</button>
+                                        <button type="button" @click="setLineQuantity(l, 1)" :disabled="l.quantity >= maxQuantity || !!bagBusy || !!l.unavailable" aria-label="Increase quantity">+</button>
                                     </div>
                                     <button type="button" @click="removeLine(l)" class="min-h-[44px] text-[12px] text-zinc-500 underline-offset-4 hover:underline hover:text-red-700 transition" :aria-label="'Remove ' + (l.title || 'item') + ' from the bag'">Remove</button>
                                 </div>
@@ -2875,7 +2911,11 @@
                 <!-- My Orders: in progress first, then completed and cancelled; newest first in each -->
                 <section x-show="userSession && accountTab === 'orders'" aria-label="My Orders">
                     <p x-show="ordersLoading && !orders.length" class="text-[14px] text-zinc-500 mt-6">Loading…</p>
-                    <div x-show="!ordersLoading && !orders.length" class="acct-empty mt-6">
+                    <div x-show="!ordersLoading && ordersState === 'error'" x-cloak class="acct-empty mt-6" role="alert">
+                        <p class="mb-4" x-text="orders.length ? 'We couldn’t refresh your orders just now — this list may not be up to date.' : 'We couldn’t load your orders just now. Your orders are safe.'"></p>
+                        <button type="button" @click="loadOrders()" class="btn-outline px-6 py-3">Try again</button>
+                    </div>
+                    <div x-show="!ordersLoading && ordersState === 'ok' && !orders.length" class="acct-empty mt-6">
                         <p class="mb-4">You haven’t placed an order yet. Your orders appear here, with where each one stands.</p>
                         <button type="button" @click="resetAIFlow()" class="btn-gold px-6 py-3">Start designing</button>
                     </div>
@@ -2910,7 +2950,11 @@
                 <!-- My Quotes: open requests first, then the decided and closed ones; newest first in each -->
                 <section x-show="userSession && accountTab === 'quotes'" aria-label="My Quotes">
                     <p x-show="myQuotesLoading && !myQuotes.length" class="text-[14px] text-zinc-500 mt-6">Loading…</p>
-                    <div x-show="!myQuotesLoading && !myQuotes.length" class="acct-empty mt-6">
+                    <div x-show="!myQuotesLoading && myQuotesState === 'error'" x-cloak class="acct-empty mt-6" role="alert">
+                        <p class="mb-4" x-text="myQuotes.length ? 'We couldn’t refresh your quotes just now — this list may not be up to date.' : 'We couldn’t load your quotes just now.'"></p>
+                        <button type="button" @click="loadMyQuotes()" class="btn-outline px-6 py-3">Try again</button>
+                    </div>
+                    <div x-show="!myQuotesLoading && myQuotesState === 'ok' && !myQuotes.length" class="acct-empty mt-6">
                         <p>No quote requests. When a material is offered by request, you can ask for a quote on Customize and it appears here.</p>
                     </div>
                     <template x-for="grp in quoteGroups" :key="grp.key">
@@ -3660,10 +3704,22 @@
         </div>
     </template>
 
+    <!-- ── FE-04: the shop's details (products, metals, prices) could not be read at start-up. The page stays usable — sign-in,
+         the journey's screens, Back and Forward — and Retry asks again. ── -->
+    <template x-teleport="body">
+        <div x-show="bootError" x-cloak role="alert"
+             class="fixed inset-x-0 mx-auto z-[600] w-max flex items-center gap-4 px-5 py-3 rounded-xl shadow-2xl text-[13px]"
+             style="top:12px; background:#FFF4F2; color:#7A1D16; border:1px solid #F2C9C4; max-width:min(92vw, 560px);">
+            <span>We couldn’t load the shop’s details just now. Your account and your designs are safe.</span>
+            <button type="button" @click="retryCatalog()" class="shrink-0 font-semibold uppercase tracking-widest text-[12px] underline underline-offset-2" style="color:#7A1D16;">Retry</button>
+        </div>
+    </template>
+
     <!-- ── Toast: a short confirmation of what just happened, with an optional follow-up ── -->
     <template x-teleport="body">
         <div x-show="toast" x-cloak role="status" aria-live="polite"
              class="fixed inset-x-0 mx-auto bottom-5 z-[600] w-max flex items-center gap-4 px-5 py-3 rounded-xl shadow-2xl text-[13px] fade-in"
+             :class="['review', 'checkout', 'order'].includes(view) ? 'toast-up' : ''"
              style="background:#1A1A1A; color:#fff; max-width:min(92vw, 560px);">
             <span x-text="toast?.text"></span>
             <button x-show="toast?.label" @click="toastAction()" class="shrink-0 font-semibold uppercase tracking-widest text-[12px]" style="color:#E2C27A;" x-text="toast?.label"></button>
