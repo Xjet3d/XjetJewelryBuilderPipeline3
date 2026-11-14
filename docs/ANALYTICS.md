@@ -210,6 +210,8 @@ and its title (`web/app.js` `measureScreen`, `web/consent.js` `sendPage`):
 
 Items are anonymous: `item_id` `custom-ring` / `custom-charm`, `item_variant` = the metal, `price`, `quantity`.
 
+`currency` is `USD` or `ILS` (an Israeli visitor's shekel prices, including VAT, while Israeli pricing is on — SEO-07, 14 Nov 2026). A `value` (and the items' `price`) is never sent without its currency: GA4 would read it in the property's own currency.
+
 The method of a sign-in that returns from Google, Apple or an emailed link is the one the server's session records
 (`/api/auth/session` `method`); a confirmed email is a new account (`#auth=created`).
 

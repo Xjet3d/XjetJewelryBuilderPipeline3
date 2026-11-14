@@ -298,3 +298,19 @@ def test_sign_ins_and_new_accounts_name_their_method_and_an_order_is_no_purchase
     assert "this._measureSignIn(authStatus === 'created');" in Init
     assert "this.authCsrf = S.csrf; this._authMethod = S.method || '';" in Js
     assert "location.replace(BASE + '/#auth=' + (MODE === 'verify' ? 'created' : 'ok'))" in Page
+
+
+def test_shekel_values_go_with_their_currency_and_no_value_goes_without_one():
+    """SEO-07 (owner's approved plan, 14 Nov 2026): an Israeli visitor's ₪ value reaches GA4 with currency ILS (before,
+    only USD passed and the value went alone, read as dollars); a value whose currency is unknown is not sent."""
+    Js = (WebDir / "consent.js").read_text(encoding="utf-8")
+    assert "CUR = ['USD', 'ILS']" in Js
+    for Name in ("add_to_cart", "begin_checkout", "quote_approved", "order_created"):
+        assert re.search(Name + r": \{[^}]*currency: CUR", Js), Name
+    Clean = Js[Js.index("function clean(params, schema)"):Js.index("function track(name, params)")]
+    assert "if ('currency' in schema && !out.currency)" in Clean and "delete out.value" in Clean and "delete x.price" in Clean
+    App = (WebDir / "app.js").read_text(encoding="utf-8")
+    # the page passes each event's own currency: the quote's, the bag's, the order's
+    assert "this.measure('add_to_cart', { currency: c.quote?.currency || 'USD'" in App
+    assert "this.measure('begin_checkout', { currency: bagCur" in App
+    assert "this.measure('order_created', { source: 'checkout', currency: o.currency, value: o.total" in App

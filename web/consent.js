@@ -196,7 +196,9 @@
     document.addEventListener('scroll', scrolled, { capture: true, passive: true });     // the window's, and <main>'s
   }
 
-  var P = ['ring', 'charm'], KIND = ['new', 'refine', 'retry'], GROUP = ['fashion', 'luxury'], CUR = ['USD'];
+  // SEO-07 (14 Nov 2026): a shekel value goes with its currency ('ILS') — before, only 'USD' passed, so an Israeli
+  // visitor's value reached GA4 without a currency and was read as dollars
+  var P = ['ring', 'charm'], KIND = ['new', 'refine', 'retry'], GROUP = ['fashion', 'luxury'], CUR = ['USD', 'ILS'];
   var SCHEMA = {
     sign_up: { method: ['email', 'google', 'apple'] },
     login: { method: ['password', 'google', 'apple', 'code', 'link'] },
@@ -246,6 +248,11 @@
       else ok = TYPES[rule](v);
       if (ok !== undefined) out[k] = ok;
     });
+    // A money value is never sent without its currency (GA4 would count it in the property's own currency)
+    if ('currency' in schema && !out.currency) {
+      delete out.value;
+      if (out.items) out.items.forEach(function (x) { delete x.price; });
+    }
     return out;
   }
   function track(name, params) {
