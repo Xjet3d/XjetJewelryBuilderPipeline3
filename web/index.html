@@ -474,6 +474,19 @@
         .cz-eyebrow { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #8A6420; font-weight: 600; }
         .cz-media { mix-blend-mode: multiply; }
         .cz-panel { background: #F6F5F2; }
+        /* Checkout B3 Hybrid (owner, 14 Nov 2026): one page; the section still missing something is open, a finished one is
+           a summary card with Edit, a later one waits closed */
+        .co-card { background: #fff; border: 1px solid #E7E5E4; border-radius: 12px; padding: 16px 14px; }
+        @media (min-width: 640px) { .co-card { padding: 22px 24px; } }
+        .co-card.co-open { border: 1.5px solid #C9A96E; box-shadow: 0 10px 28px rgba(138,100,32,.08); }
+        .co-card.co-row { display: flex; align-items: center; gap: 12px; padding-top: 12px; padding-bottom: 12px; }
+        .co-dot { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+                  font-size: 12px; font-weight: 600; flex: none; background: #F4F4F5; color: #52525B; }
+        .co-dot.is-on { background: #8A6420; color: #fff; }
+        .co-dot.is-done { background: #18181B; color: #fff; }
+        .co-chip { display: inline-flex; flex-direction: column; gap: 1px; border: 1px solid #E8DCC4; background: #FFFDF8; border-radius: 10px;
+                   padding: 7px 10px; font-size: 12px; color: #52525B; line-height: 1.35; }
+        .co-chip b { color: #18181B; font-weight: 600; }
         .cz-swi { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; padding: 0; border: 0; background: none; cursor: pointer; }
         .cz-sw { width: 44px; height: 44px; border-radius: 999px; border: 1px solid #E4E4E7; display: flex; align-items: center; justify-content: center;
                  transition: border-color .15s; }
@@ -2499,29 +2512,20 @@
     <template x-if="view === 'order'">
         <main data-clarity-mask="true" class="flex-1 overflow-y-auto fade-in bg-white" @input="_saveCoDraft()" @change="_saveCoDraft()">
             <h1 class="vh">Checkout</h1>
-            <div class="max-w-5xl mx-auto px-6 pt-8 pb-36 lg:grid lg:grid-cols-[1fr_360px] lg:gap-12 lg:items-start">
-                <div class="min-w-0">
-                    <ol class="flex items-center gap-2 sm:gap-3 text-[13px] uppercase tracking-[0.14em] mb-8" aria-label="Checkout steps">
-                        <template x-for="(s, i) in checkoutSteps" :key="s[0]">
-                            <li class="flex items-center gap-2 sm:gap-3">
-                                <button type="button" @click="coGoTo(s[0])" :disabled="i > coStepIndex" class="flex items-center gap-2 disabled:cursor-default"
-                                        :class="i === coStepIndex ? 'text-zinc-900 font-semibold' : i < coStepIndex ? 'text-zinc-700' : 'text-zinc-400'" :aria-current="i === coStepIndex ? 'step' : null">
-                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[13px] font-semibold"
-                                          :class="i < coStepIndex ? 'bg-zinc-900 text-white' : i === coStepIndex ? 'text-white' : 'bg-zinc-100 text-zinc-500'"
-                                          :style="i === coStepIndex ? 'background:#8A6420' : ''" x-text="i < coStepIndex ? '✓' : i + 1"></span>
-                                    <span class="hidden sm:inline" x-text="s[1]"></span>
-                                </button>
-                                <span x-show="i < checkoutSteps.length - 1" class="w-6 sm:w-10 h-px bg-zinc-200" aria-hidden="true"></span>
-                            </li>
-                        </template>
-                    </ol>
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 pt-5 lg:pt-8 pb-40 lg:pb-16 flex flex-col lg:grid lg:grid-cols-[1fr_380px] lg:gap-12 lg:items-start">
+                <div class="min-w-0 space-y-3 sm:space-y-4">
+                    <button type="button" @click="_goBackOr('checkout')" class="hidden lg:inline-block text-[12px] uppercase tracking-widest text-zinc-500 hover:text-black">← Back to bag</button>
 
-                    <!-- How ordering works, from the first step (B4/B6, 11 Nov 2026) -->
-                    <p x-show="!checkout?.payment?.available" class="mb-5 rounded-lg px-4 py-3 text-[13px] leading-relaxed" style="background:#FBF7EF; border:1px solid #E8DCC4; color:#5A4A2A;">No payment is taken online. You place your order, our team reviews your design (about 2 business days), and then we contact you to arrange payment. Production starts once your payment is confirmed.</p>
-
-                    <!-- Step 1 · details -->
-                    <section x-show="co.step === 'details'" class="space-y-5" aria-labelledby="co-h-details">
-                        <div><h2 id="co-h-details" class="text-2xl brand-font">Your details</h2><p class="text-[13px] text-zinc-500 mt-1">We use these only for this order and to reach you about it. All four are required.</p></div>
+                    <!-- 1 · Contact: open while something is missing, then a summary with Edit -->
+                    <div id="co-sec-details" class="scroll-mt-4">
+                    <div x-show="coSecState('details') === 'done'" class="co-card co-row" data-testid="co-done-details">
+                        <span class="co-dot is-done" aria-hidden="true">✓</span>
+                        <div class="flex-1 min-w-0 text-[13px] leading-snug"><p class="font-semibold text-zinc-900">Contact</p>
+                            <p class="text-zinc-600 break-words" x-text="[co.customer.first_name + ' ' + co.customer.last_name, co.customer.email, co.customer.phone].join(' · ')"></p></div>
+                        <button type="button" @click="coGoTo('details')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-600 hover:text-black shrink-0" aria-label="Edit your contact details">Edit</button>
+                    </div>
+                    <section x-show="co.step === 'details'" class="co-card co-open space-y-5" aria-labelledby="co-h-details">
+                        <div><div class="flex items-center gap-3"><span class="co-dot is-on" aria-hidden="true">1</span><h2 id="co-h-details" tabindex="-1" class="text-[22px] sm:text-2xl brand-font outline-none">How can we reach you?</h2></div><p class="text-[13px] text-zinc-500 mt-2">We use these only for this order and to reach you about it. All four are required.</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div><label class="flbl" for="co-first">First name</label><input id="co-first" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('first_name') ? 'true' : null" :aria-describedby="coProblem('first_name') ? 'co-first-err' : null" :class="coProblem('first_name') ? 'bad' : ''" x-model="co.customer.first_name" autocomplete="given-name" @keydown.enter="coNext()"><p id="co-first-err" class="ferr" x-show="coProblem('first_name')" x-text="coProblem('first_name')"></p></div>
                             <div><label class="flbl" for="co-last">Last name</label><input id="co-last" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('last_name') ? 'true' : null" :aria-describedby="coProblem('last_name') ? 'co-last-err' : null" :class="coProblem('last_name') ? 'bad' : ''" x-model="co.customer.last_name" autocomplete="family-name" @keydown.enter="coNext()"><p id="co-last-err" class="ferr" x-show="coProblem('last_name')" x-text="coProblem('last_name')"></p></div>
@@ -2555,11 +2559,24 @@
                                 </div>
                                 <p id="co-phone-err" class="ferr" x-show="coProblem('phone')" x-text="coProblem('phone')"></p></div>
                         </div>
+                        <button type="button" @click="coNext()" :disabled="co.busy" class="hidden lg:inline-flex btn-black px-6 py-3" x-text="coNextLabel + ' →'">Continue to delivery →</button>
                     </section>
+                    </div>
 
-                    <!-- Step 2 · shipping -->
-                    <section x-show="co.step === 'shipping'" class="space-y-6" aria-labelledby="co-h-ship">
-                        <div><h2 id="co-h-ship" class="text-2xl brand-font">Shipping address</h2><p class="text-[13px] text-zinc-500 mt-1">We ship worldwide. Import duties or VAT, where charged, are paid by the recipient.</p></div>
+                    <!-- 2 · Delivery: closed until the contact details are done, open while the address is missing, then a summary -->
+                    <div id="co-sec-shipping" class="scroll-mt-4">
+                    <div x-show="coSecState('shipping') === 'todo'" class="co-card co-row text-zinc-500">
+                        <span class="co-dot" aria-hidden="true">2</span><p class="text-[14px]"><span class="font-semibold text-zinc-700">Delivery address</span><span class="hidden sm:inline"> · opens after your contact details</span></p>
+                    </div>
+                    <div x-show="coSecState('shipping') === 'done'" class="co-card co-row" data-testid="co-done-shipping">
+                        <span class="co-dot is-done" aria-hidden="true">✓</span>
+                        <div class="flex-1 min-w-0 text-[13px] leading-snug"><p class="font-semibold text-zinc-900">Delivery</p>
+                            <p class="text-zinc-600 break-words" x-text="[co.address.recipient, [co.address.line1, co.address.line2].filter(Boolean).join(', '), [co.address.city, co.address.region, co.address.postal_code].filter(Boolean).join(' '), coCountry?.name || co.address.country].filter(Boolean).join(', ')"></p>
+                            <p class="text-zinc-500" x-text="(coShipping?.label || 'Standard delivery') + ' · ' + (coQuote?.shipping ? price(coQuote.shipping, coQuote.currency) : 'free') + ' · ' + (coShipping?.eta || '')"></p></div>
+                        <button type="button" @click="coGoTo('shipping')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-600 hover:text-black shrink-0" aria-label="Edit the delivery address">Edit</button>
+                    </div>
+                    <section x-show="co.step === 'shipping'" class="co-card co-open space-y-6" aria-labelledby="co-h-ship">
+                        <div><div class="flex items-center gap-3"><span class="co-dot is-on" aria-hidden="true">2</span><h2 id="co-h-ship" tabindex="-1" class="text-[22px] sm:text-2xl brand-font outline-none">Delivery address</h2></div><p class="text-[13px] text-zinc-500 mt-2">We ship worldwide. Import duties or VAT, where charged, are paid by the recipient.</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div class="sm:col-span-2"><label class="flbl" for="co-recipient">Recipient</label><input id="co-recipient" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('recipient') ? 'true' : null" :aria-describedby="coProblem('recipient') ? 'co-recipient-err' : null" :class="coProblem('recipient') ? 'bad' : ''" x-model="co.address.recipient" @input="co.recipientEdited = true" autocomplete="shipping name"><p id="co-recipient-err" class="ferr" x-show="coProblem('recipient')" x-text="coProblem('recipient')"></p></div>
                             <div class="sm:col-span-2"><label class="flbl" for="co-line1">Street address</label><input id="co-line1" class="fld" dir="auto" aria-required="true" :aria-invalid="coProblem('line1') ? 'true' : null" :aria-describedby="coProblem('line1') ? 'co-line1-err' : null" :class="coProblem('line1') ? 'bad' : ''" x-model="co.address.line1" autocomplete="shipping address-line1"><p id="co-line1-err" class="ferr" x-show="coProblem('line1')" x-text="coProblem('line1')"></p></div>
@@ -2613,20 +2630,17 @@
                                 </template>
                             </div>
                         </div>
+                        <button type="button" @click="coNext()" :disabled="co.busy" class="hidden lg:inline-flex btn-black px-6 py-3" x-text="coNextLabel + ' →'">Continue to review →</button>
                     </section>
+                    </div>
 
-                    <!-- Step 3 · review & pay -->
-                    <section x-show="co.step === 'review'" class="space-y-6" aria-labelledby="co-h-review">
-                        <div><h2 id="co-h-review" class="text-2xl brand-font">Review &amp; place order</h2><p class="text-[13px] text-zinc-500 mt-1" x-text="'Check everything, then place your order. ' + bagReserved + ' and our team confirms the design for production before anything is made.'"></p></div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Contact</p><button @click="coGoTo('details')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black" aria-label="Edit your details">Edit</button></div>
-                                <p class="text-zinc-900" x-text="co.customer.first_name + ' ' + co.customer.last_name"></p><p class="text-zinc-600" x-text="co.customer.email"></p><p class="text-zinc-600" x-text="co.customer.phone"></p></div>
-                            <div class="border border-zinc-100 rounded-lg p-4"><div class="flex justify-between items-baseline"><p class="flbl">Ships to</p><button @click="coGoTo('shipping')" class="tap-lg text-[12px] uppercase tracking-widest underline text-zinc-500 hover:text-black" aria-label="Edit the shipping address">Edit</button></div>
-                                <p class="text-zinc-900" x-text="co.address.recipient"></p>
-                                <p class="text-zinc-600" x-text="[co.address.line1, co.address.line2].filter(Boolean).join(', ')"></p>
-                                <p class="text-zinc-600" x-text="[co.address.city, co.address.region, co.address.postal_code].filter(Boolean).join(' ') + ' · ' + (coCountry?.name || co.address.country)"></p>
-                                <p class="text-zinc-500 mt-1" x-text="(coShipping?.label || '') + ' · ' + (coShipping?.eta || '')"></p></div>
-                        </div>
+                    <!-- 3 · Anything to add? The promo code, then the note for our team; the order's terms follow below -->
+                    <div id="co-sec-review" class="scroll-mt-4">
+                    <div x-show="coSecState('review') === 'todo'" class="co-card co-row text-zinc-500">
+                        <span class="co-dot" aria-hidden="true">3</span><p class="text-[14px]"><span class="font-semibold text-zinc-700">Review</span> · promo code, note for our team, Terms</p>
+                    </div>
+                    <section x-show="co.step === 'review'" class="co-card co-open space-y-5" aria-labelledby="co-h-review">
+                        <div class="flex items-center gap-3"><span class="co-dot is-on" aria-hidden="true">3</span><h2 id="co-h-review" tabindex="-1" class="text-[22px] sm:text-2xl brand-font outline-none">Anything to add?</h2></div>
                         <div>
                             <label class="flbl" for="co-promo">Promo code</label>
                             <div class="flex gap-2">
@@ -2634,26 +2648,33 @@
                                 <button x-show="!coQuote?.promo && !coPromoDeclined" @click="applyPromo()" :disabled="co.busy || !co.promo_input.trim()" class="btn-black px-5 shrink-0">Apply</button>
                                 <button x-show="coQuote?.promo || coPromoDeclined" @click="removePromo()" :disabled="co.busy" class="btn-outline px-5 shrink-0">Remove</button>
                             </div>
-                            <p x-show="coQuote?.promo" class="text-[14px] mt-1.5" style="color:#146C43;" x-text="coQuote?.promo ? coQuote.promo.code + ' applied — ' + coQuote.promo.label + ' (−' + money(coQuote.discount, coQuote.currency) + ')' : ''"></p>
+                            <p x-show="coQuote?.promo" class="text-[14px] mt-1.5" style="color:#146C43;" x-text="coQuote?.promo ? '✓ ' + coQuote.promo.code + ' applied — ' + coQuote.promo.label + ' (−' + money(coQuote.discount, coQuote.currency) + ')' : ''"></p>
                             <p x-show="coQuote?.promo_error" id="co-promo-error" class="ferr" role="alert"><span x-text="(coQuote?.promo_error?.message || '') + (coPromoDeclined ? ' Remove it to place your order without a code, or type another code.' : '')"></span></p>
                         </div>
                         <div>
-                            <label class="flbl" for="co-note">Anything we should know? <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
-                            <textarea id="co-note" class="fld" dir="auto" rows="3" maxlength="1000" x-model="co.note" placeholder="A note for our team about your order…"></textarea>
+                            <label class="flbl" for="co-note">Note for our team <span class="normal-case tracking-normal font-normal text-zinc-500">(optional)</span></label>
+                            <textarea id="co-note" class="fld" dir="auto" rows="4" maxlength="1000" x-model="co.note" aria-describedby="co-note-count" placeholder="A gift, a deadline, a question about your design…" style="resize: vertical; min-height: 104px;"></textarea>
+                            <p id="co-note-count" class="text-right text-[12px] text-zinc-500 mt-1" x-text="co.note.length + ' / 1000'">0 / 1000</p>
                         </div>
-                        <div class="rounded-xl p-5" :style="checkout?.payment?.available ? 'border:1px solid #E4E4E7;' : 'background:#FBF7EF; border:1px solid #E8DCC4;'">
-                            <p class="flbl">Payment</p>
-                            <template x-if="!checkout?.payment?.available">
-                                <div class="text-[13px] text-zinc-700 leading-relaxed">
-                                    <p class="font-semibold text-zinc-900 mb-1">Payment is arranged after our review</p>
-                                    <p x-text="'No payment is taken online. When you place the order, ' + bagReserved.replace(/^Your/, 'your') + '; after our review (about 2 business days) we contact you to arrange payment. Production starts once your payment is confirmed.'"></p>
-                                    <p class="text-[14px] text-zinc-600 mt-2">Your order is a reservation until our team has reviewed the design for production feasibility and confirmed it to you. Nothing is charged today.</p>
-                                </div>
-                            </template>
-                            <template x-if="checkout?.payment?.available"><p class="text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
+                    </section>
+                    </div>
+
+                    <!-- What happens after the order, in its real order (the policy's timings); the payment line itself is in Before you order -->
+                    <div x-show="co.step === 'review' && !checkout?.payment?.available" class="pt-1" data-testid="co-timeline">
+                        <p class="flbl">After you order</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="co-chip"><b>Today</b>Nothing charged</span>
+                            <span class="co-chip"><b>≈ 2 business days</b>Design review</span>
+                            <span class="co-chip"><b>Then</b>We arrange payment</span>
+                            <span class="co-chip"><b>≤ 14 business days</b>Production</span>
+                            <span class="co-chip"><b x-text="(coShipping?.eta || 'up to 14 business days').replace(/^up to /, '≤ ')">≤ 14 business days</b><span x-text="coQuote?.shipping ? (coShipping?.label || 'Standard delivery') : 'Free delivery'">Free delivery</span></span>
                         </div>
+                    </div>
+
+                    <section x-show="co.step === 'review'" class="space-y-4" aria-label="Before you order">
+                        <template x-if="checkout?.payment?.available"><p class="co-card text-[13px] text-zinc-700">You will complete payment with <span x-text="checkout?.payment?.provider"></span> after placing the order. Card details never reach XJet.</p></template>
                         <!-- Before you order: the seller and pre-order summary, the Terms box, the privacy notice and the age statement -->
-                        <div class="rounded-xl p-5 text-[13px] text-zinc-700 leading-relaxed space-y-1" style="border:1px solid #E4E4E7;" data-testid="pre-order-summary">
+                        <div class="co-card text-[13px] text-zinc-700 leading-relaxed space-y-1" data-testid="pre-order-summary">
                             <p class="flbl">Before you order</p>
                             <p><strong class="font-semibold text-zinc-900">Seller:</strong> XJet Ltd., 4 Oppenheimer St., Science Park, Rehovot 7670102, Israel, company number 513655233 · <a :href="mailto(coQuestionSubject)" class="underline underline-offset-2 hover:text-black" x-text="SUPPORT_EMAIL || 'Contact us'">Contact us</a></p>
                             <p><strong class="font-semibold text-zinc-900">Total:</strong> <span x-text="price((coQuote?.subtotal || 0) - (coQuote?.discount || 0), coQuote?.currency) + ' + delivery ' + (coQuote?.shipping ? price(coQuote.shipping, coQuote.currency) : 'free') + ' = ' + price(coQuote?.total || 0, coQuote?.currency)"></span></p>
@@ -2686,7 +2707,8 @@
                 </div>
 
                 <!-- Order summary, as the bag shows it (Boutique, 13 Nov 2026): the same panel, prices, tag and words -->
-                <aside class="mt-10 lg:mt-0 lg:sticky lg:top-6 rounded-xl p-5 cz-panel" aria-labelledby="co-sum">
+                <!-- on phones it comes first (B3): the pieces and the whole breakdown before the forms -->
+                <aside class="order-first lg:order-none mb-3 lg:mb-0 lg:sticky lg:top-6 rounded-xl p-4 sm:p-5 cz-panel" aria-labelledby="co-sum">
                     <p id="co-sum" class="cz-sum-h mb-1">Order summary</p>
                     <ul class="divide-y divide-zinc-200/70 mb-3">
                         <template x-for="l in (coQuote?.lines || [])" :key="l.bag_line_id">
@@ -2714,19 +2736,36 @@
                         <p x-show="coQuote?.currency === 'USD' && coQuote?.incl_vat" x-cloak class="text-[14px] text-zinc-600 pt-1">US dollars · including 18% Israeli VAT · a delivery to Israel is charged in shekels.</p>
                         <p x-show="coQuote?.currency === 'ILS'" x-cloak class="text-[14px] text-zinc-600 pt-1">Shekels · including 18% VAT for delivery in Israel.</p>
                     </div>
+                    <!-- Desktop (B3): what is left to do, then Place order beside the total; on phones the bar below has it -->
+                    <div class="hidden lg:block mt-4 pt-4 border-t border-zinc-200 space-y-3">
+                        <div x-show="!coCanPlace" class="rounded-lg bg-white px-3 py-3 space-y-2 text-[13px] text-zinc-700">
+                            <p class="flbl !mb-1">To place your order</p>
+                            <p class="flex items-center gap-2"><span class="co-dot !w-5 !h-5 !text-[11px]" :class="coStepIndex > 0 ? 'is-done' : ''" aria-hidden="true" x-text="coStepIndex > 0 ? '✓' : '1'"></span>Contact details</p>
+                            <p class="flex items-center gap-2"><span class="co-dot !w-5 !h-5 !text-[11px]" :class="coStepIndex > 1 ? 'is-done' : ''" aria-hidden="true" x-text="coStepIndex > 1 ? '✓' : '2'"></span>Delivery address</p>
+                            <p class="flex items-center gap-2"><span class="co-dot !w-5 !h-5 !text-[11px]" :class="co.terms === true ? 'is-done' : ''" aria-hidden="true" x-text="co.terms === true ? '✓' : '3'"></span>
+                                <button type="button" x-show="co.step === 'review'" @click="coFocusTerms()" class="underline underline-offset-2 hover:text-black">Accept the Terms</button><span x-show="co.step !== 'review'">Accept the Terms</span></p>
+                        </div>
+                        <p x-show="coPlaceBlockedText" x-cloak id="co-place-why-desk" class="text-[13px] leading-snug" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
+                        <button type="button" @click="placeOrder()" :disabled="co.step !== 'review' || !coCanPlace" class="w-full btn-gold min-h-[52px] px-5 stream-glow !justify-between gap-3"
+                                :aria-describedby="coPlaceBlockedText ? 'co-place-why-desk' : null" data-testid="co-place-desk">
+                            <span x-text="co.busy && co.step === 'review' ? 'One moment…' : checkout?.payment?.available ? 'Place order and pay' : 'Place order'">Place order</span>
+                            <span class="brand-font text-[17px] tracking-normal normal-case" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></button>
+                        <p x-show="!checkout?.payment?.available" class="text-center text-[13px]" style="color:#146C43;">Nothing is charged today</p>
+                    </div>
                 </aside>
             </div>
-            <!-- sticky action bar -->
-            <div class="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200">
+            <!-- Phones and tablets: the total and the next step, always in reach -->
+            <div class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-zinc-200">
                 <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3">
                     <!-- Why Place order can't be pressed yet (B4/B6): the Terms box, a declined promo code, nothing orderable -->
                     <p x-show="coPlaceBlockedText" x-cloak id="co-place-why" class="text-[13px] leading-snug text-center mb-2" style="color:#8A561B;" role="status" x-text="coPlaceBlockedText"></p>
-                    <div class="flex items-center justify-between gap-3">
-                        <button @click="coBack()" class="btn-outline px-4 py-3 shrink-0" :aria-label="co.step === 'details' ? 'Back to bag' : 'Back'"><span class="sm:hidden" aria-hidden="true">←</span><span class="hidden sm:inline" x-text="co.step === 'details' ? '← Back to bag' : '← Back'"></span></button>
-                        <div class="flex items-center gap-3 sm:gap-4 min-w-0">
-                            <span class="text-sm text-zinc-700 whitespace-nowrap"><span class="text-zinc-500">Total</span> <strong x-text="price(coQuote?.total || 0, coQuote?.currency)"></strong></span>
-                            <button @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="btn-gold px-5 py-3 stream-glow"
-                                    :aria-describedby="coPlaceBlockedText ? 'co-place-why' : null"><span x-text="co.busy ? 'One moment…' : co.step === 'review' ? (checkout?.payment?.available ? 'Place order and pay' : 'Place order') : 'Continue'"></span><span x-show="!co.busy && co.step === 'review' && !checkout?.payment?.available" class="hidden sm:inline"> — payment after our review</span></button>
+                    <div class="flex items-center gap-3">
+                        <p class="text-[12px] text-zinc-600 leading-tight shrink-0">Total<br><span class="brand-font text-[18px] text-zinc-900" x-text="price(coQuote?.total || 0, coQuote?.currency)"></span></p>
+                        <div class="flex-1 min-w-0">
+                            <button type="button" @click="coNext()" :disabled="co.busy || (co.step === 'review' && !coCanPlace)" class="w-full min-h-[52px] px-4"
+                                    :class="co.step === 'review' ? 'btn-gold stream-glow' : 'btn-black'" data-testid="co-next"
+                                    :aria-describedby="coPlaceBlockedText ? 'co-place-why' : null"><span x-text="coNextLabel + (co.step !== 'review' && !co.busy ? ' →' : '')">Continue to delivery →</span></button>
+                            <p x-show="co.step === 'review' && !checkout?.payment?.available" class="text-center text-[12px] mt-1" style="color:#146C43;">Nothing is charged today</p>
                         </div>
                     </div>
                 </div>

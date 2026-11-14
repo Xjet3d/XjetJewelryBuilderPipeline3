@@ -103,7 +103,7 @@ def test_the_app_walks_the_journey_with_the_browser():
     Co = Js[Js.index("    async startCheckout({ history = 'push', resumed = false } = {}) {"):Js.index("    coGoTo(step) {")]
     assert "if (!resumed) this.track('checkout_clicked');" in Co and "if (!resumed) this.measure('begin_checkout'" in Co
     assert "backToDesign() { this._goBackOr('ai-studio'); }," in Js
-    assert "if (this.co.step === 'details') { this._goBackOr('checkout'); return; }" in Js
+    assert "@click=\"_goBackOr('checkout')\"" in Page                                    # checkout's Back to bag (B3 one page)
     assert "await this.openDesign(d.id, { history: fromDialog ? 'replace' : 'push' });" in Js   # Make it yours takes the dialog's step
     assert Js.count("AtelierAnalytics?.page(") == 2                                           # the landing, then each screen
     for Call in ("panelTab('designs')", "panelTab('favorites')", "continueFromBag()"):

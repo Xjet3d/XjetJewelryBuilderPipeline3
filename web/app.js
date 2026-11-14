@@ -2939,6 +2939,30 @@ function p3App() {
       return 'Email confirmations are not active yet — please keep your reference.';
     },
     get coStepIndex() { return this.checkoutSteps.findIndex(s => s[0] === this.co.step); },
+    // B3 Hybrid (owner, 14 Nov 2026): one page of three sections — 'done' (a summary with Edit), 'open' (the one with
+    // something missing) or 'todo' (closed until the ones before it are done)
+    coSecState(step) {
+      const i = this.checkoutSteps.findIndex(s => s[0] === step);
+      return i < this.coStepIndex ? 'done' : i === this.coStepIndex ? 'open' : 'todo';
+    },
+    get coNextLabel() {
+      if (this.co.busy) return 'One moment…';
+      if (this.co.step === 'details') return 'Continue to delivery';
+      if (this.co.step === 'shipping') return 'Continue to review';
+      return this.checkout?.payment?.available ? 'Place order and pay' : 'Place order';
+    },
+    // The section that opened: brought into view, its heading focused so a screen reader says where the customer is
+    _coShowSection(step) {
+      // after the section's x-show has applied (a hidden heading cannot take the focus)
+      this.$nextTick(() => setTimeout(() => {
+        document.getElementById('co-sec-' + step)?.scrollIntoView({ block: 'start', behavior: this.reducedMotion ? 'auto' : 'smooth' });
+        document.getElementById({ details: 'co-h-details', shipping: 'co-h-ship', review: 'co-h-review' }[step])?.focus({ preventScroll: true });
+      }, 0));
+    },
+    coFocusTerms() {
+      const el = document.getElementById('co-terms');
+      el?.scrollIntoView({ block: 'center', behavior: this.reducedMotion ? 'auto' : 'smooth' }); el?.focus({ preventScroll: true });
+    },
     get coCountry() { return (this.checkout?.countries || []).find(c => c.code === this.co.address.country); },
     get coCountries() { return this.checkout?.countries || []; },
     flagSrc(cc) { return url(`/static/vendor/flags/${String(cc || '').toLowerCase()}.svg`); },   // under the base path, like every request
@@ -3138,12 +3162,7 @@ function p3App() {
     },
     coGoTo(step) {
       const idx = this.checkoutSteps.findIndex(s => s[0] === step);
-      if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this.co.duplicate = null; this._scrollTop(); }
-    },
-    coBack() {
-      this.co.duplicate = null;
-      if (this.co.step === 'details') { this._goBackOr('checkout'); return; }
-      this.co.step = this.co.step === 'review' ? 'shipping' : 'details'; this.co.error = ''; this._scrollTop();
+      if (idx <= this.coStepIndex) { this.co.step = step; this.co.error = ''; this.co.duplicate = null; this._coShowSection(step); }
     },
     coNext() { return this.co.step === 'details' ? this.coDetailsNext() : this.co.step === 'shipping' ? this.coShippingNext() : this.placeOrder(); },
     coDetailsNext() {
@@ -3159,7 +3178,7 @@ function p3App() {
       // Step 1's name fills the Recipient until the customer types one of their own (R-42)
       if (!this.co.recipientEdited) this.co.address.recipient = `${c.first_name} ${c.last_name}`;
       this._saveCoDraft();
-      this.co.step = 'shipping'; this.co.error = ''; this._scrollTop();
+      this.co.step = 'shipping'; this.co.error = ''; this._coShowSection('shipping');
     },
     async coShippingNext() {
       this.co.busy = true; this.co.error = '';
@@ -3180,7 +3199,7 @@ function p3App() {
       this.co.addrCheck = { ...this.co.addrCheck, suggestion: null };
       await this.coReview();
     },
-    async coReview() { await this.coRequote(); this.co.step = 'review'; this._scrollTop(); },
+    async coReview() { await this.coRequote(); this.co.step = 'review'; this._coShowSection('review'); },
     async coRequote() {
       try {
         const before = this.coQuote ? this.coQuote.currency + (this.coQuote.incl_vat ? '+vat' : '') : null;
