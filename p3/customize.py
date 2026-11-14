@@ -24,7 +24,7 @@ from p3.db import Dumps, NewId, Now
 from p3.images import ImageService
 from p3.movies import MovieService
 
-MaxQuantity = 10
+MaxQuantity = Products.MaxQuantity          # a technical guard only: no purchase limit per piece (owner, 14 Nov 2026)
 
 
 # Customize opens on US 10 (product-owner decision 2026-10-01); the customer can change it.
@@ -162,9 +162,7 @@ class CustomizeService:
             Fields["ring_size"] = None if Size is None else float(Size)
         if "quantity" in Changes:
             Qty = Changes["quantity"]
-            if not isinstance(Qty, int) or isinstance(Qty, bool) or not 1 <= Qty <= MaxQuantity:
-                raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
-            Fields["quantity"] = Qty
+            Fields["quantity"] = Products.CheckQuantity(Qty)
         Entry = self._Entry(Row["id"])
         if Entry:      # the first change after Customize opened again keeps what it showed: its metal (and a charm's size)
             Fields.setdefault("material_id", Entry["material_id"])
@@ -319,8 +317,7 @@ class CustomizeService:
             Room = MaxQuantity - Line["quantity"]
             if Room <= 0:
                 raise HttpError(409, "bag_quantity_limit",
-                                f"Your bag already has {MaxQuantity} of this piece — the most for one piece. "
-                                "For more, contact us.")
+                                f"Your bag already has {MaxQuantity:,} of this piece — for more, please contact us.")
             Add, LineId = min(Want, Room), Line["id"]
             Conn.execute("UPDATE bag_lines SET quantity = quantity + ?, customization_id = ?, pricing_version = ?, quote_json = ? "
                          "WHERE id = ?", (Add, Row["id"], Quote.pricing_version, Dumps(Quote.ToJson()), LineId))
@@ -336,10 +333,9 @@ class CustomizeService:
         return Add, LineId, LineQty
 
     def SetBagQuantity(self, Who: Principal, LineId: str, Quantity, Visible: tuple | None = None) -> dict:
-        """A bag line's quantity, changed in the bag (R-20): 1 to MaxQuantity at the line's own price; its total and the
+        """A bag line's quantity, changed in the bag (R-20): 1 or more (MaxQuantity: a technical guard) at the line's own price; its total and the
         bag's follow."""
-        if not isinstance(Quantity, int) or isinstance(Quantity, bool) or not 1 <= Quantity <= MaxQuantity:
-            raise HttpError(400, "invalid_quantity", f"Quantity must be between 1 and {MaxQuantity}.")
+        Products.CheckQuantity(Quantity)
         Line = self.Ctx.Db.One("SELECT design_id, product_type, quantity FROM bag_lines WHERE id = ? AND owner_account_id = ?",
                                (LineId, Who.AccountId))
         if Line is None:

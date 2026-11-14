@@ -732,8 +732,7 @@ class OrderService:
         if Problem:                                                   # a fixed-price material is ordered, never quoted
             raise HttpError(409, "not_quotable", Problem)
         Qty = Body.get("quantity", 1)
-        if not isinstance(Qty, int) or isinstance(Qty, bool) or not 1 <= Qty <= 10:
-            raise HttpError(400, "invalid_quantity", "Quantity must be between 1 and 10.")
+        Products.CheckQuantity(Qty)                  # no purchase limit per piece (owner, 14 Nov 2026)
         Id, T = NewId("qrq"), Now()
         Ring = RingIds.CandidateRef(Db, CandidateId)
         if Charm:

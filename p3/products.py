@@ -157,6 +157,21 @@ def SizeLabel(Product: str, RingSize=None, CharmSize=None) -> str | None:
     return f"US {float(RingSize):g}" if RingSize is not None else None
 
 
+# Owner's decision (audit action plan, 14 Nov 2026, Task 3): no purchase limit per piece — the former 10 is gone from
+# Customize, the bag, checkout and quote requests. MaxQuantity is only a technical guard against nonsense values (a
+# script, extra digits typed by mistake); no customer meets it in practice.
+MaxQuantity = 9999
+
+
+def CheckQuantity(Qty, Code: str = "invalid_quantity") -> int:
+    """A whole number of pieces, at least 1 (and not past the technical guard). Returns it."""
+    if not isinstance(Qty, int) or isinstance(Qty, bool) or Qty < 1:
+        raise HttpError(400, Code, "The quantity must be a whole number of at least 1.")
+    if Qty > MaxQuantity:
+        raise HttpError(400, Code, f"For more than {MaxQuantity:,} of one piece, please contact us.")
+    return Qty
+
+
 def Normalize(Value, Default_: str = Default) -> str:
     """'ring' / 'charm' (case-insensitive); missing → the default. Anything else is refused."""
     if Value is None or (isinstance(Value, str) and not Value.strip()):

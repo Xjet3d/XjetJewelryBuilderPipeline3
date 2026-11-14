@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from p3 import products as Products
 from p3.geometry import Scaled, UsSizeToInnerDiameterMm
 from tests.conftest import Harness
 
@@ -86,7 +87,8 @@ async def test_the_customer_approves_from_the_email_and_the_quote_becomes_an_ord
     try:
         _B, Q = await _Request(H)
         assert (await _Offer(H, Q, unit_price=0)).status_code == 400
-        assert (await _Offer(H, Q, quantity=11)).status_code == 400
+        assert (await _Offer(H, Q, quantity=0)).status_code == 400                # no limit of 10 since 14 Nov 2026: only nonsense is refused
+        assert (await _Offer(H, Q, quantity=Products.MaxQuantity + 1)).status_code == 400
         assert (await _Offer(H, Q, valid_until=_Days(-1))).status_code == 400
         assert (await _Offer(H, Q, size=7.3)).status_code == 400
         R = await _Offer(H, Q, note="Weight checked with the workshop")

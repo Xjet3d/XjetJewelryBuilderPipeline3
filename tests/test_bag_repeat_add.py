@@ -90,7 +90,7 @@ async def test_the_limit_adds_what_fits_then_says_why(H):
                           "max_quantity": MaxQuantity}
     Full = await _Add(H, Cid, "x3")
     assert Full.status_code == 409 and Full.json()["error"]["code"] == "bag_quantity_limit"
-    assert f"already has {MaxQuantity} of this piece" in Full.json()["error"]["message"]
+    assert f"already has {MaxQuantity:,} of this piece" in Full.json()["error"]["message"]
     assert [L["quantity"] for L in (await H.Client.get("/api/bag")).json()["lines"]] == [MaxQuantity]
     # the refused click's id is not spent: once there is room again, the same request adds
     Line = (await H.Client.get("/api/bag")).json()["lines"][0]

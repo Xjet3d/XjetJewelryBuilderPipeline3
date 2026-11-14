@@ -39,7 +39,7 @@ from p3.settings import WebDir
 DefaultValidDays = 14
 MaxValidDays = 180
 DefaultRingSize = 10.0
-MaxQuantity = 10
+MaxQuantity = Products.MaxQuantity          # a technical guard only (owner, 14 Nov 2026: no limit of 10)
 
 
 def _Hash(Token: str) -> str:
@@ -299,7 +299,7 @@ class QuoteDesk:
         Unit = round(_Num(Body.get("unit_price"), "The price", 1_000_000, Required=True), 2)
         Qty = Body.get("quantity", R["quantity"])
         if isinstance(Qty, bool) or not isinstance(Qty, (int, float)) or int(Qty) != Qty or not 1 <= int(Qty) <= MaxQuantity:
-            raise HttpError(400, "invalid_offer", f"The quantity must be a whole number from 1 to {MaxQuantity}.")
+            raise HttpError(400, "invalid_offer", f"The quantity must be a whole number from 1 to {MaxQuantity:,}.")
         Qty = int(Qty)
         try:
             Valid = date.fromisoformat(str(Body.get("valid_until") or ""))
