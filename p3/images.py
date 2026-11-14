@@ -188,6 +188,7 @@ class ImageService:
         # "Make more variations" and the like (R-50 follow-up): four variations of the selected design from the fixed
         # instruction; the customer's own words stay the batch's text (the studio's bubble, the Admin's journey)
         PromptText = MoreVariations.Instruction(D.get("product_type") or Products.Ring) if MoreVariations.IsMoreVariations(Instruction) else None
+        self.RequireNoRefinementRunning(Who, D)                                # FE-03: before any credit is taken
         Units = Credits.Reserve(self.Ctx, Who, Credits.Refinement, 1)          # one credit for the refinement request
         try:
             BatchId = NewId("bat")
@@ -195,6 +196,9 @@ class ImageService:
             # The fork keeps its lineage in its name ("Fil Twist" -> "Fil Lattice"), never the master's own name
             ForkTitle = NameForVariation(Db, D["title"], Instruction, D["prompt"], D.get("product_type") or Products.Ring) if Fork else None
             with Db.Transaction() as Conn:
+                # Checked again under the write lock: of two requests sent together only the first makes a batch;
+                # the second is refused here and its credit is released below (the except)
+                self.RequireNoRefinementRunning(Who, D, Conn)
                 T = Now()
                 if Fork:
                     # A fork is always the same product as the design it was refined from
@@ -593,6 +597,39 @@ class ImageService:
                 "desired_count": B["desired_count"], "config_version": B["config_version"],
                 "status": BatchStatus(Cands, B["desired_count"]), "created_at": B["created_at"],
                 "candidates": [self.CandidateJson(C, Movie.get(C["id"], 0)) for C in Cands]}
+
+    def RefinementBusy(self, Who: Principal, D: dict, Conn=None) -> bool:
+        """FE-03 (14 Nov 2026): a refinement this account asked for from this design is still being made — in the design
+        itself (one's own) or in a design forked from it (a gallery design or a master refined into a new design).
+        Conn: read inside the caller's write transaction, so two requests sent together cannot both pass."""
+        def Rows(Sql, Params):
+            return [dict(R) for R in Conn.execute(Sql, Params).fetchall()] if Conn is not None else self.Ctx.Db.All(Sql, Params)
+        Ids = [D["id"]] if D["owner_account_id"] == Who.AccountId else []
+        Ids += [R["id"] for R in Rows("SELECT id FROM designs WHERE source_design_id = ? AND owner_account_id = ?",
+                                      (D["id"], Who.AccountId))]
+        for Id in Ids:
+            for B in Rows("SELECT id, desired_count FROM batches WHERE design_id = ? AND kind = 'refine' AND id IN "
+                          "(SELECT batch_id FROM candidates WHERE status IN ('pending', 'generating'))", (Id,)):
+                if BatchStatus(Rows("SELECT status, recovering_since FROM candidates WHERE batch_id = ?", (B["id"],)),
+                               B["desired_count"]) in ("queued", "generating"):
+                    return True
+        return False
+
+    def KnownRefinementRequest(self, Who: Principal, DesignId: str, ClientRequestId: str | None) -> bool:
+        """The request was seen before (a network retry): CreateRefinement answers it with what it made then."""
+        if not ClientRequestId:
+            return False
+        Db = self.Ctx.Db
+        return bool(Db.One("SELECT 1 AS x FROM batches WHERE design_id = ? AND client_request_id = ?", (DesignId, ClientRequestId))
+                    or Db.One("SELECT 1 AS x FROM designs WHERE owner_account_id = ? AND client_request_id = ?",
+                              (Who.AccountId, ClientRequestId)))
+
+    def RequireNoRefinementRunning(self, Who: Principal, D: dict, Conn=None) -> None:
+        """One refinement at a time per design: a second Enter, click or request while one is being made is refused
+        (409) and costs nothing — the studio shows the running one."""
+        if self.RefinementBusy(Who, D, Conn):
+            raise HttpError(409, "refinement_in_progress",
+                            "Your refinement is still being made. Wait for it to finish before asking for another.")
 
     def RefinementRunning(self, DesignId: str) -> bool:
         """A refinement of this design is still being made (the studio shows its waiting screen): Customize waits,

@@ -1173,6 +1173,10 @@ def CreateApp(SettingsObj: Settings | None = None, ProviderObj=None, ProviderFac
         # refused plainly (409 design_unavailable), never a 404 (WP2); an Admin's preview, on a test account only
         D = Svc.Images.RequireDesign(Who, DesignId, Visible + Products.PausedProducts(Ctx, request))
         Products.RequireOnOffer(Ctx, D.get("product_type") or Products.Ring, request, Who)
+        # FE-03: a second request while this design's refinement is still being made is refused before the prompt check
+        # (and again, under the write lock, before the credit is taken) — a retry of the same request is answered as before
+        if not Svc.Images.KnownRefinementRequest(Who, DesignId, RequestId):
+            Svc.Images.RequireNoRefinementRunning(Who, D)
         Check = None
         # A request that is only "more variations" (the phrase list, nothing else in it) never reaches the model: the
         # fixed instruction does, so it is not checked (the charm check refused these words, 25 Oct). Anything more
