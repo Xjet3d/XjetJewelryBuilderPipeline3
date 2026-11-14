@@ -30,7 +30,7 @@ async def test_a_bag_line_quantity_changes_its_total_and_the_bag_total(HW):
     New = R.json()["lines"][0]
     assert New["quantity"] == 3 and New["unit_price"] == L["unit_price"] and New["line_total"] == pytest.approx(3 * L["unit_price"])
     assert R.json()["totals"]["USD"] == pytest.approx(3 * L["unit_price"])
-    for Bad in (0, 11, "2", True, None):
+    for Bad in (0, 10000, "2", True, None):                     # no limit of 10 since 14 Nov 2026: 9,999 is the technical guard
         assert (await H.Client.patch(f"/api/bag/{L['id']}", json={"quantity": Bad})).status_code == 400, Bad
     Other = {"X-Access-Token": H.Ctx.Accounts.IssueToken("other")[0]}
     assert (await H.Client.patch(f"/api/bag/{L['id']}", json={"quantity": 2}, headers=Other)).status_code == 404
